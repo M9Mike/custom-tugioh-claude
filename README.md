@@ -1,1 +1,81 @@
-# custom-tugioh-claude
+# Shadow Duel — Duelist Kingdom
+
+A private, two-player online duel game built around the original season 1 cast of
+Yu-Gi-Oh!. Ten hand-built 25-card decks, real card artwork, and **every single card
+rewritten with an overpowered, anime-flavoured effect**.
+
+Start a duel, send the link or the four-letter room code to your opponent, both pick a
+duelist, and play.
+
+## House rules
+
+Deliberately different from the real trading card game:
+
+| | |
+|---|---|
+| Life Points | 4000 |
+| Deck size | exactly 25 cards (plus a small Extra Deck for some duelists) |
+| Opening hand | 5 cards |
+| Monster Zones | 3 |
+| Spell/Trap Zone | 1 (plus a separate Field Zone) |
+| Turn structure | Draw → **one** Main Phase → Battle → End |
+| First turn | no attacks |
+
+Tribute rules are standard (Level 5–6 need one tribute, Level 7+ need two), with one
+twist: **Toon monsters need no tribute while their controller has Toon World face-up** —
+which is what makes Pegasus's deck function.
+
+Winning: reduce your opponent to 0 Life Points, make them run out of cards to draw, or
+assemble all five pieces of Exodia in your hand.
+
+## The duelists
+
+Yugi Muto · Seto Kaiba · Joey Wheeler · Mai Valentine · Maximillion Pegasus ·
+Bakura Ryou · Mako Tsunami · Weevil Underwood · Rex Raptor · Bandit Keith
+
+Each has a 25-card deck drawn from what they actually played in the anime, and a
+signature card used as their emblem.
+
+## How it is built
+
+- **Next.js (App Router) + TypeScript + Tailwind**, deployed on Vercel.
+- **`src/game/`** — the rules engine. Pure, deterministic, and shared by client and
+  server: the same code that resolves a duel on the server also tells the interface
+  which buttons should be enabled.
+  - `types.ts` — the effect DSL (triggers, selectors, ~45 operations).
+  - `effects/monsters.ts`, `effects/spells.ts` — the custom effect for every card.
+  - `engine.ts` — summons, battle, triggers, trap windows, win conditions.
+  - `autoplay.ts` — legal-move enumeration, used by the tests.
+- **`src/server/rooms.ts`** — in-memory duel rooms.
+- **Realtime** — server-authoritative state pushed over Server-Sent Events, with a
+  3-second polling safety net and automatic reconnection. There is no database: rooms
+  live in the serverless instance that both players hold open. Joining retries on a
+  404 rather than creating a second room, so two players can never end up in different
+  copies of the same duel.
+- **Artwork** — the official cropped card art, downloaded and re-encoded to WebP at
+  build time by `scripts/prepare-art.mjs` (never hot-linked at runtime). Card frames,
+  layout and all rules text are drawn by us.
+- **Sound** — synthesised at runtime with the Web Audio API; no audio files.
+
+## Working on it
+
+```bash
+npm install
+npm run art      # download card artwork into public/art (also runs before build)
+npm run dev
+
+npm run sim 800  # play 800 random duels offline; reports rule errors + win rates
+npm run e2e      # drive two HTTP clients through full duels against a running server
+npm run shots    # drive two real browsers and screenshot the whole flow
+npm run cards    # re-resolve decklists against the card database (authoring only)
+```
+
+`data/decklists.json` is the source of truth for the decks. `npm run cards` resolves the
+card names, pulls real stats, and writes `src/game/generated/`.
+
+## Legal
+
+A private, non-commercial fan project made for two people to play together. Yu-Gi-Oh!,
+the cards and the artwork are the property of Kazuki Takahashi, Shueisha and Konami.
+Card data and images come from the community [YGOPRODeck](https://ygoprodeck.com) API.
+The card effects in this game are original and do not match the official game.

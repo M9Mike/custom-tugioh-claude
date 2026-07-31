@@ -1,0 +1,39 @@
+{
+  "name": "custom-tugioh-claude",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "node scripts/prepare-art.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "art": "node scripts/prepare-art.mjs",
+    "cards": "node scripts/fetch-cards.mjs",
+    "sim": "tsx scripts/simulate.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "shots": "node scripts/shots.mjs"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "motion": "^12.43.0",
+    "nanoid": "^6.0.0",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "playwright": "^1.62.1",
+    "sharp": "^0.35.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.1",
+    "typescript": "^5"
+  }
+}

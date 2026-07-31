@@ -1,0 +1,1097 @@
+{
+  "duelists": [
+    {
+      "id": "yugi",
+      "name": "Yugi Muto",
+      "epithet": "King of Games",
+      "quote": "It's time to du-du-du-duel!",
+      "accent": "#6d4bd6",
+      "accent2": "#f0c04a",
+      "emblem": "Dark Magician",
+      "strategy": "Spellcasters, the Forbidden One, and the heart of the cards.",
+      "deck": [
+        [
+          "Dark Magician",
+          1
+        ],
+        [
+          "Dark Magician Girl",
+          1
+        ],
+        [
+          "Summoned Skull",
+          1
+        ],
+        [
+          "Gaia The Fierce Knight",
+          1
+        ],
+        [
+          "Curse of Dragon",
+          1
+        ],
+        [
+          "Celtic Guardian",
+          1
+        ],
+        [
+          "Beaver Warrior",
+          1
+        ],
+        [
+          "Mystical Elf",
+          1
+        ],
+        [
+          "Feral Imp",
+          1
+        ],
+        [
+          "Kuriboh",
+          1
+        ],
+        [
+          "Magician of Faith",
+          1
+        ],
+        [
+          "Exodia the Forbidden One",
+          1
+        ],
+        [
+          "Left Arm of the Forbidden One",
+          1
+        ],
+        [
+          "Right Arm of the Forbidden One",
+          1
+        ],
+        [
+          "Left Leg of the Forbidden One",
+          1
+        ],
+        [
+          "Right Leg of the Forbidden One",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Swords of Revealing Light",
+          1
+        ],
+        [
+          "Magical Hats",
+          1
+        ],
+        [
+          "Brain Control",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Mirror Force",
+          1
+        ],
+        [
+          "Spellbinding Circle",
+          1
+        ],
+        [
+          "Multiply",
+          1
+        ]
+      ],
+      "extra": [
+        "Gaia the Dragon Champion",
+        "Dark Paladin"
+      ]
+    },
+    {
+      "id": "kaiba",
+      "name": "Seto Kaiba",
+      "epithet": "Master of Dragons",
+      "quote": "You just activated my trap card.",
+      "accent": "#2f6fd0",
+      "accent2": "#d8e6ff",
+      "emblem": "Blue-Eyes White Dragon",
+      "strategy": "Raw dragon power, no mercy, and virus destruction.",
+      "deck": [
+        [
+          "Blue-Eyes White Dragon",
+          3
+        ],
+        [
+          "Lord of D.",
+          1
+        ],
+        [
+          "Kaiser Sea Horse",
+          1
+        ],
+        [
+          "Battle Ox",
+          1
+        ],
+        [
+          "Saggi the Dark Clown",
+          1
+        ],
+        [
+          "Rude Kaiser",
+          1
+        ],
+        [
+          "Judge Man",
+          1
+        ],
+        [
+          "Vorse Raider",
+          1
+        ],
+        [
+          "La Jinn the Mystical Genie of the Lamp",
+          1
+        ],
+        [
+          "Hitotsu-Me Giant",
+          1
+        ],
+        [
+          "Ryu-Kishin Powered",
+          1
+        ],
+        [
+          "Mystical Elf",
+          1
+        ],
+        [
+          "The Flute of Summoning Dragon",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Enemy Controller",
+          1
+        ],
+        [
+          "Crush Card Virus",
+          1
+        ],
+        [
+          "Ring of Destruction",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ]
+      ],
+      "extra": [
+        "Blue-Eyes Ultimate Dragon"
+      ]
+    },
+    {
+      "id": "joey",
+      "name": "Joey Wheeler",
+      "epithet": "The Underdog",
+      "quote": "I'm playin' with the heart of the cards!",
+      "accent": "#c8802a",
+      "accent2": "#ffd98a",
+      "emblem": "Red-Eyes Black Dragon",
+      "strategy": "Warriors, dragons, and impossible luck at the worst moment.",
+      "deck": [
+        [
+          "Red-Eyes Black Dragon",
+          1
+        ],
+        [
+          "Flame Swordsman",
+          1
+        ],
+        [
+          "Baby Dragon",
+          1
+        ],
+        [
+          "Time Wizard",
+          1
+        ],
+        [
+          "Panther Warrior",
+          1
+        ],
+        [
+          "Rocket Warrior",
+          1
+        ],
+        [
+          "Alligator's Sword",
+          1
+        ],
+        [
+          "Swordsman of Landstar",
+          1
+        ],
+        [
+          "Garoozis",
+          1
+        ],
+        [
+          "Axe Raider",
+          1
+        ],
+        [
+          "Tiger Axe",
+          1
+        ],
+        [
+          "Masaki the Legendary Swordsman",
+          1
+        ],
+        [
+          "Battle Steer",
+          1
+        ],
+        [
+          "Kojikocy",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Scapegoat",
+          1
+        ],
+        [
+          "Shield & Sword",
+          1
+        ],
+        [
+          "Giant Trunade",
+          1
+        ],
+        [
+          "Salamandra",
+          1
+        ],
+        [
+          "Legendary Sword",
+          1
+        ],
+        [
+          "Kunai with Chain",
+          1
+        ],
+        [
+          "Graverobber",
+          1
+        ],
+        [
+          "Skull Dice",
+          1
+        ],
+        [
+          "Graceful Dice",
+          1
+        ]
+      ],
+      "extra": [
+        "Alligator's Sword Dragon"
+      ]
+    },
+    {
+      "id": "mai",
+      "name": "Mai Valentine",
+      "epithet": "Harpie's Grace",
+      "quote": "My Harpie Ladies never lose.",
+      "accent": "#b8467f",
+      "accent2": "#ffd1e6",
+      "emblem": "Harpie Lady",
+      "strategy": "Winged beasts that swarm, equip, and shred everything you set.",
+      "deck": [
+        [
+          "Harpie Lady",
+          3
+        ],
+        [
+          "Harpie Lady Sisters",
+          1
+        ],
+        [
+          "Cyber Harpie Lady",
+          1
+        ],
+        [
+          "Harpie's Pet Dragon",
+          1
+        ],
+        [
+          "Sky Scout",
+          1
+        ],
+        [
+          "Dunames Dark Witch",
+          1
+        ],
+        [
+          "Winged Dragon, Guardian of the Fortress #1",
+          1
+        ],
+        [
+          "Amazon of the Seas",
+          1
+        ],
+        [
+          "Sonic Maid",
+          1
+        ],
+        [
+          "Happy Lover",
+          1
+        ],
+        [
+          "Elegant Egotist",
+          1
+        ],
+        [
+          "Cyber Shield",
+          1
+        ],
+        [
+          "Harpie's Feather Duster",
+          1
+        ],
+        [
+          "Harpies' Hunting Ground",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "De-Spell",
+          1
+        ],
+        [
+          "Mirror Wall",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Malevolent Nuzzler",
+          1
+        ]
+      ],
+      "extra": [
+        "Harpie Lady Phoenix Formation"
+      ]
+    },
+    {
+      "id": "pegasus",
+      "name": "Maximillion Pegasus",
+      "epithet": "Creator of Duel Monsters",
+      "quote": "I can see every card in your hand, Yugi-boy.",
+      "accent": "#a8324a",
+      "accent2": "#f5e2c8",
+      "emblem": "Relinquished",
+      "strategy": "Toons that can't be touched, and an eye that steals your monsters.",
+      "deck": [
+        [
+          "Relinquished",
+          1
+        ],
+        [
+          "Toon Summoned Skull",
+          1
+        ],
+        [
+          "Toon Mermaid",
+          1
+        ],
+        [
+          "Toon Alligator",
+          1
+        ],
+        [
+          "Manga Ryu-Ran",
+          1
+        ],
+        [
+          "Ryu-Ran",
+          1
+        ],
+        [
+          "Dark-Eyes Illusionist",
+          1
+        ],
+        [
+          "Illusionist Faceless Mage",
+          1
+        ],
+        [
+          "Parrot Dragon",
+          1
+        ],
+        [
+          "Dragon Piper",
+          1
+        ],
+        [
+          "Bickuribox",
+          1
+        ],
+        [
+          "Barrel Dragon",
+          1
+        ],
+        [
+          "Toon World",
+          2
+        ],
+        [
+          "Black Illusion Ritual",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Shadow Spell",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Mirror Force",
+          1
+        ],
+        [
+          "Blue-Eyes Toon Dragon",
+          1
+        ],
+        [
+          "Dark Rabbit",
+          1
+        ]
+      ],
+      "extra": [
+        "Thousand-Eyes Restrict"
+      ]
+    },
+    {
+      "id": "bakura",
+      "name": "Bakura Ryou",
+      "epithet": "Spirit of the Ring",
+      "quote": "Let's play a game... a Shadow Game.",
+      "accent": "#7a5aa8",
+      "accent2": "#cfc0e8",
+      "emblem": "Man-Eater Bug",
+      "strategy": "Occult tricks: flip your monsters against you and rot your life away.",
+      "deck": [
+        [
+          "Man-Eater Bug",
+          2
+        ],
+        [
+          "Morphing Jar",
+          1
+        ],
+        [
+          "The Portrait's Secret",
+          1
+        ],
+        [
+          "Headless Knight",
+          1
+        ],
+        [
+          "Earthbound Spirit",
+          1
+        ],
+        [
+          "White Magical Hat",
+          1
+        ],
+        [
+          "Lady of Faith",
+          1
+        ],
+        [
+          "Souls of the Forgotten",
+          1
+        ],
+        [
+          "The Gross Ghost of Fled Dreams",
+          1
+        ],
+        [
+          "Dark Necrofear",
+          1
+        ],
+        [
+          "Sangan",
+          1
+        ],
+        [
+          "Witch of the Black Forest",
+          1
+        ],
+        [
+          "Dark Elf",
+          1
+        ],
+        [
+          "Change of Heart",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "The Dark Door",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Call of the Haunted",
+          1
+        ],
+        [
+          "Michizure",
+          1
+        ],
+        [
+          "Dark Sanctuary",
+          1
+        ],
+        [
+          "The Earl of Demise",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "mako",
+      "name": "Mako Tsunami",
+      "epithet": "Master of the Sea",
+      "quote": "The ocean is my ally!",
+      "accent": "#1f7f96",
+      "accent2": "#bdf0ff",
+      "emblem": "The Legendary Fisherman",
+      "strategy": "Flood the field, hide beneath the waves, and strike from the deep.",
+      "deck": [
+        [
+          "The Legendary Fisherman",
+          1
+        ],
+        [
+          "Fortress Whale",
+          1
+        ],
+        [
+          "Kairyu-Shin",
+          1
+        ],
+        [
+          "Great White",
+          2
+        ],
+        [
+          "Jellyfish",
+          1
+        ],
+        [
+          "7 Colored Fish",
+          1
+        ],
+        [
+          "Giant Red Seasnake",
+          1
+        ],
+        [
+          "Deepsea Warrior",
+          1
+        ],
+        [
+          "Aqua Madoor",
+          1
+        ],
+        [
+          "Flying Fish",
+          1
+        ],
+        [
+          "Kappa Avenger",
+          1
+        ],
+        [
+          "Crab Turtle",
+          1
+        ],
+        [
+          "Umi",
+          1
+        ],
+        [
+          "Fortress Whale's Oath",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Torrential Tribute",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Tornado Wall",
+          1
+        ],
+        [
+          "Amphibian Beast",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "weevil",
+      "name": "Weevil Underwood",
+      "epithet": "Insect Combo Master",
+      "quote": "My insects will devour you!",
+      "accent": "#5f8f2a",
+      "accent2": "#d9f2a8",
+      "emblem": "Perfectly Ultimate Great Moth",
+      "strategy": "Cocoon your larva, and unleash a monster nothing can answer.",
+      "deck": [
+        [
+          "Petit Moth",
+          3
+        ],
+        [
+          "Larvae Moth",
+          1
+        ],
+        [
+          "Great Moth",
+          1
+        ],
+        [
+          "Perfectly Ultimate Great Moth",
+          1
+        ],
+        [
+          "Hercules Beetle",
+          1
+        ],
+        [
+          "Killer Needle",
+          1
+        ],
+        [
+          "Basic Insect",
+          1
+        ],
+        [
+          "Kuwagata α",
+          1
+        ],
+        [
+          "Flying Kamakiri #1",
+          1
+        ],
+        [
+          "Parasite Paracide",
+          1
+        ],
+        [
+          "Insect Soldiers of the Sky",
+          1
+        ],
+        [
+          "Leghul",
+          1
+        ],
+        [
+          "Man-Eating Treasure Chest",
+          1
+        ],
+        [
+          "Cocoon of Evolution",
+          1
+        ],
+        [
+          "Laser Cannon Armor",
+          1
+        ],
+        [
+          "Insect Armor with Laser Cannon",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Gift of The Mystical Elf",
+          1
+        ],
+        [
+          "Insect Barrier",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Eradicating Aerosol",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "rex",
+      "name": "Rex Raptor",
+      "epithet": "Dino Duelist",
+      "quote": "My dinosaurs will stomp you flat!",
+      "accent": "#8a5a2a",
+      "accent2": "#f0c98a",
+      "emblem": "Two-Headed King Rex",
+      "strategy": "Prehistoric brute force that hits harder the longer you survive.",
+      "deck": [
+        [
+          "Two-Headed King Rex",
+          2
+        ],
+        [
+          "Serpent Night Dragon",
+          1
+        ],
+        [
+          "Uraby",
+          2
+        ],
+        [
+          "Crawling Dragon",
+          1
+        ],
+        [
+          "Crawling Dragon #2",
+          1
+        ],
+        [
+          "Sword Arm of Dragon",
+          2
+        ],
+        [
+          "Megazowler",
+          1
+        ],
+        [
+          "Trakodon",
+          1
+        ],
+        [
+          "Anthrosaurus",
+          1
+        ],
+        [
+          "Mad Sword Beast",
+          1
+        ],
+        [
+          "Dark Assailant",
+          1
+        ],
+        [
+          "Sabersaurus",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Tribute to the Doomed",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Michizure",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "keith",
+      "name": "Bandit Keith",
+      "epithet": "The Machine King",
+      "quote": "In America, I'm number one!",
+      "accent": "#9a2f2f",
+      "accent2": "#e8c56a",
+      "emblem": "Barrel Dragon",
+      "strategy": "Machines that fire first, and armour that turns metal into overkill.",
+      "deck": [
+        [
+          "Barrel Dragon",
+          1
+        ],
+        [
+          "Machine King",
+          1
+        ],
+        [
+          "Slot Machine",
+          1
+        ],
+        [
+          "Blast Sphere",
+          1
+        ],
+        [
+          "Zoa",
+          1
+        ],
+        [
+          "Launcher Spider",
+          1
+        ],
+        [
+          "Pendulum Machine",
+          1
+        ],
+        [
+          "Cannon Soldier",
+          1
+        ],
+        [
+          "Robotic Knight",
+          1
+        ],
+        [
+          "Mechanicalchaser",
+          1
+        ],
+        [
+          "Giant Rat",
+          1
+        ],
+        [
+          "Steel Ogre Grotto #1",
+          1
+        ],
+        [
+          "Ground Attacker Bugroth",
+          1
+        ],
+        [
+          "Machine Conversion Factory",
+          1
+        ],
+        [
+          "7 Completed",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Metalmorph",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Metalzoa",
+          1
+        ],
+        [
+          "Time Machine",
+          1
+        ]
+      ],
+      "extra": []
+    }
+  ]
+}
