@@ -154,7 +154,14 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
     // Nothing it beats: a sensible attacker simply does not swing.
   }
 
-  // Whatever the opponent could not block still threatens next turn.
+  // Attack power available *per turn from next turn on*, which is what `clock`
+  // divides the remaining Life Points by.
+  //
+  // Every attacker counts, including the ones that just killed a blocker: they
+  // survived that fight — they only swung at something they beat — and next
+  // turn they swing again into a board with that blocker gone. Netting off the
+  // ATK "spent" blocking would be double-counting the same removal twice, and
+  // would understate how fast the board actually closes out.
   const freeAtk = attackers.reduce((sum, a) => sum + a.atk * a.attacks, 0);
   return { damage, freeAtk };
 }

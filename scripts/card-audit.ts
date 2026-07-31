@@ -466,7 +466,6 @@ function audit(def: CardDef, eff: CardEffect, s: DuelState, fire: (s: DuelState)
   // A monster arriving on the board raises my total ATK all by itself; that is
   // not the effect doing anything, so take its printed body back off.
   after.me.totalAtk -= ownAtkOffset;
-  after.me.totalDef -= ownAtkOffset ? 0 : 0;
   const fa = allFlags(out);
 
   const checks: Check[] = [];
@@ -567,7 +566,11 @@ for (const def of Object.values(CARDS)) {
       // Both the attack window and the destruction window need a Battle Phase.
       s.phase = eff.window === 'opponentDeclareAttack' || eff.window === 'monsterDestroyed' ? 'battle' : 'main';
       if (eff.window === 'opponentDeclareAttack') {
-        const atk = s.players[FOE].monsters[0]!;
+        const atk = s.players[FOE].monsters[0];
+        if (!atk) {
+          results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: 'no attacker available to open the window', ok: false }], unverified: 0 });
+          continue;
+        }
         atk.attacksUsed = 0;
         atk.summonedOnTurn = 0;
         // A direct attack is illegal while the defender has monsters, so swing
@@ -580,8 +583,12 @@ for (const def of Object.values(CARDS)) {
         }
         audit(def, eff, stepped, (st) => run(st, ME, { type: 'respondTrap', uid: c.uid, targets: targetsFor(st, def) }));
       } else if (eff.window === 'opponentSummon') {
-        const h = s.players[FOE].hand.find((x) => CARDS[x.slug]?.kind === 'monster')!;
+        const h = s.players[FOE].hand.find((x) => CARDS[x.slug]?.kind === 'monster');
         const zone = s.players[FOE].monsters.findIndex((m) => !m);
+        if (!h || zone < 0) {
+          results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: 'could not stage a summon to react to', ok: false }], unverified: 0 });
+          continue;
+        }
         const stepped = run(s, FOE, { type: 'normalSummon', uid: h.uid, zone, position: 'atk', face: 'up' });
         if (typeof stepped === 'string' || !stepped.pending) {
           results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: 'summon window never opened', ok: false }], unverified: 0 });
@@ -591,10 +598,14 @@ for (const def of Object.values(CARDS)) {
       } else if (eff.window === 'monsterDestroyed') {
         // The window belongs to whoever just lost a monster, so one of mine has
         // to die on the opponent's turn.
-        const victim = s.players[ME].monsters.find((m): m is CardInstance => !!m)!;
+        const victim = s.players[ME].monsters.find((m): m is CardInstance => !!m);
+        const atk = s.players[FOE].monsters[0];
+        if (!victim || !atk) {
+          results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: 'could not stage a destruction to react to', ok: false }], unverified: 0 });
+          continue;
+        }
         victim.defMod -= 9000;
         victim.position = 'def';
-        const atk = s.players[FOE].monsters[0]!;
         atk.attacksUsed = 0;
         atk.summonedOnTurn = 0;
         atk.atkMod += 3000;
@@ -740,7 +751,7 @@ for (const def of Object.values(CARDS)) {
         attacker.atkMod += 3000;
       }
       const targetUid = weak ? c.uid : (s.players[FOE].monsters.find((m) => m && m.uid !== c.uid)?.uid ?? null);
-      audit(def, eff, s, (st) => run(st, weak ? ME : ME, { type: 'attack', uid: attacker.uid, targetUid }));
+      audit(def, eff, s, (st) => run(st, ME, { type: 'attack', uid: attacker.uid, targetUid }));
       continue;
     }
 

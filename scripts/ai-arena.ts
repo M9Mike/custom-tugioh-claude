@@ -253,8 +253,10 @@ async function main() {
   // Does looking further ahead actually pay? Same width, different depth.
   const flat: AiConfig = { ...champ, depth: 0 };
   const oneTurn: AiConfig = { ...champ, depth: 1 };
-  await arena('champion(d3) vs same width d0', champ, flat, pairs, workers);
+  const only = process.argv.includes('--depth-only');
   await arena('champion(d3) vs same width d1', champ, oneTurn, pairs, workers);
+  if (only) return;
+  await arena('champion(d3) vs same width d0', champ, flat, pairs, workers);
   console.log('');
   await arena('race-eval vs legacy-eval', champ, legacy, pairs, workers);
   await arena('champion  vs greedy', champ, greedy, pairs, workers);
