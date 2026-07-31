@@ -64,8 +64,36 @@ async function collection(): Promise<Collection<RoomDoc>> {
     // A TTL index lets Mongo expire abandoned rooms on its own.
     await col.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
     return col;
-  })();
+  })().catch((err) => {
+    // Never cache a failed connection: a rejected promise left in place would
+    // keep failing for the life of the instance, so a fixed password would
+    // appear not to have worked until the instance recycled.
+    gm.__duelMongo = undefined;
+    throw err;
+  });
   return gm.__duelMongo;
+}
+
+/** Classifies a storage failure without leaking connection details. */
+export function describeStoreError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/bad auth|Authentication failed/i.test(msg)) return 'authentication-failed';
+  if (/ENOTFOUND|getaddrinfo|querySrv/i.test(msg)) return 'host-not-found';
+  if (/ServerSelection|timed out|ETIMEDOUT|ECONNREFUSED/i.test(msg)) return 'unreachable';
+  return 'error';
+}
+
+/** Round-trips a probe value so a misconfiguration is visible without playing. */
+export async function checkStore(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const probe = `duel:health:${Math.random().toString(36).slice(2)}`;
+    await writeRaw(probe, 'ok', 60);
+    const back = await readRaw(probe);
+    await deleteKey(probe);
+    return back === 'ok' ? { ok: true } : { ok: false, reason: 'round-trip-mismatch' };
+  } catch (err) {
+    return { ok: false, reason: describeStoreError(err) };
+  }
 }
 
 /* ------------------------------------------------------------------ */
