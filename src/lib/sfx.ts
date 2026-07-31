@@ -43,9 +43,48 @@ export function getSfxEnabled(): boolean {
   }
 }
 
+let unlockBound = false;
+
+/**
+ * iOS Safari starts every AudioContext suspended and will only resume it inside
+ * a real user gesture, so calling this from an effect is not enough on its own —
+ * we also arm one-shot gesture listeners that resume the context and push a
+ * silent buffer through it, which is what actually unlocks audio on iPhone.
+ */
 export function primeAudio() {
   enabled = getSfxEnabled();
-  ac();
+  const c = ac();
+  if (!c || unlockBound) return;
+  unlockBound = true;
+
+  const unlock = () => {
+    const cur = ac();
+    if (!cur) return;
+    void cur.resume();
+    try {
+      const buf = cur.createBuffer(1, 1, 22050);
+      const src = cur.createBufferSource();
+      src.buffer = buf;
+      src.connect(cur.destination);
+      src.start(0);
+    } catch {
+      /* the resume above is the part that matters */
+    }
+    if (cur.state === 'running') {
+      for (const ev of ['touchend', 'pointerdown', 'click', 'keydown'] as const) {
+        window.removeEventListener(ev, unlock);
+      }
+    }
+  };
+
+  for (const ev of ['touchend', 'pointerdown', 'click', 'keydown'] as const) {
+    window.addEventListener(ev, unlock, { passive: true });
+  }
+
+  // Safari also suspends the context when the tab is backgrounded.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void ac()?.resume();
+  });
 }
 
 function tone(opts: {

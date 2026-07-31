@@ -43,3 +43,5 @@ next-env.d.ts
 # Card artwork is downloaded at build time by scripts/prepare-art.mjs
 /public/art
 /.cache
+/public/apple-touch-icon.png
+/public/icon-*.png

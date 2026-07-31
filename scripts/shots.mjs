@@ -120,6 +120,12 @@ const main = async () => {
         if (await mine.count()) {
           await mine.first().click();
           await page.waitForTimeout(500);
+          // The monster action sheet opens first.
+          const attackBtn = page.locator('button:has-text("Attack (")');
+          if (await attackBtn.count()) {
+            await attackBtn.first().click();
+            await page.waitForTimeout(400);
+          }
           const direct = page.locator('button:has-text("Direct Attack")');
           const foeTarget = page.locator('[data-testid="foe-monster-zone"] .targetable');
           if (await foeTarget.count()) await foeTarget.first().click();

@@ -19,7 +19,7 @@ import {
   other,
   tributesRequired,
 } from '@/game/engine';
-import { targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
@@ -37,7 +37,9 @@ type Mode =
       /** Pending summon that resolves once targets are chosen. */
       summon?: { position: 'atk' | 'def'; face: 'up' | 'down'; tributes: string[] };
     }
-  | { kind: 'attack'; uid: string };
+  | { kind: 'attack'; uid: string }
+  /** Action sheet for one of your own monsters on the field. */
+  | { kind: 'monster'; uid: string };
 
 interface Props {
   view: RoomView;
@@ -75,6 +77,37 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   useEffect(() => {
     primeAudio();
     setSoundOn(getSfxEnabled());
+  }, []);
+
+  // Keep the phone awake while a duel is in progress — turns can be long and
+  // nobody wants the screen dying mid-thought. Safari re-releases the lock when
+  // the tab is backgrounded, so it is re-requested on return.
+  useEffect(() => {
+    type WakeLockSentinel = { release: () => Promise<void> };
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<WakeLockSentinel> } };
+    if (!nav.wakeLock) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    const acquire = async () => {
+      try {
+        const s = await nav.wakeLock!.request('screen');
+        if (cancelled) void s.release();
+        else sentinel = s;
+      } catch {
+        /* denied or unsupported — not worth telling the player about */
+      }
+    };
+    void acquire();
+    const onVisible = () => {
+      if (!document.hidden) void acquire();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      void sentinel?.release().catch(() => {});
+    };
   }, []);
 
   const myTurn = state.active === me && !state.winner;
@@ -190,9 +223,15 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
     // Any state change from the server invalidates a half-built interaction —
     // the cards it referred to may already be gone.
     setMode({ kind: 'idle' });
+    setInspect(null);
   }, [state.version]);
 
   /* ---------------- derived helpers ---------------- */
+  /** Hover preview — mouse only, so taps never trigger it. */
+  const hoverInspect = (c: CardInstance | null) => (e: React.PointerEvent) => {
+    if (c && e.pointerType === 'mouse') setInspect(c);
+  };
+
   const statsOf = useCallback(
     (c: CardInstance, controller: PlayerId) => ({
       atk: effAtk(state, c, controller),
@@ -329,14 +368,16 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
             }
             return;
           }
-          if (attackable) {
+          // Your own monsters open an action sheet — attack, switch position, or
+          // fire an ignition effect. Everything else just inspects.
+          if (isMine && myTurn && (attackable || selectable)) {
             sfx.click();
-            setMode({ kind: 'attack', uid: c.uid });
+            setMode({ kind: 'monster', uid: c.uid });
             return;
           }
           setInspect(c);
         }}
-        onPointerEnter={() => c && setInspect(c)}
+        onPointerEnter={hoverInspect(c)}
         data-testid={isMine ? 'my-monster-zone' : 'foe-monster-zone'}
       >
         {!c && (
@@ -395,7 +436,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
           }
           setInspect(c);
         }}
-        onPointerEnter={() => c && setInspect(c)}
+        onPointerEnter={hoverInspect(c)}
       >
         {c && (
           <div className={`absolute inset-0 ${targetable ? 'targetable' : activatable ? 'selectable' : ''}`}>
@@ -413,7 +454,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
       <div
         className={`zone ${SIDE_CARD} aspect-[59/86]`}
         onClick={() => c && setInspect(c)}
-        onPointerEnter={() => c && setInspect(c)}
+        onPointerEnter={hoverInspect(c)}
       >
         {c ? <GameCard card={c} compact /> : <span className="absolute inset-0 grid place-items-center font-display text-[9px] text-ptextdim/40">FIELD</span>}
       </div>
@@ -484,6 +525,8 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   /* ---------------- hand action sheet ---------------- */
   const handCard = mode.kind === 'hand' ? mine.hand.find((h) => h.uid === mode.uid) : null;
   const handDef = handCard ? CARDS[handCard.slug] : null;
+  const monsterCard = mode.kind === 'monster' ? mine.monsters.find((m) => m?.uid === mode.uid) ?? null : null;
+  const monsterDef = monsterCard ? CARDS[monsterCard.slug] : null;
 
   const handActions = (): { label: string; run: () => void; disabled?: boolean; hint?: string }[] => {
     if (!handCard || !handDef) return [];
@@ -540,7 +583,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
     : [];
 
   return (
-    <div className={`duel-root relative flex h-[100dvh] w-full flex-col overflow-hidden ${shakeOn ? 'shake' : ''}`}>
+    <div className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'shake' : ''}`}>
       {/* ---- top strip ---- */}
       <div className="flex shrink-0 items-center gap-2 px-2 pt-2">
         <div className="min-w-0 flex-1">
@@ -580,12 +623,16 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
           {/* Opponent's back row. Both rows keep the Monster Zones in the same
               three centre columns so attacker and defender line up on screen;
               the Spell/Trap and Field zones mirror to the outside. */}
-          <div className="flex items-center gap-1.5">
-            {renderFieldZone(foe)}
-            {renderSTZone(foe)}
+          <div className="flex flex-col items-center gap-1.5 lg:flex-row">
+            <div className="flex gap-1.5">
+              {renderFieldZone(foe)}
+              {renderSTZone(foe)}
+            </div>
             <div className="flex gap-1.5">{[0, 1, 2].map((i) => renderMonsterZone(foe, i))}</div>
-            <div className={`${SIDE_CARD} hidden shrink-0 lg:block`} aria-hidden />
-            <div className={`${SIDE_CARD} hidden shrink-0 lg:block`} aria-hidden />
+            <div className="hidden gap-1.5 lg:flex" aria-hidden>
+              <div className={`${SIDE_CARD} shrink-0`} />
+              <div className={`${SIDE_CARD} shrink-0`} />
+            </div>
           </div>
 
           {/* centre rule */}
@@ -598,12 +645,16 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
           </div>
 
           {/* my front row */}
-          <div className="flex items-center gap-1.5">
-            <div className={`${SIDE_CARD} hidden shrink-0 lg:block`} aria-hidden />
-            <div className={`${SIDE_CARD} hidden shrink-0 lg:block`} aria-hidden />
+          <div className="flex flex-col items-center gap-1.5 lg:flex-row">
+            <div className="hidden gap-1.5 lg:flex" aria-hidden>
+              <div className={`${SIDE_CARD} shrink-0`} />
+              <div className={`${SIDE_CARD} shrink-0`} />
+            </div>
             <div className="flex gap-1.5">{[0, 1, 2].map((i) => renderMonsterZone(me, i))}</div>
-            {renderSTZone(me)}
-            {renderFieldZone(me)}
+            <div className="flex gap-1.5">
+              {renderSTZone(me)}
+              {renderFieldZone(me)}
+            </div>
           </div>
         </div>
 
@@ -621,7 +672,8 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
         <PlayerBar pid={me} top={false} />
 
         <div className="mt-1.5 flex items-end gap-2">
-          <div className="thin-scroll flex min-w-0 flex-1 items-end justify-center gap-1 overflow-x-auto px-1 pb-2 pt-3">
+          <div className="thin-scroll flex min-w-0 flex-1 items-end overflow-x-auto px-1 pb-2 pt-3">
+            <div className="mx-auto flex items-end gap-1">
             {mine.hand.map((c) => {
               const usable =
                 myTurn &&
@@ -638,20 +690,20 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
                     usable ? 'selectable rounded' : 'opacity-80'
                   }`}
                   onClick={() => {
-                    setInspect(c);
                     if (mode.kind === 'target' && targetableSet.has(c.uid)) return onPickTarget(c.uid);
                     if (!busy && !state.winner) {
                       sfx.click();
                       setMode({ kind: 'hand', uid: c.uid });
                     }
                   }}
-                  onPointerEnter={() => setInspect(c)}
+                  onPointerEnter={hoverInspect(c)}
                 >
                   <GameCard card={c} />
                 </div>
               );
             })}
             {mine.hand.length === 0 && <span className="py-4 font-display text-xs text-ptextdim">Your hand is empty</span>}
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-col gap-1">
@@ -770,6 +822,75 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
         </div>
       )}
 
+      {/* your-monster action sheet */}
+      {monsterCard && monsterDef && (
+        <div
+          className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 sm:items-center"
+          onClick={() => setMode({ kind: 'idle' })}
+        >
+          <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex gap-3">
+              <div className="w-20 shrink-0">
+                <GameCard card={monsterCard} {...statsOf(monsterCard, me)} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-base text-parchment">{monsterDef.name}</h3>
+                <p className="text-[11px] text-brass">
+                  ATK {statsOf(monsterCard, me).atk} · DEF {statsOf(monsterCard, me).def} ·{' '}
+                  {monsterCard.position === 'atk' ? 'Attack' : 'Defence'} Position
+                </p>
+                <p className="mt-1 max-h-20 overflow-y-auto thin-scroll pr-1 text-[11px] leading-relaxed text-ptext/85">
+                  {monsterDef.text}
+                </p>
+              </div>
+            </div>
+            <div className="brass-rule my-3" />
+            <div className="flex flex-col gap-1.5">
+              {canAttackWith(state, me, monsterCard) && (
+                <button
+                  className="btn btn-danger rounded px-3 py-2 text-xs"
+                  onClick={() => {
+                    sfx.click();
+                    setMode({ kind: 'attack', uid: monsterCard.uid });
+                  }}
+                >
+                  ⚔ Attack ({maxAttacks(state, monsterCard, me) - monsterCard.attacksUsed} left)
+                </button>
+              )}
+              {canIgnite(state, me, monsterCard) && (
+                <button
+                  className="btn btn-primary rounded px-3 py-2 text-xs"
+                  onClick={() => {
+                    sfx.click();
+                    beginTargeting('ignition', monsterCard.uid, monsterCard.slug, 'ignition');
+                  }}
+                >
+                  ✦ {effectLabel(monsterCard.slug, 'ignition')}
+                </button>
+              )}
+              {canChangePosition(state, me, monsterCard) && (
+                <button
+                  className="btn rounded px-3 py-2 text-xs"
+                  onClick={() => {
+                    sfx.click();
+                    void run({ type: 'changePosition', uid: monsterCard.uid });
+                  }}
+                >
+                  {monsterCard.face === 'down'
+                    ? 'Flip Summon'
+                    : monsterCard.position === 'atk'
+                      ? 'Switch to Defence Position'
+                      : 'Switch to Attack Position'}
+                </button>
+              )}
+              <button className="btn rounded px-3 py-2 text-xs" onClick={() => setMode({ kind: 'idle' })}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* targeting / tribute prompt */}
       {(mode.kind === 'target' || mode.kind === 'tributes' || mode.kind === 'attack') && (
         <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-3">
@@ -865,7 +986,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
             </h3>
             <div className="mt-3 flex flex-wrap gap-2">
               {state.players[graveOpen].grave.map((c) => (
-                <div key={c.uid} className="w-[68px]" onPointerEnter={() => setInspect(c)}>
+                <div key={c.uid} className="w-[68px]" onPointerEnter={hoverInspect(c)}>
                   <GameCard card={c} />
                 </div>
               ))}
@@ -916,13 +1037,18 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
       {/* Mobile inspector: a slim strip pinned under the top bar. It must never
           sit over the hand, or it would swallow taps meant for your own cards. */}
       {inspect && mode.kind === 'idle' && (
-        <div className="absolute inset-x-2 top-[76px] z-30 lg:hidden">
-          <CardDetail
-            card={inspect}
-            layout="row"
-            onClose={() => setInspect(null)}
-            {...statsOf(inspect, mine.monsters.some((m) => m?.uid === inspect.uid) ? me : foe)}
-          />
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 lg:hidden"
+          onClick={() => setInspect(null)}
+        >
+          <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <CardDetail
+              card={inspect}
+              layout="row"
+              onClose={() => setInspect(null)}
+              {...statsOf(inspect, mine.monsters.some((m) => m?.uid === inspect.uid) ? me : foe)}
+            />
+          </div>
         </div>
       )}
 

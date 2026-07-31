@@ -60,6 +60,37 @@ async function fetchArt(artId) {
   return 'failed';
 }
 
+/** App icons for "Add to Home Screen", built from the Dark Magician artwork. */
+async function makeIcons(cards) {
+  if (!sharp) return;
+  const artId = cards['dark-magician']?.artId ?? Object.values(cards)[0]?.artId;
+  const source = path.join(ART_DIR, `${artId}.webp`);
+  try {
+    await fs.access(source);
+  } catch {
+    console.log('• skipped app icons: source artwork missing');
+    return;
+  }
+  const sizes = [
+    ['apple-touch-icon.png', 180],
+    ['icon-192.png', 192],
+    ['icon-512.png', 512],
+  ];
+  for (const [name, size] of sizes) {
+    const dest = path.join(ROOT, 'public', name);
+    try {
+      await sharp(source)
+        .resize(size, size, { fit: 'cover', position: 'top' })
+        .flatten({ background: '#0a0c11' })
+        .png()
+        .toFile(dest);
+    } catch (err) {
+      console.log(`   ! icon ${name}: ${err.message}`);
+    }
+  }
+  console.log('• app icons written');
+}
+
 const main = async () => {
   await fs.mkdir(ART_DIR, { recursive: true });
   const cards = JSON.parse(await fs.readFile(CARDS, 'utf8'));
@@ -74,6 +105,7 @@ const main = async () => {
   console.log(
     `\n• artwork ready: ${counts.cached} cached, ${counts.downloaded} downloaded, ${counts.failed} failed`
   );
+  await makeIcons(cards);
 };
 
 main().catch((err) => {

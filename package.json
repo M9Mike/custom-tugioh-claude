@@ -12,7 +12,8 @@
     "cards": "node scripts/fetch-cards.mjs",
     "sim": "tsx scripts/simulate.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "iphone": "node scripts/iphone.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

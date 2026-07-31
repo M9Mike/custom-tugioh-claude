@@ -7,6 +7,13 @@ rewritten with an overpowered, anime-flavoured effect**.
 Start a duel, send the link or the four-letter room code to your opponent, both pick a
 duelist, and play.
 
+**Built for two iPhones.** The board is laid out phone-first and tested on the real
+Safari engine at both 414×896 and 440×956: safe-area insets for the notch and home
+indicator, `svh` units so nothing jumps when Safari's toolbars move, Web Audio unlocked
+on first touch (iOS refuses to start audio otherwise), a screen wake lock so the phone
+doesn't sleep mid-turn, and a web manifest so *Add to Home Screen* gives a fullscreen
+app.
+
 ## House rules
 
 Deliberately different from the real trading card game:
@@ -66,7 +73,8 @@ npm run dev
 
 npm run sim 800  # play 800 random duels offline; reports rule errors + win rates
 npm run e2e      # drive two HTTP clients through full duels against a running server
-npm run shots    # drive two real browsers and screenshot the whole flow
+npm run shots    # drive two desktop browsers and screenshot the whole flow
+npm run iphone   # play a full duel on WebKit at both iPhone sizes, by tapping
 npm run cards    # re-resolve decklists against the card database (authoring only)
 ```
 
