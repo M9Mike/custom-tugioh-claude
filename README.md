@@ -54,6 +54,9 @@ signature card used as their emblem.
   - `engine.ts` — summons, battle, triggers, trap windows, win conditions.
   - `autoplay.ts` — legal-move enumeration, used by the tests.
 - **`src/server/rooms.ts`** — in-memory duel rooms.
+- **Regions** — functions are pinned to `cdg1` (Paris) in `vercel.json` to sit beside
+  the MongoDB cluster. The database is read and written on every move, so co-locating
+  compute and storage matters more than shaving the player's own hop.
 - **Realtime** — server-authoritative, with clients polling for changes (~1s while
   waiting on the opponent, backing off otherwise) and re-joining automatically with a
   saved seat token. Deliberately not a held-open stream: that pins a player to one
