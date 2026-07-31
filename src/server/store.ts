@@ -83,6 +83,43 @@ export function describeStoreError(err: unknown): string {
   return 'error';
 }
 
+/**
+ * Describes the shape of MONGODB_URI without revealing the password, so a
+ * credential problem can be pinned down from the health check alone.
+ */
+export function inspectMongoUri(): Record<string, unknown> | undefined {
+  if (!usingMongo) return undefined;
+  const raw = process.env.MONGODB_URI ?? process.env.MONGO_URL ?? '';
+  const out: Record<string, unknown> = {
+    length: raw.length,
+    scheme: raw.startsWith('mongodb+srv://') ? 'mongodb+srv' : raw.startsWith('mongodb://') ? 'mongodb' : 'UNRECOGNISED',
+    surroundingWhitespace: raw !== raw.trim(),
+    wrappedInQuotes: /^["'].*["']$/.test(raw.trim()),
+    stillHasPlaceholder: /<[^>]+>/.test(raw),
+  };
+
+  const afterScheme = raw.trim().replace(/^mongodb(\+srv)?:\/\//, '');
+  const at = afterScheme.lastIndexOf('@');
+  if (at < 0) {
+    out.credentials = 'MISSING — no user:password@ section';
+    return out;
+  }
+  const userinfo = afterScheme.slice(0, at);
+  const hostPart = afterScheme.slice(at + 1);
+  const colon = userinfo.indexOf(':');
+  const user = colon < 0 ? userinfo : userinfo.slice(0, colon);
+  const pass = colon < 0 ? '' : userinfo.slice(colon + 1);
+
+  out.user = user;
+  out.host = hostPart.split('/')[0];
+  out.passwordLength = pass.length;
+  out.passwordHasWhitespace = /\s/.test(pass);
+  // These are the characters that must be percent-encoded inside a URI.
+  out.passwordNeedsEncoding = /[@:/?#[\]]/.test(pass);
+  out.passwordAlreadyEncoded = /%[0-9A-Fa-f]{2}/.test(pass);
+  return out;
+}
+
 /** Round-trips a probe value so a misconfiguration is visible without playing. */
 export async function checkStore(): Promise<{ ok: boolean; reason?: string }> {
   try {
