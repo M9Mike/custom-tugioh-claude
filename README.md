@@ -54,11 +54,15 @@ signature card used as their emblem.
   - `engine.ts` — summons, battle, triggers, trap windows, win conditions.
   - `autoplay.ts` — legal-move enumeration, used by the tests.
 - **`src/server/rooms.ts`** — in-memory duel rooms.
-- **Realtime** — server-authoritative state pushed over Server-Sent Events, with a
-  3-second polling safety net and automatic reconnection. There is no database: rooms
-  live in the serverless instance that both players hold open. Joining retries on a
-  404 rather than creating a second room, so two players can never end up in different
-  copies of the same duel.
+- **Realtime** — server-authoritative, with clients polling for changes (~1s while
+  waiting on the opponent, backing off otherwise) and re-joining automatically with a
+  saved seat token. Deliberately not a held-open stream: that pins a player to one
+  serverless instance, and the platform scales out mid-duel.
+- **Room storage** (`src/server/store.ts`) — rooms live in shared storage so any
+  instance can serve any request. Set `MONGODB_URI` for MongoDB, or the `KV_*` /
+  `UPSTASH_*` pair for Redis. With neither, rooms fall back to process memory, which
+  works locally but loses duels in production. `/api/ping` reports which backend is
+  live.
 - **Artwork** — the official cropped card art, downloaded and re-encoded to WebP at
   build time by `scripts/prepare-art.mjs` (never hot-linked at runtime). Card frames,
   layout and all rules text are drawn by us.
@@ -76,6 +80,10 @@ npm run e2e      # drive two HTTP clients through full duels against a running s
 npm run shots    # drive two desktop browsers and screenshot the whole flow
 npm run iphone   # play a full duel on WebKit at both iPhone sizes, by tapping
 npm run cards    # re-resolve decklists against the card database (authoring only)
+
+# Exercising the durable-storage paths locally, without provisioning anything:
+node scripts/mongo-boot.mjs   # throwaway MongoDB on :27099, then MONGODB_URI=...
+node scripts/fake-redis.mjs   # Upstash REST stand-in on :6390, then KV_REST_API_*
 ```
 
 `data/decklists.json` is the source of truth for the decks. `npm run cards` resolves the
