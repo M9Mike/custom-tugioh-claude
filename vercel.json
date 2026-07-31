@@ -1,7 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["cdg1"],
-  "functions": {
-    "src/app/api/room/[code]/stream/route.ts": { "maxDuration": 60 }
-  }
+  "regions": ["cdg1"]
 }
