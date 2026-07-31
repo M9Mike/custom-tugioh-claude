@@ -368,6 +368,8 @@ export interface DuelState {
   winReason?: string;
   seed: number;
   version: number;
+  /** Monotonic counter for card instance ids; lives in state so duels stay reproducible. */
+  uidSeq: number;
   /** Set while a battle is paused waiting on a trap response. */
   suspendedAttack?: { attackerUid: string; targetUid: string | null } | null;
 }

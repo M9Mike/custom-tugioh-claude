@@ -187,8 +187,9 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   );
 
   useEffect(() => {
-    // Any state change from the server invalidates a half-built interaction.
-    setMode((m) => (m.kind === 'idle' ? m : m));
+    // Any state change from the server invalidates a half-built interaction —
+    // the cards it referred to may already be gone.
+    setMode({ kind: 'idle' });
   }, [state.version]);
 
   /* ---------------- derived helpers ---------------- */

@@ -76,6 +76,9 @@ export function createRoom(name: string): { room: Room; token: string; pid: Play
   let code = randomCode();
   let guard = 0;
   while (rooms.has(code) && guard++ < 50) code = randomCode();
+  // Astronomically unlikely, but never clobber a duel that is already running:
+  // fall back to a longer code instead.
+  while (rooms.has(code)) code = randomCode() + CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
   const token = randomToken();
   const room: Room = {
     code,

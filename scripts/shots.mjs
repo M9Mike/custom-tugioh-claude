@@ -10,6 +10,8 @@ import fs from 'node:fs/promises';
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const OUT = process.argv[3] ?? '/tmp/shots';
 
+let launched = null;
+
 const shot = async (page, name) => {
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log(`  📸 ${name}`);
@@ -19,6 +21,7 @@ const main = async () => {
   await fs.mkdir(OUT, { recursive: true });
   // The sandbox ships a pinned Chromium; point at it rather than downloading one.
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+  launched = browser;
 
   const ctxA = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const ctxB = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -204,8 +207,6 @@ const main = async () => {
     await m.waitForTimeout(200);
   }
 
-  await browser.close();
-
   if (errors.length) {
     console.log('\n!! console errors:');
     for (const e of [...new Set(errors)].slice(0, 25)) console.log('   ' + e);
@@ -214,7 +215,12 @@ const main = async () => {
   }
 };
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    // Never leave an orphaned browser behind, even when a step throws.
+    if (launched) await launched.close().catch(() => {});
+  });

@@ -13,7 +13,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
     const status = result.reason === 'not-found' ? 404 : 409;
     return Response.json({ ok: false, reason: result.reason }, { status });
   }
-  const room = getRoom(result.code)!;
+  const room = getRoom(result.code);
+  if (!room) return Response.json({ ok: false, reason: 'not-found' }, { status: 404 });
   return Response.json({
     ok: true,
     code: result.code,

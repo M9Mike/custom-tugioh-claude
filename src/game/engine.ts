@@ -71,10 +71,9 @@ function shuffle<T>(state: DuelState, arr: T[]): T[] {
 
 export const other = (p: PlayerId): PlayerId => (p === 'p1' ? 'p2' : 'p1');
 
-let uidCounter = 0;
 function makeUid(state: DuelState): string {
-  uidCounter += 1;
-  return `c${state.version}_${uidCounter}_${randInt(state, 1e6).toString(36)}`;
+  state.uidSeq += 1;
+  return `c${state.version}_${state.uidSeq}_${randInt(state, 1e6).toString(36)}`;
 }
 
 function newInstance(state: DuelState, slug: string, owner: PlayerId): CardInstance {
@@ -292,6 +291,7 @@ export function createDuel(opts: {
     winner: null,
     seed: opts.seed >>> 0,
     version: 0,
+    uidSeq: 0,
     suspendedAttack: null,
   };
   state.players.p1 = buildPlayer(state, 'p1', opts.p1.duelistId, opts.p1.name);
@@ -1454,17 +1454,23 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const def = CARDS[c.slug];
       if (!def || def.kind !== 'monster') return { state: prev, error: 'That is not a monster.' };
       if (def.isFusion && p.extra.some((e) => e.slug === c.slug)) return { state: prev, error: 'Fusion monsters must be Fusion Summoned.' };
-      if (action.zone < 0 || action.zone >= MONSTER_ZONES || p.monsters[action.zone]) {
-        return { state: prev, error: 'That Monster Zone is occupied.' };
+      if (action.zone < 0 || action.zone >= MONSTER_ZONES) {
+        return { state: prev, error: 'Invalid Monster Zone.' };
       }
       const need = tributesRequired(c.slug, state, pid);
-      const tributes = action.tributes ?? [];
+      const tributes = (action.tributes ?? []).slice(0, need);
       if (tributes.length < need) return { state: prev, error: `This monster requires ${need} tribute(s).` };
-      for (const tu of tributes.slice(0, need)) {
+      for (const tu of tributes) {
         const t = p.monsters.find((m) => m?.uid === tu);
         if (!t) return { state: prev, error: 'Invalid tribute.' };
       }
-      for (const tu of tributes.slice(0, need)) {
+      // The destination may currently hold a monster that is about to be
+      // tributed — that is legal, and is the normal case on a full field.
+      const occupant = p.monsters[action.zone];
+      if (occupant && !tributes.includes(occupant.uid)) {
+        return { state: prev, error: 'That Monster Zone is occupied.' };
+      }
+      for (const tu of tributes) {
         log(state, `${p.name} tributes ${displayName(p.monsters.find((m) => m?.uid === tu)!)}.`, 'summon', pid);
         toGrave(state, tu, true);
       }

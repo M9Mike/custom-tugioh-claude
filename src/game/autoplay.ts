@@ -137,6 +137,7 @@ function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'act
 
 /** Chooses one action, biased toward finishing the duel rather than stalling. */
 export function chooseAction(acts: DuelAction[], rnd: () => number): DuelAction {
+  if (!acts.length) throw new Error('chooseAction called with no available actions');
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
   const attacks = acts.filter((a) => a.type === 'attack');
   const toBattle = acts.filter((a) => a.type === 'toPhase');
