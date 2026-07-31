@@ -653,8 +653,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-alligator': {
-    text: 'Requires "Toon World". Can attack your opponent directly.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] }],
+    text: 'Can attack your opponent directly. When this card is Normal Summoned: add "Toon World" from your Deck to your hand.',
+    cry: 'Snap to it!',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
+      // Pegasus's deck does nothing until Toon World is down, and drawing into
+      // one of two copies is not something to leave to luck. The cheapest body
+      // in the deck is the one that goes and fetches it.
+      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['toon-world'] } }] },
+    ],
   },
 
   'manga-ryu-ran': {
@@ -994,9 +1001,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'great-moth': {
-    text: 'This card inflicts piercing battle damage and cannot be destroyed by battle with monsters of 2000 or less ATK.',
+    text: 'Inflicts piercing battle damage and cannot be destroyed by battle. Gains 1 Evolution Counter during each of your End Phases; at 4 it becomes the Perfectly Ultimate Great Moth.',
+    cry: 'The cocoon opens!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'pierce', duration: 'permanent' },
+          // The old text promised immunity to anything under 2000 ATK and the
+          // card did not have it at all. Straight battle immunity is what a
+          // four-turn evolution deserves, and now the text is true.
+          { op: 'indestructibleByBattle', duration: 'permanent' },
+        ],
+      },
       { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
     ],
   },

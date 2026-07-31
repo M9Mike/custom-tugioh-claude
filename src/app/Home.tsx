@@ -71,7 +71,7 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center gap-6 p-5">
+    <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center gap-6 p-5">
       <div className="text-center">
         <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
         <h1 className="mt-2 font-display text-5xl leading-none tracking-wide text-brassbright sm:text-7xl">

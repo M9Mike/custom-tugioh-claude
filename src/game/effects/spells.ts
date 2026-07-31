@@ -446,18 +446,24 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'toon-world': {
-    text: 'Continuous Spell: pay 500 Life Points. While this card is face-up, your Toon monsters can attack your opponent directly and cannot be targeted by their effects.',
+    text: 'Continuous Spell: pay 500 Life Points, draw 2 cards and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 500 ATK, can attack your opponent directly, and cannot be targeted by their effects.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
         trigger: 'activate',
         cost: { lp: 500 },
-        ops: [{ op: 'draw', count: 1, who: 'own' }],
+        // Pegasus's whole deck is built on getting this down and then having a
+        // Toon to put under it, so the card that enables the deck is also the
+        // card that finds the rest of it.
+        ops: [
+          { op: 'draw', count: 2, who: 'own' },
+          { op: 'search', filter: { kind: 'monster', toon: true } },
+        ],
       },
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { nameIncludes: 'Toon' } }), atk: 300, grants: ['directAttack', 'untargetable'] },
+        aura: { target: sel('own', 'all', { filter: { toon: true } }), atk: 500, grants: ['directAttack', 'untargetable'] },
       },
     ],
   },

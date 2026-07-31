@@ -16,7 +16,7 @@
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
 import { applyAction, createDuel, effAtk, effDef, effFlags, other } from '../src/game/engine';
-import { CARDS } from '../src/game/cards';
+import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,
   CardEffect,
@@ -343,6 +343,7 @@ function matchesLoosely(slug: string, filter: CardFilter | undefined) {
   if (filter?.type && x.type !== filter.type) return false;
   if (filter?.attribute && x.attribute !== filter.attribute) return false;
   if (filter?.nameIncludes && !x.name.toLowerCase().includes(filter.nameIncludes.toLowerCase())) return false;
+  if (filter?.toon && !isToon(slug)) return false;
   if (filter?.slugs && !filter.slugs.includes(slug)) return false;
   if (filter?.maxAtk != null && (x.atk ?? 0) > filter.maxAtk) return false;
   return true;
@@ -353,10 +354,12 @@ function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'mo
     (x) =>
       (kind === 'any' || x.kind === 'monster') &&
       x.slug !== 'facedown' &&
+      x.slug !== 'polymerization' &&
       (!filter?.kind || x.kind === filter.kind) &&
       (!filter?.type || x.type === filter.type) &&
       (!filter?.attribute || x.attribute === filter.attribute) &&
       (!filter?.nameIncludes || x.name.includes(filter.nameIncludes)) &&
+      (!filter?.toon || isToon(x.slug)) &&
       (!filter?.slugs || filter.slugs.includes(x.slug)) &&
       (filter?.maxAtk == null || (x.atk ?? 0) <= filter.maxAtk) &&
       (filter?.minAtk == null || (x.atk ?? 0) >= filter.minAtk) &&
@@ -369,7 +372,10 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
     const filter = 'filter' in op ? op.filter : undefined;
     if (op.op !== 'search' && !(op.op === 'specialSummon' && op.from === 'deck')) continue;
-    const match = matchCard(filter);
+    // Searches are not always for monsters — Toon Alligator fetches a Spell —
+    // so only insist on a monster when nothing in the filter says otherwise.
+    const wantsAnyKind = !!filter?.slugs || (filter?.kind != null && filter.kind !== 'monster');
+    const match = matchCard(filter, wantsAnyKind ? 'any' : 'monster');
     // The test card is played from an arbitrary duelist's deck, which may hold
     // nothing its search can legally find. Put one in rather than report the
     // card broken for a reason that is purely about this position.

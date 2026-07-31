@@ -5,6 +5,43 @@
    parchment. Deliberately no neon, no glassmorphism, no glow soup.
    ================================================================== */
 
+/* ------------------------------------------------------------------
+   Safe areas
+
+   Added to the home screen, the app runs with a black-translucent status
+   bar, which means the page really does extend under the Dynamic Island
+   and the home indicator. Two things go wrong there and both are handled
+   here rather than at each call site:
+
+   1. Only the duel board used to inset itself, so the home page and the
+      lobby ran under the notch once launched as an app.
+   2. iOS sometimes reports env(safe-area-inset-*) as 0 in standalone
+      mode. A floor is applied while standalone so the chrome is cleared
+      even when the insets come back empty; on a device that reports them
+      properly the real value is larger and wins.
+   ------------------------------------------------------------------ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+@media (display-mode: standalone) {
+  :root {
+    --safe-top: max(env(safe-area-inset-top, 0px), 44px);
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
+  }
+}
+
+/** Any full-height page that is not the duel board. */
+.safe-page {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
 :root {
   --ink: #0a0c11;
   --slate: #14181f;
@@ -215,9 +252,20 @@ body {
   gap: 2%;
 }
 
+/* The artwork box is square on purpose.
+
+   Every downloaded illustration is a 624x624 square, so a square box shows
+   each one whole and framed identically. Letting the box stretch to fill
+   whatever height was left over — which is what `flex: 1` did — gave it a
+   different aspect on a monster (name + art + ATK/DEF), a Spell (no stats
+   row) and a compact board card (no name), and `object-fit: cover` then
+   cropped each of them by a different amount. That is why some cards looked
+   zoomed in and others did not. */
 .card-art {
   position: relative;
-  flex: 1;
+  flex: none;
+  aspect-ratio: 1 / 1;
+  width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.55);
   background: #0e0e10;
   overflow: hidden;
@@ -228,6 +276,11 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+/* Whatever height is left over goes below the art, so the stats row stays
+   pinned to the bottom edge of the frame on every card. */
+.card-stats {
+  margin-top: auto;
 }
 
 .card-name {
@@ -400,8 +453,7 @@ body {
    Zones stay big enough to tap comfortably.
    ------------------------------------------------------------------ */
 .duel-root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* --safe-* come from :root, which floors them while running standalone. */
   /* svh rather than dvh: the height stays put when Safari's toolbars appear or
      disappear, so the board never jumps mid-duel. */
   --board-h: calc(100svh - 300px - var(--safe-top) - var(--safe-bottom));

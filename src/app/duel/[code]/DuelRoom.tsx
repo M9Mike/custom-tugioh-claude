@@ -17,7 +17,7 @@ export default function DuelRoom({ code }: { code: string }) {
 
   if (status === 'lost' || (error && !view)) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center p-6">
+      <main className="safe-page grid min-h-[100dvh] place-items-center p-6">
         <div className="panel grain w-full max-w-md rounded p-6 text-center">
           <h1 className="font-display text-xl text-brassbright">
             {errorKind === 'full' ? 'This duel is full' : 'Duel not found'}
@@ -39,7 +39,7 @@ export default function DuelRoom({ code }: { code: string }) {
 
   if (!view) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center p-6">
+      <main className="safe-page grid min-h-[100dvh] place-items-center p-6">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-stoneline border-t-brass" />
           <p className="mt-4 font-display text-sm uppercase tracking-[0.3em] text-brass">Entering the arena</p>

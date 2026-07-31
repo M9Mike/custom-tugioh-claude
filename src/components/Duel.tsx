@@ -71,6 +71,10 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   const [shakeOn, setShakeOn] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [graveOpen, setGraveOpen] = useState<PlayerId | null>(null);
+  /* The Graveyard viewer carries its own inspector. The board's one only opens
+     on hover, which a phone never sends, so a card in here could not be read at
+     all on the devices this is built for. */
+  const [graveInspect, setGraveInspect] = useState<CardInstance | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const seenAnims = useRef<Set<string>>(new Set());
   const logRef = useRef<HTMLDivElement>(null);
@@ -990,20 +994,52 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
 
       {/* graveyard viewer */}
       {graveOpen && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setGraveOpen(null)}>
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => {
+            setGraveOpen(null);
+            setGraveInspect(null);
+          }}
+        >
           <div className="panel grain max-h-[70vh] w-full max-w-2xl overflow-y-auto thin-scroll rounded p-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-sm text-parchment">
               {state.players[graveOpen].name}&apos;s Graveyard ({state.players[graveOpen].grave.length})
             </h3>
+            {graveInspect && (
+              <div className="mt-3">
+                <CardDetail
+                  card={graveInspect}
+                  layout="row"
+                  onClose={() => setGraveInspect(null)}
+                  {...statsOf(graveInspect, graveOpen)}
+                />
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               {state.players[graveOpen].grave.map((c) => (
-                <div key={c.uid} className="w-[68px]" onPointerEnter={hoverInspect(c)}>
+                <button
+                  key={c.uid}
+                  className={`w-[68px] rounded text-left transition-transform hover:-translate-y-0.5 ${
+                    graveInspect?.uid === c.uid ? 'ring-2 ring-brass' : ''
+                  }`}
+                  onPointerEnter={hoverInspect(c)}
+                  onClick={() => {
+                    sfx.click();
+                    setGraveInspect((cur) => (cur?.uid === c.uid ? null : c));
+                  }}
+                >
                   <GameCard card={c} />
-                </div>
+                </button>
               ))}
               {state.players[graveOpen].grave.length === 0 && <p className="text-xs text-ptextdim">Empty.</p>}
             </div>
-            <button className="btn mt-3 rounded px-3 py-1.5 text-[10px]" onClick={() => setGraveOpen(null)}>
+            <button
+              className="btn mt-3 rounded px-3 py-1.5 text-[10px]"
+              onClick={() => {
+                setGraveOpen(null);
+                setGraveInspect(null);
+              }}
+            >
               Close
             </button>
           </div>

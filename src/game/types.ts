@@ -126,6 +126,9 @@ export interface CardFilter {
   maxAtk?: number;
   nameIncludes?: string;
   slugs?: string[];
+  /** Pegasus's cartoon monsters — see `isToon`, which knows the ones the name
+      does not give away. */
+  toon?: boolean;
   position?: Position;
   face?: Face;
 }

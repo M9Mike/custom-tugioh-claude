@@ -81,7 +81,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
   };
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-4 p-4">
+    <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-4 p-4">
       {/* header */}
       <header className="panel grain rounded p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

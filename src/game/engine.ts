@@ -6,7 +6,7 @@
  * this as the single source of truth; the client runs the same code to predict
  * what its buttons should do.
  */
-import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID } from './cards';
+import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, isToon } from './cards';
 import {
   MONSTER_ZONES,
   OPENING_HAND,
@@ -166,6 +166,7 @@ function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
   if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
   if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) return false;
+  if (f.toon && !isToon(c.slug)) return false;
   if (f.slugs && !f.slugs.includes(c.slug)) return false;
   if (f.position && c.position !== f.position) return false;
   if (f.face && c.face !== f.face) return false;
@@ -1365,7 +1366,7 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
   let need = level >= 7 ? 2 : level >= 5 ? 1 : 0;
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
-  if (need > 0 && state && pid && def?.name.includes('Toon')) {
+  if (need > 0 && state && pid && isToon(slug)) {
     const st = state.players[pid].spellTrap;
     if (st?.slug === 'toon-world' && st.face === 'up') need = 0;
   }
