@@ -182,12 +182,35 @@ interface AuraBonus {
   grants: Set<EquipGrant>;
 }
 
+/** The `equipTo` op on a card, if it is an Equip Spell. */
+export function equipOpOf(slug: string): Extract<Op, { op: 'equipTo' }> | null {
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) if (op.op === 'equipTo') return op;
+  }
+  return null;
+}
+
+export const isEquipSpell = (slug: string) => equipOpOf(slug) !== null;
+
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
   const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set() };
   for (const { c: source, controller } of fieldCards(state)) {
     if (source.isToken || source.flags.negated) continue;
     const def = CARDS[source.slug];
     if (!def) continue;
+
+    // An Equip Spell buffs exactly the monster it is attached to. Reading it
+    // live from the card on the field is what makes destroying the equip remove
+    // the bonus, rather than baking it into the monster for good.
+    if (source.equippedTo === target.uid) {
+      const eq = equipOpOf(source.slug);
+      if (eq) {
+        bonus.atk += eq.atk;
+        bonus.def += eq.def;
+        for (const g of eq.grants ?? []) bonus.grants.add(g);
+      }
+    }
+
     for (const eff of def.effects) {
       if (eff.trigger !== 'continuous' || !eff.aura) continue;
       const s = eff.aura.target;
@@ -376,6 +399,7 @@ function resetInstance(c: CardInstance) {
   c.position = 'atk';
   c.controlRevertsOnTurn = undefined;
   c.effectUsedOnTurn = -1;
+  c.equippedTo = undefined;
 }
 
 /** Sends a card from the field to its owner's Graveyard, firing onSentToGrave. */
@@ -385,10 +409,22 @@ function toGrave(state: DuelState, uid: string, fromField: boolean) {
   const c = removeFromAnywhere(state, uid);
   if (!c) return;
 
-  // Equipped cards go to the graveyard with the monster.
-  for (const equipSlug of c.equips) {
-    const eq = newInstance(state, equipSlug, c.owner);
-    state.players[c.owner].grave.push(eq);
+  // An Equip Spell has nothing left to hold, so it follows its monster down.
+  // These are the real cards sitting in a Spell/Trap Zone — recursing through
+  // toGrave is what takes them off the field.
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const st = state.players[pid].spellTrap;
+    if (st?.equippedTo === c.uid) toGrave(state, st.uid, true);
+  }
+  // Going the other way: an equip leaving the field stops being listed on the
+  // monster it was buffing.
+  if (c.equippedTo) {
+    const host = findOnField(state, c.equippedTo)?.c;
+    if (host) {
+      const at = host.equips.indexOf(c.slug);
+      if (at >= 0) host.equips.splice(at, 1);
+    }
+    c.equippedTo = undefined;
   }
   // Absorbed monsters are released to their owner's graveyard.
   for (const abSlug of c.absorbed) {
@@ -602,10 +638,15 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
   }
   anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
   log(state, `${displayName(c)} is destroyed.`, 'effect', found.controller);
+  // The card leaves the field *before* its own destruction effect resolves.
+  // Otherwise it is still sitting in its Monster Zone, and an effect like
+  // Anthrosaurus's — "when destroyed by battle, Special Summon a Dinosaur" —
+  // finds the board full and quietly does nothing, even though the space it
+  // just gave up is exactly where the replacement should go.
+  toGrave(state, c.uid, true);
   if (byBattle && found.zone === 'monster') {
     fireTriggers(state, c, found.controller, 'onDestroyedByBattle', ctx?.trig ?? {});
   }
-  toGrave(state, c.uid, true);
   queueDestroyWindow(state, found.controller);
 }
 
@@ -797,7 +838,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (!picked) {
             for (const pid of sources) {
               const pool = zoneCards(state, pid, op.from === 'extra' ? 'extra' : op.from).filter(
-                (c) => CARDS[c.slug]?.kind === 'monster' && matchesFilter(c, op.filter)
+                (c) =>
+                  CARDS[c.slug]?.kind === 'monster' &&
+                  matchesFilter(c, op.filter) &&
+                  // A card never Special Summons itself with its own "when this
+                  // card is destroyed" effect — it is in the Graveyard by the
+                  // time that resolves, and reviving itself is not the intent.
+                  c.uid !== ctx.source.uid
               );
               if (pool.length) {
                 picked = pool.reduce((a, b) => (baseAtk(a.slug) >= baseAtk(b.slug) ? a : b));
@@ -918,13 +965,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           log(state, 'There is no monster to equip.', 'effect', ctx.controller);
           break;
         }
-        t.atkMod += op.atk;
-        t.defMod += op.def;
+        // Only the attachment is recorded; the stat bonus and the granted flags
+        // are read back out as an aura for as long as the equip is on the
+        // field. Nothing is written into the monster, so when this card is
+        // destroyed the monster goes straight back to its printed values.
+        ctx.source.equippedTo = t.uid;
         t.equips.push(ctx.source.slug);
-        for (const g of op.grants ?? []) {
-          if (g === 'doubleAttack') applyFlag(t, 'extraAttacks', (t.flags.extraAttacks ?? 0) + 1, 'permanent');
-          else applyFlag(t, g as keyof CardFlags, true, 'permanent');
-        }
         log(state, `${displayName(t)} is equipped with ${card(ctx.source.slug).name} (+${op.atk} ATK).`, 'effect', ctx.controller);
         break;
       }
@@ -975,8 +1021,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'forceAttackPosition':
         for (const t of resolveTargets(ctx, op.target)) {
+          // Dragging a set monster into Attack Position turns it face-up, and
+          // that is a flip like any other: Man-Eater Bug pulled up by Stop
+          // Defense still eats something. Capture it before the position
+          // changes, since `wasDown` is what decides whether this is a flip.
+          const wasDown = t.face === 'down';
           t.position = 'atk';
           t.face = 'up';
+          if (wasDown) {
+            const ctrl = controllerOf(state, t.uid);
+            if (ctrl) {
+              anim(state, { kind: 'flip', uid: t.uid, slug: t.slug, player: ctrl });
+              log(state, `${displayName(t)} is flipped face-up!`, 'effect', ctrl);
+              fireTriggers(state, t, ctrl, 'onFlip', {});
+            }
+          }
         }
         break;
       case 'flipFaceUp':
@@ -1045,7 +1104,7 @@ function fireTriggers(state: DuelState, c: CardInstance, controller: PlayerId, t
     if (eff.trigger !== trigger) continue;
     if (!conditionMet(state, eff, c, controller)) continue;
     const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
-    if (def.cry && (trigger === 'onSummon' || trigger === 'activate')) {
+    if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: controller, text: def.cry });
     }
     runOps(ctx, eff.ops);
@@ -1060,12 +1119,14 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
   const p = state.players[pid];
   const out: CardInstance[] = [];
   const st = p.spellTrap;
-  if (st && st.face === 'down' && CARDS[st.slug]?.kind === 'trap') {
-    // A trap cannot be activated on the turn it was set.
-    if (st.summonedOnTurn < state.turn) {
-      const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && e.window === window);
-      if (effs.length) out.push(st);
-    }
+  if (st && CARDS[st.slug]?.kind === 'trap') {
+    const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && e.window === window);
+    // A face-down trap cannot be activated on the turn it was set. A face-up
+    // Continuous Trap has already served that wait, and one flagged `reusable`
+    // goes off every time its window opens — that ongoing threat is the whole
+    // reason it is allowed to sit in the zone.
+    const ready = st.face === 'down' ? st.summonedOnTurn < state.turn : effs.some((e) => e.reusable);
+    if (ready && effs.length) out.push(st);
   }
   for (const h of p.hand) {
     const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && e.window === window) ?? [];
@@ -1100,8 +1161,10 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
     runOps(ctx, eff.ops);
   }
 
-  // Continuous traps stay on the field; everything else is spent.
-  const isContinuous = def.subKind === 'Continuous';
+  // Continuous traps stay on the field, and so does a Trap that equips itself
+  // to a monster — Metalmorph is an Equip card that happens to be a Trap, and
+  // sending it to the Graveyard would strip the bonus it just granted.
+  const isContinuous = def.subKind === 'Continuous' || isEquipSpell(c.slug);
   if (fromHand) {
     const i = p.hand.findIndex((h) => h.uid === uid);
     if (i >= 0) p.grave.push(p.hand.splice(i, 1)[0]);
@@ -1488,6 +1551,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
         log(state, `${p.name} Normal Summons ${def.name}!`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: pid });
         fireTriggers(state, c, pid, 'onSummon', {}, action.targets ?? []);
+        fireTriggers(state, c, pid, 'onNormalSummon', {}, action.targets ?? []);
       } else {
         log(state, `${p.name} sets a monster.`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, player: pid });
@@ -1511,6 +1575,8 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
         anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: pid });
         fireTriggers(state, c, pid, 'onFlip', {});
         fireTriggers(state, c, pid, 'onSummon', {});
+        // A Flip Summon is a Normal Summon, so it pays those bonuses too.
+        fireTriggers(state, c, pid, 'onNormalSummon', {});
       } else {
         c.position = c.position === 'atk' ? 'def' : 'atk';
         log(state, `${displayName(c)} switches to ${c.position === 'atk' ? 'Attack' : 'Defense'} Position.`, 'normal', pid);
@@ -1528,7 +1594,9 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const eff = def.effects.find((e) => e.trigger === 'activate');
       if (!eff) return { state: prev, error: 'That card cannot be activated.' };
       const isField = def.subKind === 'Field';
-      const isContinuous = def.subKind === 'Continuous' || isField;
+      // An Equip Spell stays face-up in the Spell/Trap Zone holding its monster,
+      // exactly like a Continuous Spell — it is not spent on activation.
+      const isContinuous = def.subKind === 'Continuous' || isField || isEquipSpell(c.slug);
       if (!isField && p.spellTrap) return { state: prev, error: 'Your Spell/Trap Zone is occupied.' };
 
       if (eff.cost?.lp) {

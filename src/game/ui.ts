@@ -80,9 +80,13 @@ export function hasTrigger(slug: string, trigger: Trigger): boolean {
   return !!CARDS[slug]?.effects.some((e) => e.trigger === trigger);
 }
 
-/** True when summoning this card will ask the player to choose a target. */
+/**
+ * True when summoning this card will ask the player to choose a target.
+ * Both summon triggers count: a card that only reacts to a Normal Summon still
+ * needs its target picked at the moment it is Normal Summoned.
+ */
 export function summonTargetSpec(slug: string): TargetSpec | null {
-  return targetSpecFor(slug, 'onSummon');
+  return targetSpecFor(slug, 'onSummon') ?? targetSpecFor(slug, 'onNormalSummon');
 }
 
 export const KIND_LABEL: Record<string, string> = {

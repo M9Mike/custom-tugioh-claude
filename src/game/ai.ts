@@ -27,7 +27,7 @@ import {
   other,
   tributesRequired,
 } from './engine';
-import { targetSpecFor } from './ui';
+import { summonTargetSpec, targetSpecFor } from './ui';
 import { AI_LEVEL_LABELS, type AiLevel } from './ai-levels';
 import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
 
@@ -308,7 +308,7 @@ const byAtkDesc = (state: DuelState, pid: PlayerId) => (a: CardInstance, b: Card
 
 /** Sensible target choices for an effect, best-first rather than random. */
 function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'activate' | 'ignition' | 'trap' | 'onSummon'): string[][] {
-  const spec = targetSpecFor(slug, trigger);
+  const spec = trigger === 'onSummon' ? summonTargetSpec(slug) : targetSpecFor(slug, trigger);
   if (!spec) return [[]];
   const foe = other(pid);
   const sides: PlayerId[] = spec.side === 'own' ? [pid] : spec.side === 'opp' ? [foe] : [pid, foe];

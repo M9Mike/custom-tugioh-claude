@@ -62,8 +62,15 @@ export interface CardDef extends GeneratedCard {
 export type Trigger =
   /** Passive aura, applied continuously while this card is face-up on the field. */
   | 'continuous'
-  /** Monster was summoned face-up by any means. */
+  /** Monster was summoned face-up by any means, including Special Summons. */
   | 'onSummon'
+  /**
+   * Monster was Normal Summoned or Flip Summoned — deliberately *not* fired by
+   * Monster Reborn, fusion, or any other Special Summon. Cards whose text says
+   * "When this card is Normal Summoned" use this; using `onSummon` for them let
+   * a revived monster re-trigger its summon bonus.
+   */
+  | 'onNormalSummon'
   /** Monster was flipped face-up (from a face-down defence position). */
   | 'onFlip'
   /** This monster was destroyed in battle. */
@@ -200,6 +207,13 @@ export interface CardEffect {
   };
   /** Effect only usable once per turn (ignition effects default to true). */
   oncePerTurn?: boolean;
+  /**
+   * Continuous Trap that keeps working after it is face-up, firing again every
+   * time its window opens. Without this a Continuous Trap resolves once and
+   * then sits face-up forever, dead, holding the only Spell/Trap Zone hostage.
+   * Only for cards whose text really is an ongoing effect.
+   */
+  reusable?: boolean;
   /** Condition gate. */
   condition?: EffectCondition;
   /** Cost paid before resolution. */
@@ -256,8 +270,15 @@ export interface CardInstance {
   turnAtkMod: number;
   turnDefMod: number;
   counters: number;
-  /** Slugs of cards equipped to this monster. */
+  /** Slugs of cards equipped to this monster, for display. */
   equips: string[];
+  /**
+   * Set on an Equip Spell: the uid of the monster it is attached to. The equip
+   * stays face-up in its controller's Spell/Trap Zone while active, and its
+   * bonus is an aura read from here — so destroying the equip takes the bonus
+   * with it, and the monster leaving takes the equip with it.
+   */
+  equippedTo?: string;
   flags: CardFlags;
   /** Flags that expire at end of turn. */
   turnFlags: CardFlags;

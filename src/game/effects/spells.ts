@@ -184,6 +184,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Spellbinding Circle',
+        reusable: true,
         ops: [
           { op: 'negateAttack' },
           { op: 'gainAtk', amount: -700, target: sel('opp', 'attacker'), duration: 'permanent' },
@@ -403,13 +404,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'mirror-wall': {
-    text: 'When your opponent declares an attack: the attacking monster loses half its ATK permanently, and the attack is negated.',
+    text: 'Stays face-up. Each time your opponent declares an attack: negate it, the attacking monster loses half its ATK permanently, and you gain 300 Life Points.',
+    cry: 'Your own strength, turned against you!',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Mirror Wall',
-        ops: [{ op: 'negateAttack' }, { op: 'halveAtk', target: sel('opp', 'attacker') }],
+        reusable: true,
+        ops: [
+          { op: 'negateAttack' },
+          { op: 'halveAtk', target: sel('opp', 'attacker') },
+          { op: 'heal', amount: 300, to: 'own' },
+        ],
       },
     ],
   },
@@ -473,6 +480,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Shadow Spell',
+        reusable: true,
         ops: [
           { op: 'negateAttack' },
           { op: 'gainAtk', amount: -800, target: sel('opp', 'attacker'), duration: 'permanent' },

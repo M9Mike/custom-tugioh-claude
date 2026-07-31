@@ -16,7 +16,9 @@
     "ai-arena": "tsx scripts/ai-arena.ts",
     "shots": "node scripts/shots.mjs",
     "iphone": "node scripts/iphone.mjs",
-    "store-test": "tsx scripts/store-test.ts"
+    "store-test": "tsx scripts/store-test.ts",
+    "audit": "tsx scripts/card-audit.ts",
+    "rules": "tsx scripts/rules-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

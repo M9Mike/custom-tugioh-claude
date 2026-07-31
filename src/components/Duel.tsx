@@ -20,7 +20,7 @@ import {
   other,
   tributesRequired,
 } from '@/game/engine';
-import { effectLabel, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, summonTargetSpec, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
@@ -256,7 +256,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   /** Sends the summon, first collecting targets if the monster's own effect asks for one. */
   const finishSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down', tributes: string[], targets?: string[]) => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
-    const spec = face === 'up' && !targets ? targetSpecFor(slug, 'onSummon') : null;
+    const spec = face === 'up' && !targets ? summonTargetSpec(slug) : null;
     if (spec && hasPickable(spec)) {
       setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], summon: { position, face, tributes } });
       return;
