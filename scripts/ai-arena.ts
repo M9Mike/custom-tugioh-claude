@@ -197,7 +197,13 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
           resolve();
         }
       });
-      kid.on('error', reject);
+      kid.once('error', (err) => {
+        // `reject` settles the run, so the parent fails loudly rather than
+        // hanging — but the siblings would carry on burning CPU on results
+        // nobody is listening for any more. Take them down with it.
+        for (const k of kids) if (k !== kid) k.kill();
+        reject(err);
+      });
     }
   });
 
