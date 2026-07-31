@@ -156,12 +156,37 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
     const kids: ChildProcess[] = [];
     let alive = 0;
 
+    // A worker only gets its next job when it reports the last one, so one that
+    // wedges mid-game is never spoken to again and the whole run waits on it
+    // forever with nothing on screen. The watchdog turns that into a dead
+    // worker and a warning about the games it took down with it. The default is
+    // deliberately generous: a full-depth mirror match is seconds, not minutes.
+    const JOB_TIMEOUT_MS = Number(process.env.ARENA_JOB_TIMEOUT_MS ?? 180_000);
+    const watchdogs = new Map<ChildProcess, NodeJS.Timeout>();
+
+    const clearWatch = (kid: ChildProcess) => {
+      const timer = watchdogs.get(kid);
+      if (timer) clearTimeout(timer);
+      watchdogs.delete(kid);
+    };
+    const armWatch = (kid: ChildProcess, what: string) => {
+      clearWatch(kid);
+      const timer = setTimeout(() => {
+        console.error(`[arena] worker ${kid.pid} stopped responding during ${what} — killing it`);
+        kid.kill();
+      }, JOB_TIMEOUT_MS);
+      timer.unref();
+      watchdogs.set(kid, timer);
+    };
+
     const feed = (kid: ChildProcess) => {
       if (next >= jobs.length) {
+        clearWatch(kid);
         kid.send('stop');
         return;
       }
       kid.send(jobs[next++]);
+      armWatch(kid, 'a game');
     };
 
     for (let i = 0; i < workers; i++) {
@@ -172,6 +197,7 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
       });
       alive += 1;
       kids.push(kid);
+      armWatch(kid, 'start-up');
       kid.on('message', (msg: Result | 'ready') => {
         if (msg === 'ready') {
           feed(kid);
@@ -186,6 +212,7 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
         feed(kid);
       });
       kid.on('exit', (code) => {
+        clearWatch(kid);
         alive -= 1;
         // A worker that dies mid-job takes that game with it. Say so — a
         // silently smaller sample still prints a confident-looking interval,
@@ -198,6 +225,7 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
         }
       });
       kid.once('error', (err) => {
+        clearWatch(kid);
         // `reject` settles the run, so the parent fails loudly rather than
         // hanging — but the siblings would carry on burning CPU on results
         // nobody is listening for any more. Take them down with it.
@@ -243,7 +271,14 @@ export function report(label: string, t: Tally) {
 }
 
 export async function arena(label: string, a: Brain, b: Brain, pairs: number, workers = 4, seedBase = 90000) {
-  const t = await runJobs(pairing(a, b, pairs, seedBase), workers);
+  const jobs = pairing(a, b, pairs, seedBase);
+  // Long matchups used to print nothing at all until they finished, which makes
+  // a slow run indistinguishable from a stuck one. Tick on stderr so the result
+  // lines on stdout stay clean and greppable.
+  const every = Math.max(20, Math.round(jobs.length / 10));
+  const t = await runJobs(jobs, workers, (n) => {
+    if (n % every === 0 || n === jobs.length) process.stderr.write(`  ${label}: ${n}/${jobs.length} games\n`);
+  });
   return report(label, t);
 }
 
