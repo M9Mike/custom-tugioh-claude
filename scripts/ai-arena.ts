@@ -279,6 +279,9 @@ async function main() {
   await arena('champion  vs random', champ, 'random', pairs, workers);
 }
 
-if (process.env.ARENA_WORKER !== '1' && process.argv[1]?.endsWith('ai-arena.ts')) {
+// Run the suite only when this file is what was invoked, not when another
+// script imports `arena()`. Compared by resolved path rather than by filename
+// suffix, which would also fire for anything else ending in ai-arena.ts.
+if (process.env.ARENA_WORKER !== '1' && process.argv[1] === SELF) {
   main();
 }
