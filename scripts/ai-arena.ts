@@ -108,6 +108,14 @@ function apply(state: DuelState, pid: PlayerId, action: DuelAction) {
 /* ------------------------------------------------------------------ */
 
 if (process.env.ARENA_WORKER === '1') {
+  // Workers are only ever started by the pool below, via fork() with an IPC
+  // channel. If that channel is missing something has gone wrong with how this
+  // was launched, and saying so immediately beats the alternative: quietly
+  // dropping every result and leaving the parent waiting for games that will
+  // never be reported.
+  const send = process.send?.bind(process);
+  if (!send) throw new Error('ARENA_WORKER is set but no IPC channel exists — run scripts/ai-arena.ts directly instead');
+
   process.on('message', (job: Job | 'stop') => {
     if (job === 'stop') process.exit(0);
     let out: Result;
@@ -120,9 +128,9 @@ if (process.env.ARENA_WORKER === '1') {
       console.error(`[arena] game crashed (seed ${job.seed}, ${job.d1} vs ${job.d2}):`, err);
       out = { win: 'none', turns: 0, thinkMs: 0, decisions: 0 };
     }
-    process.send!(out);
+    send(out);
   });
-  process.send!('ready');
+  send('ready');
 }
 
 /* ------------------------------------------------------------------ */

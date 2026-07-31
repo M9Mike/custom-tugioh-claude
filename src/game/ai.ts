@@ -342,7 +342,13 @@ function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'act
   // and revival it is the best body to invest in.
   const ranked = [...pool].sort((a, b) => (CARDS[b.slug]?.atk ?? 0) - (CARDS[a.slug]?.atk ?? 0));
   const out: string[][] = [];
-  const take = Math.min(3, ranked.length);
+  // Offer up to three alternative target *sets*, each a full `spec.count` of
+  // them, sliding down the ranked list. The last valid starting point is
+  // `length - count`, so stopping at `length` would hand back short sets for
+  // any effect that needs more than one target — actions the engine then
+  // rejects, burning search budget on candidates that could never be played.
+  // With the usual count of 1 this is unchanged.
+  const take = Math.min(3, Math.max(0, ranked.length - spec.count + 1));
   for (let i = 0; i < take; i++) {
     out.push(ranked.slice(i, i + spec.count).map((c) => c.uid));
   }
