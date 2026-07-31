@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DUELISTS, artUrl } from '@/game/cards';
+import { AI_LEVEL_LABELS, AI_LEVEL_ORDER, type AiLevel } from '@/game/ai-levels';
 import { joinRoomWithRetry, loadName, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
@@ -10,16 +11,17 @@ export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'create' | 'join' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [level, setLevel] = useState<AiLevel>('champion');
 
   useEffect(() => {
     setName(loadName());
   }, []);
 
-  const create = async () => {
+  const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo') => {
     setError(null);
-    setBusy('create');
+    setBusy(kind);
     primeAudio();
     sfx.click();
     saveName(name);
@@ -27,10 +29,15 @@ export default function Home() {
       const res = await fetch('/api/room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, ...body }),
         cache: 'no-store',
       });
-      const data = (await res.json()) as { code: string; token: string };
+      const data = (await res.json()) as { ok?: boolean; code?: string; token?: string; error?: string };
+      if (!data.code || !data.token) {
+        setError(data.error ?? 'Could not open a duel right now. Try again in a moment.');
+        setBusy(null);
+        return;
+      }
       window.localStorage.setItem(`duel-identity:${data.code}`, JSON.stringify({ code: data.code, token: data.token }));
       router.push(`/duel/${data.code}`);
     } catch {
@@ -38,6 +45,9 @@ export default function Home() {
       setBusy(null);
     }
   };
+
+  const create = () => openRoom({}, 'create');
+  const soloDuel = () => openRoom({ vsAi: true, level }, 'solo');
 
   const join = async () => {
     const c = code.trim().toUpperCase();
@@ -96,6 +106,39 @@ export default function Home() {
 
         <div className="my-4 flex items-center gap-3">
           <div className="brass-rule flex-1" />
+          <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or duel the computer</span>
+          <div className="brass-rule flex-1" />
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {AI_LEVEL_ORDER.map((l) => (
+            <button
+              key={l}
+              onClick={() => {
+                sfx.click();
+                setLevel(l);
+              }}
+              className={`flex flex-col rounded border px-2 py-2 text-left transition-colors ${
+                level === l ? 'border-brass bg-brass/12' : 'border-stoneline bg-black/30 hover:border-brass/50'
+              }`}
+            >
+              <span className={`font-display text-[11px] ${level === l ? 'text-brassbright' : 'text-ptext/85'}`}>
+                {AI_LEVEL_LABELS[l].name}
+              </span>
+              <span className="mt-0.5 text-[9px] leading-tight text-ptextdim">
+                {AI_LEVEL_LABELS[l].short}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">{AI_LEVEL_LABELS[level].blurb}</p>
+
+        <button className="btn mt-3 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null}>
+          {busy === 'solo' ? 'Shuffling…' : `Duel the ${AI_LEVEL_LABELS[level].name}`}
+        </button>
+
+        <div className="my-4 flex items-center gap-3">
+          <div className="brass-rule flex-1" />
           <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or join</span>
           <div className="brass-rule flex-1" />
         </div>
@@ -121,8 +164,8 @@ export default function Home() {
         )}
 
         <p className="mt-4 text-center text-[11px] leading-relaxed text-ptextdim">
-          Start a duel, then send the link or the 4-letter code to your opponent. Both of you pick a duelist and the
-          game begins.
+          Start a duel, then send the link or the 4-letter code to your opponent — the game begins once you have both
+          picked a duelist. Or take on the computer straight away, no second player needed.
         </p>
       </div>
 

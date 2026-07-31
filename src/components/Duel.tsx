@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import CardDetail from './CardDetail';
 import { CARDS, DUELIST_BY_ID, artUrl } from '@/game/cards';
+import { AI_LEVEL_LABELS } from '@/game/ai-levels';
 import {
   canActivateFromHand,
   canActivateSetCard,
@@ -477,7 +478,14 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate font-display text-[13px] text-parchment">{p.name}</span>
+            <span className="truncate font-display text-[13px] text-parchment">
+              {p.name}
+              {view.seats[pid]?.ai && (
+                <span className="ml-1 align-middle text-[9px] uppercase tracking-wider text-brass">
+                  CPU · {AI_LEVEL_LABELS[view.seats[pid]!.ai!].name}
+                </span>
+              )}
+            </span>
             <span className="font-display text-sm tabular-nums text-brassbright">{p.lp}</span>
           </div>
           <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-black/60">
@@ -746,8 +754,11 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
               </button>
             )}
             {!myTurn && !state.winner && (
-              <span className="rounded border border-stoneline px-2 py-1.5 text-center font-display text-[10px] text-ptextdim">
-                {state.pending ? 'Responding…' : 'Their turn'}
+              <span className="flex items-center justify-center gap-1.5 rounded border border-stoneline px-2 py-1.5 text-center font-display text-[10px] text-ptextdim">
+                {view.aiToMove && (
+                  <span className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-brass/40 border-t-brass" />
+                )}
+                {state.pending ? 'Responding…' : view.aiToMove ? 'Thinking…' : 'Their turn'}
               </span>
             )}
           </div>

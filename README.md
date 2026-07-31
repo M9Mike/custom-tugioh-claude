@@ -5,7 +5,8 @@ Yu-Gi-Oh!. Ten hand-built 25-card decks, real card artwork, and **every single c
 rewritten with an overpowered, anime-flavoured effect**.
 
 Start a duel, send the link or the four-letter room code to your opponent, both pick a
-duelist, and play.
+duelist, and play. Or take the **vs computer** route and play on your own — pick which
+duelist it brings and how hard it plays.
 
 **Built for two iPhones.** The board is laid out phone-first and tested on the real
 Safari engine at both 414×896 and 440×956: safe-area insets for the notch and home
@@ -43,6 +44,46 @@ Bakura Ryou · Mako Tsunami · Weevil Underwood · Rex Raptor · Bandit Keith
 Each has a 25-card deck drawn from what they actually played in the anime, and a
 signature card used as their emblem.
 
+## The computer opponent
+
+Not a scripted bot. A turn here is a *sequence* of decisions — summon, equip, flip a
+trap, swing three times, pass — so the AI runs a beam search over whole-turn sequences,
+scores the position each line arrives at, and plays the best one it found. It answers
+trap windows by simulating both branches. It gets no special access: face-down cards on
+your side of the field are scored as an average body, never their real stats.
+
+Three levels, which differ in how wide they search and how willing they are to settle
+for a merely good line:
+
+| | Search | Behaviour |
+|---|---|---|
+| Rookie | 1 line, 6 moves considered | No lookahead, and deliberately settles for a merely good line |
+| Duelist | 4 lines, 14 moves | Plays your whole reply turn out before committing to a line |
+| Champion | 10 lines, 26 moves | The same, at full width, and never settles for second best |
+
+**What makes it play well is the evaluation, not the search.** With 4000 Life Points and
+3000 ATK monsters, a duel is decided in two or three connected attacks, so the position
+is really a *race*: how many turns do I need to finish you, versus how many do you need
+to finish me. The evaluation computes both clocks directly and scores the difference;
+material is priced low on top of that, because a monster's worth is mostly already
+expressed by the clock it puts you on.
+
+That distinction is measurable. Against the earlier evaluation, which added up ATK the
+way you would in a long game, widening the search bought nothing outside the noise —
+the classic sign of searching hard over a badly calibrated score. With the race
+evaluation the full-width search beats a one-ply greedy pick using the same evaluation
+**64.9% ± 7.5** of the time, and the race evaluation beats the material one **57.4% ±
+8.2** head to head, at equal search width.
+
+```bash
+npm run ai-arena -- --games 400   # forks one worker per core; prints 95% intervals
+npx tsx scripts/ai-bench.ts       # fast tactical positions with one right answer
+```
+
+Confidence intervals are printed because they matter here: at 30 games a matchup is
+±18%, which is wide enough to hide any real difference between two configurations, and
+early tuning against numbers that noisy sent this AI down a blind alley.
+
 ## How it is built
 
 - **Next.js (App Router) + TypeScript + Tailwind**, deployed on Vercel.
@@ -53,7 +94,11 @@ signature card used as their emblem.
   - `effects/monsters.ts`, `effects/spells.ts` — the custom effect for every card.
   - `engine.ts` — summons, battle, triggers, trap windows, win conditions.
   - `autoplay.ts` — legal-move enumeration, used by the tests.
-- **`src/server/rooms.ts`** — in-memory duel rooms.
+  - `ai.ts` — the computer opponent: evaluation, move generation, beam search.
+- **`src/server/rooms.ts`** — duel rooms. A room may seat the computer instead of a
+  second player; the client nudges `/api/room/[code]/ai` on a timer and the server plays
+  one action per call, which is what paces the board so a human can follow it. The turn
+  is searched once and cached on the room, so only the first action of a turn is slow.
 - **Regions** — functions are pinned to `cdg1` (Paris) in `vercel.json` to sit beside
   the MongoDB cluster. The database is read and written on every move, so co-locating
   compute and storage matters more than shaving the player's own hop.
@@ -80,6 +125,7 @@ npm run dev
 
 npm run sim 800  # play 800 random duels offline; reports rule errors + win rates
 npm run e2e      # drive two HTTP clients through full duels against a running server
+npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run shots    # drive two desktop browsers and screenshot the whole flow
 npm run iphone   # play a full duel on WebKit at both iPhone sizes, by tapping
 npm run cards    # re-resolve decklists against the card database (authoring only)

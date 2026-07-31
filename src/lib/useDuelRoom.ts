@@ -216,11 +216,65 @@ export function useDuelRoom(code: string | null) {
     [code, applyView]
   );
 
+  /* ---- drive the computer opponent ----
+   *
+   * The AI plays one action per request rather than a whole turn at once, and
+   * the client asks for the next one on a timer. That pacing is the point: a
+   * turn that resolved instantly would flash past, and this way each summon and
+   * attack lands with its own animation. The nudge is idempotent — the server
+   * checks whose move it is — so a duplicate in flight is harmless.
+   */
+  useEffect(() => {
+    if (!code || !view?.aiToMove) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const token = tokenRef.current;
+      if (cancelled || !token) return;
+      try {
+        const res = await fetch(`/api/room/${code}/ai`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+          cache: 'no-store',
+        });
+        if (cancelled) return;
+        const data = (await res.json()) as { moved?: boolean; view?: RoomView };
+        // Re-running this effect on the new view is what continues the turn.
+        // When the server did not move, deliberately leave the view alone: a
+        // fresh object would retrigger this effect and spin, so the slower poll
+        // loop takes over instead.
+        if (data.moved && data.view) applyView(data.view);
+      } catch {
+        /* the poll loop will pick the duel back up */
+      }
+    }, 750);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [code, view, applyView]);
+
   const act = useCallback((action: DuelAction) => send({ kind: 'duel', action }), [send]);
   const chooseDuelist = useCallback((duelistId: string) => send({ kind: 'chooseDuelist', duelistId }), [send]);
   const setPlayerName = useCallback((name: string) => send({ kind: 'setName', name }), [send]);
   const rematch = useCallback(() => send({ kind: 'rematch' }), [send]);
   const toLobby = useCallback(() => send({ kind: 'toLobby' }), [send]);
+  const configureAi = useCallback(
+    (opts: { duelistId?: string; level?: string }) => send({ kind: 'configureAi', ...opts }),
+    [send]
+  );
 
-  return { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, clearError: () => setError(null) };
+  return {
+    view,
+    status,
+    error,
+    errorKind,
+    act,
+    chooseDuelist,
+    setPlayerName,
+    rematch,
+    toLobby,
+    configureAi,
+    clearError: () => setError(null),
+  };
 }

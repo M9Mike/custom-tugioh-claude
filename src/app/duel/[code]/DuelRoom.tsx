@@ -7,7 +7,8 @@ import Lobby from '@/components/Lobby';
 import { useDuelRoom } from '@/lib/useDuelRoom';
 
 export default function DuelRoom({ code }: { code: string }) {
-  const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby } = useDuelRoom(code);
+  const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, configureAi } =
+    useDuelRoom(code);
   const [shareUrl, setShareUrl] = useState('');
 
   useEffect(() => {
@@ -52,5 +53,13 @@ export default function DuelRoom({ code }: { code: string }) {
     return <Duel view={view} act={act} rematch={rematch} toLobby={toLobby} connection={status} />;
   }
 
-  return <Lobby view={view} chooseDuelist={chooseDuelist} setPlayerName={setPlayerName} shareUrl={shareUrl} />;
+  return (
+    <Lobby
+      view={view}
+      chooseDuelist={chooseDuelist}
+      setPlayerName={setPlayerName}
+      shareUrl={shareUrl}
+      configureAi={configureAi}
+    />
+  );
 }
