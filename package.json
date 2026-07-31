@@ -13,7 +13,8 @@
     "sim": "tsx scripts/simulate.ts",
     "e2e": "tsx scripts/e2e.ts",
     "shots": "node scripts/shots.mjs",
-    "iphone": "node scripts/iphone.mjs"
+    "iphone": "node scripts/iphone.mjs",
+    "store-test": "tsx scripts/store-test.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

@@ -17,7 +17,29 @@
 
 import type { Collection, MongoClient } from 'mongodb';
 
-const MONGO_URI = process.env.MONGODB_URI ?? process.env.MONGO_URL ?? '';
+/**
+ * Cleans up the two ways a pasted connection string routinely arrives broken:
+ * wrapped in quotes, or with a stray space picked up while copying the password.
+ * The password is only trimmed when it contains nothing that would need
+ * percent-encoding — otherwise it is left exactly as given, since a space could
+ * conceivably be deliberate.
+ */
+export function normaliseMongoUri(raw: string): { uri: string; trimmedPassword: boolean } {
+  const cleaned = raw.trim().replace(/^["']|["']$/g, '');
+  const m = /^(mongodb(?:\+srv)?:\/\/)([^@]*)@([\s\S]*)$/.exec(cleaned);
+  if (!m) return { uri: cleaned, trimmedPassword: false };
+  const [, scheme, userinfo, hostAndRest] = m;
+  const colon = userinfo.indexOf(':');
+  if (colon < 0) return { uri: cleaned, trimmedPassword: false };
+  const user = userinfo.slice(0, colon);
+  const pass = userinfo.slice(colon + 1);
+  const trimmed = pass.trim();
+  if (trimmed === pass || /[@:/?#[\]%]/.test(trimmed)) return { uri: cleaned, trimmedPassword: false };
+  return { uri: `${scheme}${user}:${trimmed}@${hostAndRest}`, trimmedPassword: true };
+}
+
+const RAW_MONGO_URI = process.env.MONGODB_URI ?? process.env.MONGO_URL ?? '';
+const { uri: MONGO_URI, trimmedPassword: MONGO_PASSWORD_TRIMMED } = normaliseMongoUri(RAW_MONGO_URI);
 
 const REDIS_URL =
   process.env.KV_REST_API_URL ??
@@ -30,7 +52,7 @@ const REDIS_TOKEN =
   process.env.REDIS_REST_TOKEN ??
   '';
 
-export const usingMongo = Boolean(MONGO_URI);
+export const usingMongo = Boolean(RAW_MONGO_URI);
 export const usingRedis = !usingMongo && Boolean(REDIS_URL && REDIS_TOKEN);
 export const durable = usingMongo || usingRedis;
 export const backend: 'mongodb' | 'redis' | 'memory' = usingMongo ? 'mongodb' : usingRedis ? 'redis' : 'memory';
@@ -89,8 +111,9 @@ export function describeStoreError(err: unknown): string {
  */
 export function inspectMongoUri(): Record<string, unknown> | undefined {
   if (!usingMongo) return undefined;
-  const raw = process.env.MONGODB_URI ?? process.env.MONGO_URL ?? '';
+  const raw = RAW_MONGO_URI;
   const out: Record<string, unknown> = {
+    passwordWhitespaceTrimmed: MONGO_PASSWORD_TRIMMED,
     length: raw.length,
     scheme: raw.startsWith('mongodb+srv://') ? 'mongodb+srv' : raw.startsWith('mongodb://') ? 'mongodb' : 'UNRECOGNISED',
     surroundingWhitespace: raw !== raw.trim(),
