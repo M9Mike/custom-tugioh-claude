@@ -12,6 +12,16 @@ const OUT = process.argv[3] ?? '/tmp/shots';
 
 let launched = null;
 
+
+/** The card inspector is a modal on phones; dismiss it before driving the board. */
+const dismissInspector = async (page) => {
+  const scrim = page.locator('[data-testid="inspector-scrim"]');
+  if (await scrim.count()) {
+    await scrim.click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(220);
+  }
+};
+
 const shot = async (page, name) => {
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log(`  📸 ${name}`);
@@ -198,6 +208,7 @@ const main = async () => {
   // Summon on mobile to check the action sheet and board with a monster out.
   const mh = m.locator('[data-testid="hand-card"]');
   for (let i = 0; i < (await mh.count()); i++) {
+    await dismissInspector(m);
     await mh.nth(i).click();
     await m.waitForTimeout(400);
     const btn = m.locator('button:has-text("Normal Summon")');

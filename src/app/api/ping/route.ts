@@ -1,7 +1,9 @@
+import { usingRedis } from '@/server/store';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Cheap keepalive so the instance holding the live rooms stays warm. */
+/** Health check that also reports whether durable room storage is configured. */
 export async function GET() {
-  return Response.json({ ok: true, t: Date.now() });
+  return Response.json({ ok: true, durableRooms: usingRedis, t: Date.now() });
 }

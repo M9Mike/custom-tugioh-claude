@@ -51,9 +51,8 @@ export function saveName(name: string) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Joins a room, retrying on 404. A room lives in one warm serverless instance;
- * a 404 usually means this request reached a different (cold) instance, so we
- * back off and try again rather than declaring the duel dead.
+ * Joins a room, retrying on 404 — a room created a moment ago may not be
+ * readable yet, and a transient storage blip should not end a duel.
  */
 export async function joinRoomWithRetry(
   code: string,
@@ -92,53 +91,71 @@ export function useDuelRoom(code: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<'full' | 'missing' | null>(null);
   const tokenRef = useRef<string | null>(null);
-  const esRef = useRef<EventSource | null>(null);
   const aliveRef = useRef(true);
   const revisionRef = useRef(-1);
+  const viewRef = useRef<RoomView | null>(null);
 
   const applyView = useCallback((v: RoomView) => {
     revisionRef.current = v.revision;
+    viewRef.current = v;
     setView(v);
   }, []);
 
-  /* ---- connect / reconnect loop ---- */
+  /* ---- join, then poll for changes ----
+   *
+   * Polling rather than a held-open stream: rooms live in shared storage, so any
+   * request can be served by any serverless instance. A stream would pin a
+   * player to one instance and break the moment the platform scaled out.
+   */
   useEffect(() => {
     if (!code) return;
     aliveRef.current = true;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let backoff = 500;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let missStreak = 0;
 
-    const openStream = (token: string) => {
-      if (!aliveRef.current) return;
-      esRef.current?.close();
-      const es = new EventSource(`/api/room/${code}/stream?token=${encodeURIComponent(token)}`);
-      esRef.current = es;
-
-      es.onopen = () => {
-        if (!aliveRef.current) return;
-        backoff = 500;
-        setStatus('live');
-      };
-      es.onmessage = (ev) => {
-        if (!aliveRef.current) return;
-        try {
-          applyView(JSON.parse(ev.data) as RoomView);
-          setStatus('live');
-        } catch {
-          /* malformed frame — the next one will resync */
-        }
-      };
-      es.onerror = () => {
-        es.close();
-        if (!aliveRef.current) return;
-        setStatus('reconnecting');
-        // The server closes the stream every ~45s on purpose; reconnect fast.
-        retryTimer = setTimeout(() => reconnect(), backoff);
-        backoff = Math.min(backoff * 1.6, 5000);
-      };
+    const nextDelay = (): number => {
+      if (typeof document !== 'undefined' && document.hidden) return 5000;
+      const v = viewRef.current;
+      if (!v) return 1200;
+      // Poll hardest when waiting on the opponent; your own moves update the
+      // board from their own response, so there is nothing to wait for.
+      if (v.stage === 'lobby') return 1500;
+      const s = v.state;
+      if (!s || s.winner) return 3000;
+      const waitingOnThem = s.pending ? s.pending.player !== v.you : s.active !== v.you;
+      return waitingOnThem ? 1100 : 2600;
     };
 
-    const reconnect = async () => {
+    const poll = async () => {
+      if (!aliveRef.current) return;
+      const token = tokenRef.current;
+      if (!token) return;
+      try {
+        const res = await fetch(
+          `/api/room/${code}/state?token=${encodeURIComponent(token)}&since=${revisionRef.current}`,
+          { cache: 'no-store' }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { unchanged?: boolean; view?: RoomView };
+          if (data.view) applyView(data.view);
+          missStreak = 0;
+          setStatus('live');
+        } else if (res.status === 404 || res.status === 403) {
+          // Seat or room went away — re-join, which also recovers a room that
+          // was reallocated.
+          missStreak += 1;
+          setStatus('reconnecting');
+          if (missStreak >= 2) await connect();
+        }
+      } catch {
+        missStreak += 1;
+        setStatus('reconnecting');
+      } finally {
+        if (aliveRef.current) timer = setTimeout(poll, nextDelay());
+      }
+    };
+
+    const connect = async () => {
       if (!aliveRef.current) return;
       const stored = loadIdentity(code);
       const res = await joinRoomWithRetry(code, loadName(), stored?.token ?? tokenRef.current ?? undefined);
@@ -149,47 +166,31 @@ export function useDuelRoom(code: string | null) {
         setErrorKind(res.kind);
         return;
       }
+      missStreak = 0;
       tokenRef.current = res.token;
       saveIdentity({ code: res.code, token: res.token });
       applyView(res.view);
-      openStream(res.token);
+      setStatus('live');
     };
 
     setStatus('connecting');
-    void reconnect();
+    void connect().then(() => {
+      if (aliveRef.current) timer = setTimeout(poll, nextDelay());
+    });
+
+    // Coming back to the tab should refresh immediately, not on the next tick.
+    const onVisible = () => {
+      if (!document.hidden) {
+        clearTimeout(timer);
+        void poll();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       aliveRef.current = false;
-      clearTimeout(retryTimer);
-      esRef.current?.close();
-      esRef.current = null;
-    };
-  }, [code, applyView]);
-
-  /* ---- polling safety net + instance keepalive ---- */
-  useEffect(() => {
-    if (!code) return;
-    const poll = setInterval(async () => {
-      const token = tokenRef.current;
-      if (!token || document.hidden) return;
-      try {
-        const res = await fetch(
-          `/api/room/${code}/state?token=${encodeURIComponent(token)}&since=${revisionRef.current}`,
-          { cache: 'no-store' }
-        );
-        if (!res.ok) return;
-        const data = (await res.json()) as { unchanged?: boolean; view?: RoomView };
-        if (data.view) applyView(data.view);
-      } catch {
-        /* the SSE stream is the primary channel; ignore poll failures */
-      }
-    }, 3000);
-    const ping = setInterval(() => {
-      void fetch('/api/ping', { cache: 'no-store' }).catch(() => {});
-    }, 20_000);
-    return () => {
-      clearInterval(poll);
-      clearInterval(ping);
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [code, applyView]);
 
