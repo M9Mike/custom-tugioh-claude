@@ -122,9 +122,11 @@ function bodiesOf(state: DuelState, pid: PlayerId, viewer: PlayerId): Body[] {
  * then swing at the face.
  */
 function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; freeAtk: number } {
+  // No guards on atk or attacks are needed: `effAtk` clamps to zero so ATK is
+  // never negative, and `maxAttacks` never returns less than one. A 0 ATK
+  // monster falls out on its own — it beats nothing, so it never swings.
   const live = attackers
-    .filter((a) => a.atk > 0 || a.attacks > 0)
-    .flatMap((a) => Array.from({ length: Math.max(1, a.attacks) }, () => a))
+    .flatMap((a) => Array.from({ length: a.attacks }, () => a))
     .sort((a, b) => b.atk - a.atk);
   const walls = blockers.map((b) => ({ ...b }));
   let damage = 0;
@@ -147,7 +149,7 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
   }
 
   // Whatever the opponent could not block still threatens next turn.
-  const freeAtk = attackers.reduce((sum, a) => sum + a.atk * Math.max(1, a.attacks), 0);
+  const freeAtk = attackers.reduce((sum, a) => sum + a.atk * a.attacks, 0);
   return { damage, freeAtk };
 }
 

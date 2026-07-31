@@ -68,12 +68,21 @@ to finish me. The evaluation computes both clocks directly and scores the differ
 material is priced low on top of that, because a monster's worth is mostly already
 expressed by the clock it puts you on.
 
-That distinction is measurable. Against the earlier evaluation, which added up ATK the
-way you would in a long game, widening the search bought nothing outside the noise —
-the classic sign of searching hard over a badly calibrated score. With the race
-evaluation the full-width search beats a one-ply greedy pick using the same evaluation
-**64.9% ± 7.5** of the time, and the race evaluation beats the material one **57.4% ±
-8.2** head to head, at equal search width.
+That distinction is measurable. Over 320 mirrored games per matchup — every seed and
+deck pair played from both seats:
+
+| Matchup | |
+|---|---|
+| race evaluation vs the old material one, equal search width | 57.4% ± 8.2 |
+| full-width search vs a one-ply greedy pick, same evaluation | 64.9% ± 7.5 |
+| Champion vs Duelist | 68.2% ± 7.4 |
+| Champion vs Rookie | 76.8% ± 6.6 |
+| Champion vs random legal moves | 96.9% ± 2.7 |
+
+Against the earlier evaluation, which added up ATK the way you would in a long game,
+widening the search bought nothing outside the noise, and Champion actually *lost* to
+Duelist — the classic sign of searching hard over a badly calibrated score. Both are
+fixed by the evaluation change alone.
 
 ```bash
 npm run ai-arena -- --games 400   # forks one worker per core; prints 95% intervals

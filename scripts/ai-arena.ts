@@ -113,7 +113,11 @@ if (process.env.ARENA_WORKER === '1') {
     let out: Result;
     try {
       out = playGame(job);
-    } catch {
+    } catch (err) {
+      // A crashed game still has to be reported or the pool would stall, but it
+      // must not vanish: it lands in the unfinished column and dilutes the
+      // sample, so say loudly which job died and why.
+      console.error(`[arena] game crashed (seed ${job.seed}, ${job.d1} vs ${job.d2}):`, err);
       out = { win: 'none', turns: 0, thinkMs: 0, decisions: 0 };
     }
     process.send!(out);

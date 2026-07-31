@@ -10,7 +10,7 @@
  *   npx tsx scripts/ai-bench.ts
  */
 import { applyAction, createDuel } from '../src/game/engine';
-import { planTurn, type AiLevel } from '../src/game/ai';
+import { aiNext, createAiRuntime, planTurn, type AiLevel } from '../src/game/ai';
 import { chooseAction, legalActions } from '../src/game/autoplay';
 import { DUELISTS } from '../src/game/cards';
 import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
@@ -52,7 +52,13 @@ function place(
   slug: string,
   opts: { position?: 'atk' | 'def'; face?: 'up' | 'down' } = {}
 ) {
-  const donor = s.players[pid].deck.pop()!;
+  // Any deck card will do as a donor — it is only here to supply a well-formed
+  // instance (uid, owner, counters) whose slug is then overridden. It is
+  // deliberately *not* looked up by slug: these positions routinely put a card
+  // on a side whose deck never contained it, which is the whole point of being
+  // able to build an arbitrary board.
+  const donor = s.players[pid].deck.pop();
+  if (!donor) throw new Error(`cannot place ${slug}: ${pid}'s deck is empty`);
   const card: CardInstance = {
     ...donor,
     slug,
@@ -81,14 +87,22 @@ function setHand(s: DuelState, pid: PlayerId, slugs: string[]) {
   p.hand = slugs.map((slug, i) => ({ ...(donors[i] ?? p.deck.pop()!), slug, owner: pid }));
 }
 
-/** Plays the AI's whole planned turn out and returns where it ends up. */
+/**
+ * Plays the AI's whole planned turn out and returns where it ends up.
+ *
+ * An action that will not apply is a real defect, not something to step over:
+ * the search validated every action of this line against this very position, so
+ * a rejection means the planner and the engine disagree. Skipping it quietly
+ * would let a check pass for the wrong reason.
+ */
 function playPlan(s: DuelState, pid: PlayerId) {
   const plan = planTurn(s, pid, LEVEL, 3000);
   let cur = s;
-  for (const a of plan) {
+  plan.forEach((a, i) => {
     const r = applyAction(cur, pid, a);
-    if (!r.error) cur = r.state;
-  }
+    if (r.error) throw new Error(`planned action ${i} (${a.type}) was rejected by the engine: ${r.error}`);
+    cur = r.state;
+  });
   return { plan, end: cur };
 }
 
@@ -175,11 +189,14 @@ console.log('\nSanity match');
       p1: { duelistId: DUELISTS[i % DUELISTS.length].id, name: 'AI' },
       p2: { duelistId: DUELISTS[(i * 3 + 2) % DUELISTS.length].id, name: 'Random' },
     });
+    // One search per turn, replayed action by action — the same shape the
+    // server uses, and eight times cheaper than re-planning every action.
+    const rt = createAiRuntime();
     for (let step = 0; step < 2000 && !state.winner && state.turn <= 40; step++) {
       const actor: PlayerId = state.pending ? state.pending.player : state.active;
       const action =
         actor === 'p1'
-          ? planTurn(state, 'p1', LEVEL, 1200)[0] ?? { type: 'endTurn' as const }
+          ? aiNext(state, 'p1', LEVEL, rt, 1200)
           : (() => {
               const acts = legalActions(state, actor, rnd);
               return acts.length ? chooseAction(acts, rnd) : null;
