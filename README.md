@@ -61,10 +61,24 @@ for a merely good line:
 | Duelist | 4 lines, 14 moves | 1 turn | Plays your whole reply turn out before committing |
 | Champion | 10 lines, 26 moves | 3 turns | Plays your reply, its own answer and your answer to that — and never settles for second best |
 
-Champion's depth is affordable because searching one turn costs about a tenth
-of a second: it plays out the turns that follow each of its dozen best lines
-and scores where they actually lead, rather than where the board happens to
-sit the instant it stops moving.
+Champion's depth is affordable because searching one turn costs about a fifth
+of a second — a twelfth of the time it is allowed: it plays out the turns that
+follow each of its dozen best lines and scores where they actually lead, rather
+than where the board happens to sit the instant it stops moving.
+
+How much each extra turn is worth, at identical search width:
+
+| Same width, different depth | |
+|---|---|
+| 3 turns vs no lookahead at all | **64.9% ± 8.8** over 240 games |
+| 3 turns vs 1 turn | 53.9% ± 4.6 over 500 games |
+
+The first is decisive: looking ahead at all is what matters. The second is
+**not** — its interval is [49.3%, 58.5%], which still contains 50% (p ≈ 0.10).
+The third turn is probably worth a few points, and the estimate came out
+positive in two separate runs, but it has not been *proven* better than one
+turn and is not presented as though it had. It stays because it costs
+essentially nothing and has never measured worse.
 
 **What makes it play well is the evaluation, not the search.** With 4000 Life Points and
 3000 ATK monsters, a duel is decided in two or three connected attacks, so the position
