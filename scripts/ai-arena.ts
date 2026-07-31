@@ -251,9 +251,24 @@ export async function arena(label: string, a: Brain, b: Brain, pairs: number, wo
 /* Default suite                                                       */
 /* ------------------------------------------------------------------ */
 
+/** Reads a positive numeric flag, refusing anything that is not one. */
+function readCount(flag: string, fallback: number): number {
+  const at = process.argv.indexOf(flag);
+  if (at < 0) return fallback;
+  const n = Number(process.argv[at + 1]);
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`${flag} needs a positive number, e.g. ${flag} 400 — got ${process.argv[at + 1] ?? '(nothing)'}`);
+    process.exit(1);
+  }
+  return n;
+}
+
 async function main() {
-  const gi = process.argv.indexOf('--games');
-  const pairs = Math.max(1, Math.round(Number(gi > 0 ? process.argv[gi + 1] : 200) / 2));
+  // A bad --games value used to fall through as NaN, which made `pairing()`
+  // build zero jobs and the run print a confident-looking 0% off no games at
+  // all. Refuse it instead.
+  const games = readCount('--games', 200);
+  const pairs = Math.max(1, Math.round(games / 2));
   const workers = Math.max(1, Number(process.env.ARENA_WORKERS ?? 4));
 
   console.log(`Arena — ${pairs * 2} games per matchup, ${workers} workers\n`);
