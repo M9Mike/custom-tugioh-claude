@@ -46,6 +46,10 @@ async function fetchArt(artId) {
       if (sharp) {
         await sharp(buf).resize(420, 420, { fit: 'cover', position: 'attention' }).webp({ quality: 82 }).toFile(dest);
       } else {
+        // Keep the .webp filename even though these are the original JPEG bytes:
+        // the app builds art URLs as `/art/<id>.webp`, and browsers sniff image
+        // content rather than trusting the extension. This branch is a safety net
+        // for a machine without sharp; on a normal build it never runs.
         await fs.writeFile(dest, buf);
       }
       return 'downloaded';
