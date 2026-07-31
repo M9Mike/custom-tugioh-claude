@@ -41,16 +41,22 @@ export interface AiConfig {
   branch: number;
   /** 0 = always play the best line; higher mixes in weaker ones. */
   slack: number;
-  /** Whether the opponent's best reply is subtracted from a line's score. */
-  lookahead: boolean;
+  /**
+   * How many whole turns to play out past our own before scoring a line.
+   * 0 scores the board the moment our turn ends; 1 answers "what do they do
+   * back"; 2 also asks "and what do we do about that". Each extra turn is
+   * another pair of narrow searches per candidate line, which is affordable
+   * because a turn search costs well under a tenth of the time budget.
+   */
+  depth: number;
   /** Evaluation weights; defaults to the tuned set. */
   weights?: EvalWeights;
 }
 
 export const AI_LEVELS: Record<AiLevel, AiConfig> = {
-  rookie: { beam: 1, branch: 6, slack: 0.55, lookahead: false },
-  duelist: { beam: 4, branch: 14, slack: 0.12, lookahead: true },
-  champion: { beam: 10, branch: 26, slack: 0, lookahead: true },
+  rookie: { beam: 1, branch: 6, slack: 0.55, depth: 0 },
+  duelist: { beam: 4, branch: 14, slack: 0.12, depth: 1 },
+  champion: { beam: 10, branch: 26, slack: 0, depth: 3 },
 };
 
 const WIN = 1e9;
@@ -480,7 +486,7 @@ export type AiSetting = AiLevel | AiConfig;
 const cfgOf = (s: AiSetting): AiConfig => (typeof s === 'string' ? AI_LEVELS[s] : s);
 
 /** Cheap, deterministic settings used to model the opponent's reply turn. */
-const MODEL_CFG: AiConfig = { beam: 2, branch: 10, slack: 0, lookahead: false };
+const MODEL_CFG: AiConfig = { beam: 2, branch: 10, slack: 0, depth: 0 };
 
 function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: number): DuelAction[] {
   // `budgetMs` is a hard bound on the whole call, because a human is waiting on
@@ -489,7 +495,7 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
   // for the lookahead, or the lookahead would run past the budget entirely.
   const started = Date.now();
   const hardDeadline = started + budgetMs;
-  const deadline = cfg.lookahead ? started + budgetMs * 0.55 : hardDeadline;
+  const deadline = cfg.depth > 0 ? started + budgetMs * 0.35 : hardDeadline;
   const w = cfg.weights ?? WEIGHTS;
   let lines: Line[] = [{ state, actions: [], score: evaluate(state, pid, w), done: false }];
   const finished: Line[] = [];
@@ -536,11 +542,12 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
   for (const line of all) line.score = evaluate(line.state, pid, w);
   all.sort((a, b) => b.score - a.score);
 
-  // Second ply: for the most promising lines, actually play the opponent's
-  // whole reply turn and re-score. Considering only their single best *action*
-  // badly underrates lines that lose to a two-card follow-up.
-  if (cfg.lookahead) {
-    const foe = other(pid);
+  // Deeper plies: for the most promising lines, actually play the turns that
+  // follow and re-score where they lead. Judging a line by the board the
+  // instant our turn ends badly overrates anything that hands the opponent a
+  // winning swing, and underrates a line that looks quiet but leaves them
+  // without an answer.
+  if (cfg.depth > 0) {
     const examine = all.slice(0, cfg.beam >= 8 ? 12 : 6);
     // Share whatever is left of the budget out over the lines still to check,
     // so the first few cannot starve the rest.
@@ -548,7 +555,7 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
       const line = examine[i];
       const left = hardDeadline - Date.now();
       if (line.state.winner || left <= 0) continue;
-      line.score = scoreAfterOpponentTurn(line.state, pid, foe, left / (examine.length - i), w);
+      line.score = rollout(line.state, pid, cfg.depth, left / (examine.length - i), w);
     }
     examine.sort((a, b) => b.score - a.score);
     const rest = all.slice(examine.length);
@@ -562,37 +569,51 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
 }
 
 /**
- * Plays out the opponent's reply turn with the same search machinery (at low
- * width) and scores the position it leaves us in. This is the second ply.
+ * Plays the next `turns` whole turns out — both sides, alternating — with the
+ * same search machinery at low width, then scores where we ended up.
+ *
+ * Both players are driven by the same evaluation, so this is a principal
+ * variation rather than a full minimax, but it is the deep part: a line that
+ * wins the board this turn and loses it next now scores like the loss it is.
  *
  * An earlier version played the opponent greedily, one best-looking action at a
  * time. That model was bad enough that searching deeper with it made the AI
  * weaker than searching shallowly — the classic pathology of a strong search
- * over a poor model.
+ * over a poor model, and the reason this plays whole turns properly instead.
  */
-function scoreAfterOpponentTurn(
-  state: DuelState,
-  me: PlayerId,
-  foe: PlayerId,
-  budgetMs: number,
-  w: EvalWeights
-): number {
+function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number, w: EvalWeights): number {
   let cur = state;
   const model: AiConfig = { ...MODEL_CFG, weights: w };
-  // Resolve any window the opponent is owed first.
-  for (let guard = 0; guard < 4 && cur.pending; guard++) {
-    const responder = cur.pending.player;
-    const res = applyAction(cur, responder, chooseTrapResponse(cur, responder, model));
-    if (res.error) break;
-    cur = res.state;
-  }
-  if (cur.winner || cur.active !== foe) return evaluate(cur, me, w);
+  const deadline = Date.now() + budgetMs;
+  const per = Math.max(8, budgetMs / Math.max(1, turns));
 
-  for (const action of planWith(cur, foe, model, budgetMs)) {
-    const res = applyAction(cur, foe, action);
-    if (res.error) break;
-    cur = res.state;
-    if (cur.winner || cur.pending) break;
+  for (let t = 0; t < turns; t++) {
+    if (cur.winner || Date.now() > deadline) break;
+    // Resolve any response window that is owed before the turn can proceed.
+    for (let guard = 0; guard < 4 && cur.pending; guard++) {
+      const responder = cur.pending.player;
+      const res = applyAction(cur, responder, chooseTrapResponse(cur, responder, model));
+      if (res.error) break;
+      cur = res.state;
+    }
+    if (cur.winner) break;
+
+    const mover = cur.active;
+    for (const action of planWith(cur, mover, model, per)) {
+      const res = applyAction(cur, mover, action);
+      if (res.error) break;
+      cur = res.state;
+      if (cur.winner) break;
+      // A window opened mid-turn: settle it and carry on with the plan.
+      for (let guard = 0; guard < 4 && cur.pending; guard++) {
+        const responder = cur.pending.player;
+        const r2 = applyAction(cur, responder, chooseTrapResponse(cur, responder, model));
+        if (r2.error) break;
+        cur = r2.state;
+      }
+    }
+    // If the turn did not actually change hands, stop rather than spin.
+    if (cur.active === mover && !cur.winner) break;
   }
   return evaluate(cur, me, w);
 }

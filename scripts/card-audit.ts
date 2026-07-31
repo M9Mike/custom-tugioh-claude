@@ -771,6 +771,36 @@ for (const def of Object.values(CARDS)) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Lint: effects that cannot do anything at all                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The checks above prove an effect fires. This catches the other failure: an
+ * effect that fires perfectly and still does nothing, because the numbers in it
+ * are zero or it carries no operations. Dark Magician shipped with a +0 ATK
+ * aura that way, doing nothing but taking up a line of rules text.
+ */
+const dead: string[] = [];
+for (const def of Object.values(CARDS)) {
+  if (def.slug === 'facedown' || def.slug === 'polymerization') continue;
+  if (!def.effects.length) dead.push(`${def.slug}: no effects at all`);
+  for (const eff of def.effects) {
+    const a = eff.aura;
+    if (a && !(a.atk ?? 0) && !(a.def ?? 0) && !a.grants?.length) dead.push(`${def.slug} [${eff.trigger}]: aura does nothing`);
+    if (!eff.ops.length && !a) dead.push(`${def.slug} [${eff.trigger}]: no operations and no aura`);
+    for (const op of eff.ops) {
+      if ((op.op === 'gainAtk' || op.op === 'gainDef') && !op.amount && !('scale' in op && op.scale)) {
+        dead.push(`${def.slug} [${eff.trigger}]: ${op.op} of 0`);
+      }
+      if ((op.op === 'damage' || op.op === 'heal') && !op.amount && !('scale' in op && op.scale)) {
+        dead.push(`${def.slug} [${eff.trigger}]: ${op.op} of 0`);
+      }
+      if (op.op === 'draw' && !op.count) dead.push(`${def.slug}: draws 0 cards`);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Report                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -795,10 +825,16 @@ if (ONLY) {
     }
     console.log('');
   }
+  if (dead.length) {
+    console.log(`${dead.length} effect(s) can never do anything:\n`);
+    for (const d of dead) console.log(`  ⚠️  ${d}`);
+    console.log('');
+  }
   console.log(`checks: ${passedChecks}/${totalChecks} passed`);
+  console.log(`effects that do nothing: ${dead.length}`);
   console.log(`ops not observable in this harness: ${unverified}`);
   if (skipped.length) console.log(`effects not driven: ${skipped.length}`);
   console.log(failures.length ? `\n${failures.length} card(s) FAILED` : '\nEvery exercised effect behaved as written. ✅');
 }
 
-if (failures.length) process.exitCode = 1;
+if (failures.length || dead.length) process.exitCode = 1;

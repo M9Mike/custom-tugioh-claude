@@ -84,7 +84,11 @@ function place(
 function setHand(s: DuelState, pid: PlayerId, slugs: string[]) {
   const p = s.players[pid];
   const donors = p.hand.splice(0, p.hand.length);
-  p.hand = slugs.map((slug, i) => ({ ...(donors[i] ?? p.deck.pop()!), slug, owner: pid }));
+  p.hand = slugs.map((slug, i) => {
+    const base = donors[i] ?? p.deck.pop();
+    if (!base) throw new Error(`cannot build a hand for ${pid}: nothing left to draw from`);
+    return { ...base, slug, owner: pid };
+  });
 }
 
 /**

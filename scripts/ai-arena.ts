@@ -177,9 +177,17 @@ async function runJobs(jobs: Job[], workers: number, onProgress?: (done: number)
         onProgress?.(done);
         feed(kid);
       });
-      kid.on('exit', () => {
+      kid.on('exit', (code) => {
         alive -= 1;
-        if (alive === 0) resolve();
+        // A worker that dies mid-job takes that game with it. Say so — a
+        // silently smaller sample still prints a confident-looking interval,
+        // which is exactly the trap this harness exists to avoid.
+        if (code) console.error(`[arena] worker exited with code ${code}`);
+        if (alive === 0) {
+          const missing = jobs.length - done;
+          if (missing > 0) console.error(`[arena] WARNING: ${missing} of ${jobs.length} games never ran`);
+          resolve();
+        }
       });
       kid.on('error', reject);
     }
@@ -239,14 +247,16 @@ async function main() {
   const champ = AI_LEVELS.champion;
   const duelist = AI_LEVELS.duelist;
   const rookie = AI_LEVELS.rookie;
-  const greedy: AiConfig = { beam: 1, branch: 8, slack: 0, lookahead: false };
+  const greedy: AiConfig = { beam: 1, branch: 8, slack: 0, depth: 0 };
   const legacy: AiConfig = { ...champ, weights: LEGACY_WEIGHTS };
 
-  // Does the race-based evaluation actually beat the old material one, at the
-  // same search width? This is the only comparison that isolates the change.
-  await arena('race-eval vs legacy-eval', champ, legacy, pairs, workers);
+  // Does looking further ahead actually pay? Same width, different depth.
+  const flat: AiConfig = { ...champ, depth: 0 };
+  const oneTurn: AiConfig = { ...champ, depth: 1 };
+  await arena('champion(d3) vs same width d0', champ, flat, pairs, workers);
+  await arena('champion(d3) vs same width d1', champ, oneTurn, pairs, workers);
   console.log('');
-  // Does searching wider buy anything over a one-ply greedy pick?
+  await arena('race-eval vs legacy-eval', champ, legacy, pairs, workers);
   await arena('champion  vs greedy', champ, greedy, pairs, workers);
   await arena('champion  vs duelist', champ, duelist, pairs, workers);
   await arena('champion  vs rookie', champ, rookie, pairs, workers);

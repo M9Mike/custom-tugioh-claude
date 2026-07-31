@@ -55,11 +55,16 @@ your side of the field are scored as an average body, never their real stats.
 Three levels, which differ in how wide they search and how willing they are to settle
 for a merely good line:
 
-| | Search | Behaviour |
-|---|---|---|
-| Rookie | 1 line, 6 moves considered | No lookahead, and deliberately settles for a merely good line |
-| Duelist | 4 lines, 14 moves | Plays your whole reply turn out before committing to a line |
-| Champion | 10 lines, 26 moves | The same, at full width, and never settles for second best |
+| | Search | Looks ahead | Behaviour |
+|---|---|---|---|
+| Rookie | 1 line, 6 moves considered | — | Scores the board the moment its turn ends, and deliberately settles for a merely good line |
+| Duelist | 4 lines, 14 moves | 1 turn | Plays your whole reply turn out before committing |
+| Champion | 10 lines, 26 moves | 3 turns | Plays your reply, its own answer and your answer to that — and never settles for second best |
+
+Champion's depth is affordable because searching one turn costs about a tenth
+of a second: it plays out the turns that follow each of its dozen best lines
+and scores where they actually lead, rather than where the board happens to
+sit the instant it stops moving.
 
 **What makes it play well is the evaluation, not the search.** With 4000 Life Points and
 3000 ATK monsters, a duel is decided in two or three connected attacks, so the position
