@@ -37,40 +37,6 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-/** Reads an SSE stream and hands each frame to the callback. Returns a stopper. */
-function openStream(code: string, token: string, onView: (v: RoomView) => void): () => void {
-  const ctl = new AbortController();
-  let frames = 0;
-  void (async () => {
-    try {
-      const res = await fetch(`${BASE}/api/room/${code}/stream?token=${token}`, { signal: ctl.signal });
-      if (!res.body) return;
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split('\n\n');
-        buf = parts.pop() ?? '';
-        for (const part of parts) {
-          const line = part.split('\n').find((l) => l.startsWith('data: '));
-          if (!line) continue;
-          frames += 1;
-          onView(JSON.parse(line.slice(6)) as RoomView);
-        }
-      }
-    } catch {
-      /* aborted or stream closed */
-    }
-  })();
-  return () => {
-    ctl.abort();
-    void frames;
-  };
-}
-
 async function playOne(round: number): Promise<{ ok: boolean; detail: string }> {
   const created = await post<{ code: string; token: string; pid: PlayerId }>('/api/room', { name: 'Mihail' });
   const code = created.code;
@@ -78,18 +44,7 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
 
   const tokens: Record<PlayerId, string> = { p1: created.token, p2: joined.token } as Record<PlayerId, string>;
   const views: Partial<Record<PlayerId, RoomView>> = {};
-  let sseFrames = 0;
-
-  const stopA = openStream(code, tokens.p1, (v) => {
-    views.p1 = v;
-    sseFrames += 1;
-  });
-  const stopB = openStream(code, tokens.p2, (v) => {
-    views.p2 = v;
-    sseFrames += 1;
-  });
-
-  await new Promise((r) => setTimeout(r, 350));
+  let polls = 0;
 
   const roster = ['yugi', 'kaiba', 'joey', 'mai', 'pegasus', 'bakura', 'mako', 'weevil', 'rex', 'keith'];
   const d1 = roster[(round * 3) % roster.length];
@@ -103,14 +58,14 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
 
   let view: RoomView = afterBoth.view;
   if (view.stage !== 'duel' || !view.state) {
-    stopA();
-    stopB();
     return { ok: false, detail: 'duel did not start after both players chose' };
   }
 
   const fetchView = async (pid: PlayerId): Promise<RoomView> => {
     const res = await fetch(`${BASE}/api/room/${code}/state?token=${tokens[pid]}&since=-1`);
+    if (!res.ok) throw new Error(`state ${res.status} for ${pid}`);
     const data = (await res.json()) as { view: RoomView };
+    polls += 1;
     return data.view;
   };
 
@@ -126,8 +81,6 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
     const stateForActor = actorView.state!;
     const acts = legalActions(stateForActor, actor, rnd);
     if (!acts.length) {
-      stopA();
-      stopB();
       return { ok: false, detail: `no legal actions for ${actor} (phase=${stateForActor.phase}, pending=${!!stateForActor.pending})` };
     }
     const action: DuelAction = chooseAction(acts, rnd);
@@ -142,15 +95,14 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
     if ((view.state?.turn ?? 0) > 60) break;
   }
 
-  await new Promise((r) => setTimeout(r, 250));
-  stopA();
-  stopB();
-
   const winner = view.state?.winner;
-  const bothSaw = views.p1?.revision === views.p2?.revision;
+  // Both clients must converge on the same room revision once play stops.
+  const finalA = await fetchView('p1');
+  const finalB = await fetchView('p2');
+  const bothSaw = finalA.revision === finalB.revision && finalA.state?.winner === finalB.state?.winner;
   return {
     ok: !!winner && !lastError,
-    detail: `${d1} vs ${d2} → winner=${winner ?? 'none'} turns=${view.state?.turn} steps=${steps} sseFrames=${sseFrames} inSync=${bothSaw}${
+    detail: `${d1} vs ${d2} → winner=${winner ?? 'none'} turns=${view.state?.turn} steps=${steps} polls=${polls} inSync=${bothSaw}${
       lastError ? ` LAST_ERROR=${lastError}` : ''
     }`,
   };

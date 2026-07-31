@@ -1038,6 +1038,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
           sit over the hand, or it would swallow taps meant for your own cards. */}
       {inspect && mode.kind === 'idle' && (
         <div
+          data-testid="inspector-scrim"
           className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 lg:hidden"
           onClick={() => setInspect(null)}
         >

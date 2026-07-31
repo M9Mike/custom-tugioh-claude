@@ -16,6 +16,16 @@ const PHONES = {
   'iphone17promax': { viewport: { width: 440, height: 956 }, deviceScaleFactor: 3 },
 };
 
+
+/** The card inspector is a modal on phones; dismiss it before driving the board. */
+const dismissInspector = async (page) => {
+  const scrim = page.locator('[data-testid="inspector-scrim"]');
+  if (await scrim.count()) {
+    await scrim.tap({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(220);
+  }
+};
+
 const shot = async (page, name) => {
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log(`  📸 ${name}`);
@@ -79,6 +89,7 @@ const main = async () => {
       for (const [tag, page] of [['mine', a], ['hers', b]]) {
         if (!(await page.locator('button:has-text("End Turn")').count())) continue;
 
+        await dismissInspector(page);
         const hand = page.locator('[data-testid="hand-card"]');
         const n = await hand.count();
         for (let h = 0; h < n; h++) {
@@ -98,6 +109,7 @@ const main = async () => {
           await page.waitForTimeout(140);
         }
 
+        await dismissInspector(page);
         const battle = page.locator('button:has-text("Battle")');
         if ((await battle.count()) && (await battle.first().isEnabled())) {
           await battle.first().tap();
@@ -126,6 +138,7 @@ const main = async () => {
           const nothing = p.locator('button:has-text("Do nothing")');
           if (await nothing.count()) { await shot(p, '08-trap-window'); await nothing.tap(); await p.waitForTimeout(500); }
         }
+        await dismissInspector(page);
         const et = page.locator('button:has-text("End Turn")');
         if (await et.count()) { await et.first().tap(); await page.waitForTimeout(800); }
         for (const p of [a, b]) {

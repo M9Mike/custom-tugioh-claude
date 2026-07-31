@@ -5,6 +5,6 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { name?: string };
-  const { room, token, pid } = createRoom(body.name ?? '');
+  const { room, token, pid } = await createRoom(body.name ?? '');
   return Response.json({ ok: true, code: room.code, token, pid, view: viewOf(room, pid) });
 }

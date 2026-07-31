@@ -1,12 +1,11 @@
 import {
   chooseDuelist,
-  getRoom,
   leaveToLobby,
+  loadRoom,
   performAction,
   requestRematch,
   seatFor,
   setName,
-  touch,
   viewOf,
 } from '@/server/rooms';
 import type { DuelAction } from '@/game/types';
@@ -26,28 +25,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body?.token) return Response.json({ ok: false, error: 'Missing token.' }, { status: 400 });
 
-  const room = getRoom(code);
+  const room = await loadRoom(code);
   if (!room) return Response.json({ ok: false, error: 'Room not found.' }, { status: 404 });
   const pid = seatFor(room, body.token);
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
-  touch(room, pid);
 
   let error: string | null = null;
   switch (body.kind) {
     case 'chooseDuelist':
-      error = chooseDuelist(room, pid, body.duelistId);
+      error = await chooseDuelist(room, pid, body.duelistId);
       break;
     case 'setName':
-      setName(room, pid, body.name);
+      await setName(room, pid, body.name);
       break;
     case 'rematch':
-      requestRematch(room, pid);
+      await requestRematch(room, pid);
       break;
     case 'toLobby':
-      leaveToLobby(room, pid);
+      await leaveToLobby(room);
       break;
     case 'duel':
-      error = performAction(room, pid, body.action);
+      error = await performAction(room, pid, body.action);
       break;
     default:
       error = 'Unknown request.';
