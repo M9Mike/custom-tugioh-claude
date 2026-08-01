@@ -810,7 +810,25 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         const p = state.players[ctx.controller];
         const count = op.count ?? 1;
         for (let i = 0; i < count; i++) {
-          const idx = p.deck.findIndex((c) => matchesFilter(c, op.filter));
+          /* An explicit choice wins — a card the player activates asks them
+             which one they want. The cards that search from the Graveyard fire
+             mid-resolution, where there is nobody to ask, so they take the
+             strongest legal card instead of whatever happened to be shuffled
+             nearest the top. Deck order was invisible and meaningless. */
+          const wanted = ctx.targets[ctx.cursor];
+          let idx = -1;
+          if (wanted) {
+            idx = p.deck.findIndex((c) => c.uid === wanted && matchesFilter(c, op.filter));
+            if (idx >= 0) ctx.cursor += 1;
+          }
+          if (idx < 0) {
+            let best = -1;
+            for (let k = 0; k < p.deck.length; k++) {
+              if (!matchesFilter(p.deck[k], op.filter)) continue;
+              if (best < 0 || (CARDS[p.deck[k].slug]?.atk ?? 0) > (CARDS[p.deck[best].slug]?.atk ?? 0)) best = k;
+            }
+            idx = best;
+          }
           if (idx < 0) break;
           const c = p.deck.splice(idx, 1)[0];
           p.hand.push(c);

@@ -65,7 +65,12 @@ export default function DuelRoom({ code }: { code: string }) {
     /* When there is no duel to look at there is nothing to choose between.
        A *finished* duel is still worth showing — the win screen is how the
        round is announced — so `bracketBusy` alone does not force the switch. */
-    if (!view.state || enteredRound !== t.round) {
+    /* Once the result is being recorded the duel is over and must not be
+       re-entered: going back to it showed the finished board again, and the
+       player had to poke at it before the bracket would move on. The win
+       screen still gets its moment — the status is only 'resolving' after the
+       server has taken the result. */
+    if (!view.state || t.status === 'resolving' || enteredRound !== t.round) {
       return (
         <Bracket
           t={t}

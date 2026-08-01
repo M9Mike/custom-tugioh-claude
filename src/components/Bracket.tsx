@@ -46,7 +46,7 @@ function Match({ m, you }: { m: TourMatch; you: string }) {
   const yours = m.human && !m.winner;
   /* A bracket wider than the roster leaves empty places. They are byes: the
      duelist opposite walks through without duelling. */
-  const bye = (!!m.a) !== (!!m.b);
+  const bye = !m.a || !m.b;
   return (
     <div
       className={`rounded border px-1 py-1 ${

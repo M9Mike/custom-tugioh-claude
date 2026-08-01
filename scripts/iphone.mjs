@@ -154,6 +154,9 @@ const main = async () => {
         const hand = page.locator('[data-testid="hand-card"]');
         const n = await hand.count();
         for (let h = 0; h < n; h++) {
+          // The inspector can open from a previous tap; it is a modal, so it
+          // has to go before the next one lands.
+          await dismissInspector(page);
           await hand.nth(h).tap();
           await page.waitForTimeout(320);
           const summon = page.locator('button:has-text("Normal Summon")');

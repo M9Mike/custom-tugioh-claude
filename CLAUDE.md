@@ -134,6 +134,18 @@ state is already current and input never blocks on it.
 compositor handles for free. A WebGL context would roughly double a 1MB bundle to
 draw the same rectangles, and CSS does a real rotateY card flip natively.
 
+**Check the thing, not a proxy for it.** Three separate false results this way:
+a deploy watcher grepping the HTML for a class that only exists in the CSS bundle;
+another looking for `/_next/static/css/` when Next serves it from `/chunks/`; and a
+declaration counted as "seen" because the element was still in the DOM at
+`opacity: 0`. Assert what a person would look at — the computed style, the served
+bundle, the seat name the room really opened with.
+
+**Everyone duels.** The bracket pairs off whoever is left rather than padding to a
+power of two: ten becomes five matches, then two and a bye, then one and a bye,
+then the final. Only an odd count makes a bye at all, and it never goes to the
+player. Sizing it to the next power of two handed six of ten a walkover.
+
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down
 a blind alley. `scripts/ai-arena.ts` prints 95% intervals; believe those, not a raw

@@ -837,12 +837,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   sangan: {
-    text: 'When this card is sent to the Graveyard: add 1 monster with 1500 or less ATK from your Deck to your hand.',
+    text: 'When this card is sent to the Graveyard: add the strongest monster with 1500 or less ATK from your Deck to your hand.',
     effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster', maxAtk: 1500 } }] }],
   },
 
   'witch-of-the-black-forest': {
-    text: 'When this card is sent to the Graveyard: add 1 monster from your Deck to your hand.',
+    text: 'When this card is sent to the Graveyard: add the strongest monster from your Deck to your hand.',
     effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster' } }] }],
   },
 
@@ -860,8 +860,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'the-earl-of-demise': {
-    text: 'When this card is Normal Summoned: destroy 1 face-down card your opponent controls.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
+    text: 'When this card is Normal Summoned: destroy 1 set card your opponent controls.',
+    /* The filter is the whole point: it said "face-down" and did not check,
+       so summoning this blew up a Spell the opponent had already played. */
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap', filter: { face: 'down' } }) }],
+      },
+    ],
   },
 
   'dark-assailant': {
@@ -1077,7 +1084,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'flying-kamakiri-1': {
-    text: 'When this card is sent to the Graveyard: add 1 Insect monster from your Deck to your hand.',
+    text: 'When this card is sent to the Graveyard: add the strongest Insect monster from your Deck to your hand.',
     effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { type: 'Insect' } }] }],
   },
 
@@ -1340,7 +1347,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'giant-rat': {
-    text: 'When this card is sent to the Graveyard: add 1 EARTH monster with 1500 or less ATK from your Deck to your hand.',
+    text: 'When this card is sent to the Graveyard: add the strongest EARTH monster with 1500 or less ATK from your Deck to your hand.',
     effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { attribute: 'EARTH', maxAtk: 1500 } }] }],
   },
 

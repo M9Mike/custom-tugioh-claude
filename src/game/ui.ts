@@ -4,14 +4,16 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
-import type { CardDef, CardEffect, Op, Trigger } from './types';
+import type { CardDef, CardEffect, CardFilter, Op, Trigger } from './types';
 
 export interface TargetSpec {
   /** Whose cards may be picked. */
   side: 'own' | 'opp' | 'both';
-  zone: 'monster' | 'spellTrap' | 'grave' | 'hand';
+  zone: 'monster' | 'spellTrap' | 'grave' | 'hand' | 'deck';
   count: number;
   prompt: string;
+  /** Narrows what may be picked — a Deck search is rarely "any card". */
+  filter?: CardFilter;
 }
 
 function scanOps(ops: Op[]): TargetSpec | null {
@@ -32,6 +34,15 @@ function scanOps(ops: Op[]): TargetSpec | null {
         zone: op.from === 'grave' ? 'grave' : 'hand',
         count: 1,
         prompt: 'Choose a monster to Special Summon',
+      };
+    }
+    if (op.op === 'search') {
+      return {
+        side: 'own',
+        zone: 'deck',
+        count: op.count ?? 1,
+        prompt: 'Choose a card to add to your hand',
+        filter: op.filter,
       };
     }
     if (op.op === 'equipTo') {

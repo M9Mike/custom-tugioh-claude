@@ -295,5 +295,65 @@ console.log('\nA set monster destroyed by an attack still flips and fires');
   );
 }
 
+/* ------------------------------------------------------------------ */
+console.log('\nThe Earl of Demise only blows up cards that are actually set');
+{
+  for (const face of ['up', 'down'] as const) {
+    const s = fresh();
+    const st = card(FOE, 'swords-of-revealing-light');
+    st.face = face;
+    s.players[FOE].spellTrap = st;
+    const earl = card(ME, 'the-earl-of-demise');
+    s.players[ME].hand = [earl];
+    const t1 = card(ME, 'kuriboh');
+    const t2 = card(ME, 'kuriboh');
+    s.players[ME].monsters[0] = t1;
+    s.players[ME].monsters[1] = t2;
+    const after = act(s, ME, {
+      type: 'normalSummon',
+      uid: earl.uid,
+      zone: 2,
+      position: 'atk',
+      face: 'up',
+      tributes: [t1.uid, t2.uid],
+    });
+    const survived = !!after.players[FOE].spellTrap;
+    ok(
+      survived === (face === 'up'),
+      `a face-${face} Spell ${face === 'up' ? 'survives' : 'is destroyed'}`,
+      `it ${survived ? 'survived' : 'was destroyed'}`
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+console.log('\nA Deck search takes the strongest match, not whatever is on top');
+{
+  const s = fresh('battle');
+  // Sangan dies in battle, which is what fires its search.
+  const sangan = card(FOE, 'sangan');
+  s.players[FOE].monsters[0] = sangan;
+  const killer = card(ME, 'summoned-skull');
+  s.players[ME].monsters[0] = killer;
+  // Deck order deliberately puts the weakest legal option first. Sangan is
+  // capped at 1500 ATK, so Summoned Skull is *not* a legal pick.
+  s.players[FOE].deck = [
+    card(FOE, 'kuriboh'), // 300
+    card(FOE, 'summoned-skull'), // 2500 — over the cap
+    card(FOE, 'beaver-warrior'), // 1200, the strongest legal one
+  ];
+  s.players[FOE].hand = [];
+
+  const after = act(s, ME, { type: 'attack', uid: killer.uid, targetUid: sangan.uid });
+  const added = after.players[FOE].hand.map((c) => c.slug);
+
+  ok(added.length === 1, 'Sangan adds exactly one card', `added ${added.join(', ') || 'nothing'}`);
+  ok(
+    added[0] === 'beaver-warrior',
+    'and it is the strongest one under the cap, not the first in the deck',
+    `got ${added[0] ?? 'nothing'}`
+  );
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

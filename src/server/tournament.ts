@@ -18,37 +18,46 @@ import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import type { DuelState, PlayerId } from '@/game/types';
 
 /**
- * The bracket holds *every* duelist, whatever the roster grows to.
+ * The bracket holds every duelist, and everybody duels.
  *
- * It used to be a fixed eight, which quietly left two of the ten out. The size
- * is now the next power of two at or above the roster, and the empty slots
- * become byes — so adding a duelist needs no change here at all. Ten entrants
- * give a bracket of sixteen: six byes, two real first-round matches, four
- * rounds to the crown.
+ * It was a fixed eight, then the next power of two with the empty places as
+ * byes — which put ten duelists into a bracket of sixteen and handed six of
+ * them a walkover. Nobody wants to win a tournament by not turning up.
+ *
+ * Each round now simply pairs off whoever is left: ten becomes five matches,
+ * five becomes two matches and one bye, three becomes one and one, then a
+ * final. Only an odd count produces a bye at all, and it never goes to the
+ * player.
  */
-export const bracketSlots = (entrants: number): number => {
-  let n = 2;
-  while (n < entrants) n *= 2;
-  return n;
-};
 
-/** How many rounds a bracket of this many slots takes. */
-export const roundsFor = (slots: number): number => Math.round(Math.log2(Math.max(2, slots)));
+/** How many rounds it takes to get from `n` duelists to one. */
+export function roundsFor(n: number): number {
+  let rounds = 0;
+  for (let left = Math.max(2, n); left > 1; left = Math.ceil(left / 2)) rounds += 1;
+  return rounds;
+}
+
+/** How many are still standing at the start of round `r`. */
+export function survivorsAt(entrants: number, r: number): number {
+  let left = entrants;
+  for (let i = 0; i < r; i++) left = Math.ceil(left / 2);
+  return left;
+}
 
 /**
  * What a round is called, from how many duelists are still standing. Naming it
- * from the survivors rather than the round number means the same code says
- * "Round of 16" or "Quarter-final" as the roster grows.
+ * from the survivors rather than the round number keeps it right as the roster
+ * grows, and copes with the odd counts that pairing off produces.
  */
 export function roundName(remaining: number): string {
   if (remaining <= 2) return 'Final';
-  if (remaining === 4) return 'Semi-final';
-  if (remaining === 8) return 'Quarter-final';
+  if (remaining <= 4) return 'Semi-final';
+  if (remaining <= 8) return 'Quarter-final';
   return `Round of ${remaining}`;
 }
 
-/** The name of round `r` in a bracket of `slots`. */
-export const roundNameAt = (slots: number, r: number): string => roundName(slots >> r);
+/** The name of round `r` in a bracket that started with `entrants`. */
+export const roundNameAt = (entrants: number, r: number): string => roundName(survivorsAt(entrants, r));
 
 export interface TourMatch {
   round: number;
@@ -62,8 +71,8 @@ export interface TourMatch {
 }
 
 export interface Tournament {
-  /** Duelist ids by bracket position; `null` is a bye. */
-  entrants: (string | null)[];
+  /** Every duelist in the draw, in pairing order. */
+  entrants: string[];
   /** Which bracket position the human occupies. */
   humanSeat: number;
   humanDuelist: string;
@@ -95,40 +104,14 @@ export function createTournament(humanDuelist: string, seed: number): Tournament
   };
   shuffle(others);
 
-  const slots = bracketSlots(roster.length);
-  const firstRoundMatches = slots / 2;
-  /* With more slots than duelists the spare places are byes. How many matches
-     are real falls straight out of it: every real match uses two duelists and
-     every bye uses one, so `real = roster - matches`. */
-  const realMatches = Math.max(1, roster.length - firstRoundMatches);
+  /* The player goes in first so they are always half of a real pairing. With an
+     odd roster somebody has to sit the round out, and it is not going to be the
+     person who came to play. */
+  const entrants: string[] = [humanDuelist, ...others];
 
-  const matchOrder = shuffle([...Array(firstRoundMatches).keys()]);
-  const entrants: (string | null)[] = new Array(slots).fill(null);
-
-  /* The human is always put in a real match. A bye in the opening round would
-     mean turning up to a tournament and watching a screen. */
-  const pool = [...others];
-  const humanMatch = matchOrder[0];
-  entrants[humanMatch * 2] = humanDuelist;
-  entrants[humanMatch * 2 + 1] = pool.shift() ?? null;
-
-  for (let i = 1; i < firstRoundMatches; i++) {
-    const m = matchOrder[i];
-    const real = i < realMatches;
-    entrants[m * 2] = pool.shift() ?? null;
-    if (real) entrants[m * 2 + 1] = pool.shift() ?? null;
-  }
-  // Anyone left over (possible only if the arithmetic above is ever changed)
-  // takes the first free slot rather than being dropped from their own bracket.
-  for (const left of pool) {
-    const free = entrants.indexOf(null);
-    if (free >= 0) entrants[free] = left;
-  }
-
-  const humanSeat = entrants.indexOf(humanDuelist);
   return {
     entrants,
-    humanSeat,
+    humanSeat: 0,
     humanDuelist,
     round: 0,
     matches: matchesForRound(entrants, 0, humanDuelist),
@@ -138,14 +121,14 @@ export function createTournament(humanDuelist: string, seed: number): Tournament
 }
 
 /**
- * Builds the pairings for a round from the surviving duelists.
+ * Builds the pairings for a round by walking the survivors two at a time.
  *
- * `human` is read off the entrants rather than the seat. Deriving it from the
- * seed position marked a slot as the player's own long after they had been
- * knocked out of it — which mattered once the bracket kept playing past a loss,
- * because "your match" then pointed at two duelists the player was not.
+ * An odd number leaves one over, and that one gets the bye — so the list is
+ * ordered with the player first, which keeps them in a real match. `human` is
+ * read off the entrants rather than a seat position, because after a loss the
+ * slot belongs to whoever knocked them out.
  */
-function matchesForRound(survivors: (string | null)[], round: number, humanDuelist: string): TourMatch[] {
+function matchesForRound(survivors: string[], round: number, humanDuelist: string): TourMatch[] {
   const out: TourMatch[] = [];
   for (let slot = 0; slot * 2 < survivors.length; slot++) {
     const a = survivors[slot * 2] ?? null;

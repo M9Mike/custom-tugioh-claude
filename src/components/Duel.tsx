@@ -387,6 +387,23 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     void run({ type: 'normalSummon', uid, zone, position, face, tributes, targets });
   };
 
+  /** The subset of the engine's card filter a Deck search actually uses. */
+  const matchesSpecFilter = (c: CardInstance, f?: TargetSpec['filter']): boolean => {
+    if (!f) return true;
+    const def = CARDS[c.slug];
+    if (!def) return false;
+    if (f.kind && def.kind !== f.kind) return false;
+    if (f.type && def.type !== f.type) return false;
+    if (f.attribute && def.attribute !== f.attribute) return false;
+    if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
+    if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
+    if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
+    if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
+    if (f.slugs && !f.slugs.includes(c.slug)) return false;
+    if (f.nameIncludes && !def.name.includes(f.nameIncludes)) return false;
+    return true;
+  };
+
   const hasPickable = (spec: TargetSpec): boolean => pickableUids(spec).length > 0;
 
   const pickableUids = useCallback(
@@ -401,6 +418,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           if (p.field) out.push(p.field.uid);
         } else if (spec.zone === 'grave') {
           out.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster').map((c) => c.uid));
+        } else if (spec.zone === 'deck' && pid === me) {
+          out.push(...p.deck.filter((c) => matchesSpecFilter(c, spec.filter)).map((c) => c.uid));
         } else if (spec.zone === 'hand' && pid === me) out.push(...p.hand.map((c) => c.uid));
       }
       return out;
@@ -1206,6 +1225,40 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <button className="btn rounded px-3 py-1 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Deck search (Toon World, Toon Alligator). Your own deck, so showing it
+          gives nothing away — and picking beats being handed whatever the
+          shuffle put nearest the top. */}
+      {mode.kind === 'target' && mode.spec.zone === 'deck' && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
+          style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}
+          onClick={() => setMode({ kind: 'idle' })}
+        >
+          <div className="panel grain thin-scroll max-h-[76dvh] w-full max-w-2xl overflow-y-auto rounded p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-display text-sm text-parchment">{mode.spec.prompt}</h3>
+              <button className="btn shrink-0 rounded px-2 py-1 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
+                ✕
+              </button>
+            </div>
+            <div className="brass-rule my-2" />
+            <div className="flex flex-wrap gap-2">
+              {mine.deck
+                .filter((c) => matchesSpecFilter(c, mode.spec.filter))
+                .map((c) => (
+                  <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
+                    <GameCard card={c} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
+                  </button>
+                ))}
+            </div>
+            {!mine.deck.some((c) => matchesSpecFilter(c, mode.spec.filter)) && (
+              <p className="py-4 text-center text-xs text-ptextdim">Nothing in your Deck matches.</p>
+            )}
           </div>
         </div>
       )}
