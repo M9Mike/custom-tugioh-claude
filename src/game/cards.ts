@@ -6,7 +6,7 @@ import generated from './generated/cards.json';
 import decklistsJson from './generated/decklists.json';
 import { MONSTER_EFFECTS, type EffectDef } from './effects/monsters';
 import { SPELL_EFFECTS, OWN_TARGET_CARDS } from './effects/spells';
-import type { CardDef, GeneratedCard } from './types';
+import type { CardDef, CardEffect, EquipGrant, GeneratedCard } from './types';
 
 const GENERATED = generated as unknown as Record<string, GeneratedCard>;
 const CUSTOM: Record<string, EffectDef> = { ...MONSTER_EFFECTS, ...SPELL_EFFECTS };
@@ -71,6 +71,53 @@ const FACEDOWN: CardDef = {
   effects: [],
 };
 
+
+/**
+ * Ops that are properties of the card, not of having been summoned.
+ *
+ * A monster granting itself piercing or battle immunity "when summoned" does
+ * not have it when an *attack* turns it face-up: being flipped by an attacker
+ * is not a summon, so the trigger never fires and the card loses the very
+ * battle its own text says it should survive. Winged Dragon, Guardian of the
+ * Fortress #1 was reported for exactly that, and around forty cards share the
+ * shape.
+ *
+ * So they are lifted out of the summon trigger into a continuous aura on the
+ * card itself, which is read live from whatever is face-up on the field — it
+ * holds however the monster arrived, lapses if the card is negated, and is
+ * gone the moment the card is. This happens here, once, rather than in forty
+ * card definitions: a definition may still say "when summoned: pierce", which
+ * is how a player thinks of it, and the engine reads it as the property it is.
+ */
+const PASSIVE_OPS = new Set(['pierce', 'directAttack', 'indestructibleByBattle', 'indestructibleByEffect', 'untargetable']);
+
+function liftPassives(effects: CardEffect[]): CardEffect[] {
+  const out: CardEffect[] = [];
+  const grants = new Set<EquipGrant>();
+  for (const eff of effects) {
+    if (eff.trigger !== 'onSummon' && eff.trigger !== 'onNormalSummon') {
+      out.push(eff);
+      continue;
+    }
+    const kept = eff.ops.filter((o) => {
+      /* Only a *permanent* grant is a property. Sabersaurus can attack directly
+         "this turn", which is tied to the moment it arrived — lifting that into
+         an aura would quietly let it do so every turn instead, and the text
+         check caught exactly that when it first ran. */
+      if (!PASSIVE_OPS.has(o.op) || !('duration' in o) || o.duration !== 'permanent') return true;
+      grants.add(o.op as EquipGrant);
+      return false;
+    });
+    // An effect with nothing left to do is dropped entirely, so the interface
+    // does not ask for targets for a trigger that no longer resolves anything.
+    if (kept.length) out.push({ ...eff, ops: kept });
+  }
+  if (grants.size) {
+    out.push({ trigger: 'continuous', ops: [], aura: { target: { side: 'own', pick: 'self' }, grants: [...grants] } });
+  }
+  return out;
+}
+
 export const CARDS: Record<string, CardDef> = Object.fromEntries(
   Object.entries(GENERATED).map(([slug, gen]) => {
     const custom = CUSTOM[slug] ?? fallbackEffect(gen);
@@ -78,13 +125,15 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
       slug,
       {
         ...gen,
+        subKind: custom.subKindOverride ?? gen.subKind,
         text: custom.text,
         cry: custom.cry,
-        effects: custom.effects,
+        effects: liftPassives(custom.effects),
         fusionMaterials: custom.fusionMaterials,
         atkOverride: custom.atkOverride,
         defOverride: custom.defOverride,
         summonRequires: custom.summonRequires,
+        subKindOverride: custom.subKindOverride,
       } satisfies CardDef,
     ];
   })

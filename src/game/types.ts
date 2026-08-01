@@ -59,6 +59,8 @@ export interface CardDef extends GeneratedCard {
    * their rules text either way; this is what makes the engine agree.
    */
   summonRequires?: string;
+  /** Our version of the card sits in a different zone than the printed one. */
+  subKindOverride?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -206,6 +208,7 @@ export type EquipGrant =
   | 'doubleAttack'
   | 'directAttack'
   | 'indestructibleByBattle'
+  | 'indestructibleByEffect'
   | 'untargetable'
   /** Held down by an aura — lapses the moment the card holding it leaves. */
   | 'cannotAttack';

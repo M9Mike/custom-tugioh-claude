@@ -247,13 +247,38 @@ ignored `eff.condition` entirely, so every conditional aura applied
 unconditionally. `conditionMet` only reads counts and slugs, never effective
 stats, so calling it from inside the stat calculation cannot recurse.
 
-**A passive that is granted on summon is not a property.** Roughly thirty cards
-grant themselves `pierce`, `directAttack` or battle immunity through an
-`onSummon` op. A Flip Summon fires `onSummon` so that path is fine, but a monster
-flipped face-up *by being attacked* is not summoned — so its own "cannot be
-destroyed by battle" does not apply in the battle that revealed it. A continuous
-aura on self is the representation that holds however the card arrived; the ones
-whose text says "while this card is face-up" have been moved to it.
+**A passive that is granted on summon is not a property.** Roughly forty cards
+granted themselves `pierce`, `directAttack` or battle immunity through an
+`onSummon` op. A Flip Summon fires `onSummon` so that path was fine, but a
+monster flipped face-up *by being attacked* is not summoned — so its own "cannot
+be destroyed by battle" did not apply in the battle that revealed it, and Winged
+Dragon, Guardian of the Fortress #1 was reported for exactly that.
+
+`liftPassives` in `cards.ts` moves every *permanent* one into a continuous aura
+on the card itself, once, rather than in forty card definitions — so a definition
+may still read "when summoned: pierce", which is how a player thinks of it, while
+the engine treats it as the property it is. Auras are read from what is face-up
+on the field, so it holds however the monster arrived, lapses when the card is
+negated, and is gone the moment the card is.
+
+Only `duration: 'permanent'` is lifted. Sabersaurus can attack directly "this
+turn", which belongs to the moment it arrived — lifting that would quietly let it
+do so every turn, and `npm run text` caught precisely that within a minute of the
+change.
+
+**Audio: the context must be *built* inside a gesture, not merely resumed in
+one.** The report was exact — "when I switch to the background and come back the
+sound is there, initially it is not" — and that is the signature of a context
+constructed outside a user gesture: iOS will not honour a later `resume()` on it,
+but `visibilitychange` re-creates the conditions that do. `primeAudio()` used to
+construct one from a mount effect. It now only arms the gesture listeners;
+`unlock` is the only thing that may build the context, and it only ever runs
+inside a tap.
+
+The path that actually broke was landing straight on a duel URL — a shared link,
+or the app restoring into a duel — because on that page nothing had been tapped
+yet. Coming through the home page happened to build it inside a click, which is
+why a probe that only walked the normal route passed on the broken code.
 
 **Loops the rules allow.** A monster could once be turned between Attack and Defence
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,

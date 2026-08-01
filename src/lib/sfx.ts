@@ -11,9 +11,19 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let enabled = true;
 
-function ac(): AudioContext | null {
+/**
+ * The audio context, created only when `create` is set.
+ *
+ * iOS will not reliably resume a context that was *constructed* outside a user
+ * gesture — and the old code built one from a mount effect, which is why sound
+ * was missing until the app had been backgrounded and brought back (that path
+ * goes through `visibilitychange`, which does resume it). Nothing creates it
+ * now except `unlock`, which only ever runs inside a real tap.
+ */
+function ac(create = false): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!ctx) {
+    if (!create) return null;
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
     ctx = new Ctor();
@@ -44,7 +54,7 @@ export function setSfxEnabled(on: boolean) {
  */
 export function audioState(): { state: string; sampleRate: string; enabled: boolean } {
   return {
-    state: ctx ? ctx.state : 'not created yet',
+    state: ctx ? ctx.state : 'not created yet — tap something first',
     sampleRate: ctx ? `${ctx.sampleRate}Hz` : '—',
     enabled: getSfxEnabled(),
   };
@@ -69,12 +79,13 @@ let unlockBound = false;
  */
 export function primeAudio() {
   enabled = getSfxEnabled();
-  const c = ac();
-  if (!c || unlockBound) return;
+  if (typeof window === 'undefined' || unlockBound) return;
   unlockBound = true;
 
   const unlock = () => {
-    const cur = ac();
+    // `true`: this is a real gesture, so it is the one moment the context may
+    // legitimately be built.
+    const cur = ac(true);
     if (!cur || cur.state === 'running') return;
     void cur.resume();
     try {
@@ -103,6 +114,8 @@ export function primeAudio() {
     if (!document.hidden) void ac()?.resume();
   });
   window.addEventListener('pageshow', () => void ac()?.resume());
+  // Some iOS versions surface an interrupted context only through this.
+  window.addEventListener('focus', () => void ac()?.resume());
 }
 
 function tone(opts: {

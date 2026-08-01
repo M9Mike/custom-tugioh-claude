@@ -19,6 +19,7 @@ import {
   maxAttacks,
   monstersFrozen,
   other,
+  summonBlocked,
   tributesRequired,
 } from '@/game/engine';
 import { effectLabel, summonTargetSpec, targetSpecFor, type TargetSpec } from '@/game/ui';
@@ -814,16 +815,29 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const need = tributesRequired(handCard.slug, state, me);
       const bodies = mine.monsters.filter((m): m is CardInstance => !!m && !m.isToken).length;
       const canSummon = myTurn && state.phase === 'main' && !mine.normalSummonUsed && freeZone && bodies >= need;
-      const isExtra = handDef.isFusion && mine.extra.some((e) => e.slug === handCard.slug);
+      /* The engine's own answer, asked here rather than left to refuse at the
+         end: offering "Normal Summon" for a Ritual monster walked the player all
+         the way through choosing what to absorb before telling them it was never
+         allowed. The reason is shown on the button instead. */
+      const gate = summonBlocked(state, me, handCard.slug);
       acts.push({
         label: need > 0 ? `Tribute Summon (${need})` : 'Normal Summon',
-        disabled: !canSummon || isExtra,
-        hint: isExtra ? 'Must be Fusion Summoned' : !canSummon ? (mine.normalSummonUsed ? 'Already summoned this turn' : need > bodies ? `Needs ${need} tribute(s)` : undefined) : undefined,
+        disabled: !canSummon || !!gate,
+        hint:
+          gate ??
+          (!canSummon
+            ? mine.normalSummonUsed
+              ? 'Already summoned this turn'
+              : need > bodies
+                ? `Needs ${need} tribute(s)`
+                : undefined
+            : undefined),
         run: () => startSummon(handCard.uid, 'atk', 'up'),
       });
       acts.push({
         label: 'Set (face-down)',
-        disabled: !canSummon || isExtra,
+        disabled: !canSummon || !!gate,
+        hint: gate ?? undefined,
         run: () => startSummon(handCard.uid, 'def', 'down'),
       });
     } else {

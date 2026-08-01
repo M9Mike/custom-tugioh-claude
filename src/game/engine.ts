@@ -260,6 +260,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('directAttack')) merged.directAttack = true;
   if (grants.has('untargetable')) merged.untargetable = true;
   if (grants.has('indestructibleByBattle')) merged.indestructibleByBattle = true;
+  if (grants.has('indestructibleByEffect')) merged.indestructibleByEffect = true;
   if (grants.has('doubleAttack')) merged.extraAttacks = (merged.extraAttacks ?? 0) + 1;
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   return merged;
@@ -1485,10 +1486,10 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
   let need = level >= 7 ? 2 : level >= 5 ? 1 : 0;
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
-  if (need > 0 && state && pid && isToon(slug)) {
-    const st = state.players[pid].spellTrap;
-    if (st?.slug === 'toon-world' && st.face === 'up') need = 0;
-  }
+  // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World
+  // is a Field Spell in this game, so looking only where it used to sit would
+  // have quietly reinstated the tribute cost it exists to remove.
+  if (need > 0 && state && pid && isToon(slug) && faceUpOnSide(state, pid, 'toon-world')) need = 0;
   return need;
 }
 

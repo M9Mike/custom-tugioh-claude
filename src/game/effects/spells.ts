@@ -446,7 +446,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'toon-world': {
-    text: 'Continuous Spell: pay 500 Life Points, draw 2 cards and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 500 ATK, can attack your opponent directly, and cannot be targeted by their effects.',
+    /* A Field Spell in this game rather than a Continuous one. Pegasus has a
+       single Spell/Trap Zone and his entire deck is gated on this card being
+       down — spending that one slot on it permanently meant he could never hold
+       a Trap, and the deck that most needs its enabler was the deck least able
+       to afford it. The Field Zone is separate, so it costs him nothing now. */
+    subKindOverride: 'Field',
+    text: 'Field Spell: pay 500 Life Points, draw 2 cards and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, can attack your opponent directly, and cannot be targeted by your opponent\'s effects.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
@@ -463,7 +469,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { toon: true } }), atk: 500, grants: ['directAttack', 'untargetable'] },
+        aura: {
+          target: sel('own', 'all', { filter: { toon: true } }),
+          atk: 800,
+          grants: ['directAttack', 'untargetable', 'pierce'],
+        },
       },
     ],
   },

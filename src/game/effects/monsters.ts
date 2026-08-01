@@ -15,6 +15,8 @@ export interface EffectDef {
   defOverride?: number;
   /** Must be face-up on your side before this monster can be Summoned. */
   summonRequires?: string;
+  /** Our version of the card sits in a different zone than the printed one. */
+  subKindOverride?: string;
 }
 
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
@@ -653,7 +655,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'winged-dragon-guardian-of-the-fortress-1': {
-    text: 'This card cannot be destroyed by battle with monsters of Level 4 or lower.',
+    /* "Of Level 4 or lower" was a bound the engine cannot express, so what it
+       really meant was "never" — the same hole as Sword Arm of Dragon. And the
+       immunity was granted by a summon trigger, so a copy that had been Set and
+       was turned face-up by an attack never had it at all, and died to the very
+       battle its text says it survives. It is a property of the card now. */
+    text: 'While face-up, this card cannot be destroyed by battle.',
+    cry: 'The fortress holds!',
     effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
   },
 

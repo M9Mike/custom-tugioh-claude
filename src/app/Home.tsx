@@ -49,6 +49,11 @@ export default function Home() {
     setName(typed || loadName());
     const typedCode = codeRef.current?.value ?? '';
     if (typedCode) setCode(typedCode.toUpperCase());
+    /* Arms the audio unlock before the first tap rather than during it. It used
+       to be called from inside the button handlers, so the tap that called it
+       was already past the listener it had just added — and on the home page
+       that is the tap that starts the duel. */
+    primeAudio();
     setReady(true);
   }, []);
 

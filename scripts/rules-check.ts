@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk } from '../src/game/engine';
+import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -253,7 +253,13 @@ console.log('\nRelinquished absorbs when its Ritual summons it');
     rel ? `absorbed ${rel.absorbed.length}` : 'no Relinquished'
   );
   ok(!!rel && effAtk(after, rel) > 0, 'taking the absorbed monster\'s ATK with it', rel ? `ATK ${effAtk(after, rel)}` : '');
-  ok(!!rel && !!rel.flags.indestructibleByBattle, 'and cannot be destroyed by battle');
+  /* Asserted through `effFlags` rather than the raw instance flag: the property
+     is an aura read from the field now, and a test that reads `flags` directly
+     is checking the mechanism rather than whether the monster can be killed. */
+  ok(
+    !!rel && effFlags(after, rel, ME).indestructibleByBattle === true,
+    'and cannot be destroyed by battle'
+  );
   ok(on(after, FOE).length === 0, 'the absorbed monster is gone from their field');
 }
 
@@ -505,6 +511,65 @@ console.log('\nA card does what its text says, not a convenient half of it');
     hit.players[ME].monsters.some((m) => m?.uid === rocket.uid),
     'and survives the battle it could not win'
   );
+}
+
+console.log('\nA monster keeps its own properties when an attack turns it face-up');
+{
+  /* Being flipped by an attacker is not a summon, so a property granted by an
+     `onSummon` trigger never fired — and Winged Dragon, Guardian of the
+     Fortress #1 lost the very battle its text says it survives. The property
+     belongs to the card, so it is read live from the field instead. */
+  const s = fresh('battle');
+  const guard = card(FOE, 'winged-dragon-guardian-of-the-fortress-1');
+  guard.face = 'down';
+  guard.position = 'def';
+  guard.summonedOnTurn = 0;
+  s.players[FOE].monsters[0] = guard;
+  const killer = card(ME, 'summoned-skull'); // 2500, far above its 1200 DEF
+  killer.summonedOnTurn = 0;
+  s.players[ME].monsters[0] = killer;
+
+  const after = act(s, ME, { type: 'attack', uid: killer.uid, targetUid: guard.uid });
+  const still = after.players[FOE].monsters.find((m) => m?.uid === guard.uid);
+  ok(!!still, 'it survives the attack that revealed it');
+  ok(still?.face === 'up', 'and is face-up afterwards');
+
+  // The same property still holds for one summoned normally.
+  const n = fresh();
+  const held = card(ME, 'winged-dragon-guardian-of-the-fortress-1');
+  n.players[ME].hand = [held];
+  const summoned = act(n, ME, { type: 'normalSummon', uid: held.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(
+    effFlags(summoned, summoned.players[ME].monsters[0]!, ME).indestructibleByBattle === true,
+    'and a normally summoned one still has it'
+  );
+}
+
+console.log('\nToon World sits in the Field Zone and still powers the Toons');
+{
+  const s = fresh();
+  const world = card(ME, 'toon-world');
+  s.players[ME].hand = [world];
+  s.players[ME].deck = [card(ME, 'toon-mermaid'), card(ME, 'baby-dragon'), card(ME, 'kuriboh')];
+  const after = act(s, ME, { type: 'activateSpell', uid: world.uid, targets: [] });
+
+  ok(after.players[ME].field?.slug === 'toon-world', 'it goes to the Field Zone');
+  ok(!after.players[ME].spellTrap, 'and leaves the Spell/Trap Zone free', `held ${after.players[ME].spellTrap?.slug}`);
+
+  // The tribute exemption looked only at the Spell/Trap Zone before.
+  ok(
+    tributesRequired('blue-eyes-toon-dragon', after, ME) === 0,
+    'a Level 8 Toon needs no tribute under it',
+    `needs ${tributesRequired('blue-eyes-toon-dragon', after, ME)}`
+  );
+
+  // And the aura reaches a Toon on the field.
+  const withToon = { ...after };
+  withToon.players[ME].monsters[0] = card(ME, 'toon-mermaid');
+  const toon = withToon.players[ME].monsters[0]!;
+  const flags = effFlags(withToon, toon, ME);
+  ok(effAtk(withToon, toon, ME) === 1400 + 800, 'and gains 800 ATK', `ATK ${effAtk(withToon, toon, ME)}`);
+  ok(flags.directAttack === true && flags.untargetable === true && flags.pierce === true, 'with direct attack, untargetable and piercing');
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');

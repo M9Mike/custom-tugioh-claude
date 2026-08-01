@@ -53,8 +53,12 @@ const CONDITIONAL = /\bwhile you control\b|\bif you control\b|\bas long as\b|\bw
 const ATK_THRESHOLD =
   /\b(of|with) \d{3,4} or (less|fewer|lower|more|higher) ATK\b|\bATK is \d{3,4} or (less|fewer|lower|more|higher)\b/i;
 
-function thresholdIsExpressed(def: CardDef): boolean {
-  const bounded = (f: CardFilter | undefined) => !!f && (f.maxAtk != null || f.minAtk != null);
+/** The same trap one rung down: "Level 4 or lower" needs a level bound to exist. */
+const LEVEL_THRESHOLD = /\bLevel \d+ or (lower|less|higher|more)\b/i;
+
+function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
+  const bounded = (f: CardFilter | undefined) =>
+    !!f && (kind === 'atk' ? f.maxAtk != null || f.minAtk != null : f.maxLevel != null || f.minLevel != null);
   for (const eff of def.effects) {
     for (const op of eff.ops) {
       /* `in` rather than a cast: `Op` is a discriminated union and only some
@@ -104,12 +108,14 @@ for (const def of Object.values(CARDS)) {
     );
   }
 
-  const threshold = def.text.match(ATK_THRESHOLD);
-  if (threshold && !thresholdIsExpressed(def)) {
-    problems.push(
-      `${def.name} (${def.slug}) — text says "${threshold[0].trim()}" but no filter on the card carries that bound, ` +
-        'so the threshold does not exist'
-    );
+  for (const [re, kind] of [[ATK_THRESHOLD, 'atk'], [LEVEL_THRESHOLD, 'level']] as const) {
+    const threshold = def.text.match(re);
+    if (threshold && !thresholdIsExpressed(def, kind)) {
+      problems.push(
+        `${def.name} (${def.slug}) — text says "${threshold[0].trim()}" but no filter on the card carries that bound, ` +
+          'so the threshold does not exist'
+      );
+    }
   }
 }
 
