@@ -572,5 +572,44 @@ console.log('\nToon World sits in the Field Zone and still powers the Toons');
   ok(flags.directAttack === true && flags.untargetable === true && flags.pierce === true, 'with direct attack, untargetable and piercing');
 }
 
+console.log('\n"Gains N ATK for each …" keeps counting, rather than freezing at summon');
+{
+  /* Six cards granted this once, on summon — when the Graveyard is empty, so
+     they gained nothing and never grew again. Two-Headed King Rex was worse:
+     its text says "for each Dinosaur" and the old scale counted every card
+     there. Machine King was a different card altogether — a flat 200 to all
+     your Machines, rather than 200 to himself per Machine on the field. */
+  const s = fresh();
+
+  const grow = (slug: string, ctrl: PlayerId = ME) => {
+    const c = card(ctrl, slug);
+    s.players[ctrl].monsters[0] = c;
+    return effAtk(s, c, ctrl);
+  };
+
+  const dmgEmpty = grow('dark-magician-girl');
+  const rexEmpty = grow('two-headed-king-rex');
+  const paladinEmpty = grow('dark-paladin');
+
+  // Three cards into my Graveyard, two of them Dinosaurs.
+  s.players[ME].grave = [card(ME, 'uraby'), card(ME, 'trakodon'), card(ME, 'pot-of-greed')];
+  ok(grow('dark-paladin') === paladinEmpty + 600, 'Dark Paladin reads the Graveyard live', `${grow('dark-paladin')}`);
+  ok(grow('two-headed-king-rex') === rexEmpty + 400, 'Two-Headed King Rex counts only the Dinosaurs', `${grow('two-headed-king-rex')}`);
+
+  // A Dark Magician in the *opponent's* Graveyard still feeds her.
+  s.players[FOE].grave = [card(FOE, 'dark-magician')];
+  ok(grow('dark-magician-girl') === dmgEmpty + 400, 'Dark Magician Girl counts either Graveyard', `${grow('dark-magician-girl')}`);
+
+  // Machine King counts Machines on both sides, and only Machines.
+  const s2 = fresh();
+  const king = card(ME, 'machine-king');
+  s2.players[ME].monsters[0] = king;
+  const alone = effAtk(s2, king, ME); // he is himself a Machine
+  s2.players[FOE].monsters[0] = card(FOE, 'robotic-knight');
+  ok(effAtk(s2, king, ME) === alone + 200, "Machine King counts the opponent's Machines too", `${effAtk(s2, king, ME)}`);
+  s2.players[FOE].monsters[1] = card(FOE, 'summoned-skull');
+  ok(effAtk(s2, king, ME) === alone + 200, 'and ignores anything that is not a Machine', `${effAtk(s2, king, ME)}`);
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

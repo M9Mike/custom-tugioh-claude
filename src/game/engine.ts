@@ -192,6 +192,30 @@ export function equipOpOf(slug: string): Extract<Op, { op: 'equipTo' }> | null {
 
 export const isEquipSpell = (slug: string) => equipOpOf(slug) !== null;
 
+/**
+ * How many cards a scaling aura is counting — "for each card in your
+ * Graveyard", "for each Dinosaur in your Graveyard", "for each Dark Magician in
+ * either Graveyard".
+ *
+ * Only printed card data is read (slug, type, level), never an effective stat,
+ * so calling this from inside the stat calculation cannot recurse.
+ */
+function auraCount(
+  state: DuelState,
+  controller: PlayerId,
+  per: NonNullable<NonNullable<CardEffect['aura']>['per']>
+): number {
+  const pools: CardInstance[][] = [];
+  const onField = (pid: PlayerId) => state.players[pid].monsters.filter((m): m is CardInstance => !!m);
+  if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
+  else if (per.zone === 'eitherGrave') pools.push(state.players.p1.grave, state.players.p2.grave);
+  else if (per.zone === 'ownField') pools.push(onField(controller));
+  else pools.push(onField('p1'), onField('p2'));
+  let n = 0;
+  for (const pool of pools) for (const c of pool) if (matchesFilter(c, per.filter)) n += 1;
+  return n;
+}
+
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
   const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set() };
   for (const { c: source, controller } of fieldCards(state)) {
@@ -229,6 +253,11 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
+      if (eff.aura.per) {
+        const n = auraCount(state, controller, eff.aura.per);
+        bonus.atk += n * (eff.aura.per.atk ?? 0);
+        bonus.def += n * (eff.aura.per.def ?? 0);
+      }
       for (const g of eff.aura.grants ?? []) bonus.grants.add(g);
     }
   }

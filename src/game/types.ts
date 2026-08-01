@@ -227,6 +227,26 @@ export interface CardEffect {
     atk?: number;
     def?: number;
     grants?: EquipGrant[];
+    /**
+     * A bonus that scales with a count, for "gains 200 ATK for each card in
+     * your Graveyard".
+     *
+     * Five cards said that and were granting it *once, on summon* — when the
+     * Graveyard is usually empty, so they gained nothing and then never grew.
+     * The quantity keeps changing, so it has to be read live like any other
+     * aura rather than baked into the monster at the moment it arrived.
+     *
+     * Counting only ever looks at printed card data, never effective stats, so
+     * evaluating it from inside the stat calculation cannot recurse.
+     */
+    per?: {
+      /** Where to count: one side's Graveyard or both, one side's field or both. */
+      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'field';
+      /** Only count cards matching this. Omit to count everything there. */
+      filter?: CardFilter;
+      atk?: number;
+      def?: number;
+    };
   };
   /** Effect only usable once per turn (ignition effects default to true). */
   oncePerTurn?: boolean;

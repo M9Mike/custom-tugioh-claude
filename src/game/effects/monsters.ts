@@ -56,8 +56,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onSummon',
         ops: [
           { op: 'negateEffects', target: OPP_ALL },
-          { op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
         ],
+      },
+      // "Gains 200 ATK for each card in your Graveyard" is ongoing, not a
+      // snapshot taken the moment he arrived.
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 200 } },
       },
       {
         trigger: 'ignition',
@@ -145,9 +151,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'Gains 400 ATK for each "Dark Magician" in either Graveyard. When this card destroys a monster in battle: draw 1 card.',
     cry: 'Never underestimate an apprentice!',
     effects: [
+      /* "for each Dark Magician in either Graveyard" — a number that keeps
+         moving, and the whole point of her: she grows as Dark Magicians fall.
+         Granted once on summon she gained nothing at all, because at that
+         moment none had died yet. The old scale also counted every card in her
+         own Graveyard at 200, which is neither the pool nor the figure. */
       {
-        trigger: 'onSummon',
-        ops: [{ op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' }],
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: { side: 'own', pick: 'self' },
+          per: { zone: 'eitherGrave', filter: { slugs: ['dark-magician'] }, atk: 400 },
+        },
       },
       { trigger: 'onBattleDestroy', ops: [{ op: 'draw', count: 1, who: 'own' }] },
     ],
@@ -538,10 +553,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'pierce', duration: 'permanent' },
-          { op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
-        ],
+        ops: [{ op: 'pierce', duration: 'permanent' }],
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 200 } },
       },
     ],
   },
@@ -1213,10 +1230,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'extraAttacks', count: 1 },
-          { op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
-        ],
+        ops: [{ op: 'extraAttacks', count: 1 }],
+      },
+      /* "for each Dinosaur in your Graveyard" — the old scale counted every
+         card there regardless of type, so Rex's signature monster was both
+         frozen at summon time and reading the wrong number. */
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: { side: 'own', pick: 'self' },
+          per: { zone: 'ownGrave', filter: { type: 'Dinosaur' }, atk: 200 },
+        },
       },
     ],
   },
@@ -1252,7 +1277,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'crawling-dragon-2': {
     text: 'This card gains 200 ATK for each card in your Graveyard.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' }] }],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 200 } },
+      },
+    ],
   },
 
   'sword-arm-of-dragon': {
@@ -1341,7 +1372,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'Gains 200 ATK for each Machine monster on the field. When summoned: all Machines you control gain 400 ATK.',
     cry: 'All machines answer to me.',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Machine' } }), atk: 200 } },
+      /* "Gains 200 ATK for each Machine monster on the field" — *he* gains it,
+         and it counts both sides. The old aura handed a flat 200 to every
+         Machine you controlled instead, which is a different card: it never
+         scaled, and the King himself got the same 200 whether he stood alone or
+         led an army. Counting reads printed types, never effective stats, so
+         a Machine counting Machines cannot recurse. */
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: { side: 'own', pick: 'self' },
+          per: { zone: 'field', filter: { type: 'Machine' }, atk: 200 },
+        },
+      },
       {
         trigger: 'onSummon',
         ops: [{ op: 'gainAtk', amount: 400, target: sel('own', 'all', { filter: { type: 'Machine' } }), duration: 'permanent' }],

@@ -797,9 +797,49 @@ for (const def of Object.values(CARDS)) {
         const selfAtk = def.kind === 'monster' ? (def.atk ?? 0) : 0;
         const onlySelf = after.me.totalAtk - before.me.totalAtk === selfAtk && after.foe.totalAtk === before.foe.totalAtk;
         checks.push({
-          what: `aura applies (${aura.atk ?? 0}/${aura.def ?? 0}${aura.grants?.length ? ' +' + aura.grants.join(',') : ''})`,
-          ok: moved && !(onlySelf && !aura.grants?.length && !aura.def),
+          what:
+            `aura applies (${aura.atk ?? 0}/${aura.def ?? 0}` +
+            (aura.per ? ` +${aura.per.atk ?? 0}/${aura.per.def ?? 0} per ${aura.per.zone}` : '') +
+            `${aura.grants?.length ? ' +' + aura.grants.join(',') : ''})`,
+          ok: moved && !(onlySelf && !aura.grants?.length && !aura.def && !aura.per),
         });
+      }
+
+      /* A scaling aura gets its own measurement, because the generic one above
+         cannot see it: restoring the card adds its own body to the side total,
+         which satisfies "something moved" all by itself. Disabling the
+         `onlySelf` guard for these made the check pass on an engine with the
+         scaling ripped out — so it now stocks the counted zone by hand and
+         insists the number moves by exactly the promised step. */
+      if (aura?.per && selfCard) {
+        const per = aura.per;
+        const feed = matchCard(per.filter, per.zone.endsWith('Grave') ? 'any' : 'monster');
+        const step = (per.atk ?? 0) || (per.def ?? 0);
+        const read = () => (per.atk ? effAtk(s, selfCard!, ME) : effDef(s, selfCard!, ME));
+        const emptyPool = () => {
+          if (per.zone === 'ownGrave') s.players[ME].grave = [];
+          else if (per.zone === 'eitherGrave') { s.players[ME].grave = []; s.players[FOE].grave = []; }
+        };
+        if (!feed || !step) {
+          checks.push({ what: `aura scales per ${per.zone}`, ok: false });
+        } else {
+          emptyPool();
+          const before = read();
+          // Deliberately fed on the *far* side where the wording allows it, so a
+          // card that only ever looks at its own is caught rather than flattered.
+          if (per.zone === 'ownGrave') s.players[ME].grave.push(mint(s, ME, feed.slug));
+          else if (per.zone === 'eitherGrave') s.players[FOE].grave.push(mint(s, FOE, feed.slug));
+          else {
+            const side = per.zone === 'ownField' ? ME : FOE;
+            const fz = s.players[side].monsters.findIndex((m) => !m);
+            if (fz >= 0) place(s, side, fz, feed.slug);
+          }
+          const after2 = read();
+          checks.push({
+            what: `aura scales +${step} per ${per.zone} (${before}→${after2})`,
+            ok: after2 - before === step,
+          });
+        }
       }
       results.push({ slug: def.slug, trigger: eff.trigger, checks, unverified: aura ? 0 : eff.ops.length });
       continue;
@@ -880,7 +920,9 @@ for (const def of Object.values(CARDS)) {
   if (!def.effects.length) dead.push(`${def.slug}: no effects at all`);
   for (const eff of def.effects) {
     const a = eff.aura;
-    if (a && !(a.atk ?? 0) && !(a.def ?? 0) && !a.grants?.length) dead.push(`${def.slug} [${eff.trigger}]: aura does nothing`);
+    const perAny = (a?.per?.atk ?? 0) || (a?.per?.def ?? 0);
+    if (a && !(a.atk ?? 0) && !(a.def ?? 0) && !a.grants?.length && !perAny)
+      dead.push(`${def.slug} [${eff.trigger}]: aura does nothing`);
     if (!eff.ops.length && !a) dead.push(`${def.slug} [${eff.trigger}]: no operations and no aura`);
     for (const op of eff.ops) {
       if ((op.op === 'gainAtk' || op.op === 'gainDef') && !op.amount && !('scale' in op && op.scale)) {

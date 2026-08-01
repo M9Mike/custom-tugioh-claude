@@ -76,6 +76,61 @@ function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
   return false;
 }
 
+/**
+ * "Gains 200 ATK for each card in your Graveyard" names a quantity that keeps
+ * moving, so it has to be read live. Five cards granted it *once, on summon* —
+ * when the Graveyard is usually empty, so they gained nothing and then never
+ * grew. Two-Headed King Rex was worse still: its text says "for each Dinosaur"
+ * and the scale it used counted every card there regardless of type.
+ *
+ * A snapshot is only honest when the text says so. "When Summoned: it gains 200
+ * ATK for each card in your Graveyard" really is a one-off, and Dark Magician
+ * says exactly that, so the sentence is checked for a trigger clause before the
+ * card is judged.
+ */
+const PER_EACH = /gains? (\d+) ATK for (?:each|every) ([A-Za-z"' -]*?) ?(?:in|on) /i;
+const SNAPSHOT = /\bwhen (?:this card is |it is )?(?:normal |fusion |flip )?summoned\b/i;
+
+/** The sentence a phrase sits in, so a trigger clause elsewhere cannot excuse it. */
+function sentenceWith(text: string, re: RegExp): string | null {
+  for (const s of text.split(/(?<=[.!?])\s+/)) if (re.test(s)) return s;
+  return null;
+}
+
+const MONSTER_TYPES = new Set(
+  Object.values(CARDS)
+    .map((d) => d.type)
+    .filter((t): t is string => !!t)
+);
+
+function checkScalingBonus(def: CardDef): string[] {
+  const sentence = sentenceWith(def.text!, PER_EACH);
+  if (!sentence) return [];
+  // The text itself says it is taken at summon time, so a one-shot is honest.
+  if (SNAPSHOT.test(sentence)) return [];
+
+  const auras = def.effects.filter((e) => e.trigger === 'continuous' && e.aura?.per);
+  if (!auras.length) {
+    return [
+      `${def.name} (${def.slug}) — text says "${sentence.match(PER_EACH)![0].trim()}…", a quantity that keeps ` +
+        'changing, but no continuous aura scales with it, so it is frozen at whatever it was when the card arrived',
+    ];
+  }
+
+  // "for each Dinosaur" has to actually be counting Dinosaurs.
+  const named = sentence.match(PER_EACH)![2].trim().replace(/^"|"$/g, '');
+  if (named && MONSTER_TYPES.has(named)) {
+    const filtered = auras.some((e) => e.aura!.per!.filter?.type === named);
+    if (!filtered) {
+      return [
+        `${def.name} (${def.slug}) — text counts "${named}" but the scaling aura carries no ` +
+          `type filter for it, so it is counting everything`,
+      ];
+    }
+  }
+  return [];
+}
+
 /** Does any effect on the card carry one of these triggers? */
 const hasTrigger = (def: CardDef, needs: Trigger[]) => def.effects.some((e) => needs.includes(e.trigger));
 
@@ -107,6 +162,8 @@ for (const def of Object.values(CARDS)) {
         'but every effect on the card is unconditional'
     );
   }
+
+  problems.push(...checkScalingBonus(def));
 
   for (const [re, kind] of [[ATK_THRESHOLD, 'atk'], [LEVEL_THRESHOLD, 'level']] as const) {
     const threshold = def.text.match(re);

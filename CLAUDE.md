@@ -238,6 +238,34 @@ never draws its enabler on purpose. Measured with the real search he wins 68% ±
 and has Toon World down in 73% of games. Believe the AI's number, not the random
 one, before rebalancing anything.
 
+**"Gains 200 ATK for each card in your Graveyard" is a number that keeps
+moving.** Six cards granted it *once, on summon* — when the Graveyard is
+normally empty, so they gained nothing and then never grew. Two-Headed King Rex
+is Rex's signature monster and says "for each **Dinosaur**", while the
+`perCardInGrave` scale counted every card there regardless of type. Dark Magician
+Girl says "400 for each Dark Magician in **either** Graveyard" and was getting
+200 per card in her own — wrong pool, wrong filter, wrong figure, and frozen.
+Machine King was a different card entirely: a flat 200 to every Machine you
+controlled, rather than 200 to *himself* per Machine on the field.
+
+A scaling bonus belongs in `aura.per` — read live like any other aura, so it
+tracks the Graveyard filling up. Counting only ever touches printed card data,
+never an effective stat, so a Machine counting Machines cannot recurse. Dark
+Magician keeps its one-shot on purpose: its text says "When Summoned: it gains…",
+which really is a snapshot, and `npm run text` reads the sentence for a trigger
+clause before judging.
+
+**A check that cannot fail is worse than no check.** Teaching the audit about
+`per` looked done when it went green — and it passed just as happily with the
+scaling ripped out of the engine. Restoring the aura puts the card's own body
+back on the board, which satisfies "something moved" all by itself, so relaxing
+the `onlySelf` guard left nothing being tested. Scaling auras get their own
+measurement now: empty the counted zone, read the stat, add one matching card,
+and insist the number moves by exactly the promised step — fed on the *far* side
+wherever the wording allows, so a card that only ever looks at its own is caught
+rather than flattered. Verified by disabling the engine's scaling and watching
+all six fail.
+
 **A count is not a finding.** `npm run audit` printed "effects not driven: 9" and
 never said which — so nobody noticed that seven of the nine were *every Fusion
 monster in the game*, the most exciting cards there are, whose effects had
