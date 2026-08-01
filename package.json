@@ -18,6 +18,7 @@
     "iphone": "node scripts/iphone.mjs",
     "pwa": "node scripts/pwa-check.mjs",
     "anim": "node scripts/anim-check.mjs",
+    "audio": "node scripts/audio-check.mjs",
     "store-test": "tsx scripts/store-test.ts",
     "audit": "tsx scripts/card-audit.ts",
     "rules": "tsx scripts/rules-check.ts",

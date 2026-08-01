@@ -57,6 +57,7 @@ npm run e2e-tournament -- http://localhost:3100 6 yugi --skilled   # whole brack
 npm run iphone   http://localhost:3100 /tmp/shots    # WebKit, both iPhone sizes
 npm run pwa      http://localhost:3100               # standalone insets
 npm run anim     http://localhost:3100               # the signature flourish moves
+npm run audio    http://localhost:3100               # the AudioContext waits for a tap
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -164,6 +165,28 @@ another looking for `/_next/static/css/` when Next serves it from `/chunks/`; an
 declaration counted as "seen" because the element was still in the DOM at
 `opacity: 0`. Assert what a person would look at — the computed style, the served
 bundle, the seat name the room really opened with.
+
+**A watcher that cannot reach its target looks exactly like one still waiting.**
+A CI poller here curled `api.github.com` directly, which this environment answers
+with a 403 — and its error handling turned an unparseable body into "not done
+yet", so it would have looped in silence for sixteen minutes and reported
+nothing. Silence is the same shape as patience. Prove a watcher can *see* before
+trusting what it does not say, and make the timeout path say so out loud rather
+than just exiting. `npm run audio` follows the same rule from the other side: if
+it reaches neither the pass nor the fail state it reports "this proves nothing"
+and exits non-zero, because an earlier version of that probe passed happily on
+the broken code by never getting far enough to look.
+
+**Sound needs a tap the page has not had yet.** iOS will not honour a later
+`resume()` on an AudioContext *constructed* outside a user gesture — only one
+built inside a real tap ever plays. The tell is precise: sound absent at first,
+present after backgrounding the app and returning, because `visibilitychange`
+recreates the conditions that work. `primeAudio()` only arms listeners now;
+`unlock` is the one thing allowed to construct the context. The path that
+actually broke is landing straight on a duel URL — a shared link, or the app
+restoring into a duel — where nothing has been tapped. Arriving via the home page
+happens to build it inside a click, so any probe that navigates normally passes
+on broken code; `npm run audio` seeds the stored identity and goes direct.
 
 **Everyone duels.** The bracket pairs off whoever is left rather than padding to a
 power of two: ten becomes five matches, then two and a bye, then one and a bye,
