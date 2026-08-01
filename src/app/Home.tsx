@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DUELISTS, artUrl } from '@/game/cards';
 import { joinRoomWithRetry, loadName, saveName } from '@/lib/useDuelRoom';
@@ -13,9 +13,19 @@ export default function Home() {
   const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
 
+  /* Both fields are controlled, so React's first commit after hydration
+     replaces whatever the browser holds with React's own (empty) state. On a
+     cold serverless start over a phone connection that can land a second or
+     two in, by which time someone has already typed their name — and watched
+     it vanish. Whatever is in the field at that moment wins. */
   useEffect(() => {
-    setName(loadName());
+    const typed = nameRef.current?.value ?? '';
+    setName(typed || loadName());
+    const typedCode = codeRef.current?.value ?? '';
+    if (typedCode) setCode(typedCode.toUpperCase());
   }, []);
 
   const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament') => {
@@ -147,6 +157,7 @@ export default function Home() {
         <label className="block">
           <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">Your name</span>
           <input
+            ref={nameRef}
             value={name}
             maxLength={18}
             onChange={(e) => setName(e.target.value)}
@@ -194,6 +205,7 @@ export default function Home() {
 
         <div className="flex gap-2">
           <input
+            ref={codeRef}
             value={code}
             maxLength={4}
             onChange={(e) => setCode(e.target.value.toUpperCase())}

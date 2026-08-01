@@ -27,24 +27,40 @@ const dismissInspector = async (page) => {
 };
 
 /**
- * Types the player's name and makes sure it stuck.
+ * Holds the client bundle back so hydration is guaranteed to land *after* the
+ * name is typed. Off a local server it arrives almost instantly and the race
+ * below could never happen — which is exactly how the bug reached production
+ * unnoticed.
+ */
+const CHUNKS = '**/_next/static/**';
+const slowHydration = (page) =>
+  page.route(CHUNKS, async (route) => {
+    await new Promise((r) => setTimeout(r, 1400));
+    await route.continue();
+  });
+
+/**
+ * Types the player's name straight after the document loads — ahead of
+ * hydration, on purpose.
  *
- * A bare fill() can land before React has hydrated, in which case the first
- * render throws the value away and the room is created for "Player 1".
+ * The field is a controlled input whose state starts empty and is filled from
+ * localStorage by a mount effect. Type before that lands and the typed text
+ * survives in the DOM but never reaches React, so it looks fine right up until
+ * the next render throws it away — and the room opens for "Player 1". Checking
+ * the field here would therefore prove nothing; `seatedAs` below checks the
+ * only thing that matters, which is the name the room was actually created
+ * with.
  */
 const enterName = async (page, value) => {
-  const input = page.locator('input[placeholder="Enter your name"]');
-  for (let i = 0; i < 20; i++) {
-    await input.fill(value);
-    // Two checks, because the first only proves the DOM took it. Hydration
-    // lands a moment later and re-renders the controlled input from React's
-    // own (still empty) state, wiping it — so the value has to *stay*.
-    await page.waitForTimeout(250);
-    if ((await input.inputValue()) !== value) continue;
-    await page.waitForTimeout(450);
-    if ((await input.inputValue()) === value) return;
+  await page.locator('input[placeholder="Enter your name"]').fill(value);
+  await page.waitForTimeout(2600);
+};
+
+/** The name the room really opened with, as shown on the player's own seat. */
+const seatedAs = async (page, value) => {
+  if (!(await page.locator(`text=${value}`).count())) {
+    throw new Error(`the room did not open for "${value}" — the typed name was lost before it was sent`);
   }
-  throw new Error('the name field never kept its value — did the page hydrate?');
 };
 
 const shot = async (page, name) => {
@@ -75,8 +91,10 @@ const main = async () => {
     const b = await mk(PHONES.iphone11, 'hers');
 
     console.log('• home (iPhone 17 Pro Max)');
+    await slowHydration(a);
     await a.goto(BASE, { waitUntil: 'domcontentloaded' });
     await enterName(a, 'Mihail');
+    await a.unroute(CHUNKS);
     await shot(a, '01-home-17promax');
 
     await a.tap('text=Start a new duel');
@@ -84,6 +102,7 @@ const main = async () => {
     await a.waitForTimeout(1600);
     const code = a.url().split('/').pop();
     console.log(`  room ${code}`);
+    await seatedAs(a, 'Mihail');
     await shot(a, '02-lobby-17promax');
 
     console.log('• join (iPhone 11)');
@@ -93,6 +112,7 @@ const main = async () => {
     await b.tap('button:has-text("Join")');
     await b.waitForURL(/\/duel\//, { timeout: 25000 });
     await b.waitForTimeout(1600);
+    await seatedAs(b, 'Sis');
     await shot(b, '03-lobby-iphone11');
 
     await a.tap('button:has-text("Seto Kaiba")');
