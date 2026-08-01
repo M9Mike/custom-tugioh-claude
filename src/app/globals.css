@@ -669,11 +669,16 @@ body {
          animation-timing-function: ease-in; }
   100% { transform: translateY(-5px) scale(0.99); opacity: 0; }
 }
-/* 1100ms because that is `MIN_SPOKEN_MS` in `Duel.tsx` — the two have to be the
-   same number. At 1000ms the text finished fading out while the queue was still
-   holding the beat, so every declaration ended with 100ms of blank band and the
-   legible window was a tenth shorter than the code believed it was granting.
-   `npm run pacing` caught it as a 691ms reading of a beat meant to last 1100. */
+/* A fallback only: `Duel.tsx` sets `animation-duration` inline from the beat's
+   real hold, so the band always fades over exactly as long as the queue is
+   holding it, however long that is. This number is what applies if that style
+   is ever missing, so it matches `MIN_SPOKEN_MS` rather than being a second
+   guess at the same thing.
+
+   Worth knowing before measuring: overriding this with `!important` *does*
+   beat the inline style, and a probe that does so is measuring a page that
+   cannot happen. Forced to 1000ms a beat reads 71–76% legible against 81–86%
+   at 1100 — a real mechanism, and one the shipped code has never been in. */
 .declare { animation: declare-in 1100ms linear forwards; }
 
 @media (prefers-reduced-motion: reduce) {

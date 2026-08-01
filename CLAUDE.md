@@ -664,20 +664,33 @@ depth 0" against "baseline at depth 3" and read the gap as evidence about the
 fix, when it was only ever a measurement of depth. Both arms have to differ in
 exactly one thing.
 
-**The declaration animation has to last as long as the beat.** `.declare` ran
-for 1000ms while the queue held a spoken beat for `MIN_SPOKEN_MS` = 1100, so
-every declaration ended with 100ms of blank band inside a hold it was still
-being paid for. Sampled with `getAnimations()`, that is 71–76% of the beat
-legible against 81–86% once the two numbers match — a tenth of the reading time,
-on the one thing a player asked for more of. Both constants now name each other.
+**A probe that forces a value can measure a page that cannot happen.** Chasing
+an intermittent `npm run pacing` failure I found `.declare` running 1000ms while
+a spoken beat is held for `MIN_SPOKEN_MS` = 1100, concluded every declaration
+ended on 100ms of blank band, and proved it by forcing each duration with
+`animation-duration: … !important` — 71–76% of the beat legible at 1000ms
+against 81–86% at 1100. The mechanism is real and the shipped code has never
+been in it: `Duel.tsx` sets `animationDuration` inline from `fxHold`, the beat's
+actual hold, and `!important` was overriding exactly that. The stylesheet number
+only applies if the inline style goes missing. Check what governs the property
+before measuring what happens when you change it.
 
-Found because `npm run pacing` failed at 691ms against a 700ms bar — and then
-the fix appeared to make it *worse*, because that bar was measuring the probe's
-own jitter. Visible time can only ever be undercounted: a busy frame delays the
-tick, and if it lands after the fade the whole interval is credited to the hold
-and none of it to the reading. The check asserts the hold per beat, where the
+**The failure that started it was the check's own jitter.** Visible time can
+only ever be undercounted: a busy frame delays the sampling tick, and if it
+lands after the fade the whole interval is credited to the hold and none of it
+to the reading. A per-beat floor of 700ms on *that* number duly failed at 691 on
+a beat held for the full 1100. The check asserts the hold per beat, where the
 measurement is sound, and the visible share across the run, where the jitter
-averages out. Three runs in a row now, where it used to fail one in three.
+averages out.
+
+It also counted the last declaration of a finished duel, which simply stays in
+the DOM at `opacity: 0` with nothing after it to push it out — a twenty-second
+hold, 19% legible. A beat is only recorded once the next one replaces it.
+
+Still open: on production, one run in four shows a genuinely short *hold* —
+624ms and 775ms against a floor of 1100 — always on a run that ends abruptly,
+and never locally. That is a real measurement of a real cut-short beat, cause
+not yet found.
 
 **A guard that compares with `<` needs to know it has a number.** Found while
 probing the above: `normalSummon` with no `zone` sailed through

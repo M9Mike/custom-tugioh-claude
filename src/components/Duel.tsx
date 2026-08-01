@@ -37,10 +37,10 @@ const SIG_MS = 1400;
  * a sentence on a phone. With the animation holding full opacity across 86% of
  * its run, this leaves a shade under a second of actual reading.
  *
- * `.declare` in `globals.css` runs for exactly this long, and must keep doing
- * so. When it was 100ms shorter the band went blank while the queue was still
- * holding the beat, and every declaration lost a tenth of its reading time to
- * nothing at all.
+ * The band's fade is driven from `fxHold` inline, not from `.declare`, so it
+ * already matches whatever the beat is actually held for — this floor and the
+ * stylesheet cannot drift apart. The CSS duration is a fallback and is kept at
+ * the same number for the case where the inline style is missing.
  */
 const MIN_SPOKEN_MS = 1100;
 
