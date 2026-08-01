@@ -90,8 +90,15 @@ await page.evaluate(() => {
   window.__said = [];
   let current = null;
   let last = performance.now();
+  /* The board is already narrating the opponent's opening turn by the time this
+     starts watching, so whatever is on screen at the first tick is a beat we
+     joined halfway through and can only measure the remainder of. Recorded, it
+     reads as one short beat in an otherwise clean run — 294ms, 365ms, 662ms,
+     791ms, 853ms across a dozen runs, always the first line, everything after
+     it past 1080. That was the "still open" cut-short beat, and it was this. */
+  let joinedLate = true;
   const flush = () => {
-    if (current && current.mounted > 0) window.__said.push(current);
+    if (current && current.mounted > 0 && !current.partial) window.__said.push(current);
   };
   const read = () => {
     const now = performance.now();
@@ -106,7 +113,10 @@ await page.evaluate(() => {
     const txt = shown ? el.innerText.replace(/\s+/g, ' ').trim() : null;
     if (txt !== current?.text) {
       flush();
-      current = txt ? { text: txt, mounted: 0, legible: 0 } : null;
+      // Only the very first thing seen can have started before we did; once a
+      // beat has replaced another, we watched the whole of it.
+      current = txt ? { text: txt, mounted: 0, legible: 0, partial: joinedLate } : null;
+      joinedLate = false;
     }
     if (current && shown) {
       current.mounted += dt;

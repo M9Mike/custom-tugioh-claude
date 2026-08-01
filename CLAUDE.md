@@ -688,11 +688,21 @@ It also counted the last declaration of a finished duel, which simply stays in
 the DOM at `opacity: 0` with nothing after it to push it out — a twenty-second
 hold, 19% legible. A beat is only recorded once the next one replaces it.
 
-Still open: about one run in five shows a genuinely short *hold* — 365ms, 624ms
-and 775ms against a floor of 1100 — first seen only on production, since seen
-locally too, always a single beat in an otherwise clean run. Four consecutive
-runs either side of it hold every beat past 1062ms. A real measurement of a real
-cut-short beat; cause not found.
+**And the beat it kept reporting as cut short was the one it joined halfway
+through.** For a while this showed a single short hold — 294, 365, 624, 662,
+775, 791, 853ms against a floor of 1100 — in an otherwise clean run, more often
+on production than locally, and it was written down here as an open bug. It was
+always the *first* line, and everything after it held past 1080. The probe
+starts watching a fixed three seconds after load, by which time the board is
+already narrating the opponent's opening turn, so it measured the remainder of a
+beat that began before it was looking. Production made it worse only because the
+extra latency moved where in the beat that landed.
+
+Whatever is on screen at the first tick is now dropped, the same way the beat
+still on screen at the end already was. Both ends of the run are bounded by a
+beat replacing another; only those are measured. The tell that this was the
+probe and not the game: a genuinely rushed queue does not politely rush exactly
+one beat and then behave for the next nine.
 
 **A guard that compares with `<` needs to know it has a number.** Found while
 probing the above: `normalSummon` with no `zone` sailed through
