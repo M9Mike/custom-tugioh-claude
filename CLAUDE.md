@@ -16,12 +16,30 @@ Not "here is a PR, shall I merge it?" — carry it through.
    localhost. One already did — see *Hydration* below.
 5. Report what was verified where.
 
-**Merge with rebase, not squash.** A squash merge makes GitHub author a brand-new
-commit with `GitHub <noreply@github.com>` as committer, which the local hook flags as
-unverified even though GitHub itself signs it and shows it as Verified. Rebasing
-replays the original commits and keeps their identity, which keeps the flag quiet.
-Nothing about the code changes either way — this is purely about keeping the history
-legible.
+**Merge by fast-forwarding `main` locally, not with the button.** Once CI is green:
+
+```bash
+git fetch origin main
+git checkout -B main origin/main
+git merge --ff-only claude/yugioh-multiplayer-game-tcnufm
+git push origin main          # GitHub marks the PR merged by itself
+```
+
+The commits then land exactly as they were written, with `Claude
+<noreply@anthropic.com>` as both author and committer, and nothing shows as
+Unverified. Every server-side merge method rewrites something — measured, not
+assumed:
+
+| merge method | author | committer | signed |
+|---|---|---|---|
+| squash | the merging user | `GitHub <noreply@github.com>` | yes, by GitHub |
+| rebase | original (correct) | the merging user | **no** |
+| local fast-forward | original | original | no, but the hook is satisfied |
+
+Rebase looks like the obvious fix and is not: it repairs authorship but leaves the
+commit unsigned, so it is the one method that really does display as Unverified.
+None of this touches the code or the deploy — it is only about keeping history
+legible and the pre-push hook quiet.
 
 ## The checks
 
