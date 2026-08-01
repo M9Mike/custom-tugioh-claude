@@ -949,6 +949,35 @@ console.log('\nA Trap announces itself on the field');
   ok(!on(sprung, ME).length, 'and the summoned monster is destroyed');
 }
 
+console.log('\nSky Scout pays for going round the blockers');
+{
+  /* "Can attack your opponent directly, but its battle damage is halved" — and
+     only the first half of that sentence existed, so it was an unblockable 1800
+     every turn for one Normal Summon. */
+  const direct = fresh('battle');
+  const scout = card(ME, 'sky-scout'); // 1800 ATK
+  direct.players[ME].monsters[0] = scout;
+  direct.players[FOE].monsters[0] = card(FOE, 'mystical-elf'); // a blocker it walks past
+  const swung = act(direct, ME, { type: 'attack', uid: scout.uid, targetUid: null });
+  ok(swung.players[FOE].lp === 4000 - 900, 'the direct attack lands for half', `LP ${swung.players[FOE].lp}`);
+
+  // Halved wherever it inflicts battle damage, which is what the sentence says.
+  const over = fresh('battle');
+  const scout2 = card(ME, 'sky-scout');
+  over.players[ME].monsters[0] = scout2;
+  const chick = card(FOE, 'kuriboh'); // 300 ATK
+  over.players[FOE].monsters[0] = chick;
+  const through = act(over, ME, { type: 'attack', uid: scout2.uid, targetUid: chick.uid });
+  ok(through.players[FOE].lp === 4000 - 750, 'and so does the damage over a body it beats', `LP ${through.players[FOE].lp}`);
+
+  // CONTROL: nobody else's battle damage moved.
+  const plain = fresh('battle');
+  const ox = card(ME, 'battle-ox'); // 1700 ATK
+  plain.players[ME].monsters[0] = ox;
+  const hit = act(plain, ME, { type: 'attack', uid: ox.uid, targetUid: null });
+  ok(hit.players[FOE].lp === 4000 - 1700, 'CONTROL: an ordinary attacker is untouched', `LP ${hit.players[FOE].lp}`);
+}
+
 console.log('\nThe last blow only ever takes the Life Points that are there');
 {
   /* The board adds queued damage back to work out the total it has not yet

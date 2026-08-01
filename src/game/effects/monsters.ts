@@ -659,7 +659,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'sky-scout': {
     text: 'This card can attack your opponent directly, but its battle damage is halved.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] }],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'directAttack', duration: 'permanent' },
+          // The price for it. Only the first op existed, so this was an
+          // unblockable 1800 every turn for one Normal Summon.
+          { op: 'halvedBattleDamage', duration: 'permanent' },
+        ],
+      },
+    ],
   },
 
   'dunames-dark-witch': {

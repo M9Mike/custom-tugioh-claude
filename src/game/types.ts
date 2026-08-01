@@ -186,6 +186,7 @@ export type Op =
   | { op: 'extraAttacks'; count: number; duration?: Duration }
   | { op: 'attackAllMonsters' }
   | { op: 'directAttack'; duration: Duration }
+  | { op: 'halvedBattleDamage'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
   | { op: 'preventBattleDamage'; who: Side; duration: Duration }
   | { op: 'indestructibleByBattle'; duration: Duration }
@@ -227,7 +228,17 @@ export type EquipGrant =
   /** Held down by an aura — lapses the moment the card holding it leaves. */
   | 'cannotAttack'
   /** Attacks every opposing monster once each Battle Phase. */
-  | 'attackAll';
+  | 'attackAll'
+  /**
+   * Battle damage this monster inflicts is halved.
+   *
+   * The price half a dozen real cards pay for attacking directly, and Sky Scout
+   * is the one that says so here: "can attack your opponent directly, but its
+   * battle damage is halved". Only the first clause existed, which made it an
+   * unblockable 1800 every turn — comfortably the best body in the game for
+   * what it costs.
+   */
+  | 'halvedBattleDamage';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -317,6 +328,8 @@ export interface CardFlags {
   negated?: boolean;
   extraAttacks?: number;
   attackAll?: boolean;
+  /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
+  halvedBattleDamage?: boolean;
   noBattleDamage?: boolean;
   /** Pinned down by a card on the field, not by a timed lock. */
   cannotAttack?: boolean;

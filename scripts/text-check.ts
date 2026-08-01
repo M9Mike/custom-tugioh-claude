@@ -91,6 +91,30 @@ function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
 const PER_EACH = /gains? (\d+) ATK for (?:each|every) ([A-Za-z"' -]*?) ?(?:in|on) /i;
 const SNAPSHOT = /\bwhen (?:this card is |it is )?(?:normal |fusion |flip )?summoned\b/i;
 
+/**
+ * A price the card names for what it can do.
+ *
+ * Sky Scout is "can attack your opponent directly, **but its battle damage is
+ * halved**" — and only the first half of that sentence existed, so it was an
+ * unblockable 1800 every turn for one Normal Summon. The clause after the "but"
+ * is the whole reason the clause before it is allowed to be that good, and this
+ * check exists because nothing else can see a missing one: the audit drives
+ * effects that are there, and a downside that was never written has no effect
+ * to drive.
+ */
+const COSTS: { phrase: RegExp; needs: (def: CardDef) => boolean; label: string }[] = [
+  {
+    phrase: /\bbattle damage (?:it inflicts |this card inflicts )?is halved\b|\bhalve[sd]? (?:its |the )?battle damage\b/i,
+    label: 'its battle damage is halved',
+    needs: (def) =>
+      def.effects.some(
+        (e) =>
+          e.ops.some((o) => o.op === 'halvedBattleDamage') ||
+          !!e.aura?.grants?.includes('halvedBattleDamage')
+      ),
+  },
+];
+
 /** The sentence a phrase sits in, so a trigger clause elsewhere cannot excuse it. */
 function sentenceWith(text: string, re: RegExp): string | null {
   for (const s of text.split(/(?<=[.!?])\s+/)) if (re.test(s)) return s;
@@ -164,6 +188,14 @@ for (const def of Object.values(CARDS)) {
   }
 
   problems.push(...checkScalingBonus(def));
+
+  for (const { phrase, needs, label } of COSTS) {
+    if (!phrase.test(def.text) || needs(def)) continue;
+    problems.push(
+      `${def.name} (${def.slug}) — text charges "${label}" and nothing on the card collects it, ` +
+        'so the card gets the upside for free'
+    );
+  }
 
   for (const [re, kind] of [[ATK_THRESHOLD, 'atk'], [LEVEL_THRESHOLD, 'level']] as const) {
     const threshold = def.text.match(re);

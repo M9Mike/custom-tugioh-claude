@@ -337,7 +337,22 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('doubleAttack')) merged.extraAttacks = (merged.extraAttacks ?? 0) + 1;
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('attackAll')) merged.attackAll = true;
+  if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
   return merged;
+}
+
+/**
+ * Battle damage `attacker` inflicts, after whatever its own text charges for it.
+ *
+ * Sky Scout "can attack your opponent directly, but its battle damage is
+ * halved", and only the first half of that sentence existed — so it was an
+ * unblockable 1800 every turn, which is the best thing you can do with a Level
+ * 4 in this game by some distance. Applied wherever the monster deals battle
+ * damage rather than only on a direct attack, because that is what the sentence
+ * says: rounded down, the way every other halving here rounds.
+ */
+function battleDamageFrom(state: DuelState, attacker: CardInstance, controller: PlayerId, raw: number): number {
+  return effFlags(state, attacker, controller).halvedBattleDamage ? Math.floor(raw / 2) : raw;
 }
 
 export function maxAttacks(state: DuelState, c: CardInstance, controller: PlayerId): number {
@@ -1071,6 +1086,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'directAttack':
         applyFlag(ctx.source, 'directAttack', true, op.duration);
         break;
+      case 'halvedBattleDamage':
+        applyFlag(ctx.source, 'halvedBattleDamage', true, op.duration);
+        break;
       case 'pierce':
         applyFlag(ctx.source, 'pierce', true, op.duration);
         break;
@@ -1434,7 +1452,7 @@ function resolveBattle(state: DuelState) {
   attacker.attacksUsed += 1;
 
   if (!susp.targetUid) {
-    const dmg = effAtk(state, attacker, controller);
+    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
     if (!state.winner) fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
@@ -1444,7 +1462,7 @@ function resolveBattle(state: DuelState) {
   const targetFound = findOnField(state, susp.targetUid);
   if (!targetFound) {
     // Target vanished — treat as a direct attack for the remaining swing.
-    const dmg = effAtk(state, attacker, controller);
+    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
     return;
@@ -1496,7 +1514,7 @@ function resolveBattle(state: DuelState) {
   if (target.position === 'atk') {
     const tAtk = effAtk(state, target, defender);
     if (atk > tAtk) {
-      dealDamage(state, defender, atk - tAtk, true);
+      dealDamage(state, defender, battleDamageFrom(state, attacker, controller, atk - tAtk), true);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) {
         fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
@@ -1513,7 +1531,7 @@ function resolveBattle(state: DuelState) {
   } else {
     const tDef = effDef(state, target, defender);
     if (atk > tDef) {
-      if (flags.pierce) dealDamage(state, defender, atk - tDef, true);
+      if (flags.pierce) dealDamage(state, defender, battleDamageFrom(state, attacker, controller, atk - tDef), true);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
     } else if (atk < tDef) {
