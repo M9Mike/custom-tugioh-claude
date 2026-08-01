@@ -182,6 +182,14 @@ names the symptom and hides everything else. The check now says which element is
 top and screenshots the board, which is what turned a week-old mystery into an
 afternoon.
 
+**A tap before hydration is gone, not queued.** The typed name was fixed by having
+the mount effect keep whatever is already in the field — but a *tap* has nowhere to
+be kept. On a cold serverless start over a phone connection, Join did nothing, gave
+no error and gave no reason, and the tap never fired even once React was listening;
+the only way through was to tap again. The home page's four actions now sit disabled
+until the mount effect runs, and the first one says "Waking the arena…" so the state
+is visible rather than silent. It only ever shows on a cold load.
+
 **Sample animations, do not squint at them.** A signature card's flourish looked
 static in screenshots and it was: with one ease-out over the whole run, the card
 covered all 600px of its depth in the first 200ms — while still fading in — so it

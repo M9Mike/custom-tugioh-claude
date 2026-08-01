@@ -15,6 +15,17 @@ export default function Home() {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | null>(null);
+  /**
+   * Whether the page is listening yet.
+   *
+   * These buttons do nothing at all until React has hydrated, and a tap that
+   * lands before then is not queued — it is simply gone. On a warm load that
+   * window does not exist; on a cold serverless start over a phone connection
+   * it is a second or two, which is exactly when someone taps Join. They got
+   * no room, no error and no reason, and tapping again was the only way
+   * through. The buttons now say they are not ready instead of lying.
+   */
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [pickedId, setPickedId] = useState<string | null>(null);
@@ -36,6 +47,7 @@ export default function Home() {
     setName(typed || loadName());
     const typedCode = codeRef.current?.value ?? '';
     if (typedCode) setCode(typedCode.toUpperCase());
+    setReady(true);
   }, []);
 
   const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament') => {
@@ -239,9 +251,9 @@ export default function Home() {
         <button
           className="btn btn-primary mt-4 w-full rounded px-4 py-3 text-sm"
           onClick={create}
-          disabled={busy !== null}
+          disabled={busy !== null || !ready}
         >
-          {busy === 'create' ? 'Opening the arena…' : 'Start a new duel'}
+          {!ready ? 'Waking the arena…' : busy === 'create' ? 'Opening the arena…' : 'Start a new duel'}
         </button>
 
         <div className="my-4 flex items-center gap-3">
@@ -250,14 +262,14 @@ export default function Home() {
           <div className="brass-rule flex-1" />
         </div>
 
-        <button className="btn mt-1 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null}>
+        <button className="btn mt-1 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null || !ready}>
           {busy === 'solo' ? 'Shuffling…' : 'Duel the computer'}
         </button>
 
         <button
           className="btn btn-primary mt-2 w-full rounded px-4 py-3 text-sm"
           onClick={tournament}
-          disabled={busy !== null}
+          disabled={busy !== null || !ready}
         >
           {busy === 'tournament' ? 'Drawing the bracket…' : '🏆 Enter the tournament'}
         </button>
@@ -285,7 +297,7 @@ export default function Home() {
             placeholder="CODE"
             className="w-full rounded border border-stoneline bg-black/45 px-3 py-2 text-center font-display text-2xl tracking-[0.4em] text-parchment outline-none focus:border-brass"
           />
-          <button className="btn shrink-0 rounded px-5 text-xs" onClick={join} disabled={busy !== null}>
+          <button className="btn shrink-0 rounded px-5 text-xs" onClick={join} disabled={busy !== null || !ready}>
             {busy === 'join' ? '…' : 'Join'}
           </button>
         </div>
