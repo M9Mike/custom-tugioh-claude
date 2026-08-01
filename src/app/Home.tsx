@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DUELISTS, artUrl } from '@/game/cards';
-import { AI_LEVEL_LABELS, AI_LEVEL_ORDER, type AiLevel } from '@/game/ai-levels';
 import { joinRoomWithRetry, loadName, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
@@ -11,15 +10,15 @@ export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [level, setLevel] = useState<AiLevel>('champion');
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     setName(loadName());
   }, []);
 
-  const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo') => {
+  const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament') => {
     setError(null);
     setBusy(kind);
     primeAudio();
@@ -47,7 +46,11 @@ export default function Home() {
   };
 
   const create = () => openRoom({}, 'create');
-  const soloDuel = () => openRoom({ vsAi: true, level }, 'solo');
+  const soloDuel = () => openRoom({ vsAi: true }, 'solo');
+  // A bracket has to be drawn around the player's own duelist, so it is chosen
+  // before the room exists rather than in the lobby afterwards.
+  const tournament = () => setPicking(true);
+  const enterTournament = (duelistId: string) => openRoom({ tournament: true, duelistId }, 'tournament');
 
   const join = async () => {
     const c = code.trim().toUpperCase();
@@ -69,6 +72,62 @@ export default function Home() {
     window.localStorage.setItem(`duel-identity:${res.code}`, JSON.stringify({ code: res.code, token: res.token }));
     router.push(`/duel/${res.code}`);
   };
+
+  if (picking) {
+    return (
+      <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col justify-center gap-4 p-5">
+        <div className="text-center">
+          <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
+          <h1 className="mt-2 font-display text-3xl tracking-wide text-brassbright">Choose your duelist</h1>
+          <div className="brass-rule mx-auto my-3 w-48" />
+          <p className="mx-auto max-w-md text-xs leading-relaxed text-ptext/85">
+            Seven rivals are drawn against you in a bracket of eight. Three wins takes the crown — lose once and the
+            run is over.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+          {DUELISTS.map((d) => (
+            <button
+              key={d.id}
+              disabled={busy !== null}
+              onClick={() => {
+                sfx.click();
+                void enterTournament(d.id);
+              }}
+              className="panel grain group relative flex flex-col overflow-hidden rounded p-0 text-left transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+            >
+              <div className="relative min-h-[86px] w-full flex-1 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={artUrl(d.emblem)}
+                  alt={d.name}
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/25 to-transparent" />
+                <div
+                  className="absolute inset-x-0 bottom-0 h-0.5"
+                  style={{ background: `linear-gradient(90deg, transparent, ${d.accent}, transparent)` }}
+                />
+              </div>
+              <div className="p-2">
+                <p className="truncate font-display text-[13px] leading-tight text-parchment">{d.name}</p>
+                <p className="truncate text-[10px] text-ptextdim">{d.epithet}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <p className="rounded border border-oxblood bg-[#2a1216]/70 px-3 py-2 text-xs text-[#f0c9cc]">{error}</p>
+        )}
+
+        <button className="btn mx-auto rounded px-4 py-2 text-xs" onClick={() => setPicking(false)} disabled={busy !== null}>
+          {busy === 'tournament' ? 'Drawing the bracket…' : 'Back'}
+        </button>
+      </main>
+    );
+  }
 
   return (
     <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center gap-6 p-5">
@@ -106,36 +165,26 @@ export default function Home() {
 
         <div className="my-4 flex items-center gap-3">
           <div className="brass-rule flex-1" />
-          <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or duel the computer</span>
+          <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or play alone</span>
           <div className="brass-rule flex-1" />
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {AI_LEVEL_ORDER.map((l) => (
-            <button
-              key={l}
-              onClick={() => {
-                sfx.click();
-                setLevel(l);
-              }}
-              className={`flex flex-col rounded border px-2 py-2 text-left transition-colors ${
-                level === l ? 'border-brass bg-brass/12' : 'border-stoneline bg-black/30 hover:border-brass/50'
-              }`}
-            >
-              <span className={`font-display text-[11px] ${level === l ? 'text-brassbright' : 'text-ptext/85'}`}>
-                {AI_LEVEL_LABELS[l].name}
-              </span>
-              <span className="mt-0.5 text-[9px] leading-tight text-ptextdim">
-                {AI_LEVEL_LABELS[l].short}
-              </span>
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">{AI_LEVEL_LABELS[level].blurb}</p>
-
-        <button className="btn mt-3 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null}>
-          {busy === 'solo' ? 'Shuffling…' : `Duel the ${AI_LEVEL_LABELS[level].name}`}
+        <button className="btn mt-1 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null}>
+          {busy === 'solo' ? 'Shuffling…' : 'Duel the computer'}
         </button>
+
+        <button
+          className="btn btn-primary mt-2 w-full rounded px-4 py-3 text-sm"
+          onClick={tournament}
+          disabled={busy !== null}
+        >
+          {busy === 'tournament' ? 'Drawing the bracket…' : '🏆 Enter the tournament'}
+        </button>
+
+        <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
+          Eight duelists, single elimination. Win three duels and the Kingdom is yours. The computer plays at full
+          strength in every one of them — there is no easy setting.
+        </p>
 
         <div className="my-4 flex items-center gap-3">
           <div className="brass-rule flex-1" />

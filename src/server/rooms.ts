@@ -7,8 +7,17 @@
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
 import { applyAction, createDuel, other, viewFor } from '@/game/engine';
-import { AI_LEVELS, aiNext, chooseTrapResponse, createAiRuntime, planTurn, type AiLevel } from '@/game/ai';
+import { aiNext, chooseTrapResponse, createAiRuntime, planTurn } from '@/game/ai';
+import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
+import {
+  advanceRound,
+  createTournament,
+  humanOpponent,
+  recordHumanResult,
+  resolveOneSideMatch,
+  type Tournament,
+} from './tournament';
 import { claim, readJson, writeJson } from './store';
 import type { DuelAction, DuelState, PlayerId } from '@/game/types';
 
@@ -18,7 +27,7 @@ export interface Seat {
   duelistId: string | null;
   lastSeen: number;
   /** Set when nobody is sitting here — the computer plays this side. */
-  ai?: AiLevel;
+  ai?: boolean;
 }
 
 export interface Room {
@@ -38,6 +47,10 @@ export interface Room {
    * second-guessing itself halfway through a combo.
    */
   aiPlan?: { key: string; actions: DuelAction[] };
+  /** How many actions the computer has taken on its current turn. */
+  aiActions?: { key: string; count: number };
+  /** Set on a tournament room: the bracket this series of duels belongs to. */
+  tournament?: Tournament;
 }
 
 export interface RoomView {
@@ -45,12 +58,16 @@ export interface RoomView {
   code: string;
   you: PlayerId;
   revision: number;
-  seats: Record<PlayerId, { name: string; duelistId: string | null; connected: boolean; ai?: AiLevel } | null>;
+  seats: Record<PlayerId, { name: string; duelistId: string | null; connected: boolean; ai?: boolean } | null>;
   stage: 'lobby' | 'duel';
   state: DuelState | null;
   rematch: PlayerId[];
   /** True while the computer still owes a move, so the client keeps nudging. */
   aiToMove?: boolean;
+  /** Present on a tournament room; drives the bracket screen. */
+  tournament?: Tournament;
+  /** True while side matches are still being played out for this round. */
+  bracketBusy?: boolean;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
@@ -112,7 +129,6 @@ export async function createRoom(name: string): Promise<{ room: Room; token: str
  */
 export async function createSoloRoom(
   name: string,
-  level: AiLevel,
   duelistId?: string
 ): Promise<{ room: Room; token: string; pid: PlayerId }> {
   const { room, token, pid } = await createRoom(name);
@@ -122,10 +138,87 @@ export async function createSoloRoom(
     name: DUELIST_BY_ID[pick]?.name ?? 'Opponent',
     duelistId: pick,
     lastSeen: Date.now(),
-    ai: AI_LEVELS[level] ? level : 'duelist',
+    ai: true,
   };
   await saveRoom(room);
   return { room, token, pid };
+}
+
+/**
+ * A tournament room: a solo room whose duels are bracket matches. The human
+ * picks their duelist up front, because the bracket has to be drawn around it.
+ */
+export async function createTournamentRoom(
+  name: string,
+  duelistId: string
+): Promise<{ room: Room; token: string; pid: PlayerId }> {
+  // No opponent is named here: who the computer holds is the bracket's decision,
+  // and `seatOpponent` applies it as each round is drawn.
+  const { room, token, pid } = await createSoloRoom(name);
+  const human = DUELIST_BY_ID[duelistId] ? duelistId : DUELISTS[0].id;
+  room.tournament = createTournament(human, (Math.random() * 0xffffffff) >>> 0);
+  room.seats.p1!.duelistId = human;
+  seatOpponent(room);
+  maybeStart(room);
+  await saveRoom(room);
+  return { room, token, pid };
+}
+
+/** Points the computer's seat at whoever the bracket says comes next. */
+function seatOpponent(room: Room) {
+  const t = room.tournament;
+  if (!t) return;
+  const opp = humanOpponent(t);
+  if (!opp || !room.seats.p2) return;
+  room.seats.p2.duelistId = opp;
+  room.seats.p2.name = DUELIST_BY_ID[opp]?.name ?? 'Opponent';
+}
+
+/**
+ * Drives the bracket forward by one step, and reports whether anything moved.
+ *
+ * Called on the same nudge as the AI's moves: first it notices a finished duel
+ * and records it, then it plays out one computer-versus-computer match per
+ * call, and finally it starts the next round's duel. One step per request
+ * because a full-strength simulated duel is seconds of CPU, not milliseconds.
+ */
+export async function stepTournament(room: Room): Promise<boolean> {
+  const t = room.tournament;
+  if (!t) return false;
+
+  // 1. The human's duel just ended — record it.
+  if (t.status === 'duelling' && room.state?.winner) {
+    recordHumanResult(t, room.state.winner === 'p1');
+    await saveRoom(room);
+    return true;
+  }
+
+  if (t.status !== 'resolving') return false;
+
+  // 2. Play out one outstanding computer match.
+  if (resolveOneSideMatch(t)) {
+    await saveRoom(room);
+    return true;
+  }
+
+  // 3. Round complete: either crown a champion or set up the next duel.
+  if (advanceRound(t)) {
+    room.state = null;
+    room.rematch = [];
+    room.aiPlan = undefined;
+    seatOpponent(room);
+    maybeStart(room);
+  }
+  await saveRoom(room);
+  return true;
+}
+
+/** True while the bracket has work to do that the client should nudge along. */
+export function tournamentPending(room: Room): boolean {
+  const t = room.tournament;
+  if (!t) return false;
+  if (t.status === 'resolving') return true;
+  return t.status === 'duelling' && !!room.state?.winner;
 }
 
 /** The seat the computer owes a move for right now, if any. */
@@ -148,8 +241,25 @@ export function aiSeatToMove(room: Room): PlayerId | null {
 export async function stepAI(room: Room): Promise<boolean> {
   const pid = aiSeatToMove(room);
   if (!pid || !room.state) return false;
-  const level = room.seats[pid]!.ai!;
   const s = room.state;
+
+  // Nothing the computer does should be able to leave a player waiting for
+  // ever. A rules gap once let it flip a monster between Attack and Defence
+  // indefinitely — every move legal, the turn never ending — so past a
+  // generous ceiling the turn is simply given up. The cap is well above any
+  // real turn: the search itself never plans more than two dozen actions.
+  const turnKey = `${s.turn}:${pid}`;
+  if (room.aiActions?.key !== turnKey) room.aiActions = { key: turnKey, count: 0 };
+  room.aiActions.count += 1;
+  if (room.aiActions.count > 60 && !s.pending) {
+    room.aiPlan = undefined;
+    const bail = applyAction(s, pid, { type: 'endTurn' });
+    if (!bail.error) {
+      room.state = bail.state;
+      await saveRoom(room);
+      return true;
+    }
+  }
 
   let action: DuelAction;
   if (s.pending) {
@@ -157,11 +267,11 @@ export async function stepAI(room: Room): Promise<boolean> {
     // and drop whatever was left of the turn plan, since the board is about to
     // change underneath it.
     room.aiPlan = undefined;
-    action = chooseTrapResponse(s, pid, level);
+    action = chooseTrapResponse(s, pid, GAME_AI);
   } else {
     const key = `${s.turn}:${pid}`;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
-      room.aiPlan = { key, actions: planTurn(s, pid, level, 2500) };
+      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 2500) };
     }
     action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
   }
@@ -171,7 +281,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // The plan went stale against the real position. Search again from here.
     room.aiPlan = undefined;
     const rt = createAiRuntime();
-    const retry = aiNext(s, pid, level, rt, 2500);
+    const retry = aiNext(s, pid, GAME_AI, rt, 2500);
     res = retry ? applyAction(s, pid, retry) : res;
   }
   if (res.error) {
@@ -245,6 +355,8 @@ export function viewOf(room: Room, pid: PlayerId): RoomView {
     state,
     rematch: room.rematch,
     aiToMove: aiSeatToMove(room) !== null,
+    tournament: room.tournament,
+    bracketBusy: tournamentPending(room),
   };
 }
 
@@ -267,6 +379,7 @@ export async function chooseDuelist(room: Room, pid: PlayerId, duelistId: string
   if (!DUELIST_BY_ID[duelistId]) return 'Unknown duelist.';
   const seat = room.seats[pid];
   if (!seat) return 'You are not seated in this duel.';
+  if (room.tournament) return 'You entered the tournament with this deck.';
   if (room.state) return 'The duel has already begun.';
   seat.duelistId = duelistId;
   maybeStart(room);
@@ -274,14 +387,11 @@ export async function chooseDuelist(room: Room, pid: PlayerId, duelistId: string
   return null;
 }
 
-/** Lets the human pick who the computer plays, and at what strength. */
-export async function configureAi(
-  room: Room,
-  duelistId?: string,
-  level?: AiLevel
-): Promise<string | null> {
+/** Lets the human pick which duelist the computer brings. */
+export async function configureAi(room: Room, duelistId?: string): Promise<string | null> {
   const pid = (['p1', 'p2'] as PlayerId[]).find((id) => room.seats[id]?.ai);
   if (!pid) return 'There is no computer opponent in this duel.';
+  if (room.tournament) return 'The bracket decides who you face.';
   if (room.state) return 'The duel has already begun.';
   const seat = room.seats[pid]!;
   if (duelistId) {
@@ -289,7 +399,6 @@ export async function configureAi(
     seat.duelistId = duelistId;
     seat.name = DUELIST_BY_ID[duelistId].name;
   }
-  if (level && AI_LEVELS[level]) seat.ai = level;
   maybeStart(room);
   await saveRoom(room);
   return null;
@@ -317,6 +426,9 @@ function maybeStart(room: Room) {
 }
 
 export async function requestRematch(room: Room, pid: PlayerId): Promise<void> {
+  // A bracket match is a record. The interface offers no rematch during one;
+  // this makes sure a stale client cannot replay a duel it lost either.
+  if (room.tournament) return;
   if (!room.state?.winner) return;
   if (!room.rematch.includes(pid)) room.rematch.push(pid);
   // The computer never needs asking twice.
@@ -332,6 +444,9 @@ export async function requestRematch(room: Room, pid: PlayerId): Promise<void> {
 }
 
 export async function leaveToLobby(room: Room): Promise<void> {
+  // There is no lobby to go back to in a tournament: the duelists are the
+  // bracket's, and clearing them would strand the room with no way to start.
+  if (room.tournament) return;
   room.state = null;
   room.rematch = [];
   room.aiPlan = undefined;

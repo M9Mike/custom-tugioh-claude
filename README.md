@@ -5,8 +5,8 @@ Yu-Gi-Oh!. Ten hand-built 25-card decks, real card artwork, and **every single c
 rewritten with an overpowered, anime-flavoured effect**.
 
 Start a duel, send the link or the four-letter room code to your opponent, both pick a
-duelist, and play. Or take the **vs computer** route and play on your own — pick which
-duelist it brings and how hard it plays.
+duelist, and play. Or play alone: a single duel against the computer, or the
+**tournament** — eight duelists, single elimination, three wins for the crown.
 
 **Built for two iPhones.** The board is laid out phone-first and tested on the real
 Safari engine at both 414×896 and 440×956: safe-area insets for the notch and home
@@ -52,19 +52,15 @@ scores the position each line arrives at, and plays the best one it found. It an
 trap windows by simulating both branches. It gets no special access: face-down cards on
 your side of the field are scored as an average body, never their real stats.
 
-Three levels, which differ in how wide they search and how willing they are to settle
-for a merely good line:
+**There is no difficulty setting.** It always plays at full strength — ten lines kept,
+twenty-six moves considered at each step, three turns of lookahead, and it never settles
+for second best. Weaker configurations exist in the code because the arena below needs
+something to measure against, but nothing in the game ever selects one.
 
-| | Search | Looks ahead | Behaviour |
-|---|---|---|---|
-| Rookie | 1 line, 6 moves considered | — | Scores the board the moment its turn ends, and deliberately settles for a merely good line |
-| Duelist | 4 lines, 14 moves | 1 turn | Plays your whole reply turn out before committing |
-| Champion | 10 lines, 26 moves | 3 turns | Plays your reply, its own answer and your answer to that — and never settles for second best |
-
-Champion's depth is affordable because searching one turn costs about a fifth
-of a second — a twelfth of the time it is allowed: it plays out the turns that
-follow each of its dozen best lines and scores where they actually lead, rather
-than where the board happens to sit the instant it stops moving.
+The depth is affordable because searching a single turn costs about a fifth of a second —
+a twelfth of the time it is allowed: it plays out the turns that follow each of its dozen
+best lines and scores where they actually lead, rather than where the board happens to
+sit the instant it stops moving.
 
 How much each extra turn is worth, at identical search width:
 
@@ -94,14 +90,14 @@ deck pair played from both seats:
 |---|---|
 | race evaluation vs the old material one, equal search width | 57.4% ± 8.2 |
 | full-width search vs a one-ply greedy pick, same evaluation | 64.9% ± 7.5 |
-| Champion vs Duelist | 68.2% ± 7.4 |
-| Champion vs Rookie | 76.8% ± 6.6 |
-| Champion vs random legal moves | 96.9% ± 2.7 |
+| full strength vs 4 lines and one turn of lookahead | 68.2% ± 7.4 |
+| full strength vs 1 line and none | 76.8% ± 6.6 |
+| full strength vs random legal moves | 96.9% ± 2.7 |
 
 Against the earlier evaluation, which added up ATK the way you would in a long game,
-widening the search bought nothing outside the noise, and Champion actually *lost* to
-Duelist — the classic sign of searching hard over a badly calibrated score. Both are
-fixed by the evaluation change alone.
+widening the search bought nothing outside the noise, and the widest configuration
+actually *lost* to the middle one — the classic sign of searching hard over a badly
+calibrated score. Both are fixed by the evaluation change alone.
 
 ```bash
 npm run ai-arena -- --games 400   # forks one worker per core; prints 95% intervals
@@ -111,6 +107,30 @@ npx tsx scripts/ai-bench.ts       # fast tactical positions with one right answe
 Confidence intervals are printed because they matter here: at 30 games a matchup is
 ±18%, which is wide enough to hide any real difference between two configurations, and
 early tuning against numbers that noisy sent this AI down a blind alley.
+
+## Tournament
+
+Pick your duelist and seven rivals are drawn against you in a bracket of eight.
+Quarter-final, semi-final, final; lose once and the run is over.
+
+The other matches in your round are not decided by a dice roll — they are real duels,
+played out headlessly by the same AI at the same full strength. One is simulated per
+request, because a full-strength duel between two computers is about five seconds of
+CPU and a whole round would never fit in a single call. The client nudges through the
+same endpoint that steps the AI's own moves, so the bracket fills in while you watch.
+
+Your own match is the one you play. Between rounds the bracket is the screen you are on,
+and the 🏆 button in a duel takes you back to it mid-turn — nothing is conceded by
+looking, the duel lives on the server.
+
+```bash
+npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled
+```
+
+drives whole brackets over HTTP with the AI playing your seat too, which is the only way
+the later rounds get exercised at all. It is also how the position-change loop was found:
+a monster could be turned between Attack and Defence without limit, so a turn of legal
+moves could go on for ever.
 
 ## How it is built
 
@@ -127,6 +147,9 @@ early tuning against numbers that noisy sent this AI down a blind alley.
   second player; the client nudges `/api/room/[code]/ai` on a timer and the server plays
   one action per call, which is what paces the board so a human can follow it. The turn
   is searched once and cached on the room, so only the first action of a turn is slow.
+- **`src/server/tournament.ts`** — the bracket that turns a solo room into a run of three
+  duels. It rides on the same nudge endpoint: one simulated side match per call, so a
+  round resolves across several requests instead of timing one out.
 - **Regions** — functions are pinned to `cdg1` (Paris) in `vercel.json` to sit beside
   the MongoDB cluster. The database is read and written on every move, so co-locating
   compute and storage matters more than shaving the player's own hop.
@@ -152,10 +175,13 @@ npm run art      # download card artwork into public/art (also runs before build
 npm run dev
 
 npm run sim 800  # play 800 random duels offline; reports rule errors + win rates
+npm run rules    # targeted regressions for rules that were wrong once and must stay right
+npm run audit    # resolve every card's effect in a built position and check what it did
 npm run e2e      # drive two HTTP clients through full duels against a running server
 npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
+npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled   # whole brackets
 npm run shots    # drive two desktop browsers and screenshot the whole flow
-npm run iphone   # play a full duel on WebKit at both iPhone sizes, by tapping
+npm run iphone   # play a duel and a tournament on WebKit at both iPhone sizes, by tapping
 npm run cards    # re-resolve decklists against the card database (authoring only)
 
 # Exercising the durable-storage paths locally, without provisioning anything:

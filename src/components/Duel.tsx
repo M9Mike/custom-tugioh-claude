@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import CardDetail from './CardDetail';
 import { CARDS, DUELIST_BY_ID, artUrl } from '@/game/cards';
-import { AI_LEVEL_LABELS } from '@/game/ai-levels';
 import {
   canActivateFromHand,
   canActivateSetCard,
@@ -48,6 +47,8 @@ interface Props {
   rematch: () => void;
   toLobby: () => void;
   connection: string;
+  /** Present during a tournament: return to the bracket. */
+  onBracket?: () => void;
 }
 
 /* The board is sized from the space actually left after the fixed chrome, so
@@ -56,7 +57,7 @@ const BOARD_CARD = 'w-[var(--cw)]';
 const SIDE_CARD = 'w-[var(--sw)]';
 const HAND_CARD = 'w-[var(--hw)]';
 
-export default function Duel({ view, act, rematch, toLobby, connection }: Props) {
+export default function Duel({ view, act, rematch, toLobby, connection, onBracket }: Props) {
   const state = view.state!;
   const me = view.you;
   const foe = other(me);
@@ -78,11 +79,29 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
   const [soundOn, setSoundOn] = useState(true);
   const seenAnims = useRef<Set<string>>(new Set());
   const logRef = useRef<HTMLDivElement>(null);
+  const handRef = useRef<HTMLDivElement>(null);
+  const [handOverflow, setHandOverflow] = useState(false);
 
   useEffect(() => {
     primeAudio();
     setSoundOn(getSfxEnabled());
   }, []);
+
+  // Cards are sized so an opening hand of five fits; past that the strip
+  // scrolls, and the edge fade is the only thing that says so.
+  useEffect(() => {
+    const el = handRef.current;
+    if (!el) return;
+    const check = () => setHandOverflow(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    // No initial call: observing fires the callback once by itself.
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    el.addEventListener('scroll', check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener('scroll', check);
+    };
+  }, [mine.hand.length]);
 
   // Keep the phone awake while a duel is in progress — turns can be long and
   // nobody wants the screen dying mid-thought. Safari re-releases the lock when
@@ -486,7 +505,7 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
               {p.name}
               {view.seats[pid]?.ai && (
                 <span className="ml-1 align-middle text-[9px] uppercase tracking-wider text-brass">
-                  CPU · {AI_LEVEL_LABELS[view.seats[pid]!.ai!].name}
+                  CPU
                 </span>
               )}
             </span>
@@ -617,6 +636,14 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
           <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setShowLog((v) => !v)} title="Duel log">
             ☰
           </button>
+          {/* Only in a bracket match: look at the standings mid-duel and come
+              back. Nothing is conceded by leaving the board — the duel is on
+              the server and is exactly where you left it. */}
+          {onBracket && (
+            <button className="btn rounded px-2 py-1 text-[10px]" onClick={onBracket} title="Bracket">
+              🏆
+            </button>
+          )}
         </div>
       </div>
 
@@ -684,7 +711,12 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
         <PlayerBar pid={me} top={false} />
 
         <div className="mt-1.5 flex items-end gap-2">
-          <div className="thin-scroll flex min-w-0 flex-1 items-end overflow-x-auto px-1 pb-2 pt-3">
+          <div className="relative min-w-0 flex-1">
+          <div
+            ref={handRef}
+            data-testid="hand-strip"
+            className="thin-scroll flex items-end overflow-x-auto px-1 pb-2 pt-3"
+          >
             <div className="mx-auto flex items-end gap-1">
             {mine.hand.map((c) => {
               const usable =
@@ -716,6 +748,14 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
             })}
             {mine.hand.length === 0 && <span className="py-4 font-display text-xs text-ptextdim">Your hand is empty</span>}
             </div>
+          </div>
+          {/* A hand of five always fits; a sixth card does not, and a card you
+              cannot see is a card you forget you are holding. */}
+          {handOverflow && (
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex w-8 items-center justify-end bg-gradient-to-l from-ink via-ink/70 to-transparent pr-0.5 text-brass">
+              ›
+            </div>
+          )}
           </div>
 
           <div className="flex shrink-0 flex-col gap-1">
@@ -1110,12 +1150,21 @@ export default function Duel({ view, act, rematch, toLobby, connection }: Props)
             <p className="mt-2 text-sm text-ptext/85">{state.winReason}</p>
             <div className="brass-rule my-4" />
             <div className="flex flex-col gap-2">
-              <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={rematch}>
-                {view.rematch.includes(me) ? 'Waiting for your opponent…' : 'Rematch'}
-              </button>
-              <button className="btn rounded px-4 py-2 text-xs" onClick={toLobby}>
-                Choose new duelists
-              </button>
+              {onBracket ? (
+                /* A bracket match has no rematch: the result stands. */
+                <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={onBracket}>
+                  To the bracket
+                </button>
+              ) : (
+                <>
+                  <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={rematch}>
+                    {view.rematch.includes(me) ? 'Waiting for your opponent…' : 'Rematch'}
+                  </button>
+                  <button className="btn rounded px-4 py-2 text-xs" onClick={toLobby}>
+                    Choose new duelists
+                  </button>
+                </>
+              )}
             </div>
             {view.rematch.length === 1 && !view.rematch.includes(me) && (
               <p className="mt-3 text-[11px] text-brass">Your opponent wants a rematch!</p>

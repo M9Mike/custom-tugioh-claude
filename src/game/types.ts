@@ -288,6 +288,13 @@ export interface CardInstance {
   summonedOnTurn: number;
   attacksUsed: number;
   effectUsedOnTurn: number;
+  /**
+   * Turn this monster last changed battle position. A monster may do so only
+   * once per turn — without that limit it can be flipped between Attack and
+   * Defence indefinitely, which is a legal move that changes nothing and lets
+   * a turn never end.
+   */
+  positionChangedOnTurn?: number;
   /** Monsters absorbed by Relinquished / Thousand-Eyes Restrict. */
   absorbed: string[];
   /** Set when control was taken; control reverts at end of that turn. */

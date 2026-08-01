@@ -4,12 +4,17 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Duel from '@/components/Duel';
 import Lobby from '@/components/Lobby';
+import Bracket from '@/components/Bracket';
 import { useDuelRoom } from '@/lib/useDuelRoom';
 
 export default function DuelRoom({ code }: { code: string }) {
   const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, configureAi } =
     useDuelRoom(code);
   const [shareUrl, setShareUrl] = useState('');
+  /* The bracket round whose duel the player has walked into. Holding the round
+     rather than a bare flag is what makes each new round open on the bracket
+     again, with no effect needed to reset it. */
+  const [enteredRound, setEnteredRound] = useState<number | null>(null);
 
   useEffect(() => {
     setShareUrl(`${window.location.origin}/duel/${code}`);
@@ -49,8 +54,41 @@ export default function DuelRoom({ code }: { code: string }) {
     );
   }
 
+  const t = view.tournament;
+
+  /* A tournament room opens on the bracket: at the start of every round, while
+     the other matches are played out, and at the end. The player leaves it by
+     walking into their own duel, and comes back with the 🏆 button — nothing is
+     conceded by looking, the duel lives on the server and is where they left it. */
+  if (t) {
+    const duelOver = !!view.state?.winner;
+    /* When there is no duel to look at there is nothing to choose between.
+       A *finished* duel is still worth showing — the win screen is how the
+       round is announced — so `bracketBusy` alone does not force the switch. */
+    if (!view.state || enteredRound !== t.round) {
+      return (
+        <Bracket
+          t={t}
+          busy={!!view.bracketBusy}
+          onContinue={
+            t.status === 'duelling' && view.state && !duelOver ? () => setEnteredRound(t.round) : undefined
+          }
+        />
+      );
+    }
+  }
+
   if (view.stage === 'duel' && view.state) {
-    return <Duel view={view} act={act} rematch={rematch} toLobby={toLobby} connection={status} />;
+    return (
+      <Duel
+        view={view}
+        act={act}
+        rematch={rematch}
+        toLobby={toLobby}
+        connection={status}
+        onBracket={t ? () => setEnteredRound(null) : undefined}
+      />
+    );
   }
 
   return (

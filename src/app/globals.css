@@ -463,7 +463,12 @@ body {
      room a portrait phone has to spare. */
   --cw: clamp(56px, min((100vw - 34px) / 3, var(--board-h) / 4.3), 138px);
   --sw: calc(var(--cw) * 0.45);
-  --hw: clamp(52px, min((100vw - 36px) / 5.4, var(--board-h) / 6), 104px);
+  /* The hand strip shares its row with the turn controls, so it never gets the
+     whole width. Sizing it against 100vw is what used to leave the fifth card
+     of an opening hand clipped behind the End Turn button. The 100px covers
+     the control column, the gaps and the row's own padding. */
+  --hand-w: calc(100vw - 114px);
+  --hw: clamp(48px, min(var(--hand-w) / 5.3, var(--board-h) / 6), 104px);
 
   height: 100svh;
   padding-top: var(--safe-top);
