@@ -25,6 +25,7 @@ import {
   legalAttackTargets,
   maxAttacks,
   other,
+  summonBlocked,
   tributesRequired,
 } from './engine';
 import { summonTargetSpec, targetSpecFor } from './ui';
@@ -386,7 +387,9 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     if (!p.normalSummonUsed) {
       const summonable = p.hand
         .filter((h) => CARDS[h.slug]?.kind === 'monster')
-        .filter((h) => !(CARDS[h.slug].isFusion && p.extra.some((e) => e.slug === h.slug)))
+        // The same gate the player's own summon goes through: no Rituals, no
+        // Fusions, and no Toon without its Toon World.
+        .filter((h) => !summonBlocked(state, pid, h.slug))
         // Holding the Forbidden One is worth more than summoning it.
         .filter((h) => !EXODIA.has(h.slug))
         .sort((a, b) => (CARDS[b.slug].atk ?? 0) - (CARDS[a.slug].atk ?? 0));

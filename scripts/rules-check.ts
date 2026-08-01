@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, createDuel, effAtk } from '../src/game/engine';
+import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk } from '../src/game/engine';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -353,6 +353,85 @@ console.log('\nA Deck search takes the strongest match, not whatever is on top')
     'and it is the strongest one under the cap, not the first in the deck',
     `got ${added[0] ?? 'nothing'}`
   );
+}
+
+console.log('\nRitual and Toon monsters cannot simply be Normal Summoned');
+{
+  // Relinquished used to walk out of the hand for free while Black Illusion
+  // Ritual, the card whose whole job is to put it there, sat unused.
+  const s = fresh();
+  const rel = card(ME, 'relinquished');
+  s.players[ME].hand = [rel];
+  const refused = applyAction(s, ME, { type: 'normalSummon', uid: rel.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(!!refused.error, 'Relinquished cannot be Normal Summoned', refused.error ?? 'it was summoned');
+
+  // …and its Ritual Spell brings it out of the hand, not only the Deck.
+  const r = fresh();
+  const held = card(ME, 'relinquished');
+  const spell = card(ME, 'black-illusion-ritual');
+  r.players[ME].hand = [held, spell];
+  r.players[ME].monsters[0] = card(ME, 'baby-dragon'); // the tribute
+  const summoned = act(r, ME, { type: 'activateSpell', uid: spell.uid, targets: [] });
+  ok(
+    summoned.players[ME].monsters.some((m) => m?.slug === 'relinquished'),
+    'Black Illusion Ritual summons a Relinquished held in hand'
+  );
+}
+
+console.log('\nA Toon needs Toon World before it can be Summoned');
+{
+  const s = fresh();
+  const toon = card(ME, 'toon-mermaid');
+  s.players[ME].hand = [toon];
+  const refused = applyAction(s, ME, { type: 'normalSummon', uid: toon.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(!!refused.error, 'Toon Mermaid is refused with no Toon World', refused.error ?? 'it was summoned');
+
+  const w = fresh();
+  const toon2 = card(ME, 'toon-mermaid');
+  w.players[ME].hand = [toon2];
+  const world = card(ME, 'toon-world');
+  world.face = 'up';
+  w.players[ME].spellTrap = world;
+  const done = act(w, ME, { type: 'normalSummon', uid: toon2.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(done.players[ME].monsters[0]?.slug === 'toon-mermaid', 'and goes through once Toon World is face-up');
+
+  // Toon Alligator is the way in, so it must never be gated on Toon World.
+  const a = fresh();
+  const gator = card(ME, 'toon-alligator');
+  a.players[ME].hand = [gator];
+  const gatorOut = act(a, ME, { type: 'normalSummon', uid: gator.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(gatorOut.players[ME].monsters[0]?.slug === 'toon-alligator', 'Toon Alligator is summonable without it');
+}
+
+console.log('\nSwords of Revealing Light locks the opponent, not the caster');
+{
+  const s = fresh();
+  const spell = card(ME, 'swords-of-revealing-light');
+  s.players[ME].hand = [spell];
+  const mine = card(ME, 'summoned-skull');
+  mine.summonedOnTurn = 0;
+  s.players[ME].monsters[0] = mine;
+  const theirs = card(FOE, 'baby-dragon');
+  theirs.summonedOnTurn = 0;
+  s.players[FOE].monsters[0] = theirs;
+
+  const after = act(s, ME, { type: 'activateSpell', uid: spell.uid, targets: [] });
+  after.phase = 'battle';
+  ok(canAttackWith(after, ME, after.players[ME].monsters[0]!), 'my own monster can still attack');
+  const foeTurn = { ...after, active: FOE };
+  ok(!canAttackWith(foeTurn, FOE, foeTurn.players[FOE].monsters[0]!), "the opponent's cannot");
+}
+
+console.log('\nA continuous trap that is not reusable goes off once');
+{
+  // Call of the Haunted stays face-up after it resolves. Being on the field is
+  // not the same as being armed again, or it would fire every single turn.
+  const s = fresh();
+  const trap = card(ME, 'call-of-the-haunted');
+  trap.face = 'up';
+  trap.summonedOnTurn = 0;
+  s.players[ME].spellTrap = trap;
+  ok(!canActivateSetCard(s, ME, trap), 'a face-up continuous trap is not offered again');
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');

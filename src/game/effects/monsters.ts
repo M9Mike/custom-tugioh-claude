@@ -13,6 +13,8 @@ export interface EffectDef {
   fusionMaterials?: string[];
   atkOverride?: number;
   defOverride?: number;
+  /** Must be face-up on your side before this monster can be Summoned. */
+  summonRequires?: string;
 }
 
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
@@ -231,7 +233,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'magician-of-faith': {
-    text: 'FLIP: add 1 Spell Card from your Graveyard to your hand, then draw 1 card.',
+    // Either Graveyard — which is what the effect has always done, while the
+    // text claimed otherwise and made the card look broken when it reached
+    // across the field.
+    text: 'FLIP: add 1 Spell Card from either Graveyard to your hand, then draw 1 card.',
+    cry: 'The faith is repaid!',
     effects: [
       {
         trigger: 'onFlip',
@@ -285,6 +291,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'blue-eyes-toon-dragon': {
+    summonRequires: 'toon-world',
     text: 'Requires "Toon World". Can attack your opponent directly. When summoned: your opponent discards 1 random card.',
     cry: 'Toon power!',
     effects: [
@@ -636,6 +643,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-summoned-skull': {
+    summonRequires: 'toon-world',
     text: 'Requires "Toon World". Can attack your opponent directly. When summoned: inflict 600 damage to your opponent.',
     effects: [
       {
@@ -649,6 +657,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-mermaid': {
+    summonRequires: 'toon-world',
     text: 'Requires "Toon World". Can attack your opponent directly. When summoned: draw 1 card.',
     effects: [
       {
@@ -674,6 +683,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'manga-ryu-ran': {
+    summonRequires: 'toon-world',
     text: 'Requires "Toon World". Can attack your opponent directly and cannot be targeted by your opponent\'s effects.',
     effects: [
       {
@@ -732,6 +742,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-rabbit': {
+    summonRequires: 'toon-world',
     text: 'Requires "Toon World". Can attack your opponent directly. When summoned: your opponent discards 1 random card.',
     effects: [
       {

@@ -17,6 +17,7 @@ import {
   canActivateFromHand,
   canActivateSetCard,
   createDuel,
+  summonBlocked,
   tributesRequired,
 } from '../src/game/engine';
 import { CARDS, DUELISTS } from '../src/game/cards';
@@ -49,6 +50,27 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   return { state, card, me: 'p1' };
 }
 
+/**
+ * The card that brings a monster out when it cannot simply be Normal Summoned:
+ * the card it names as a requirement, or whichever Ritual Spell Special Summons
+ * it. Without one of those in the same deck the monster is a dead draw.
+ */
+function summonRoute(slug: string): string | null {
+  const def = CARDS[slug];
+  if (def?.summonRequires) return def.summonRequires;
+  for (const other of Object.values(CARDS)) {
+    for (const eff of other.effects) {
+      for (const op of eff.ops) {
+        if (op.op === 'specialSummon' && op.filter?.slugs?.includes(slug)) return other.slug;
+        // `search` counts too — Toon Alligator fetches the Toon World that the
+        // rest of the Toons need before they can be Summoned at all.
+        if (op.op === 'search' && op.filter?.slugs?.includes(slug)) return other.slug;
+      }
+    }
+  }
+  return null;
+}
+
 const inDecks = new Map<string, string[]>();
 for (const d of DUELISTS) {
   for (const [slug] of d.deck) inDecks.set(slug, [...(inDecks.get(slug) ?? []), d.name]);
@@ -71,6 +93,25 @@ for (const [slug, owners] of inDecks) {
     // asks for, or if it lives in an Extra Deck and is fusion-summoned.
     if (def.isFusion) continue;
     const { state } = stateHolding(slug);
+    /* Some monsters are deliberately not Normal Summonable — a Ritual comes out
+       through its Ritual Spell, a Toon needs Toon World down first. Those are
+       reachable through another card, so what has to be checked is that the
+       other card exists in the same deck and can itself be played. */
+    const gate = summonBlocked(state, 'p1', slug);
+    if (gate) {
+      const route = summonRoute(slug);
+      if (!route) {
+        dead.push(`${def.name} (${slug}) cannot be Normal Summoned (${gate}) and nothing in the deck brings it out`);
+        continue;
+      }
+      for (const owner of owners) {
+        const d = DUELISTS.find((x) => x.name === owner || `${x.name} (Extra)` === owner);
+        if (d && !d.deck.some(([s]) => s === route) && !d.extra.includes(route)) {
+          dead.push(`${def.name} (${slug}) needs ${route}, which is not in ${owner}'s deck`);
+        }
+      }
+      continue;
+    }
     const need = tributesRequired(slug, state, 'p1');
     if (need > 2) dead.push(`${slug} needs ${need} tributes — more than a 3-zone board can pay`);
     continue;

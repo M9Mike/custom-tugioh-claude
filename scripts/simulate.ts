@@ -15,6 +15,7 @@ import {
   fusionOptions,
   legalAttackTargets,
   other,
+  summonBlocked,
   tributesRequired,
 } from '../src/game/engine';
 import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from '../src/game/types';
@@ -56,7 +57,10 @@ function legalActions(state: DuelState, pid: PlayerId): DuelAction[] {
       for (const h of p.hand) {
         const def = CARDS[h.slug];
         if (!def || def.kind !== 'monster') continue;
-        if (def.isFusion && p.extra.some((e) => e.slug === h.slug)) continue;
+        // The engine's own gate: no Fusions from the Extra Deck, no Rituals,
+        // and no Toon without its Toon World. Repeating the rule here instead
+        // is how the random driver started generating illegal summons.
+        if (summonBlocked(state, pid, h.slug)) continue;
         // A real player holds the Forbidden One in hand rather than summoning it.
         if (def.name.includes('Forbidden One') || def.name === 'Exodia the Forbidden One') continue;
         const need = tributesRequired(h.slug, state, pid);

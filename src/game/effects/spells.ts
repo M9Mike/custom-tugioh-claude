@@ -474,13 +474,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'activate',
         cost: { tribute: 1 },
-        ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['relinquished'] }, count: 1, position: 'atk' }],
+        // Hand as well as Deck: Relinquished cannot be Normal Summoned, so a
+        // drawn copy would otherwise sit in hand for the rest of the duel.
+        ops: [{ op: 'specialSummon', from: ['hand', 'deck'], filter: { slugs: ['relinquished'] }, count: 1, position: 'atk' }],
       },
     ],
   },
 
   'shadow-spell': {
-    text: 'When your opponent declares an attack: negate it. That monster loses 800 ATK and cannot attack for 1 turn.',
+    /* Continuous, and it says so. It read like a one-shot Trap and then kept
+       being offered every time an attack was declared, which looks like a card
+       being activated twice rather than one that never left. */
+    text: 'Stays face-up. Each time your opponent declares an attack: negate it. That monster loses 800 ATK permanently and cannot attack for 1 turn.',
+    cry: 'Bound in shadow!',
     effects: [
       {
         trigger: 'trap',
@@ -568,13 +574,25 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     ],
   },
 
+  /* The oath is sworn to the sea, not to one animal: it brings out either of
+     Mako's Ritual monsters. Crab Turtle has no Oath card of its own, and a
+     Ritual monster with nothing to Summon it is simply a dead draw. */
   'fortress-whale-s-oath': {
-    text: 'Tribute 1 monster you control: Special Summon "Fortress Whale" from your hand or Deck.',
+    text: 'Tribute 1 monster you control: Special Summon "Fortress Whale" or "Crab Turtle" from your hand or Deck.',
+    cry: 'Rise from the depths!',
     effects: [
       {
         trigger: 'activate',
         cost: { tribute: 1 },
-        ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['fortress-whale'] }, count: 1, position: 'atk' }],
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['hand', 'deck'],
+            filter: { slugs: ['fortress-whale', 'crab-turtle'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
       },
     ],
   },

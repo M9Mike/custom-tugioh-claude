@@ -127,9 +127,21 @@ survived untouched. `resolveFlip()` runs on every exit path from an attack.
 
 **Effects are queued, not batched.** Every animation the server reports used to be
 played in one frame, so a turn snapped to its final state. `Duel.tsx` drains them one
-at a time and compresses the timing when a backlog builds, so the computer's turn
-still reads as a sequence without making anyone wait. It is cosmetic only — the board
-state is already current and input never blocks on it.
+at a time. It is cosmetic only — the board state is already current and input never
+blocks on it.
+
+The engine reports events in the order things actually happen, so a combo arrives as
+a chain of beats and each one has to be given its moment: the Flute is declared, the
+dragon *arrives* (its own announcement — without it a monster fetched by a Spell
+simply appeared), then the dragon's own effect is declared, then what it destroys.
+Compression is therefore gentle and only for a genuinely long line; racing through
+to save four seconds throws away the thing the queue exists for. A monster going off
+reads "Blue-Eyes White Dragon's effect activates", not "Kaiba activates Blue-Eyes
+White Dragon" — it is already standing there.
+
+**The banner is for the cry, never the name.** It fell back to the card's name when
+a card had no flavour line, so the screen read "Joey activates Monster Reborn" with
+"Monster Reborn" printed again right under it.
 
 **No 3D engine.** Every effect animates `transform`, `opacity` or `filter`, which the
 compositor handles for free. A WebGL context would roughly double a 1MB bundle to
@@ -161,6 +173,32 @@ player. Sizing it to the next power of two handed six of ten a walkover.
 to hide any real difference. Early tuning against numbers that noisy sent this AI down
 a blind alley. `scripts/ai-arena.ts` prints 95% intervals; believe those, not a raw
 win count.
+
+**A gate the rules do not enforce is not a rule.** Five monsters said "Requires
+Toon World" in their text and could be Normal Summoned without it; three Ritual
+monsters walked out of the hand for free while the Ritual Spells whose entire job
+is to summon them sat unused. `summonBlocked()` is now the one place that decides,
+and the player, the AI and both test drivers all ask it rather than each carrying
+a copy of the rule. Two of those copies had already drifted.
+
+**Then check the deck still works.** Gating the Toons dropped Pegasus from 41% to
+23% under `npm run sim` — but that plays at random, and a combo deck at random
+never draws its enabler on purpose. Measured with the real search he wins 68% ±12
+and has Toon World down in 73% of games. Believe the AI's number, not the random
+one, before rebalancing anything.
+
+**Gating also stranded cards.** Both Ritual Spells searched only the Deck, so a
+Ritual monster you had *drawn* became a dead card the moment it could no longer be
+Normal Summoned. And Crab Turtle had no Ritual Spell in the game at all. `from` on
+a Special Summon now takes a list of zones, and `npm run playable` checks that a
+monster it refuses to summon has something in the same deck that brings it out.
+
+**The Toon idea, in full.** Toon World is the engine: while it is face-up your
+Toons need no Tribute, gain 500 ATK, attack directly and cannot be targeted.
+Blue-Eyes Toon Dragon, Toon Summoned Skull, Toon Mermaid, Manga Ryu-Ran and Dark
+Rabbit cannot be Summoned without it. Toon Alligator is the way in — it is never
+gated, and Normal Summoning it fetches Toon World from the Deck. Ryu-Ran,
+Bickuribox and Parrot Dragon take the aura but do not need it.
 
 **Loops the rules allow.** A monster could once be turned between Attack and Defence
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,

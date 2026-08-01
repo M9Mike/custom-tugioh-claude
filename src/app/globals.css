@@ -416,17 +416,6 @@ body {
 }
 .shake { animation: shake 0.45s ease-out; }
 
-@keyframes rise-fade {
-  0% { opacity: 0; transform: translateY(14px) scale(0.9); }
-  22% { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-46px) scale(1.06); }
-}
-.float-number {
-  animation: rise-fade 1.5s ease-out forwards;
-  font-family: var(--font-display), Georgia, serif;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 20px currentColor;
-}
-
 @keyframes sweep-band {
   0% { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
   25% { opacity: 1; }
@@ -468,7 +457,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .shake,
   .banner,
-  .float-number,
   .scanline-sheen::after,
   .targetable {
     animation: none !important;

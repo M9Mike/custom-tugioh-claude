@@ -844,11 +844,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const zone = state.players[ctx.controller].monsters.findIndex((m) => !m);
           if (zone < 0) break;
           const sources: PlayerId[] = op.side === 'both' ? [ctx.controller, other(ctx.controller)] : [ctx.controller];
+          const zones = Array.isArray(op.from) ? op.from : [op.from];
+          const from = (pid: PlayerId) => zones.flatMap((z) => zoneCards(state, pid, z));
           let picked: CardInstance | null = null;
           // Prefer an explicit choice from the activating player.
           const chosenUid = ctx.targets[ctx.cursor];
           for (const pid of sources) {
-            const pool = zoneCards(state, pid, op.from === 'extra' ? 'extra' : op.from);
+            const pool = from(pid);
             const byChoice = chosenUid ? pool.find((c) => c.uid === chosenUid) : null;
             if (byChoice && matchesFilter(byChoice, op.filter) && CARDS[byChoice.slug]?.kind === 'monster') {
               picked = byChoice;
@@ -858,7 +860,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           }
           if (!picked) {
             for (const pid of sources) {
-              const pool = zoneCards(state, pid, op.from === 'extra' ? 'extra' : op.from).filter(
+              const pool = from(pid).filter(
                 (c) =>
                   CARDS[c.slug]?.kind === 'monster' &&
                   matchesFilter(c, op.filter) &&
@@ -1009,11 +1011,36 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       case 'stealFromGrave': {
-        const oppGrave = state.players[other(ctx.controller)].grave;
-        const idx = oppGrave.findIndex((c) => matchesFilter(c, op.filter));
-        const pool = idx >= 0 ? oppGrave : state.players[ctx.controller].grave;
-        const i2 = idx >= 0 ? idx : pool.findIndex((c) => matchesFilter(c, op.filter));
-        if (i2 < 0) break;
+        /* Either Graveyard, the opponent's first — and the best card in it
+           rather than whichever happens to lie nearest the top. A flip effect
+           resolves in the middle of someone else's attack, so there is no
+           moment to ask the player which; taking the strongest is the answer
+           they would have given. */
+        const pools = [state.players[other(ctx.controller)].grave, state.players[ctx.controller].grave];
+        let pool: CardInstance[] | null = null;
+        let i2 = -1;
+        for (const g of pools) {
+          const chosen = ctx.targets[ctx.cursor];
+          const byChoice = chosen ? g.findIndex((c) => c.uid === chosen && matchesFilter(c, op.filter)) : -1;
+          if (byChoice >= 0) {
+            pool = g;
+            i2 = byChoice;
+            ctx.cursor += 1;
+            break;
+          }
+          const matches = g.map((c, i) => ({ c, i })).filter(({ c }) => matchesFilter(c, op.filter));
+          if (matches.length) {
+            pool = g;
+            /* Highest ATK wins, and the most recent card breaks a tie — which
+               is what decides it for Spells, where ATK means nothing and the
+               last one sent to the Graveyard is the one still worth having.
+               `CARDS[...]` rather than `baseAtk`, which throws on a slug it
+               does not know and would take the whole duel down with it. */
+            i2 = matches.reduce((a, b) => ((CARDS[b.c.slug]?.atk ?? 0) >= (CARDS[a.c.slug]?.atk ?? 0) ? b : a)).i;
+            break;
+          }
+        }
+        if (!pool || i2 < 0) break;
         const c = pool.splice(i2, 1)[0];
         state.players[ctx.controller].hand.push(c);
         log(state, `${state.players[ctx.controller].name} takes ${displayName(c)} from the Graveyard.`, 'effect', ctx.controller);
@@ -1174,7 +1201,7 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
   if (!effs.length) return null;
 
   log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
-  anim(state, { kind: 'trap', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? def.name });
+  anim(state, { kind: 'trap', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
 
   const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig };
   for (const eff of effs) {
@@ -1406,6 +1433,36 @@ function endTurn(state: DuelState) {
 /* Legality helpers (shared by the server and the UI)                  */
 /* ------------------------------------------------------------------ */
 
+/** Is this card face-up on that player's side, in any zone? */
+function faceUpOnSide(state: DuelState, pid: PlayerId, slug: string): boolean {
+  const p = state.players[pid];
+  if (p.spellTrap?.slug === slug && p.spellTrap.face === 'up') return true;
+  if (p.field?.slug === slug && p.field.face === 'up') return true;
+  return p.monsters.some((m) => m?.slug === slug && m.face === 'up');
+}
+
+/**
+ * Why this monster may not simply be Normal Summoned, or null if it may.
+ *
+ * Only Fusion monsters were ever checked here, so a Ritual monster could be
+ * laid straight down from the hand — Relinquished walked onto the field for
+ * free while Black Illusion Ritual, the card whose entire job is to put it
+ * there, sat unused. The same hole let a Toon be Summoned with no Toon World,
+ * which is the one thing the whole Toon deck is built around.
+ */
+export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): string | null {
+  const def = CARDS[slug];
+  if (!def) return null;
+  if (def.isFusion && state.players[pid].extra.some((e) => e.slug === slug)) {
+    return 'Fusion monsters must be Fusion Summoned.';
+  }
+  if (def.isRitual) return `${def.name} can only be Ritual Summoned.`;
+  if (def.summonRequires && !faceUpOnSide(state, pid, def.summonRequires)) {
+    return `${def.name} needs ${CARDS[def.summonRequires]?.name ?? def.summonRequires} on your field.`;
+  }
+  return null;
+}
+
 export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId): number {
   const def = CARDS[slug];
   const level = def?.level ?? 0;
@@ -1580,7 +1637,8 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const c = p.hand[hi];
       const def = CARDS[c.slug];
       if (!def || def.kind !== 'monster') return { state: prev, error: 'That is not a monster.' };
-      if (def.isFusion && p.extra.some((e) => e.slug === c.slug)) return { state: prev, error: 'Fusion monsters must be Fusion Summoned.' };
+      const blocked = summonBlocked(state, pid, c.slug);
+      if (blocked) return { state: prev, error: blocked };
       if (action.zone < 0 || action.zone >= MONSTER_ZONES) {
         return { state: prev, error: 'Invalid Monster Zone.' };
       }
@@ -1692,7 +1750,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       if (hi2 >= 0) p.hand.splice(hi2, 1);
 
       log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
-      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? def.name });
+      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
 
       if (isField) {
         if (p.field) toGrave(state, p.field.uid, true);
@@ -1750,7 +1808,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const eff = def.effects.find((e) => e.trigger === 'activate');
       if (!eff) return { state: prev, error: 'That card cannot be activated.' };
       log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
-      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? def.name });
+      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
       const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
       runOps(ctx, eff.ops);
       if (def.subKind !== 'Continuous') {
@@ -1782,7 +1840,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       }
       c.effectUsedOnTurn = state.turn;
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
-      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? eff.label ?? def.name });
+      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? eff.label });
       const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
       runOps(ctx, eff.ops);
       return { state };

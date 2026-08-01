@@ -84,6 +84,7 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
         fusionMaterials: custom.fusionMaterials,
         atkOverride: custom.atkOverride,
         defOverride: custom.defOverride,
+        summonRequires: custom.summonRequires,
       } satisfies CardDef,
     ];
   })

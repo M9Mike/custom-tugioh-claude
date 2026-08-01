@@ -76,7 +76,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; tone: string } | null>(null);
-  const [floats, setFloats] = useState<{ id: string; who: PlayerId; text: string; tone: string }[]>([]);
   const [shakeOn, setShakeOn] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [graveOpen, setGraveOpen] = useState<PlayerId | null>(null);
@@ -94,7 +93,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      through the longer events — a trap, or a signature card's moment — leaving
      the card on screen with nothing saying whose move it was. */
   const [fxHold, setFxHold] = useState(900);
-  const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number } | null>(null);
+  const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number; kind: 'damage' | 'heal' } | null>(null);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
   const fxTimer = useRef<number | null>(null);
@@ -164,24 +163,29 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      state, which is what made it feel like a spreadsheet rather than a duel.
      Events are now played one at a time, each held long enough to read.
 
+     The engine already reports them in the order things actually happen, so a
+     combo arrives as a chain of beats: the Flute is declared, then the dragon
+     arrives, then the dragon's own effect is declared, then whatever it
+     destroys. Each beat has to be given its moment or they run together and
+     the dragon appears to come out of nowhere.
+
      It is purely cosmetic — the board state is already current, so input stays
-     live throughout and nothing waits on the queue. When a long line arrives
-     (the computer playing out a combo) the queue speeds itself up rather than
-     letting the player sit through it. */
+     live throughout and nothing waits on the queue. */
   const FX_MS: Record<string, number> = {
     draw: 130,
     phase: 200,
-    summon: 380,
-    heal: 300,
-    destroy: 340,
-    damage: 420,
-    flip: 460,
+    heal: 700,
+    destroy: 520,
+    damage: 620,
+    flip: 560,
+    // A monster arriving is a beat of its own, not a step on the way to one.
+    summon: 780,
     // Long enough to read the declaration that goes with them.
-    attack: 900,
-    directAttack: 900,
-    activate: 1000,
-    trap: 1150,
-    fusion: 1100,
+    attack: 950,
+    directAttack: 950,
+    activate: 1050,
+    trap: 1200,
+    fusion: 1200,
     win: 0,
   };
 
@@ -203,20 +207,36 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     SIGNATURE.has(a.slug) &&
     (a.kind === 'attack' || a.kind === 'directAttack' || a.kind === 'activate' || a.kind === 'trap' || a.kind === 'fusion');
 
-  const declare = (a: AnimEvent): { verb: string; name: string; slug: string; who: PlayerId } | null => {
+  /**
+   * `form: 'actor'` reads "Kaiba activates Dark Hole"; `form: 'card'` reads
+   * "Blue-Eyes White Dragon's effect activates" — a monster already on the
+   * field going off is not the same sentence as a Spell being played, and
+   * "Kaiba activates Blue-Eyes White Dragon" while the dragon stands there is
+   * nonsense.
+   */
+  const declare = (
+    a: AnimEvent
+  ): { verb: string; name: string; slug: string; who: PlayerId; form: 'actor' | 'card' } | null => {
     if (!a.slug || !a.player) return null;
     const name = CARDS[a.slug]?.name ?? a.slug;
+    const actor = { name, slug: a.slug, who: a.player, form: 'actor' as const };
     switch (a.kind) {
       case 'activate':
-        return { verb: 'activates', name, slug: a.slug, who: a.player };
+        return CARDS[a.slug]?.kind === 'monster'
+          ? { ...actor, form: 'card', verb: "'s effect activates" }
+          : { ...actor, verb: 'activates' };
+      case 'summon':
+        // The arrival is its own beat: without it a monster fetched by a Spell
+        // simply appeared, with nothing saying where it had come from.
+        return { ...actor, verb: 'summons' };
       case 'trap':
-        return { verb: 'springs', name, slug: a.slug, who: a.player };
+        return { ...actor, verb: 'springs' };
       case 'fusion':
-        return { verb: 'fusion summons', name, slug: a.slug, who: a.player };
+        return { ...actor, verb: 'fusion summons' };
       case 'attack':
-        return { verb: `attacks ${a.text ?? ''} with`.replace('  ', ' '), name, slug: a.slug, who: a.player };
+        return { ...actor, verb: `attacks ${a.text ?? ''} with`.replace('  ', ' ') };
       case 'directAttack':
-        return { verb: 'attacks directly with', name, slug: a.slug, who: a.player };
+        return { ...actor, verb: 'attacks directly with' };
       default:
         return null;
     }
@@ -264,13 +284,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         case 'damage':
           sfx.damage();
           // No small floating number: the struck player gets the big one below.
-          setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0 });
+          setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0, kind: 'damage' });
           setShakeOn(true);
           window.setTimeout(() => setShakeOn(false), 520);
           break;
         case 'heal':
           sfx.heal();
-          pushFloat(a, `+${a.amount}`, 'heal');
+          // The same big centred number as damage, in green. Gaining Life
+          // Points was the one swing still reported by a small line of drifting
+          // text, which read as an afterthought next to losing them.
+          setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0, kind: 'heal' });
           break;
         case 'win':
           break;
@@ -307,8 +330,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const backlog = fxQueue.current.length;
       /* A signature moment is never compressed. It is one event out of a whole
          turn, and the animation is written for its full run — cut to a third it
-         stops mid-rush, which looks like a bug rather than a flourish. */
-      const scale = signature ? 1 : backlog > 12 ? 0.34 : backlog > 6 ? 0.6 : 1;
+         stops mid-rush, which looks like a bug rather than a flourish.
+
+         Everything else compresses only gently, and only when a genuinely long
+         line is waiting. The point of the queue is that a turn reads as a
+         sequence; racing through it to save four seconds throws away the very
+         thing it exists for, and a combo becomes a blur again. */
+      const scale = signature ? 1 : backlog > 18 ? 0.62 : backlog > 10 ? 0.8 : 1;
       const base = signature ? SIG_MS : (FX_MS[next.kind] ?? 300);
       const hold = Math.max(70, base * scale);
       setFxHold(hold);
@@ -329,13 +357,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     },
     []
   );
-
-  function pushFloat(a: AnimEvent, text: string, tone: string) {
-    if (!a.player) return;
-    const id = `${a.id}_${Math.random()}`;
-    setFloats((f) => [...f, { id, who: a.player!, text, tone }]);
-    setTimeout(() => setFloats((f) => f.filter((x) => x.id !== id)), 1600);
-  }
 
   useEffect(() => {
     if (!banner) return;
@@ -728,18 +749,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             ⚰{p.grave.length}
           </button>
         </div>
-        {floats
-          .filter((f) => f.who === pid)
-          .map((f) => (
-            <span
-              key={f.id}
-              className={`float-number pointer-events-none absolute ${top ? 'top-8' : '-top-4'} right-16 text-xl font-bold ${
-                f.tone === 'dmg' ? 'text-[#e0555f]' : 'text-[#8fd18a]'
-              }`}
-            >
-              {f.text}
-            </span>
-          ))}
       </div>
     );
   };
@@ -1070,8 +1079,17 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 <GameCard card={previewInstances([[d.slug, 1]])[0]} compact />
               </div>
               <p className="min-w-0 font-display text-[12px] leading-snug text-parchment sm:text-sm">
-                <span className="text-brass">{actor}</span> {d.verb}{' '}
-                <span className="text-brassbright">{d.name}</span>
+                {d.form === 'actor' ? (
+                  <>
+                    <span className="text-brass">{actor}</span> {d.verb}{' '}
+                    <span className="text-brassbright">{d.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-brassbright">{d.name}</span>
+                    {d.verb}
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -1108,10 +1126,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           key={hit.id}
           className="hit-vignette"
           style={{
-            background:
-              hit.who === me
-                ? 'radial-gradient(120% 70% at 50% 108%, rgba(190,40,48,0.62) 0%, rgba(150,25,35,0.28) 38%, transparent 72%)'
-                : 'radial-gradient(120% 70% at 50% -8%, rgba(190,40,48,0.62) 0%, rgba(150,25,35,0.28) 38%, transparent 72%)',
+            background: (() => {
+              const rgb = hit.kind === 'heal' ? '90,190,120' : '190,40,48';
+              const dim = hit.kind === 'heal' ? '60,150,95' : '150,25,35';
+              const from = hit.who === me ? '50% 108%' : '50% -8%';
+              return `radial-gradient(120% 70% at ${from}, rgba(${rgb},0.55) 0%, rgba(${dim},0.24) 38%, transparent 72%)`;
+            })(),
           }}
           onAnimationEnd={() => setHit((h) => (h?.id === hit.id ? null : h))}
           aria-hidden
@@ -1126,9 +1146,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         >
           <span
             className="dmg-pop font-display text-[13vw] font-black leading-none sm:text-6xl"
-            style={{ color: '#ff6b6b', textShadow: '0 0 18px rgba(220,40,50,0.75), 0 4px 0 rgba(0,0,0,0.55)' }}
+            style={
+              hit.kind === 'heal'
+                ? { color: '#7ff0a8', textShadow: '0 0 18px rgba(60,200,110,0.75), 0 4px 0 rgba(0,0,0,0.55)' }
+                : { color: '#ff6b6b', textShadow: '0 0 18px rgba(220,40,50,0.75), 0 4px 0 rgba(0,0,0,0.55)' }
+            }
           >
-            −{hit.amount}
+            {hit.kind === 'heal' ? '+' : '−'}
+            {hit.amount}
           </span>
         </div>
       )}

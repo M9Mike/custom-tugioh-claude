@@ -53,6 +53,12 @@ export interface CardDef extends GeneratedCard {
   /** Stat overrides so our custom versions can differ from the printed card. */
   atkOverride?: number;
   defOverride?: number;
+  /**
+   * A card that must be face-up on your side before this monster can be
+   * Summoned — the Toon monsters and their Toon World. The requirement is in
+   * their rules text either way; this is what makes the engine agree.
+   */
+  summonRequires?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -106,6 +112,8 @@ export type TrapWindow =
   | 'anyOpponentTurn';
 
 export type Side = 'own' | 'opp' | 'both';
+/** Where a Special Summon may pull a monster from. */
+export type SummonZone = 'hand' | 'deck' | 'grave' | 'extra';
 export type Pick =
   | 'self' // the card that owns this effect
   | 'chosen' // player selects when activating
@@ -161,7 +169,9 @@ export type Op =
   | { op: 'discard'; count: number; who: Side }
   | { op: 'mill'; count: number; who: Side }
   | { op: 'search'; filter: CardFilter; count?: number }
-  | { op: 'specialSummon'; from: 'hand' | 'deck' | 'grave' | 'extra'; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face }
+  /** `from` may list several zones, searched in order — a Ritual Spell has to
+   *  reach the monster whether it was drawn or is still in the Deck. */
+  | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face }
   | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string }
   | { op: 'transformInto'; slug: string }
   | { op: 'addCounter'; amount: number }

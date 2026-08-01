@@ -15,7 +15,7 @@
  *   npx tsx scripts/card-audit.ts            # audit everything
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
-import { applyAction, createDuel, effAtk, effDef, effFlags, other } from '../src/game/engine';
+import { applyAction, createDuel, effAtk, effDef, effFlags, other, tributesRequired } from '../src/game/engine';
 import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,
@@ -38,7 +38,7 @@ const ME: PlayerId = 'p1';
 const FOE: PlayerId = 'p2';
 
 /** A monster with real stats, used to stock fields and graveyards. */
-const FILLER = ['baby-dragon', 'harpie-lady', 'saggi-the-dark-clown', 'mystical-elf', 'giant-soldier-of-stone'];
+const FILLER = ['baby-dragon', 'harpie-lady', 'saggi-the-dark-clown', 'mystical-elf', 'cannon-soldier'];
 
 function base(): DuelState {
   const s = structuredClone(
@@ -368,10 +368,27 @@ function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'mo
   );
 }
 
+/** Does this Special Summon draw on that zone? `from` may name several. */
+function summonsFrom(op: { from: string | string[] }, zone: string): boolean {
+  return Array.isArray(op.from) ? op.from.includes(zone) : op.from === zone;
+}
+
+/** The Ritual Spell that Special Summons this monster, if the game has one. */
+function ritualSpellFor(slug: string): string | null {
+  for (const other of Object.values(CARDS)) {
+    for (const eff of other.effects) {
+      for (const op of eff.ops) {
+        if (op.op === 'specialSummon' && op.filter?.slugs?.includes(slug)) return other.slug;
+      }
+    }
+  }
+  return null;
+}
+
 function stockDeckFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
     const filter = 'filter' in op ? op.filter : undefined;
-    if (op.op !== 'search' && !(op.op === 'specialSummon' && op.from === 'deck')) continue;
+    if (op.op !== 'search' && !(op.op === 'specialSummon' && summonsFrom(op, 'deck'))) continue;
     // Searches are not always for monsters — Toon Alligator fetches a Spell —
     // so only insist on a monster when nothing in the filter says otherwise.
     const wantsAnyKind = !!filter?.slugs || (filter?.kind != null && filter.kind !== 'monster');
@@ -386,7 +403,7 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
 /** Puts a legal revival target in the Graveyard for `specialSummon from grave`. */
 function stockGraveFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
-    if (op.op !== 'specialSummon' || op.from !== 'grave') continue;
+    if (op.op !== 'specialSummon' || !summonsFrom(op, 'grave')) continue;
     const match = matchCard(op.filter);
     if (match) s.players[ME].grave.push(mint(s, ME, match.slug));
   }
@@ -509,10 +526,10 @@ function targetsFor(s: DuelState, def: CardDef): string[] {
   const ops = def.effects.flatMap((e) => e.ops);
   const out: string[] = [];
   for (const op of ops) {
-    if (op.op === 'specialSummon' && op.from === 'grave') {
+    if (op.op === 'specialSummon' && summonsFrom(op, 'grave')) {
       const pool = op.side === 'both' ? [...graveMons, ...s.players[FOE].grave.filter((c) => CARDS[c.slug]?.kind === 'monster')] : graveMons;
       if (pool[0]) out.push(pool[0].uid);
-    } else if (op.op === 'specialSummon' && op.from === 'hand') {
+    } else if (op.op === 'specialSummon' && summonsFrom(op, 'hand')) {
       const h = s.players[ME].hand.find((c) => CARDS[c.slug]?.kind === 'monster');
       if (h) out.push(h.uid);
     } else if (op.op === 'equipTo') {
@@ -639,8 +656,39 @@ for (const def of Object.values(CARDS)) {
       const c = mint(s, ME, def.slug);
       s.players[ME].hand.push(c);
       satisfy(s, eff, c);
-      // Tribute Summons need bodies to give up, so stock exactly enough.
-      const need = (CARDS[def.slug].level ?? 0) >= 7 ? 2 : (CARDS[def.slug].level ?? 0) >= 5 ? 1 : 0;
+
+      /* Some monsters cannot be Normal Summoned at all. A Toon needs its Toon
+         World face-up, which a player reaches by playing it, so put it down and
+         the ordinary summon below then works. A Ritual monster has no Normal
+         Summon route at any price — it arrives through its Ritual Spell, and
+         that spell's own audit covers the summon — so drop it onto the field
+         directly and fire the trigger the same way the engine does. */
+      if (CARDS[def.slug].summonRequires) {
+        s.players[ME].spellTrap = mint(s, ME, CARDS[def.slug].summonRequires!);
+        s.players[ME].spellTrap!.face = 'up';
+      } else if (def.isRitual) {
+        const spell = ritualSpellFor(def.slug);
+        if (!spell) {
+          skipped.push(`${def.slug} (Ritual with no Ritual Spell in the game)`);
+          continue;
+        }
+        // The monster waits in the Deck, the Spell goes in hand, and a body
+        // sits on the field to pay the tribute — exactly the position a player
+        // is in when they Ritual Summon.
+        s.players[ME].hand = s.players[ME].hand.filter((h) => h.uid !== c.uid);
+        s.players[ME].deck.push(c);
+        const sp = mint(s, ME, spell);
+        s.players[ME].hand.push(sp);
+        if (!s.players[ME].monsters.some((m) => m)) place(s, ME, 0, 'baby-dragon');
+        audit(def, eff, s, (st) => run(st, ME, { type: 'activateSpell', uid: sp.uid, targets: targetsFor(st, def) }));
+        continue;
+      }
+
+      /* Tribute Summons need bodies to give up, so stock exactly enough — and
+         ask the engine how many rather than re-deriving it from the level. A
+         Toon under its own Toon World needs none at all, and a local copy of
+         the rule said two, so the summon aimed at a zone it never freed. */
+      const need = tributesRequired(def.slug, s, ME);
       for (let z = 0; z < need; z++) if (!s.players[ME].monsters[z]) place(s, ME, z, 'baby-dragon');
       const tributes = s.players[ME].monsters.filter((m): m is CardInstance => !!m).slice(0, need).map((m) => m.uid);
       const zone = need > 0 ? s.players[ME].monsters.findIndex((m) => m && tributes.includes(m.uid)) : 2;
