@@ -400,6 +400,7 @@ function resetInstance(c: CardInstance) {
   c.position = 'atk';
   c.controlRevertsOnTurn = undefined;
   c.effectUsedOnTurn = -1;
+  c.positionChangedOnTurn = undefined;
   c.equippedTo = undefined;
 }
 
@@ -1440,6 +1441,7 @@ export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInsta
 export function canChangePosition(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
   if (monstersFrozen(state, pid)) return false;
+  if (c.positionChangedOnTurn === state.turn) return false;
   return c.summonedOnTurn !== state.turn;
 }
 
@@ -1569,6 +1571,10 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const c = p.monsters.find((m) => m?.uid === action.uid);
       if (!c) return { state: prev, error: 'Monster not found.' };
       if (c.summonedOnTurn === state.turn) return { state: prev, error: 'It was summoned this turn.' };
+      if (c.positionChangedOnTurn === state.turn) {
+        return { state: prev, error: 'It has already changed position this turn.' };
+      }
+      c.positionChangedOnTurn = state.turn;
       if (c.face === 'down') {
         c.face = 'up';
         c.position = 'atk';

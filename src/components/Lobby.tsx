@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import GameCard from './GameCard';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
-import { AI_LEVEL_LABELS, AI_LEVEL_ORDER } from '@/game/ai-levels';
 import { primeAudio, sfx } from '@/lib/sfx';
 import { other } from '@/game/engine';
 import type { CardInstance } from '@/game/types';
@@ -14,7 +13,7 @@ interface Props {
   chooseDuelist: (id: string) => void;
   setPlayerName: (name: string) => void;
   shareUrl: string;
-  configureAi?: (opts: { duelistId?: string; level?: string }) => void;
+  configureAi?: (opts: { duelistId?: string }) => void;
 }
 
 
@@ -52,7 +51,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
   const foe = other(me);
   const mySeat = view.seats[me];
   const foeSeat = view.seats[foe];
-  const aiLevel = foeSeat?.ai;
+  const isAi = !!foeSeat?.ai;
   const [hovered, setHovered] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState(mySeat?.name ?? '');
   const [copied, setCopied] = useState(false);
@@ -119,7 +118,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
 
           <div className="flex-1" />
 
-          {!aiLevel && (
+          {!isAi && (
             <button className="btn rounded px-3 py-2 text-[11px]" onClick={copy}>
               {copied ? '✓ Link copied' : 'Copy invite link'}
             </button>
@@ -133,29 +132,15 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
           </p>
         )}
 
-        {aiLevel && (
+        {isAi && (
           <div className="mt-3 rounded border border-brassdim/60 bg-black/30 p-3">
-            <p className="font-display text-[10px] uppercase tracking-widest text-ptextdim">Opponent strength</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {AI_LEVEL_ORDER.map((l) => (
-                <button
-                  key={l}
-                  onClick={() => {
-                    sfx.click();
-                    configureAi?.({ level: l });
-                  }}
-                  className={`flex flex-col rounded border px-2 py-1.5 text-left transition-colors ${
-                    aiLevel === l ? 'border-brass bg-brass/12' : 'border-stoneline hover:border-brass/50'
-                  }`}
-                >
-                  <span className={`font-display text-[11px] ${aiLevel === l ? 'text-brassbright' : 'text-ptext/85'}`}>
-                    {AI_LEVEL_LABELS[l].name}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <p className="font-display text-[10px] uppercase tracking-widest text-brass">Your opponent</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-ptext/85">
+              The computer plays at full strength — widest search, three turns of lookahead, and it counts the race to
+              zero every turn. There is no easy setting.
+            </p>
             <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
-              {AI_LEVEL_LABELS[aiLevel].blurb} It is holding{' '}
+              It is holding{' '}
               <span className="text-parchment">{DUELISTS.find((d) => d.id === foeSeat?.duelistId)?.name ?? 'a deck'}</span>
               &rsquo;s deck — pick a different one for it from the panel on the right, then choose your own duelist to
               begin.
@@ -189,7 +174,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                   {pid === me && <span className="ml-1 text-[10px] text-brass">(you)</span>}
                   {seat?.ai && (
                     <span className="ml-1 rounded bg-brass/20 px-1 py-0.5 text-[9px] uppercase tracking-wider text-brass">
-                      CPU · {AI_LEVEL_LABELS[seat.ai].name}
+                      CPU
                     </span>
                   )}
                 </p>
@@ -278,7 +263,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
           <button className="btn mt-3 rounded px-3 py-2 text-[11px]" onClick={() => setDeckOpen(detail.id)}>
             View 25-card deck
           </button>
-          {aiLevel && (
+          {isAi && (
             <button
               className="btn mt-2 rounded px-3 py-2 text-[11px]"
               onClick={() => {

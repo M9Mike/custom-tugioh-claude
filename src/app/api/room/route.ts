@@ -1,6 +1,5 @@
-import { createRoom, createSoloRoom, viewOf } from '@/server/rooms';
+import { createRoom, createSoloRoom, createTournamentRoom, viewOf } from '@/server/rooms';
 import { describeStoreError } from '@/server/store';
-import { AI_LEVELS, type AiLevel } from '@/game/ai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,13 +8,16 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     name?: string;
     vsAi?: boolean;
-    level?: AiLevel;
+    tournament?: boolean;
+    duelistId?: string;
     opponentId?: string;
   };
   try {
-    const { room, token, pid } = body.vsAi
-      ? await createSoloRoom(body.name ?? '', AI_LEVELS[body.level!] ? body.level! : 'duelist', body.opponentId)
-      : await createRoom(body.name ?? '');
+    const { room, token, pid } = body.tournament
+      ? await createTournamentRoom(body.name ?? '', body.duelistId ?? '')
+      : body.vsAi
+        ? await createSoloRoom(body.name ?? '', body.opponentId)
+        : await createRoom(body.name ?? '');
     return Response.json({ ok: true, code: room.code, token, pid, view: viewOf(room, pid) });
   } catch (err) {
     const reason = describeStoreError(err);

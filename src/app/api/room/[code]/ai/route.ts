@@ -1,4 +1,4 @@
-import { aiSeatToMove, loadRoom, seatFor, stepAI, viewOf } from '@/server/rooms';
+import { aiSeatToMove, loadRoom, seatFor, stepAI, stepTournament, tournamentPending, viewOf } from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
   const pid = seatFor(room, body.token ?? '');
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
 
+  // The bracket takes priority: once a tournament duel is decided there is no
+  // AI move left to make, only a result to record and side matches to play out.
+  if (tournamentPending(room)) {
+    const moved = await stepTournament(room);
+    return Response.json({ ok: true, moved, view: viewOf(room, pid) });
+  }
   if (!aiSeatToMove(room)) {
     return Response.json({ ok: true, moved: false, view: viewOf(room, pid) });
   }

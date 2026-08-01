@@ -6,14 +6,13 @@
  * `/ai` whenever the room says the computer owes one. Proves the whole loop —
  * seat, routing, per-action stepping, trap windows, rematch — over the wire.
  *
- *   npx tsx scripts/e2e-ai.ts [baseUrl] [rounds] [level]
+ *   npx tsx scripts/e2e-ai.ts [baseUrl] [rounds]
  */
 import { chooseAction, legalActions } from '../src/game/autoplay';
 import type { DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const ROUNDS = Number(process.argv[3] ?? 3);
-const LEVEL = process.argv[4] ?? 'champion';
 
 let rngState = 424242;
 const rnd = () => {
@@ -48,7 +47,6 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
   const created = await post<{ code: string; token: string; pid: PlayerId; view: RoomView }>('/api/room', {
     name: 'Mihail',
     vsAi: true,
-    level: LEVEL,
   });
   const { code, token } = created;
 
@@ -124,7 +122,7 @@ async function playOne(round: number): Promise<{ ok: boolean; detail: string }> 
 }
 
 const main = async () => {
-  console.log(`vs-AI e2e against ${BASE} (level=${LEVEL})`);
+  console.log(`vs-AI e2e against ${BASE}`);
   let pass = 0;
   for (let i = 0; i < ROUNDS; i++) {
     const t0 = Date.now();

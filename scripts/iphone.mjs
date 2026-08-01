@@ -26,6 +26,27 @@ const dismissInspector = async (page) => {
   }
 };
 
+/**
+ * Types the player's name and makes sure it stuck.
+ *
+ * A bare fill() can land before React has hydrated, in which case the first
+ * render throws the value away and the room is created for "Player 1".
+ */
+const enterName = async (page, value) => {
+  const input = page.locator('input[placeholder="Enter your name"]');
+  for (let i = 0; i < 20; i++) {
+    await input.fill(value);
+    // Two checks, because the first only proves the DOM took it. Hydration
+    // lands a moment later and re-renders the controlled input from React's
+    // own (still empty) state, wiping it — so the value has to *stay*.
+    await page.waitForTimeout(250);
+    if ((await input.inputValue()) !== value) continue;
+    await page.waitForTimeout(450);
+    if ((await input.inputValue()) === value) return;
+  }
+  throw new Error('the name field never kept its value — did the page hydrate?');
+};
+
 const shot = async (page, name) => {
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log(`  📸 ${name}`);
@@ -55,7 +76,7 @@ const main = async () => {
 
     console.log('• home (iPhone 17 Pro Max)');
     await a.goto(BASE, { waitUntil: 'domcontentloaded' });
-    await a.fill('input[placeholder="Enter your name"]', 'Mihail');
+    await enterName(a, 'Mihail');
     await shot(a, '01-home-17promax');
 
     await a.tap('text=Start a new duel');
@@ -67,7 +88,7 @@ const main = async () => {
 
     console.log('• join (iPhone 11)');
     await b.goto(BASE, { waitUntil: 'domcontentloaded' });
-    await b.fill('input[placeholder="Enter your name"]', 'Sis');
+    await enterName(b, 'Sis');
     await b.fill('input[placeholder="CODE"]', code);
     await b.tap('button:has-text("Join")');
     await b.waitForURL(/\/duel\//, { timeout: 25000 });
@@ -80,6 +101,21 @@ const main = async () => {
     await a.waitForTimeout(2600);
     await shot(a, '04-duel-17promax');
     await shot(b, '05-duel-iphone11');
+
+    /* An opening hand is five cards and every one of them has to be reachable
+       without scrolling — the cards are sized against the width the strip
+       actually gets, which is the whole screen minus the turn controls. */
+    for (const [tag, page] of [['mine', a], ['hers', b]]) {
+      const strip = await page.locator('[data-testid="hand-strip"]').evaluate((el) => ({
+        cards: el.querySelectorAll('[data-testid="hand-card"]').length,
+        scrollW: el.scrollWidth,
+        clientW: el.clientWidth,
+      }));
+      console.log(`  ${tag}: hand ${strip.cards} cards, ${strip.scrollW}/${strip.clientW}px`);
+      if (strip.cards === 5 && strip.scrollW > strip.clientW + 1) {
+        errors.push(`[${tag}] opening hand does not fit: ${strip.scrollW} > ${strip.clientW}`);
+      }
+    }
 
     console.log('• playing turns by tapping');
     let summonShot = false;
@@ -152,8 +188,41 @@ const main = async () => {
     await shot(a, '09-final-17promax');
     await shot(b, '10-final-iphone11');
 
-    // Layout sanity: nothing should overflow horizontally on either phone.
-    for (const [tag, page] of [['17promax', a], ['iphone11', b]]) {
+    /* Tournament mode on the smaller phone: eight names, three rounds and a
+       bracket that has to stack rather than push the page sideways. */
+    console.log('• tournament (iPhone 11)');
+    const c = await mk(PHONES.iphone11, 'cup');
+    await c.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await enterName(c, 'Mihail');
+    await c.tap('button:has-text("Enter the tournament")');
+    await c.waitForSelector('text=Choose your duelist', { timeout: 15000 });
+    await shot(c, '11-tournament-pick');
+    await c.tap('button:has-text("Yugi Muto")');
+    await c.waitForURL(/\/duel\//, { timeout: 25000 });
+    await c.waitForSelector('text=Quarter-final', { timeout: 25000 });
+    await c.waitForTimeout(1200);
+    await shot(c, '12-bracket');
+    const toDuel = c.locator('button:has-text("To the duel")');
+    await toDuel.first().waitFor({ timeout: 25000 });
+    await toDuel.first().tap();
+    await c.waitForSelector('button:has-text("End Turn"), [data-testid="hand-card"]', { timeout: 25000 });
+    await c.waitForTimeout(900);
+    await shot(c, '13-tournament-duel');
+    // Mid-duel, the 🏆 button must go back to the standings and the "To the
+    // duel" button must bring the same duel back, untouched.
+    const peek = c.locator('button[title="Bracket"]');
+    if (!(await peek.count())) {
+      errors.push('[cup] no way back to the bracket from a tournament duel');
+    } else {
+      await peek.first().tap();
+      await c.waitForSelector('text=Quarter-final', { timeout: 15000 });
+      await c.tap('button:has-text("To the duel")');
+      await c.waitForSelector('[data-testid="hand-card"]', { timeout: 15000 });
+      console.log('  bracket peek and back ✓');
+    }
+
+    // Layout sanity: nothing should overflow horizontally on any phone.
+    for (const [tag, page] of [['17promax', a], ['iphone11', b], ['cup', c]]) {
       const m = await page.evaluate(() => ({
         scrollW: document.documentElement.scrollWidth,
         clientW: document.documentElement.clientWidth,

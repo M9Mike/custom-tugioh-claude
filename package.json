@@ -18,7 +18,8 @@
     "iphone": "node scripts/iphone.mjs",
     "store-test": "tsx scripts/store-test.ts",
     "audit": "tsx scripts/card-audit.ts",
-    "rules": "tsx scripts/rules-check.ts"
+    "rules": "tsx scripts/rules-check.ts",
+    "e2e-tournament": "tsx scripts/e2e-tournament.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

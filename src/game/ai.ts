@@ -28,10 +28,9 @@ import {
   tributesRequired,
 } from './engine';
 import { summonTargetSpec, targetSpecFor } from './ui';
-import { AI_LEVEL_LABELS, type AiLevel } from './ai-levels';
+import { type AiLevel } from './ai-levels';
 import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
 
-export { AI_LEVEL_LABELS };
 export type { AiLevel };
 
 export interface AiConfig {

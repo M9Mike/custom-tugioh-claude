@@ -232,44 +232,42 @@ body {
   .card-badge { font-size: 6px; }
 }
 
-/* Frame colours per card class — muted, print-like, never fluorescent. */
-.frame-normal { --f1: #c9a86b; --f2: #a3814a; --ftext: #2a2118; }
-.frame-effect { --f1: #c07a45; --f2: #97552c; --ftext: #2b1a10; }
-.frame-fusion { --f1: #8a6aa8; --f2: #614779; --ftext: #ffffff; }
-.frame-ritual { --f1: #5b7fae; --f2: #3d5c84; --ftext: #ffffff; }
-.frame-spell  { --f1: #3f9c8f; --f2: #2a6f66; --ftext: #ffffff; }
-.frame-trap   { --f1: #ab5a86; --f2: #7f3d61; --ftext: #ffffff; }
-.frame-token  { --f1: #7e7a70; --f2: #55524b; --ftext: #ffffff; }
-.frame-hidden { --f1: #34506b; --f2: #1e3145; --ftext: #ffffff; }
+/* Frame colours per card class — muted, print-like, never fluorescent. The
+   frame is now a border and two tinted bands rather than a background, so the
+   class still reads at a glance without costing the artwork any room. */
+.frame-normal { --f1: #c9a86b; --f2: #6d5530; }
+.frame-effect { --f1: #c07a45; --f2: #6b3a1c; }
+.frame-fusion { --f1: #8a6aa8; --f2: #43304f; }
+.frame-ritual { --f1: #5b7fae; --f2: #2b415e; }
+.frame-spell  { --f1: #3f9c8f; --f2: #1c4b45; }
+.frame-trap   { --f1: #ab5a86; --f2: #5a2b44; }
+.frame-token  { --f1: #7e7a70; --f2: #3b3934; }
+.frame-hidden { --f1: #34506b; --f2: #16232f; }
 
 .card-face {
   position: absolute;
   inset: 0;
   background: linear-gradient(160deg, var(--f1) 0%, var(--f2) 100%);
-  display: flex;
-  flex-direction: column;
-  padding: 5.5%;
-  gap: 2%;
 }
 
-/* The artwork box is square on purpose.
+/* The artwork *is* the card.
 
-   Every downloaded illustration is a 624x624 square, so a square box shows
-   each one whole and framed identically. Letting the box stretch to fill
-   whatever height was left over — which is what `flex: 1` did — gave it a
-   different aspect on a monster (name + art + ATK/DEF), a Spell (no stats
-   row) and a compact board card (no name), and `object-fit: cover` then
-   cropped each of them by a different amount. That is why some cards looked
-   zoomed in and others did not. */
+   It used to sit in a square window with the leftover height falling out
+   below it. That showed every 624x624 illustration whole, framed identically
+   — and left a dead band across the bottom of every card, which on a board of
+   nine cards is most of what you look at. The art now fills the frame edge to
+   edge and the name and stats ride on top of it, so the crop is set by the
+   card's own 59:86 shape alone: the same crop on a monster, a Spell, a board
+   thumbnail and the inspector, at every size. About a sixth is lost from each
+   side, which is exactly what makes a card read as a window onto something
+   bigger than itself. */
 .card-art {
-  position: relative;
-  flex: none;
-  aspect-ratio: 1 / 1;
-  width: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.55);
+  position: absolute;
+  inset: 4%;
+  border-radius: 2px;
   background: #0e0e10;
   overflow: hidden;
-  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
 }
 .card-art img {
   width: 100%;
@@ -277,33 +275,52 @@ body {
   object-fit: cover;
   display: block;
 }
-/* Whatever height is left over goes below the art, so the stats row stays
-   pinned to the bottom edge of the frame on every card. */
+/* Percentage-based so it reads the same on a 44px thumbnail and a 320px
+   inspector; an inset box-shadow in px would swallow a small card whole. */
+.card-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(125% 100% at 50% 42%, transparent 52%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+/* Name and stats sit over the artwork on a band tinted with the frame colour:
+   dark enough to read against any illustration, coloured enough to still say
+   at a glance whether this is a monster, a Spell or a Trap. */
+.card-name,
 .card-stats {
-  margin-top: auto;
+  position: absolute;
+  z-index: 2;
+  left: 4%;
+  right: 4%;
+  font-family: var(--font-display), Georgia, serif;
+  color: #f7f0e0;
+  line-height: 1.1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
 .card-name {
-  font-family: var(--font-display), Georgia, serif;
-  color: var(--ftext);
+  top: 4%;
+  padding: 3.5% 5% 7%;
   font-weight: 700;
-  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.16);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.24) 58%, rgba(0, 0, 0, 0) 100%),
+    linear-gradient(180deg, var(--f2) 0%, transparent 92%);
 }
 
 .card-stats {
+  bottom: 4%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: var(--font-display), Georgia, serif;
-  color: var(--ftext);
-  background: rgba(0, 0, 0, 0.2);
-  border-top: 1px solid rgba(0, 0, 0, 0.35);
-  padding: 1% 4%;
-  line-height: 1.15;
+  padding: 7% 5% 3%;
+  background:
+    linear-gradient(0deg, rgba(0, 0, 0, 0.76) 0%, rgba(0, 0, 0, 0.26) 58%, rgba(0, 0, 0, 0) 100%),
+    linear-gradient(0deg, var(--f2) 0%, transparent 92%);
 }
 
 /* Card back for hidden cards */
@@ -463,7 +480,12 @@ body {
      room a portrait phone has to spare. */
   --cw: clamp(56px, min((100vw - 34px) / 3, var(--board-h) / 4.3), 138px);
   --sw: calc(var(--cw) * 0.45);
-  --hw: clamp(52px, min((100vw - 36px) / 5.4, var(--board-h) / 6), 104px);
+  /* The hand strip shares its row with the turn controls, so it never gets the
+     whole width. Sizing it against 100vw is what used to leave the fifth card
+     of an opening hand clipped behind the End Turn button. The 100px covers
+     the control column, the gaps and the row's own padding. */
+  --hand-w: calc(100vw - 114px);
+  --hw: clamp(48px, min(var(--hand-w) / 5.3, var(--board-h) / 6), 104px);
 
   height: 100svh;
   padding-top: var(--safe-top);

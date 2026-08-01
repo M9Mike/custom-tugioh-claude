@@ -225,7 +225,7 @@ export function useDuelRoom(code: string | null) {
    * checks whose move it is — so a duplicate in flight is harmless.
    */
   useEffect(() => {
-    if (!code || !view?.aiToMove) return;
+    if (!code || !(view?.aiToMove || view?.bracketBusy)) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       const token = tokenRef.current;
@@ -260,7 +260,7 @@ export function useDuelRoom(code: string | null) {
   const rematch = useCallback(() => send({ kind: 'rematch' }), [send]);
   const toLobby = useCallback(() => send({ kind: 'toLobby' }), [send]);
   const configureAi = useCallback(
-    (opts: { duelistId?: string; level?: string }) => send({ kind: 'configureAi', ...opts }),
+    (opts: { duelistId?: string }) => send({ kind: 'configureAi', ...opts }),
     [send]
   );
 
