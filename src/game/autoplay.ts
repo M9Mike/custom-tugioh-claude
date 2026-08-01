@@ -14,6 +14,7 @@ import {
   fusionOptions,
   legalAttackTargets,
   other,
+  summonBlocked,
   tributesRequired,
 } from './engine';
 import { summonTargetSpec, targetSpecFor } from './ui';
@@ -46,6 +47,14 @@ export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number)
         if (!def || def.kind !== 'monster') continue;
         if (def.isFusion && p.extra.some((e) => e.slug === h.slug)) continue;
         if (def.name.includes('Forbidden One')) continue; // held for the Exodia win
+        /* The same gate the player, the AI and the engine go through: no
+           Rituals out of the hand, no Toon without its Toon World. This driver
+           was the one place that never asked, so `npm run e2e` proposed those
+           summons, the engine refused them exactly as it should, and the round
+           was recorded as failed — about one in six, which is frequent enough
+           to teach you to ignore a red run and rare enough to look like a real
+           intermittent bug. */
+        if (summonBlocked(state, pid, h.slug)) continue;
         const need = tributesRequired(h.slug, state, pid);
         const bodies = ownMonsters.filter((m) => !m.isToken);
         if (need === 0 && freeZone >= 0) {

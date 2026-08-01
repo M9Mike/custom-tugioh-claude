@@ -199,7 +199,17 @@ export type Op =
   | { op: 'equipTo'; atk: number; def: number; grants?: EquipGrant[] }
   | { op: 'revealHand'; who: Side }
   | { op: 'shuffleIntoDeck'; target: Selector }
-  | { op: 'stealFromGrave'; filter?: CardFilter }
+  /**
+   * Takes a card out of a Graveyard and into the controller's hand.
+   *
+   * `from` because the two cards that do this mean different things by it.
+   * Graverobber is "from your opponent's Graveyard" and that is the whole card.
+   * Magician of Faith is "from either Graveyard", and *either* has to start
+   * with your own — searching theirs first is what handed a player the
+   * opponent's Spell and made getting your own Monster Reborn back impossible
+   * while they had anything at all.
+   */
+  | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' }
   | { op: 'coinFlip'; heads: Op[]; tails: Op[] }
   | { op: 'diceRoll'; perPip: Op[] }
   | { op: 'forceDefense'; target: Selector }
@@ -443,6 +453,15 @@ export interface AnimEvent {
   /** The log tone, so the board can colour the line the same way. */
   tone?: string;
   amount?: number;
+  /** Life Points that actually moved, when `amount` is the headline figure and
+      the total could not absorb all of it. A 1900 attack into 1200 Life Points
+      is announced as 1900 and only ever moves the bar by 1200 — the board adds
+      queued damage back to reconstruct what has not been said yet, and adding
+      the headline number back put the total *above* where it started. */
+  applied?: number;
+  /** Display name when it is not the card's own — a Token's, whose art comes
+      from the card that made it but which is not that card. */
+  as?: string;
   text?: string;
 }
 

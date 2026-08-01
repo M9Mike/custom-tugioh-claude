@@ -780,5 +780,191 @@ console.log('\nA malformed action is refused rather than half-played');
   ok(!!good.players[ME].monsters[0], 'and a real zone still summons');
 }
 
+console.log('\nRing of Destruction is one effect, not a free 1400 damage');
+{
+  /* Reported from a real duel: activated against a lone Celtic Guardian, which
+     "cannot be targeted by your opponent's card effects", it kept asking for a
+     target it could never accept. Under the hood the destroy was correctly
+     refused and the damage — "equal to that monster's ATK" — went through
+     anyway. One card, one effect: no target, no damage. */
+  const s = fresh();
+  const ring = card(ME, 'ring-of-destruction');
+  ring.face = 'down';
+  ring.summonedOnTurn = 1;
+  s.players[ME].spellTrap = ring;
+  const elf = card(FOE, 'celtic-guardian');
+  s.players[FOE].monsters[0] = elf;
+
+  const at = act(s, ME, { type: 'activateSetCard', uid: ring.uid, targets: [elf.uid] });
+  ok(at.players[FOE].lp === 4000, 'no damage from a monster it cannot target', `LP ${at.players[FOE].lp}`);
+  ok(!!at.players[FOE].monsters[0], 'and the untargetable monster survives');
+
+  // And against something it *can* target, both halves happen.
+  const t = fresh();
+  const ring2 = card(ME, 'ring-of-destruction');
+  ring2.face = 'down';
+  ring2.summonedOnTurn = 1;
+  t.players[ME].spellTrap = ring2;
+  const ox = card(FOE, 'battle-ox');
+  t.players[FOE].monsters[0] = ox;
+  const hit = act(t, ME, { type: 'activateSetCard', uid: ring2.uid, targets: [ox.uid] });
+  ok(hit.players[FOE].lp === 4000 - 1700, 'a legal target takes its own ATK in damage', `LP ${hit.players[FOE].lp}`);
+  ok(!hit.players[FOE].monsters[0], 'and is destroyed', 'still standing');
+}
+
+console.log('\nMagician of Faith reaches for your own Graveyard first');
+{
+  /* "Magician of Faith gave me back the enemy spell card." It searched the
+     opponent's Graveyard first — true to "from either Graveyard", and not what
+     anyone means by getting their card back. */
+  /** Sets the Magician face-down and has the opponent attack it face-up. */
+  const flipItOver = (ownGrave: string[], theirGrave: string[]) => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const mage = card(ME, 'magician-of-faith');
+    mage.face = 'down';
+    mage.position = 'def';
+    s.players[ME].monsters[0] = mage;
+    for (const slug of ownGrave) s.players[ME].grave.push(card(ME, slug));
+    for (const slug of theirGrave) s.players[FOE].grave.push(card(FOE, slug));
+    const ox = card(FOE, 'battle-ox');
+    s.players[FOE].monsters[0] = ox;
+    return act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: mage.uid });
+  };
+
+  const after = flipItOver(['monster-reborn'], ['dark-hole']);
+  const got = after.players[ME].hand.map((c) => c.slug);
+  ok(got.includes('monster-reborn'), 'takes your own Spell back', got.join(', ') || '(empty)');
+  ok(!got.includes('dark-hole'), 'and leaves theirs where it fell', got.join(', '));
+
+  // With nothing of your own to take, the other Graveyard is still fair game —
+  // which is what keeps the card's own "either Graveyard" honest.
+  const after2 = flipItOver([], ['dark-hole']);
+  ok(
+    after2.players[ME].hand.some((c) => c.slug === 'dark-hole'),
+    'and reaches across when yours holds nothing',
+    after2.players[ME].hand.map((c) => c.slug).join(', ') || '(empty)'
+  );
+
+  /* Graverobber shares the op and does not share the preference: "add 1 card
+     from your opponent's Graveyard" is the whole card. Teaching the Magician to
+     look at his own side first broke it, and the audit caught it — so it is
+     nailed down here, where the difference between the two is the point. */
+  const g = fresh();
+  const robber = card(ME, 'graverobber');
+  robber.face = 'down';
+  robber.summonedOnTurn = 1;
+  g.players[ME].spellTrap = robber;
+  g.players[ME].grave.push(card(ME, 'monster-reborn'));
+  g.players[FOE].grave.push(card(FOE, 'dark-hole'));
+  const robbed = act(g, ME, { type: 'activateSetCard', uid: robber.uid, targets: [] });
+  const took = robbed.players[ME].hand.map((c) => c.slug);
+  ok(took.includes('dark-hole'), 'Graverobber still takes from theirs', took.join(', ') || '(empty)');
+  ok(!took.includes('monster-reborn'), 'and leaves your own Graveyard alone', took.join(', '));
+}
+
+console.log('\nA moth knows which rung of its own ladder it is on');
+{
+  /* Larvae Moth and both Great Moths sit in Weevil's main deck, so one can be
+     Normal Summoned straight out of the hand — and it arrived with no counters,
+     needing three more End Phases to reach the rung above the one it was
+     already standing on. */
+  /* Read off a real Weevil deck, not a card built by this file — the engine
+     seeds the counters where every instance is made, and a hand-rolled one
+     would sail past that and prove nothing about the game. */
+  const weevil = createDuel({ seed: 3, p1: { duelistId: 'weevil', name: 'W' }, p2: { duelistId: 'yugi', name: 'Y' } });
+  const held = [...weevil.players.p1.deck, ...weevil.players.p1.hand];
+  const stages: Array<[string, number]> = [
+    ['petit-moth', 0],
+    ['larvae-moth', 2],
+    ['great-moth', 3],
+    ['perfectly-ultimate-great-moth', 4],
+  ];
+  for (const [slug, want] of stages) {
+    const found = held.filter((c) => c.slug === slug);
+    ok(
+      found.length > 0 && found.every((c) => c.counters === want),
+      `${CARDS[slug].name} starts on ${want}`,
+      found.length ? `got ${found.map((c) => c.counters).join('/')}` : 'not in the deck'
+    );
+  }
+  // And the ladder still climbs: Petit Moth reaches Larvae Moth on the second
+  // End Phase, which is the same rung a hand-summoned Larvae Moth starts on.
+  const s = fresh();
+  const petit = card(ME, 'petit-moth');
+  s.players[ME].monsters[0] = petit;
+  let cur = s;
+  for (let i = 0; i < 2; i++) {
+    cur = act(cur, ME, { type: 'endTurn' });
+    cur = act(cur, FOE, { type: 'endTurn' });
+  }
+  ok(cur.players[ME].monsters[0]?.slug === 'larvae-moth', 'Petit Moth becomes Larvae Moth on its second End Phase', cur.players[ME].monsters[0]?.slug);
+}
+
+console.log('\nInsect Barrier does both halves of its sentence');
+{
+  const s = fresh();
+  const barrier = card(ME, 'insect-barrier');
+  s.players[ME].hand.push(barrier);
+  const ox = card(FOE, 'battle-ox');
+  s.players[FOE].monsters[0] = ox;
+  const after = act(s, ME, { type: 'activateSpell', uid: barrier.uid, targets: [] });
+  ok(effAtk(after, after.players[FOE].monsters[0]!, FOE) === 1700 - 400, 'their monsters lose 400 ATK', `${effAtk(after, after.players[FOE].monsters[0]!, FOE)}`);
+  const theirTurn = act(after, ME, { type: 'endTurn' });
+  ok(!canAttackWith(theirTurn, FOE, theirTurn.players[FOE].monsters[0]!), 'and cannot attack on their next turn');
+}
+
+console.log('\nA Token says what it is');
+{
+  /* "Kuriboh summons a token but nowhere is it stated." It was announced with
+     the art's card name, so a second Kuriboh appeared carrying the first one's
+     line and nothing said what had arrived. */
+  const s = fresh();
+  const kuriboh = card(ME, 'kuriboh');
+  s.players[ME].hand.push(kuriboh);
+  const after = act(s, ME, { type: 'normalSummon', uid: kuriboh.uid, zone: 0, position: 'atk', face: 'up' });
+  const token = on(after, ME).find((m) => m.isToken);
+  ok(!!token, 'the Token arrives', `${on(after, ME).length} monsters`);
+  const beat = after.anims.find((a) => a.kind === 'summon' && a.uid === token?.uid);
+  ok(beat?.as === 'Kuriboh Token', 'and its beat names it', beat?.as ?? '(nothing)');
+}
+
+console.log('\nA Trap announces itself on the field');
+{
+  /* Every line the duel records is spoken on the field, and a Trap springing is
+     the one a player most needs to see. Trap Hole fires on the opponent's
+     Normal Summon, so the beat has to carry the card. */
+  const s = fresh();
+  const hole = card(FOE, 'trap-hole');
+  hole.face = 'down';
+  hole.summonedOnTurn = 1;
+  s.players[FOE].spellTrap = hole;
+  const ox = card(ME, 'battle-ox');
+  s.players[ME].hand.push(ox);
+  const summoned = act(s, ME, { type: 'normalSummon', uid: ox.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(summoned.pending?.player === FOE, 'the window opens for the Trap Hole', String(summoned.pending?.player));
+  const sprung = act(summoned, FOE, { type: 'respondTrap', uid: hole.uid, targets: [] });
+  const beat = sprung.anims.find((a) => a.kind === 'trap' && a.slug === 'trap-hole');
+  ok(!!beat, 'and the Trap gets a beat of its own naming the card', sprung.anims.map((a) => a.kind).join(','));
+  ok(!on(sprung, ME).length, 'and the summoned monster is destroyed');
+}
+
+console.log('\nThe last blow only ever takes the Life Points that are there');
+{
+  /* The board adds queued damage back to work out the total it has not yet
+     announced. With the headline figure that put the bar *above* where it
+     started: 1200 Life Points hit for 1900 showed 1900 — the attacker's ATK —
+     and counted down from a number the player had never had. */
+  const s = fresh('battle');
+  s.players[FOE].lp = 1200;
+  const raider = card(ME, 'vorse-raider'); // 1900 ATK
+  s.players[ME].monsters[0] = raider;
+  const after = act(s, ME, { type: 'attack', uid: raider.uid, targetUid: null });
+  const blow = after.anims.find((a) => a.kind === 'damage' && a.player === FOE);
+  ok(after.players[FOE].lp === 0, 'the duel ends', `LP ${after.players[FOE].lp}`);
+  ok(blow?.amount === 1900, 'the blow is announced at its full worth', String(blow?.amount));
+  ok(blow?.applied === 1200, 'and only 1200 Life Points actually moved', String(blow?.applied));
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

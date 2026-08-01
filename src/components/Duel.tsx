@@ -14,6 +14,7 @@ import {
   canIgnite,
   effAtk,
   effDef,
+  effFlags,
   fusionOptions,
   legalAttackTargets,
   maxAttacks,
@@ -56,12 +57,22 @@ const HOVER_QUERY = '(hover: hover) and (pointer: fine)';
  * has not been played yet holds the displayed total until its own moment, and
  * it converges on its own: when the queue is empty there is nothing to add.
  */
+/**
+ * Life Points the server has already taken but the board has not yet said a
+ * word about, added back so the total never runs ahead of the blow.
+ *
+ * `applied`, not `amount`: they differ exactly once per duel, on the blow that
+ * ends it. A 1900 attack into 1200 Life Points is announced as 1900 and can
+ * only ever move the bar by 1200 — adding 1900 back to a total already sitting
+ * at zero showed 1900, so the bar jumped up to the attacker's ATK and counted
+ * down from a number the player had never had. Reported as exactly that.
+ */
 function pendingLpIn(queue: AnimEvent[]): Record<PlayerId, number> {
   const out: Record<PlayerId, number> = { p1: 0, p2: 0 };
   for (const a of queue) {
-    if (!a.player || !a.amount) continue;
-    if (a.kind === 'damage') out[a.player] += a.amount;
-    else if (a.kind === 'heal') out[a.player] -= a.amount;
+    if (!a.player) continue;
+    if (a.kind === 'damage') out[a.player] += a.applied ?? a.amount ?? 0;
+    else if (a.kind === 'heal') out[a.player] -= a.amount ?? 0;
   }
   return out;
 }
@@ -231,6 +242,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   }, []);
   /** True once the queue has finished, so the win screen can wait for it. */
   const [settled, setSettled] = useState(true);
+  /** True when the queue has gone quiet without finishing — see `narrating`. */
+  const [stalled, setStalled] = useState(false);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
   /** False until the first view has been absorbed without playing it. */
@@ -315,7 +328,33 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const myTurn = state.active === me && !state.winner;
   const respondingToTrap = state.pending?.player === me;
-  const busy = !!state.pending && !respondingToTrap;
+  /**
+   * Everything except the thing being asked for is out of bounds.
+   *
+   * A window the *opponent* owes an answer to has always locked the board. A
+   * half-finished interaction of your own did not, and Ring of Destruction made
+   * that plain: activating it opens "choose a card to destroy", and with the
+   * prompt still on screen you could summon a monster, and then end your turn —
+   * leaving the trap mid-resolution. Picking a target, paying tributes and
+   * choosing what to attack are all the same shape: a question on screen, and
+   * nothing else to be done until it is answered or cancelled.
+   */
+  const choosing = mode.kind === 'target' || mode.kind === 'tributes' || mode.kind === 'attack';
+  /**
+   * And nothing at all while the board is still saying what just happened.
+   *
+   * Every beat is held long enough to read, and until now that was only true of
+   * what the *computer* did — your own turn ran ahead of its own narration, so
+   * you could summon, attack and end the turn with three declarations still
+   * queued behind you, and they went past in a rush belonging to nobody. The
+   * board finishes its sentence first, in both seats.
+   *
+   * `stalled` is the way out: if a beat somehow never lands, input comes back
+   * rather than the duel becoming unplayable. Same shape as the win screen's
+   * backstop, and for the same reason — silence is the failure, not slowness.
+   */
+  const narrating = !settled && !stalled;
+  const busy = (!!state.pending && !respondingToTrap) || choosing || narrating;
 
   /* ---------------- the resolve queue ----------------
      Every animation the server reported used to be played in one burst, so a
@@ -395,7 +434,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     a: AnimEvent
   ): { verb: string; name: string; slug: string; who: PlayerId; form: 'actor' | 'card' } | null => {
     if (!a.slug || !a.player) return null;
-    const name = CARDS[a.slug]?.name ?? a.slug;
+    // `as` when the beat is not about the card its art comes from — a Kuriboh
+    // Token wears Kuriboh's face and is not Kuriboh, and announcing it as such
+    // meant a second body arrived carrying the first one's line.
+    const name = a.as ?? CARDS[a.slug]?.name ?? a.slug;
     const actor = { name, slug: a.slug, who: a.player, form: 'actor' as const };
     switch (a.kind) {
       case 'activate':
@@ -526,6 +568,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     if (drainingRef.current) return;
     drainingRef.current = true;
     setSettled(false);
+    setStalled(false);
     setAnimating?.(true);
 
     const step = () => {
@@ -589,6 +632,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     [setAnimating]
   );
 
+
   /* A backstop, because "the duel is over but nothing says so" is a far worse
      failure than a win screen arriving over the tail of an animation.
      
@@ -602,6 +646,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      something really is stuck. */
   const [forceWin, setForceWin] = useState(false);
   const lastBeatAt = useRef(0);
+
+  /* Input waits for the narration, so the narration must never be able to wait
+     for ever. A beat that does not land inside four seconds is not a beat, it
+     is a bug — and a bug that locks the player out of their own duel is far
+     worse than one that lets them play over the tail of an animation. Reset
+     whenever the drain starts again, so a slow turn never trips it twice. */
+  useEffect(() => {
+    if (settled) return;
+    const t = window.setInterval(() => {
+      if (performance.now() - lastBeatAt.current > 4000) setStalled(true);
+    }, 500);
+    return () => window.clearInterval(t);
+  }, [settled]);
   useEffect(() => {
     if (!state.winner) return;
     const t = window.setInterval(() => {
@@ -612,12 +669,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     return () => window.clearInterval(t);
   }, [state.winner]);
 
+  /* The victory sting belongs to the win screen, not to the server message that
+     the duel is over — those are seconds apart. `state.winner` arrives one
+     commit before the queue has said a word, so the fanfare used to play over
+     the attack that was still being announced: you heard you had lost, and then
+     watched the blow that did it. It waits for the same moment the modal does. */
+  const sungFor = useRef<string | null>(null);
+  const winScreenUp = !!state.winner && (forceWin || (settled && !hit));
   useEffect(() => {
-    if (!state.winner) return;
+    if (!winScreenUp || !state.winner || sungFor.current === state.winner) return;
+    sungFor.current = state.winner;
     if (state.winner === me) sfx.win();
     else if (state.winner !== 'draw') sfx.lose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.winner]);
+  }, [winScreenUp, state.winner]);
 
   useEffect(() => {
     if (showLog && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -699,9 +764,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const finishSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down', tributes: string[], targets?: string[]) => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
     const spec = face === 'up' && !targets ? summonTargetSpec(slug) : null;
-    if (spec && hasPickable(spec)) {
-      setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], summon: { position, face, tributes } });
-      return;
+    if (spec) {
+      const options = pickableUids(spec);
+      const want = spec.count ?? 1;
+      // More candidates than the effect takes: that is a real choice. Exactly
+      // as many, or fewer: name them and go, rather than opening a prompt with
+      // nothing to decide. A summon whose effect has no legal target at all
+      // still happens — the monster is the point, its effect is a bonus.
+      if (options.length > want) {
+        setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], summon: { position, face, tributes } });
+        return;
+      }
+      if (options.length) {
+        finishSummon(uid, position, face, tributes, options.slice(0, want));
+        return;
+      }
     }
     // Tributes free a zone, so resolve the destination after they are paid.
     const zone = Math.max(0, mine.monsters.findIndex((m) => !m || tributes.includes(m.uid)));
@@ -725,19 +802,25 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     return true;
   };
 
-  /* There is only a choice to make when more cards qualify than the effect will
-     take. The Flute summons up to two Dragons, so holding exactly one left the
-     player staring at a prompt with a single option and no way to decline —
-     and holding none used to open it at all. */
-  const hasPickable = (spec: TargetSpec): boolean => pickableUids(spec).length > (spec.count ?? 1);
-
   const pickableUids = useCallback(
     (spec: TargetSpec): string[] => {
       const sides: PlayerId[] = spec.side === 'own' ? [me] : spec.side === 'opp' ? [foe] : [me, foe];
       const out: string[] = [];
       for (const pid of sides) {
         const p = state.players[pid];
-        if (spec.zone === 'monster') out.push(...p.monsters.filter((m): m is CardInstance => !!m).map((m) => m.uid));
+        if (spec.zone === 'monster')
+          out.push(
+            ...p.monsters
+              .filter((m): m is CardInstance => !!m)
+              /* What the engine will actually accept. Celtic Guardian cannot be
+                 targeted by the opponent's effects, and it was still offered:
+                 Ring of Destruction pointed at it destroyed nothing, and with
+                 Celtic Guardian the only monster on the board there was nothing
+                 else to point at — so the card was spent on a prompt that could
+                 not be answered. */
+              .filter((m) => pid === me || !effFlags(state, m, pid).untargetable)
+              .map((m) => m.uid)
+          );
         else if (spec.zone === 'spellTrap') {
           if (p.spellTrap) out.push(p.spellTrap.uid);
           if (p.field) out.push(p.field.uid);
@@ -752,13 +835,44 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     [state, me, foe]
   );
 
+  const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, targets: string[]) => {
+    if (source === 'trap') void run({ type: 'respondTrap', uid, targets });
+    else if (source === 'spell') void run({ type: 'activateSpell', uid, targets });
+    else if (source === 'ignition') void run({ type: 'ignition', uid, targets });
+    else void run({ type: 'activateSetCard', uid, targets });
+  };
+
   const beginTargeting = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, slug: string, trigger: 'activate' | 'ignition' | 'trap') => {
     const spec = targetSpecFor(slug, trigger);
-    if (!spec || !hasPickable(spec)) {
-      if (source === 'trap') void run({ type: 'respondTrap', uid, targets: [] });
-      else if (source === 'spell') void run({ type: 'activateSpell', uid, targets: [] });
-      else if (source === 'ignition') void run({ type: 'ignition', uid, targets: [] });
-      else void run({ type: 'activateSetCard', uid, targets: [] });
+    if (!spec) {
+      send(source, uid, []);
+      return;
+    }
+    const options = pickableUids(spec);
+    const want = spec.count ?? 1;
+
+    /* Nothing it can legally point at, so there is nothing to activate. This
+       used to go through anyway and the card was spent for no effect at all —
+       Ring of Destruction against a lone Celtic Guardian, which it can never
+       target, left the zone and did nothing. Saying so and keeping the card is
+       the only sensible answer. */
+    if (options.length === 0) {
+      sfx.error();
+      setToast('There is nothing this card can target.');
+      setTimeout(() => setToast(null), 2600);
+      setMode({ kind: 'idle' });
+      return;
+    }
+
+    /* There is only a choice to make when more cards qualify than the effect
+       will take. The Flute summons up to two Dragons, so holding exactly one
+       left the player staring at a prompt with a single option and no way to
+       decline. It goes straight through — but *naming* what it picked, rather
+       than sending an empty list and hoping the engine guesses the same way.
+       It did not always: `destroy` fell back to the strongest legal card while
+       the damage beside it read the target list and found nothing. */
+    if (options.length <= want) {
+      send(source, uid, options.slice(0, want));
       return;
     }
     setMode({ kind: 'target', source, uid, spec, picked: [] });
@@ -860,8 +974,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             return;
           }
           // Your own monsters open an action sheet — attack, switch position, or
-          // fire an ignition effect. Everything else just inspects.
-          if (isMine && myTurn && (attackable || selectable)) {
+          // fire an ignition effect. Everything else just inspects. Not while a
+          // question is on screen: answer it or cancel it first.
+          if (isMine && myTurn && !choosing && (attackable || selectable)) {
             sfx.click();
             setMode({ kind: 'monster', uid: c.uid });
             return;
@@ -1080,6 +1195,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             onGrave={() => setGraveOpen(foe)}
           />
         </div>
+        {/* Three rows, always. This column is taller than the Life Point bar
+            beside it, so it — not the bar — sets the height of the whole strip,
+            and a fourth row pushed the opponent's hand and both halves of the
+            board down by a button. A duel in a bracket therefore sat lower than
+            the same duel outside one, which is what "the pvp field is perfect,
+            make the others match" was about. The bracket button shares the
+            bottom row rather than adding to the stack. */}
         <div className="flex shrink-0 flex-col gap-1">
           <button
             className="btn rounded px-2 py-1 text-[10px]"
@@ -1096,19 +1218,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setShowLog((v) => !v)} title="Duel log">
             ☰
           </button>
-          {/* A way out. The room lives on the server, so leaving loses nothing —
-              the same link brings you straight back to this duel. */}
-          <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setLeaving(true)} title="Menu">
-            ⌂
-          </button>
-          {/* Only in a bracket match: look at the standings mid-duel and come
-              back. Nothing is conceded by leaving the board — the duel is on
-              the server and is exactly where you left it. */}
-          {onBracket && (
-            <button className="btn rounded px-2 py-1 text-[10px]" onClick={onBracket} title="Bracket">
-              🏆
+          <div className="flex gap-1">
+            {/* A way out. The room lives on the server, so leaving loses nothing —
+                the same link brings you straight back to this duel. */}
+            <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setLeaving(true)} title="Menu">
+              ⌂
             </button>
-          )}
+            {/* Only in a bracket match: look at the standings mid-duel and come
+                back. Nothing is conceded by leaving the board — the duel is on
+                the server and is exactly where you left it. */}
+            {onBracket && (
+              <button className="btn rounded px-2 py-1 text-[10px]" onClick={onBracket} title="Bracket">
+                🏆
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1117,7 +1241,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           than touching. Knowing how many cards they are holding is real
           information in a duel, and a tight row of near-identical backs has to
           be counted twice to be trusted. */}
-      <div className="flex shrink-0 justify-center gap-[3px] px-2 pb-1.5 pt-0">
+      <div data-testid="foe-hand" className="flex shrink-0 justify-center gap-[3px] px-2 pb-1.5 pt-0">
         {theirs.hand.slice(0, 12).map((c) => (
           <div key={c.uid} className="w-[clamp(20px,3.4vw,34px)]">
             <GameCard card={c} faceDown compact />
@@ -1517,6 +1641,17 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   className="btn btn-danger rounded px-3 py-2 text-xs"
                   onClick={() => {
                     sfx.click();
+                    /* An empty field across the table is not a choice. Asking
+                       "choose a target, or attack directly" when there is
+                       nothing to choose put a confirmation between the player
+                       and the only move available — twice, once to open the
+                       prompt and once to press the button that was always the
+                       answer. */
+                    const legal = legalAttackTargets(state, me, monsterCard);
+                    if (!legal.uids.length && legal.direct) {
+                      void run({ type: 'attack', uid: monsterCard.uid, targetUid: null });
+                      return;
+                    }
                     setMode({ kind: 'attack', uid: monsterCard.uid });
                   }}
                 >
@@ -1818,7 +1953,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           how — and with the log underneath it there was no way to find out.
           The queue being empty is not enough on its own: the blow that ended the
           duel is still popping for another second after its event has played. */}
-      {state.winner && (forceWin || (settled && !hit)) && (
+      {winScreenUp && (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
           <div className="panel grain w-full max-w-md rounded p-6 text-center">
             <p className="font-display text-3xl tracking-wide" style={{ color: state.winner === me ? '#e6c980' : '#c98a8a' }}>

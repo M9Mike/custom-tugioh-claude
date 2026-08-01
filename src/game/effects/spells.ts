@@ -149,13 +149,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'brain-control': {
-    text: 'Pay 800 Life Points: take control of 1 monster your opponent controls until the end of the turn.',
+    // No Life Point cost here, by the owner's decision. Four thousand Life
+    // Points is a two-attack game, so 800 is a fifth of the duel for one turn
+    // of borrowing — the card was priced for a format that starts at 8000.
+    text: 'Take control of 1 monster your opponent controls until the end of the turn.',
     cry: 'Your mind is mine!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        cost: { lp: 800 },
         ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
       },
     ],
@@ -326,7 +328,8 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Graverobber',
-        ops: [{ op: 'stealFromGrave' }],
+        // Theirs, and only theirs — the card is named for it.
+        ops: [{ op: 'stealFromGrave', from: 'opp' }],
       },
     ],
   },

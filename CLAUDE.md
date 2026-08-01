@@ -62,6 +62,7 @@ npm run playable         # every card in every deck can actually be reached
 npm run text             # no card's text promises more than its effects do
 npm run ai               # the computer plays obvious positions the obvious way
 npm run sim 400          # random duels; reports rule errors
+npm run layout   http://localhost:3100               # the board sits in the same place in all three modes
 npm run e2e      -- http://localhost:3100 3          # two players over HTTP
 npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
 npm run e2e-tournament -- http://localhost:3100 6 yugi --skilled   # whole brackets
@@ -687,10 +688,11 @@ It also counted the last declaration of a finished duel, which simply stays in
 the DOM at `opacity: 0` with nothing after it to push it out — a twenty-second
 hold, 19% legible. A beat is only recorded once the next one replaces it.
 
-Still open: on production, one run in four shows a genuinely short *hold* —
-624ms and 775ms against a floor of 1100 — always on a run that ends abruptly,
-and never locally. That is a real measurement of a real cut-short beat, cause
-not yet found.
+Still open: about one run in five shows a genuinely short *hold* — 365ms, 624ms
+and 775ms against a floor of 1100 — first seen only on production, since seen
+locally too, always a single beat in an otherwise clean run. Four consecutive
+runs either side of it hold every beat past 1062ms. A real measurement of a real
+cut-short beat; cause not found.
 
 **A guard that compares with `<` needs to know it has a number.** Found while
 probing the above: `normalSummon` with no `zone` sailed through
@@ -699,6 +701,73 @@ and the card was spliced out of the hand and written to `p.monsters[undefined]`.
 It vanished, with no error and nothing on the field. The API route hands
 `body.action` straight to the engine and a TypeScript type is no help at a
 network boundary, so `Number.isInteger` goes first in every such guard.
+
+**The board has to finish its sentence.** Beats were held long enough to read
+and nothing waited for them: your own turn ran ahead of its own narration, so
+you could summon, attack and end the turn with three declarations still queued
+behind you, and they went past in a rush belonging to nobody. `busy` now
+includes the drain, in both seats. A four-second stall watchdog is the way out —
+input locked behind a beat that never lands is far worse than input over the
+tail of an animation, and silence is the failure mode to design against.
+
+The victory sting was the same bug with a speaker: it fired on `state.winner`,
+which arrives one commit before the queue has said a word, so you heard you had
+lost and *then* watched the blow that did it. It waits for the win screen now.
+
+**A question on screen is the only thing on screen.** Activating Ring of
+Destruction opens "choose a card to destroy" — and with that prompt up you could
+still summon a monster and end your turn, leaving the trap mid-resolution. A
+target, a tribute and an attack target are all the same shape: nothing else is
+available until it is answered or cancelled.
+
+**Offer only what the engine will accept.** Celtic Guardian "cannot be targeted
+by your opponent's card effects" and was still offered to Ring of Destruction —
+which then destroyed nothing while the damage beside it, "equal to that
+monster's ATK", went through for free. And with Celtic Guardian the *only*
+monster on the board, `hasPickable` (strictly-greater) auto-submitted an empty
+target list, so the card left the zone having done nothing at all. Three fixes,
+one shape: the picker filters what the engine would refuse, a single candidate
+is submitted *by name* rather than as an empty list for the engine to guess at,
+and an effect with no legal target is refused with a reason instead of being
+spent. `targetAtk` honours the same protection, so one card is one effect.
+
+**A Token is not the card whose face it wears.** Kuriboh's Token was announced
+as "Mihail summons Kuriboh", so a second body arrived carrying the first one's
+line and nothing said what it was. The beat carries `as` now.
+
+**Life Points can only lose what they have.** The board reconstructs the total it
+has not yet announced by adding queued damage back, and it was adding the
+*headline* figure: 1200 Life Points hit for 1900 showed 1900 — the attacker's
+ATK — and counted down from a number the player had never had. `dealDamage`
+reports `applied` alongside `amount`; the popup keeps the full figure, the bar
+uses what actually moved.
+
+**A moth knows which rung it is on.** Larvae Moth and both Great Moths sit in
+Weevil's main deck, so one can be Normal Summoned straight from the hand — and
+it arrived with no Evolution Counters, needing three more End Phases to reach
+the rung *above* the one it was standing on. Seeded in `newInstance`, so every
+route is covered by construction rather than at five summon sites.
+
+**Which Graveyard is the card's own business.** Making Magician of Faith reach
+for your own first — the report was "it gave me back the enemy spell card" —
+quietly broke Graverobber, which says "from your opponent's Graveyard" and means
+only that. They share an op; the op now takes a side. The audit caught it, which
+is what the audit is for; `npm run rules` pins both preferences by name, because
+the audit can only ask that a card left *a* Graveyard.
+
+**One button set the height of the whole board.** The control column beside the
+opponent's Life Point bar is taller than the bar, so it is what the top strip
+measures — and a bracket match adds a fourth button to that column, pushing the
+opponent's hand and both halves of the field down 29px. `npm run layout` opens
+the same board as two players, against the computer and in a tournament, and
+insists all three put it in the same place. Two-player is the reference.
+
+**`npm run e2e` was failing one round in six, and had been for a while.**
+`autoplay.ts` was the one driver that never asked `summonBlocked`, so it
+proposed Ritual monsters and ungated Toons, the engine refused them exactly as
+it should, and the round was recorded as failed. Frequent enough to teach you to
+ignore a red run, rare enough to look like a real intermittent. Every driver
+asks the gate now — which is what this file already claimed.
 
 ## Shape of the thing
 

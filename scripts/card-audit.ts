@@ -263,8 +263,16 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
       return { what: 'Special Summons a monster', ok: arrived(a, b) };
     case 'summonToken':
       return { what: 'Special Summons tokens', ok: arrived(a, b) };
+    /* Which Graveyard is the card's own business — Graverobber says "your
+       opponent's" and means it, Magician of Faith says "either" and starts with
+       your own. So this asks that a card left *a* Graveyard, and the two
+       preferences are pinned by name in `npm run rules`, where the distinction
+       is the point rather than an implementation detail. */
     case 'stealFromGrave':
-      return { what: "takes a monster from the opponent's Graveyard", ok: arrived(a, b) || fell(a.foe.grave, b.foe.grave) };
+      return {
+        what: 'takes a card out of a Graveyard',
+        ok: arrived(a, b) || fell(a.foe.grave, b.foe.grave) || fell(a.me.grave, b.me.grave),
+      };
     case 'takeControl':
       return { what: "takes control of an opponent's monster", ok: b.me.borrowed > a.me.borrowed || fell(a.foe.monsters, b.foe.monsters) };
     case 'bounce':

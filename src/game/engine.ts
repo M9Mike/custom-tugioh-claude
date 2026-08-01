@@ -86,7 +86,10 @@ function newInstance(state: DuelState, slug: string, owner: PlayerId): CardInsta
     defMod: 0,
     turnAtkMod: 0,
     turnDefMod: 0,
-    counters: 0,
+    // A moth knows which rung of its own ladder it is on. Done here rather than
+    // at each summon site so every route is covered by construction — drawn,
+    // Normal Summoned, revived by Monster Reborn or made by an effect.
+    counters: MOTH_STAGE[slug] ?? 0,
     equips: [],
     flags: {},
     turnFlags: {},
@@ -543,8 +546,14 @@ function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = fal
     log(state, `${state.players[to].name} takes no battle damage.`, 'effect', to);
     return;
   }
-  state.players[to].lp = Math.max(0, state.players[to].lp - amount);
-  anim(state, { kind: 'damage', player: to, amount });
+  // What the attack was worth, and what the total could actually pay. The board
+  // reconstructs the unspoken total by adding queued damage back, so it needs
+  // the second number: a 1900 swing into 1200 Life Points was being added back
+  // in full and the bar started the countdown at 1900 — the attacker's ATK,
+  // from a player who never had that many Life Points.
+  const applied = Math.min(amount, state.players[to].lp);
+  state.players[to].lp -= applied;
+  anim(state, { kind: 'damage', player: to, amount, applied });
   log(state, `${state.players[to].name} takes ${amount} damage. (${state.players[to].lp} LP)`, 'damage', to);
   checkLifePoints(state);
 }
@@ -777,7 +786,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const t =
             (peek && findOnField(state, peek)?.c) ||
             (ctx.trig.attackerUid ? findOnField(state, ctx.trig.attackerUid)?.c : null);
-          const v = t ? effAtk(state, t) : 0;
+          /* A monster that cannot be targeted cannot be the source of this
+             number either. Ring of Destruction is "destroy it *and* inflict
+             damage equal to its ATK": pointed at Celtic Guardian, which cannot
+             be targeted at all, the destroy was correctly refused and the
+             damage went through anyway — 1400 Life Points off an untargetable
+             monster, for free, every turn. One card, one effect. */
+          const v = t && !isProtectedTarget(state, t, ctx.controller) ? effAtk(state, t) : 0;
           amount = op.scale === 'halfTargetAtk' ? Math.floor(v / 2) : v;
         } else if (op.scale === 'selfAtk') {
           amount = effAtk(state, ctx.source, ctx.controller);
@@ -999,9 +1014,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.position = 'def';
           t.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = t;
-          anim(state, { kind: 'summon', uid: t.uid, slug: t.slug, player: ctx.controller });
+          /* `as` because the Token's art comes from the card that made it and
+             its name does not. Without it the board announced "Mihail summons
+             Kuriboh" for the Token as well as for Kuriboh itself, so a second
+             body appeared with the first one's line and nothing said what it
+             was. */
+          anim(state, { kind: 'summon', uid: t.uid, slug: t.slug, as: op.name, player: ctx.controller });
         }
-        log(state, `${state.players[ctx.controller].name} Special Summons ${op.count} ${op.name}s.`, 'summon', ctx.controller);
+        log(
+          state,
+          op.count === 1
+            ? `${state.players[ctx.controller].name} Special Summons a ${op.name}.`
+            : `${state.players[ctx.controller].name} Special Summons ${op.count} ${op.name}s.`,
+          'summon',
+          ctx.controller
+        );
         break;
       }
       case 'transformInto': {
@@ -1118,12 +1145,19 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       case 'stealFromGrave': {
-        /* Either Graveyard, the opponent's first — and the best card in it
-           rather than whichever happens to lie nearest the top. A flip effect
-           resolves in the middle of someone else's attack, so there is no
-           moment to ask the player which; taking the strongest is the answer
-           they would have given. */
-        const pools = [state.players[other(ctx.controller)].grave, state.players[ctx.controller].grave];
+        /* The best card in the Graveyard rather than whichever happens to lie
+           nearest the top: a flip effect resolves in the middle of someone
+           else's attack, so there is no moment to ask the player which, and
+           taking the strongest is the answer they would have given.
+
+           Which Graveyard is the card's own business. "From either Graveyard"
+           starts with your own — the report was exactly this, "Magician of
+           Faith gave me back the enemy spell card", and getting your own
+           Monster Reborn back is what the card is for. Graverobber says "from
+           your opponent's Graveyard" and means only that. */
+        const own = state.players[ctx.controller].grave;
+        const theirs = state.players[other(ctx.controller)].grave;
+        const pools = op.from === 'opp' ? [theirs] : [own, theirs];
         let pool: CardInstance[] | null = null;
         let i2 = -1;
         for (const g of pools) {
@@ -1209,6 +1243,23 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
     }
   }
 }
+
+/**
+ * Where each rung of Petit Moth's ladder stands, in Evolution Counters.
+ *
+ * Weevil's deck holds Larvae Moth and both Great Moths as ordinary monsters, so
+ * one can be Normal Summoned straight out of the hand — and it arrived with no
+ * counters at all, needing three more End Phases to reach the rung *above* the
+ * one it was already standing on. A moth summoned by hand now starts where a
+ * moth that grew into it would be, so the ladder reads the same either way:
+ * Larvae Moth is one End Phase from Great Moth however it got there.
+ */
+const MOTH_STAGE: Record<string, number> = {
+  'petit-moth': 0,
+  'larvae-moth': 2,
+  'great-moth': 3,
+  'perfectly-ultimate-great-moth': 4,
+};
 
 /** Petit Moth's evolution chain, driven by Evolution Counters. */
 function applyEvolution(state: DuelState, c: CardInstance, controller: PlayerId) {
