@@ -124,7 +124,11 @@ export type Pick =
   | 'strongest'
   | 'weakest'
   | 'attacker' // context: the attacking monster
-  | 'attackTarget'; // context: the monster being attacked
+  | 'attackTarget' // context: the monster being attacked
+  /** The monster this same effect just Special Summoned. Call of the Haunted
+   *  revives one and then buffs it; `strongest` handed the bonus to whatever
+   *  was already the biggest thing you controlled instead. */
+  | 'summoned';
 
 export interface CardFilter {
   type?: string; // monster type (Dragon, Insect, ...)
@@ -419,7 +423,9 @@ export type AnimKind =
   | 'trap'
   | 'fusion'
   | 'win'
-  | 'phase';
+  | 'phase'
+  /** A log line with no animation of its own, given its own beat on the field. */
+  | 'note';
 
 export interface AnimEvent {
   id: string;
@@ -431,6 +437,11 @@ export interface AnimEvent {
   /** The cards this one was made from — the Fusion Materials, so the board can
       show them becoming the monster rather than just announcing the result. */
   from?: string[];
+  /** The log line this beat is announcing. Every line the duel records gets one:
+      the log is a memory aid, not somewhere to go and find out what happened. */
+  note?: string;
+  /** The log tone, so the board can colour the line the same way. */
+  tone?: string;
   amount?: number;
   text?: string;
 }
@@ -450,6 +461,8 @@ export interface DuelState {
   phase: Phase;
   ongoing: OngoingEffect[];
   log: LogEntry[];
+  /** How much of the log has already been paired with an animation beat. */
+  logShown?: number;
   anims: AnimEvent[];
   pending: Pending | null;
   winner: PlayerId | 'draw' | null;

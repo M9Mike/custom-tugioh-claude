@@ -540,7 +540,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Call of the Haunted',
         ops: [
           { op: 'specialSummon', from: 'grave', count: 1, position: 'atk' },
-          { op: 'gainAtk', amount: 400, target: sel('own', 'strongest'), duration: 'permanent' },
+          /* "It gains 400 ATK" — *it*, the monster just revived. `strongest`
+             handed the bonus to whatever was already the biggest thing on your
+             side, so reviving anything small buffed the wrong monster and the
+             card read as doing nothing. */
+          { op: 'gainAtk', amount: 400, target: sel('own', 'summoned'), duration: 'permanent' },
         ],
       },
     ],

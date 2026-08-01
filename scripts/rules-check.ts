@@ -709,5 +709,47 @@ console.log('\nAnimation events survive the action after them');
   ok(new Set(ids).size === ids.length, 'with every event id still unique', ids.join(','));
 }
 
+console.log('\nCall of the Haunted buffs the monster it revived');
+{
+  /* "It gains 400 ATK" — *it*. The bonus targeted `strongest`, so reviving
+     anything small handed the 400 to whatever was already the biggest thing on
+     your side and the card looked like it did nothing. */
+  const s = fresh();
+  s.active = FOE;
+  const big = card(ME, 'blue-eyes-white-dragon');
+  s.players[ME].monsters[0] = big;
+  const small = card(ME, 'baby-dragon');
+  s.players[ME].grave.push(small);
+  const trap = card(ME, 'call-of-the-haunted');
+  trap.face = 'down';
+  s.players[ME].spellTrap = trap;
+  s.pending = { kind: 'trap', player: ME, options: [trap.uid], reason: 'test', context: {} };
+
+  const after = act(s, ME, { type: 'respondTrap', uid: trap.uid, targets: [small.uid] });
+  const revived = after.players[ME].monsters.find((m) => m?.slug === 'baby-dragon');
+  const dragon = after.players[ME].monsters.find((m) => m?.slug === 'blue-eyes-white-dragon');
+  ok(!!revived, 'it revives the chosen monster');
+  ok(revived ? effAtk(after, revived, ME) === 1200 + 400 : false, 'and the 400 goes to that monster', `${revived ? effAtk(after, revived, ME) : '-'}`);
+  ok(dragon ? effAtk(after, dragon, ME) === 3000 : false, 'not to whatever was already strongest', `${dragon ? effAtk(after, dragon, ME) : '-'}`);
+}
+
+console.log('\nEvery line the duel records is spoken on the field');
+{
+  /* The log is a memory aid, not the place a player goes to find out what
+     happened. Every entry is paired with an animation beat — and paired
+     whichever order the caller wrote them in, or a line logged after its own
+     animation got a second beat and Kuriboh's token announced itself twice. */
+  const s = fresh();
+  const c = card(ME, 'baby-dragon');
+  s.players[ME].hand = [c];
+  const after = act(s, ME, { type: 'normalSummon', uid: c.uid, zone: 0, position: 'atk', face: 'up' });
+
+  const freshLines = after.log.length - s.log.length;
+  const spoken = after.anims.filter((a) => a.note).length;
+  ok(spoken > 0, 'the summon carries the line it logged', `${spoken} of ${freshLines}`);
+  const notes = after.anims.map((a) => a.note).filter(Boolean);
+  ok(new Set(notes).size === notes.length, 'and no line is announced twice', notes.join(' | '));
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

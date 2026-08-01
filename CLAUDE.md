@@ -139,6 +139,44 @@ the way: `pendingPrompt` is gated on `mode.kind === 'idle'`.
 Man-Eater Bug remove the attacker and end the battle early, so the bug itself
 survived untouched. `resolveFlip()` runs on every exit path from an attack.
 
+**One line, in the middle, for every beat.** There used to be two: the card's
+cry in the centre of the screen and the declaration near the edge — so Crush
+Card Virus, whose cry is "Crush Card!", printed its own name twice. The cry
+banner is gone. What remains says who did what, sits in the middle, and speaks
+for *every* beat: each log line is paired with an animation as it is written, so
+nothing the duel records has to be read out of the log afterwards. The log is a
+memory aid, not the place a player goes to find out what happened.
+
+Pair the line to the beat **whichever order the caller wrote them in.** Most
+sites log first and animate second, so `anim()` claims the pending line — but
+some do the reverse, and giving those an extra beat made Kuriboh's token
+announce itself twice. Leftovers attach to the last beat that has no line, and
+only a genuinely orphaned line gets one of its own.
+
+**The board must not know things the player has not been told.** `state` from
+the server is already final, and it arrives one commit before any effect can
+react — so in that commit the Life Points showed the post-damage total and the
+monster stood in its zone, both before the queue had said a word. That is the
+Life Points flashing to the final number and then counting down to it again, and
+a signature card's flourish playing *over* a monster already on the board.
+
+`playedAnims` is state, not a ref, and the board derives from it **during
+render**: Life Points hold back whatever damage is unspoken, and a monster whose
+summon has not been announced is drawn as an empty zone. Reading a ref during
+render is the tempting version and lint is right to refuse it — the value has to
+participate in rendering, so it has to be state.
+
+**A prompt with one option is not a choice.** `scanOps` hardcoded `count: 1` for
+a Special Summon, so The Flute of Summoning Dragon — which brings out *two*
+Dragons — resolved the moment the first was picked and chose the second itself.
+It reads `op.count` now, and the prompt only opens when more cards qualify than
+the effect will take, so holding exactly one Dragon summons it without asking.
+
+**"It gains 400 ATK" means the monster it just summoned.** Call of the Haunted
+revived a monster and then buffed `pick: 'strongest'`, so reviving anything
+small handed the bonus to whatever was already the biggest thing you controlled.
+`pick: 'summoned'` resolves to what that same effect brought out.
+
 **An action used to destroy the previous action's animations.** `applyAction`
 emptied `state.anims` every time, which is only correct if the client sees every
 single version — and it does not. The computer plays one action per nudge while

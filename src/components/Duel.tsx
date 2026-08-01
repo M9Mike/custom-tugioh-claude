@@ -174,7 +174,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [banner, setBanner] = useState<{ text: string; tone: string } | null>(null);
+  /* The cry banner is gone. It printed the card's flavour line in the middle
+     while the declaration named the same card just below — Crush Card Virus,
+     whose cry is "Crush Card!", read as the name twice over. One line now,
+     in the middle, saying who did what. */
   const [shakeOn, setShakeOn] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [graveOpen, setGraveOpen] = useState<PlayerId | null>(null);
@@ -193,14 +196,54 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      the card on screen with nothing saying whose move it was. */
   const [fxHold, setFxHold] = useState(900);
   const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number; kind: 'damage' | 'heal' } | null>(null);
-  /** Life Points whose animation has not played yet — see `pendingLpIn`. */
-  const [pending, setPending] = useState<Record<PlayerId, number>>({ p1: 0, p2: 0 });
+  /**
+   * Beats whose moment has already been given. Everything else in `state.anims`
+   * has happened on the server but not yet on screen, and the board is drawn as
+   * though it has not happened at all.
+   *
+   * A ref, and read during render rather than kept in state: the server's state
+   * arrives one commit before any effect can react to it, and in that commit
+   * the board would show the new Life Points and the new monster before the
+   * queue had said a word — which is exactly the flash of the final total, and
+   * the monster appearing before its own summon animation.
+   */
+  const [playedAnims, setPlayedAnims] = useState<ReadonlySet<string>>(() => new Set());
+  /** Remembers a beat as announced, bounded so a long duel cannot grow it. */
+  const markPlayed = useCallback((id: string) => {
+    setPlayedAnims((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      if (next.size > 400) return new Set([...next].slice(-200));
+      return next;
+    });
+  }, []);
   /** True once the queue has finished, so the win screen can wait for it. */
   const [settled, setSettled] = useState(true);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
   /** False until the first view has been absorbed without playing it. */
   const primedAnims = useRef(false);
+  /* Everything the server has done that the board has not yet announced. */
+  const unspoken = useMemo(
+    () => state.anims.filter((a) => !playedAnims.has(a.id)),
+    [state.anims, playedAnims]
+  );
+  /** Life Points whose beat has not played — held back so the total never
+      moves before the blow that caused it. */
+  const pending = useMemo(() => pendingLpIn(unspoken), [unspoken]);
+  /**
+   * Monsters that are on the server's board but whose arrival has not been
+   * announced. They are drawn as an empty zone until their beat plays, so a
+   * signature card's flourish happens *before* it lands rather than over a
+   * monster that is already standing there.
+   */
+  const unannounced = useMemo(() => {
+    const out = new Set<string>();
+    for (const a of unspoken) {
+      if ((a.kind === 'summon' || a.kind === 'fusion') && a.uid) out.add(a.uid);
+    }
+    return out;
+  }, [unspoken]);
   const fxTimer = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const handRef = useRef<HTMLDivElement>(null);
@@ -368,6 +411,29 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     }
   };
 
+  /**
+   * What the board says for the beat currently resolving.
+   *
+   * A card-shaped declaration when there is one, and otherwise the log line the
+   * engine paired with this beat. Nothing the duel records should have to be
+   * read out of the log afterwards — the log is a memory aid, not the place a
+   * player goes to find out what just happened.
+   */
+  const spoken = (a: AnimEvent | null): { text: string; slug?: string; who?: PlayerId } | null => {
+    if (!a) return null;
+    const d = declare(a);
+    if (d) {
+      const actor = state.players[d.who].name;
+      return {
+        text: d.form === 'actor' ? `${actor} ${d.verb} ${d.name}` : `${d.name}${d.verb}`,
+        slug: d.slug,
+        who: d.who,
+      };
+    }
+    if (a.note) return { text: a.note, slug: a.slug, who: a.player };
+    return null;
+  };
+
   const playOne = useCallback((a: AnimEvent) => {
     switch (a.kind) {
         case 'draw':
@@ -381,7 +447,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         }
         case 'fusion':
           sfx.bigSummon();
-          if (a.text) setBanner({ text: a.text, tone: 'fusion' });
           break;
         case 'attack':
           sfx.attack();
@@ -397,15 +462,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           break;
         case 'activate':
           sfx.spell();
-          if (a.text) setBanner({ text: a.text, tone: 'spell' });
           break;
         case 'trap':
           sfx.trap();
-          if (a.text) setBanner({ text: a.text, tone: 'trap' });
           break;
         case 'phase':
           sfx.phase();
-          if (a.text) setBanner({ text: a.text, tone: 'phase' });
           break;
         case 'damage':
           sfx.damage();
@@ -440,6 +502,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     if (!primedAnims.current) {
       primedAnims.current = true;
       for (const a of state.anims) seenAnims.current.add(a.id);
+      setPlayedAnims(new Set(state.anims.map((a) => a.id)));
       return;
     }
     const fresh = state.anims.filter((a) => !seenAnims.current.has(a.id));
@@ -447,7 +510,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     for (const a of fresh) seenAnims.current.add(a.id);
     if (seenAnims.current.size > 400) seenAnims.current = new Set([...seenAnims.current].slice(-200));
     fxQueue.current.push(...fresh);
-    setPending(pendingLpIn(fxQueue.current));
 
     if (drainingRef.current) return;
     drainingRef.current = true;
@@ -456,7 +518,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
     const step = () => {
       const next = fxQueue.current.shift();
-      setPending(pendingLpIn(fxQueue.current));
       if (!next) {
         drainingRef.current = false;
         setFx(null);
@@ -465,6 +526,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         return;
       }
       setFx(next);
+      /* Announced now: the Life Points may move, and the monster may appear.
+         Marking it here rather than when the hold ends is deliberate — this is
+         the moment the beat is on screen, so the board should agree with it. */
+      markPlayed(next.id);
       playOne(next);
       const signature = isSignature(next);
       /* A backlog is the computer's whole turn arriving at once. Rather than
@@ -487,7 +552,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
          the summon, the fusion and the attack all announced themselves and none
          of them could be read. Silent beats still compress freely; the ones
          that speak have a floor. */
-      const speaks = declare(next) !== null;
+      const speaks = spoken(next) !== null;
       const hold = Math.max(speaks ? MIN_SPOKEN_MS : 70, base * scale);
       setFxHold(hold);
       fxTimer.current = window.setTimeout(step, hold);
@@ -523,12 +588,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     }, 8000);
     return () => window.clearTimeout(t);
   }, [state.winner]);
-
-  useEffect(() => {
-    if (!banner) return;
-    const t = setTimeout(() => setBanner(null), 1900);
-    return () => clearTimeout(t);
-  }, [banner]);
 
   useEffect(() => {
     if (!state.winner) return;
@@ -643,7 +702,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     return true;
   };
 
-  const hasPickable = (spec: TargetSpec): boolean => pickableUids(spec).length > 0;
+  /* There is only a choice to make when more cards qualify than the effect will
+     take. The Flute summons up to two Dragons, so holding exactly one left the
+     player staring at a prompt with a single option and no way to decline —
+     and holding none used to open it at all. */
+  const hasPickable = (spec: TargetSpec): boolean => pickableUids(spec).length > (spec.count ?? 1);
 
   const pickableUids = useCallback(
     (spec: TargetSpec): string[] => {
@@ -744,7 +807,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const renderMonsterZone = (owner: PlayerId, idx: number) => {
     const p = state.players[owner];
-    const c = p.monsters[idx];
+    /* A monster whose arrival has not been announced yet is not on the board
+       yet. The server's state is already final, so without this the card
+       appeared in its zone and *then* its summon animation played over the top
+       of it — most obviously with a signature card, whose whole flourish is it
+       coming towards you before it lands. */
+    const c = p.monsters[idx] && unannounced.has(p.monsters[idx]!.uid) ? null : p.monsters[idx];
     const isMine = owner === me;
     const targetable = c ? targetableSet.has(c.uid) : false;
     const attackable = isMine && !!c && state.phase === 'battle' && myTurn && canAttackWith(state, me, c);
@@ -1251,40 +1319,31 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       )}
 
-      {/* The declaration for whatever is resolving right now. It sits above the
-          board so both players read the same line at the same moment, whether
-          the computer or a person made the move. */}
+      {/* What is happening, in the middle of the screen, one beat at a time.
+          There used to be two lines — the card's cry in the centre and the
+          declaration near the edge — so Crush Card Virus announced itself
+          twice. This is the only one, and it speaks for every beat, including
+          those whose only record was a line in the log. */}
       {(() => {
-        const d = fx ? declare(fx) : null;
-        if (!d) return null;
-        const actor = state.players[d.who].name;
-        const foeSide = d.who !== me;
+        const said = fx ? spoken(fx) : null;
+        if (!said) return null;
         return (
           <div
             key={fx!.id}
-            className="pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-3"
-            style={{ top: foeSide ? 'calc(var(--safe-top) + 14%)' : 'auto', bottom: foeSide ? 'auto' : 'calc(var(--safe-bottom) + 22%)' }}
+            className="pointer-events-none absolute inset-x-0 top-1/2 z-[55] flex -translate-y-1/2 justify-center px-3"
           >
             <div
               data-testid="declaration"
               className="declare flex max-w-[92%] items-center gap-2.5 rounded border border-brass/70 bg-ink/95 px-3 py-2 shadow-2xl"
               style={{ animationDuration: `${fxHold}ms` }}
             >
-              <div className="w-10 shrink-0">
-                <GameCard card={previewInstances([[d.slug, 1]])[0]} compact />
-              </div>
-              <p className="min-w-0 font-display text-[12px] leading-snug text-parchment sm:text-sm">
-                {d.form === 'actor' ? (
-                  <>
-                    <span className="text-brass">{actor}</span> {d.verb}{' '}
-                    <span className="text-brassbright">{d.name}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-brassbright">{d.name}</span>
-                    {d.verb}
-                  </>
-                )}
+              {said.slug && CARDS[said.slug] && (
+                <div className="w-10 shrink-0">
+                  <GameCard card={previewInstances([[said.slug, 1]])[0]} compact />
+                </div>
+              )}
+              <p className="min-w-0 font-display text-[13px] leading-snug text-parchment sm:text-base">
+                {said.text}
               </p>
             </div>
           </div>
@@ -1350,24 +1409,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             {hit.kind === 'heal' ? '+' : '−'}
             {hit.amount}
           </span>
-        </div>
-      )}
-
-      {banner && (
-        <div className="pointer-events-none absolute inset-x-0 top-[38%] z-40 flex justify-center px-4">
-          <div
-            className={`banner rounded border px-6 py-2 text-center font-display text-lg tracking-wide shadow-2xl sm:text-2xl ${
-              banner.tone === 'trap'
-                ? 'border-[#ab5a86] bg-[#2a1420]/95 text-[#f0c2da]'
-                : banner.tone === 'fusion'
-                  ? 'border-violet2 bg-[#1e1630]/95 text-[#d9c6f5]'
-                  : banner.tone === 'phase'
-                    ? 'border-brassdim bg-ink/95 text-brassbright'
-                    : 'border-sea bg-[#0f2422]/95 text-[#bfe8e2]'
-            }`}
-          >
-            {banner.text}
-          </div>
         </div>
       )}
 
@@ -1754,7 +1795,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           how — and with the log underneath it there was no way to find out.
           The queue being empty is not enough on its own: the blow that ended the
           duel is still popping for another second after its event has played. */}
-      {state.winner && (forceWin || (settled && !hit && !banner)) && (
+      {state.winner && (forceWin || (settled && !hit)) && (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
           <div className="panel grain w-full max-w-md rounded p-6 text-center">
             <p className="font-display text-3xl tracking-wide" style={{ color: state.winner === me ? '#e6c980' : '#c98a8a' }}>

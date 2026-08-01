@@ -109,7 +109,44 @@ function anim(state: DuelState, ev: Omit<AnimEvent, 'id'>) {
      deterministic and two serverless instances cannot mint the same id. */
   const prefix = `a${state.version}_`;
   const n = state.anims.reduce((k, a) => (a.id.startsWith(prefix) ? k + 1 : k), 0);
-  state.anims.push({ id: `${prefix}${n}`, ...ev });
+  /* Every beat carries the line the duel just recorded. The log is a memory
+     aid; a player should never have to open it to find out what happened, so
+     whatever was written is said on the field as the beat plays. Callers log
+     first and animate second, which is what makes the pairing land. */
+  const shown = state.logShown ?? 0;
+  const pending = state.log.slice(shown);
+  const line = pending[pending.length - 1];
+  if (line) state.logShown = state.log.length;
+  state.anims.push({ id: `${prefix}${n}`, note: line?.text, tone: line?.tone, ...ev });
+}
+
+/**
+ * Gives a beat to every log line that no animation claimed.
+ *
+ * Run at the end of an action, so a line like "Battle Ox's effects are negated"
+ * — logged by an op that has no animation of its own — still gets its moment on
+ * the field rather than only existing in the log.
+ */
+function speakRemainingLog(state: DuelState) {
+  const shown = state.logShown ?? 0;
+  const prefix = `a${state.version}_`;
+  for (const entry of state.log.slice(shown)) {
+    /* Not every caller logs before it animates. Where the log came second, the
+       line belongs to the beat that is already there — giving it one of its own
+       made Kuriboh's token announce itself twice, once as the summon and again
+       as the line describing it. Only a line with no beat to attach to gets a
+       beat of its own. */
+    const orphan = [...state.anims].reverse().find((a) => a.id.startsWith(prefix) && !a.note);
+    if (orphan) {
+      orphan.note = entry.text;
+      orphan.tone = entry.tone;
+      continue;
+    }
+    if (entry.tone === 'system') continue; // "Turn 4 — Yugi's turn" is chrome
+    const n = state.anims.reduce((k, a) => (a.id.startsWith(prefix) ? k + 1 : k), 0);
+    state.anims.push({ id: `${prefix}${n}`, kind: 'note', note: entry.text, tone: entry.tone, player: entry.player });
+  }
+  state.logShown = state.log.length;
 }
 
 export function displayName(c: CardInstance): string {
@@ -563,6 +600,8 @@ interface EffectCtx {
   targets: string[];
   cursor: number;
   trig: TriggerContext;
+  /** Monsters this effect has Special Summoned, for `pick: 'summoned'`. */
+  summoned?: string[];
   /** Set by negateAttack so battle resolution can be cancelled. */
   attackNegated?: boolean;
   battlePhaseEnded?: boolean;
@@ -611,6 +650,11 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
   if (s.pick === 'attackTarget') {
     const c = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid)?.c : null;
     return c ? [c] : [];
+  }
+  if (s.pick === 'summoned') {
+    return (ctx.summoned ?? [])
+      .map((uid) => findOnField(state, uid)?.c)
+      .filter((c): c is CardInstance => !!c);
   }
 
   const pool: CardInstance[] = [];
@@ -936,6 +980,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           picked.face = op.face ?? 'up';
           picked.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = picked;
+          ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
           log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(picked)}!`, 'summon', ctx.controller);
           anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
           if (picked.face === 'up') fireTriggers(state, picked, ctx.controller, 'onSummon', {});
@@ -1705,7 +1750,20 @@ export function fusionOptions(state: DuelState, pid: PlayerId): { extraUid: stri
  */
 const ANIM_HISTORY = 48;
 
+/**
+ * Applies an action, then makes sure everything it wrote to the log gets said
+ * out loud on the field.
+ *
+ * The wrapper exists because the inner function returns from nine places; a
+ * sweep at each one would be nine chances to forget.
+ */
 export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction): { state: DuelState; error?: string } {
+  const res = applyActionInner(prev, pid, action);
+  if (!res.error) speakRemainingLog(res.state);
+  return res;
+}
+
+function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): { state: DuelState; error?: string } {
   const state: DuelState = structuredClone(prev);
   state.anims = state.anims.slice(-ANIM_HISTORY);
   state.version += 1;

@@ -32,8 +32,12 @@ function scanOps(ops: Op[]): TargetSpec | null {
       return {
         side: op.side === 'both' ? 'both' : 'own',
         zone: op.from === 'grave' ? 'grave' : 'hand',
-        count: 1,
+        /* The op's own count, not a hardcoded 1. The Flute of Summoning Dragon
+           brings out *two* Dragons and only ever asked for one, so it resolved
+           the moment the first was picked and chose the second itself. */
+        count: op.count ?? 1,
         prompt: 'Choose a monster to Special Summon',
+        filter: op.filter,
       };
     }
     if (op.op === 'search') {
