@@ -194,6 +194,14 @@ declaration counted as "seen" because the element was still in the DOM at
 `opacity: 0`. Assert what a person would look at — the computed style, the served
 bundle, the seat name the room really opened with.
 
+**Ask Vercel whether it deployed; do not grep the bundle.** Twice now a deploy
+watcher has reported "still building" while the change was already live —
+hashing the homepage's chunk list, which does not change when only the duel
+route did, and then grepping for a string that lives in a chunk the homepage
+never references. `list_deployments` gives the deployment's own `state`, which
+is the actual answer. Grep the served bundle only to confirm *what* is in it,
+never to decide *whether* the deploy happened.
+
 **A watcher that cannot reach its target looks exactly like one still waiting.**
 A CI poller here curled `api.github.com` directly, which this environment answers
 with a 403 — and its error handling turned an unparseable body into "not done
