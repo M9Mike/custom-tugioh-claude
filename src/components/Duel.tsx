@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
+import { previewInstances } from './deckPreview';
 import CardDetail from './CardDetail';
 import { CARDS, DUELIST_BY_ID, artUrl } from '@/game/cards';
 import {
@@ -159,17 +160,46 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const FX_MS: Record<string, number> = {
     draw: 130,
     phase: 200,
-    summon: 300,
+    summon: 380,
     heal: 300,
     destroy: 340,
     damage: 420,
-    flip: 440,
-    attack: 440,
-    directAttack: 440,
-    activate: 480,
-    trap: 560,
-    fusion: 850,
+    flip: 460,
+    // Long enough to read the declaration that goes with them.
+    attack: 900,
+    directAttack: 900,
+    activate: 1000,
+    trap: 1150,
+    fusion: 1100,
     win: 0,
+  };
+
+  /**
+   * What to announce for an event, before its consequences play.
+   *
+   * The engine emits these in the order things actually happen — the activate
+   * comes before the ops it runs, the attack before the damage — so playing the
+   * queue in order gives "I activate Ring of Destruction" and only then the
+   * board reacting to it, which is what makes a chain readable rather than a
+   * result that has already happened.
+   */
+  const declare = (a: AnimEvent): { verb: string; name: string; slug: string; who: PlayerId } | null => {
+    if (!a.slug || !a.player) return null;
+    const name = CARDS[a.slug]?.name ?? a.slug;
+    switch (a.kind) {
+      case 'activate':
+        return { verb: 'activates', name, slug: a.slug, who: a.player };
+      case 'trap':
+        return { verb: 'springs', name, slug: a.slug, who: a.player };
+      case 'fusion':
+        return { verb: 'fusion summons', name, slug: a.slug, who: a.player };
+      case 'attack':
+        return { verb: `attacks ${a.text ?? ''} with`.replace('  ', ' '), name, slug: a.slug, who: a.player };
+      case 'directAttack':
+        return { verb: 'attacks directly with', name, slug: a.slug, who: a.player };
+      default:
+        return null;
+    }
   };
 
   const playOne = useCallback((a: AnimEvent) => {
@@ -258,12 +288,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       fxTimer.current = window.setTimeout(step, Math.max(70, (FX_MS[next.kind] ?? 300) * scale));
     };
     step();
-
-    return () => {
-      if (fxTimer.current) window.clearTimeout(fxTimer.current);
-    };
+    /* Deliberately no cleanup here. This effect re-runs on every state update —
+       and the client polls — so clearing the timer here killed the drain on the
+       first poll after an action. `draining` stayed true, nothing restarted it,
+       and every animation after the first one silently never played. The timer
+       is cleared on unmount instead, below. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.version]);
+
+  useEffect(
+    () => () => {
+      if (fxTimer.current) window.clearTimeout(fxTimer.current);
+    },
+    []
+  );
 
   function pushFloat(a: AnimEvent, text: string, tone: string) {
     if (!a.player) return;
@@ -918,6 +956,33 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* ================= overlays ================= */}
 
+      {/* The declaration for whatever is resolving right now. It sits above the
+          board so both players read the same line at the same moment, whether
+          the computer or a person made the move. */}
+      {(() => {
+        const d = fx ? declare(fx) : null;
+        if (!d) return null;
+        const actor = state.players[d.who].name;
+        const foeSide = d.who !== me;
+        return (
+          <div
+            key={fx!.id}
+            className="pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-3"
+            style={{ top: foeSide ? 'calc(var(--safe-top) + 14%)' : 'auto', bottom: foeSide ? 'auto' : 'calc(var(--safe-bottom) + 22%)' }}
+          >
+            <div className="declare flex max-w-[92%] items-center gap-2.5 rounded border border-brass/70 bg-ink/95 px-3 py-2 shadow-2xl">
+              <div className="w-10 shrink-0">
+                <GameCard card={previewInstances([[d.slug, 1]])[0]} compact />
+              </div>
+              <p className="min-w-0 font-display text-[12px] leading-snug text-parchment sm:text-sm">
+                <span className="text-brass">{actor}</span> {d.verb}{' '}
+                <span className="text-brassbright">{d.name}</span>
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {leaving && (
         <div
           className="absolute inset-0 z-[75] flex items-center justify-center bg-black/80 p-6"
@@ -1213,9 +1278,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           }}
         >
           <div className="panel grain max-h-[70vh] w-full max-w-2xl overflow-y-auto thin-scroll rounded p-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-sm text-parchment">
-              {state.players[graveOpen].name}&apos;s Graveyard ({state.players[graveOpen].grave.length})
-            </h3>
+            {/* An explicit way out. Tapping the dark surround also closes it,
+                but nobody should have to guess that. */}
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-display text-sm text-parchment">
+                {state.players[graveOpen].name}&apos;s Graveyard ({state.players[graveOpen].grave.length})
+              </h3>
+              <button
+                className="btn shrink-0 rounded px-2 py-1 text-[10px]"
+                onClick={() => { setGraveOpen(null); setGraveInspect(null); }}
+                aria-label="Close the Graveyard"
+              >
+                ✕
+              </button>
+            </div>
             {graveInspect && (
               <div className="mt-3">
                 <CardDetail

@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
+import CardDetail from './CardDetail';
+import { previewInstances } from './deckPreview';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
 import { primeAudio, sfx } from '@/lib/sfx';
 import { other } from '@/game/engine';
@@ -17,35 +19,6 @@ interface Props {
   configureAi?: (opts: { duelistId?: string }) => void;
 }
 
-
-/** Builds throwaway instances so the deck preview can reuse the card renderer. */
-function previewInstances(slugs: [string, number][]): CardInstance[] {
-  const out: CardInstance[] = [];
-  slugs.forEach(([slug, count], i) => {
-    for (let n = 0; n < count; n++) {
-      out.push({
-        uid: `${slug}_${i}_${n}`,
-        slug,
-        owner: 'p1',
-        face: 'up',
-        position: 'atk',
-        atkMod: 0,
-        defMod: 0,
-        turnAtkMod: 0,
-        turnDefMod: 0,
-        counters: 0,
-        equips: [],
-        flags: {},
-        turnFlags: {},
-        summonedOnTurn: -1,
-        attacksUsed: 0,
-        effectUsedOnTurn: -1,
-        absorbed: [],
-      });
-    }
-  });
-  return out;
-}
 
 export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, configureAi }: Props) {
   const me = view.you;
@@ -64,6 +37,8 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
   const [nameDraft, setNameDraft] = useState(mySeat?.name ?? '');
   const [copied, setCopied] = useState(false);
   const [deckOpen, setDeckOpen] = useState<string | null>(null);
+  /** The card being read inside the deck viewer. */
+  const [deckInspect, setDeckInspect] = useState<CardInstance | null>(null);
 
   useEffect(() => {
     primeAudio();
@@ -314,7 +289,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
 
       {/* deck preview */}
       {deck && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setDeckOpen(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
           <div
             className="panel grain max-h-[85vh] w-full max-w-4xl overflow-y-auto thin-scroll rounded p-4"
             onClick={(e) => e.stopPropagation()}
@@ -324,17 +299,22 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                 {deck.name} — 25 cards
                 {deck.extra.length > 0 && <span className="ml-2 text-xs text-ptextdim">+ {deck.extra.length} Extra Deck</span>}
               </h3>
-              <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setDeckOpen(null)}>
+              <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
                 ✕
               </button>
             </div>
             <div className="brass-rule my-3" />
+            {deckInspect && (
+              <div className="mb-3">
+                <CardDetail card={deckInspect} onClose={() => setDeckInspect(null)} layout="row" />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {previewInstances(deck.deck).map((c) => (
-                <div key={c.uid} className="w-[84px]" title={CARDS[c.slug]?.text}>
+                <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                   <GameCard card={c} />
                   <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
-                </div>
+                </button>
               ))}
             </div>
             {deck.extra.length > 0 && (
@@ -343,10 +323,10 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                 <p className="mb-2 font-display text-xs uppercase tracking-widest text-brass">Extra Deck</p>
                 <div className="flex flex-wrap gap-2">
                   {previewInstances(deck.extra.map((s) => [s, 1] as [string, number])).map((c) => (
-                    <div key={c.uid} className="w-[84px]" title={CARDS[c.slug]?.text}>
+                    <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                       <GameCard card={c} />
                       <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </>

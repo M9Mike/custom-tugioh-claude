@@ -1263,7 +1263,16 @@ function resolveBattle(state: DuelState) {
     return;
   }
 
-  anim(state, { kind: 'attack', uid: attacker.uid, targetUid: target.uid, player: controller });
+  // The slug rides along so the client can announce *which* monster is
+  // attacking before any damage is worked out.
+  anim(state, {
+    kind: 'attack',
+    uid: attacker.uid,
+    slug: attacker.slug,
+    targetUid: target.uid,
+    text: displayName(target),
+    player: controller,
+  });
 
   const atk = effAtk(state, attacker, controller);
   const flags = effFlags(state, attacker, controller);

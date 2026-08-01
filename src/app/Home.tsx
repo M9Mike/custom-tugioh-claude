@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DUELISTS, artUrl } from '@/game/cards';
+import { CARDS, DUELISTS, artUrl } from '@/game/cards';
+import GameCard from '@/components/GameCard';
+import CardDetail from '@/components/CardDetail';
+import { previewInstances } from '@/components/deckPreview';
+import type { CardInstance } from '@/game/types';
 import { joinRoomWithRetry, loadName, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
@@ -13,6 +17,12 @@ export default function Home() {
   const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [deckOpen, setDeckOpen] = useState<string | null>(null);
+  const [deckInspect, setDeckInspect] = useState<CardInstance | null>(null);
+  const setPicked = (id: string) => { setPickedId(id); setDeckInspect(null); };
+  const chosen = DUELISTS.find((d) => d.id === pickedId) ?? null;
+  const deck = deckOpen ? DUELISTS.find((d) => d.id === deckOpen) ?? null : null;
   const nameRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
@@ -103,9 +113,11 @@ export default function Home() {
               disabled={busy !== null}
               onClick={() => {
                 sfx.click();
-                void enterTournament(d.id);
+                setPicked(d.id);
               }}
-              className="panel grain group relative flex flex-col overflow-hidden rounded p-0 text-left transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+              className={`panel grain group relative flex flex-col overflow-hidden rounded p-0 text-left transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+                pickedId === d.id ? 'ring-2 ring-brass' : ''
+              }`}
             >
               <div className="relative min-h-[86px] w-full flex-1 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -128,13 +140,71 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Tapping a portrait chooses, it does not commit — a three-duel run is
+            worth reading the deck for first. */}
+        {chosen && (
+          <div className="panel grain rounded p-3">
+            <div className="flex items-start gap-3">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded border" style={{ borderColor: chosen.accent }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={artUrl(chosen.emblem)} alt="" className="h-full w-full object-cover" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-display text-lg leading-tight text-parchment">{chosen.name}</h2>
+                <p className="text-[11px] uppercase tracking-wider" style={{ color: chosen.accent2 }}>{chosen.epithet}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-ptext/85">{chosen.strategy}</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn rounded px-3 py-2 text-[11px]" onClick={() => setDeckOpen(chosen.id)}>
+                View 25-card deck
+              </button>
+              <button
+                className="btn btn-primary flex-1 rounded px-4 py-2 text-xs"
+                disabled={busy !== null}
+                onClick={() => {
+                  sfx.click();
+                  void enterTournament(chosen.id);
+                }}
+              >
+                {busy === 'tournament' ? 'Drawing the bracket…' : `Enter as ${chosen.name.split(' ')[0]}`}
+              </button>
+            </div>
+          </div>
+        )}
+
         {error && (
           <p className="rounded border border-oxblood bg-[#2a1216]/70 px-3 py-2 text-xs text-[#f0c9cc]">{error}</p>
         )}
 
         <button className="btn mx-auto rounded px-4 py-2 text-xs" onClick={() => setPicking(false)} disabled={busy !== null}>
-          {busy === 'tournament' ? 'Drawing the bracket…' : 'Back'}
+          Back
         </button>
+
+        {deck && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
+            <div className="panel grain thin-scroll max-h-[85dvh] w-full max-w-3xl overflow-y-auto rounded p-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-lg text-parchment">{deck.name} — 25 cards</h3>
+                <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>✕</button>
+              </div>
+              <div className="brass-rule my-3" />
+              {deckInspect && (
+                <div className="mb-3">
+                  <CardDetail card={deckInspect} onClose={() => setDeckInspect(null)} layout="row" />
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {previewInstances([...deck.deck, ...deck.extra.map((x) => [x, 1] as [string, number])]).map((c) => (
+                  <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
+                    <GameCard card={c} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     );
   }

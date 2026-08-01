@@ -222,7 +222,11 @@ const main = async () => {
     await c.tap('button:has-text("Enter the tournament")');
     await c.waitForSelector('text=Choose your duelist', { timeout: 15000 });
     await shot(c, '11-tournament-pick');
+    // Choosing a duelist no longer commits — the panel's button does, so a
+    // three-duel run can be entered on purpose rather than by a stray tap.
     await c.tap('button:has-text("Yugi Muto")');
+    await c.waitForTimeout(500);
+    await c.tap('button:has-text("Enter as Yugi")');
     await c.waitForURL(/\/duel\//, { timeout: 25000 });
     await c.waitForSelector('text=Round of', { timeout: 25000 });
     await c.waitForTimeout(1200);
