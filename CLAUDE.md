@@ -8,12 +8,16 @@ The owner's standing instruction: **test, merge, test on production, then report
 Not "here is a PR, shall I merge it?" — carry it through.
 
 1. Build and run the checks below against a local production build.
-2. Push the branch and open the pull request.
-3. Merge it. **Do not sit waiting on the CI checks** — the owner has said so
-   explicitly for this project. The security scan takes anywhere from one to ten
-   minutes and has never once caught something the local battery did not; the
-   local run *is* the gate. Glance at the previous pull request's review comments
-   when picking up the next piece of work, which is soon enough.
+2. Push the branch and open the pull request. **Open it before merging** —
+   fast-forwarding `main` first leaves no commits between the two, GitHub
+   refuses the pull request with "No commits between…", and the change ships
+   with no record of why. Done exactly that once; the ordering is the whole
+   guard.
+3. Merge it *immediately*. **Do not sit waiting on the CI checks** — the owner
+   has said so explicitly for this project. The security scan takes anywhere
+   from one to ten minutes and has never once caught something the local battery
+   did not; the local run *is* the gate. Glance at the previous pull request's
+   review comments when picking up the next piece of work, which is soon enough.
 4. Re-run the end-to-end tests **against `https://custom-tugioh-claude.vercel.app`**,
    not just the local server. Production is Vercel functions plus MongoDB in Paris;
    a bug that only appears with real latency and a cold start will not show up on
