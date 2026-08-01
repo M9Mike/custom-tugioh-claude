@@ -321,6 +321,13 @@ async function main() {
   await arena('champion(d3) vs same width d1', champ, oneTurn, pairs, workers);
   if (only) return;
   await arena('champion(d3) vs same width d0', champ, flat, pairs, workers);
+  // And how much should it be believed? `rolloutMix: 1` is the old behaviour —
+  // the playout replacing the immediate evaluation outright rather than
+  // shifting it. That is the setting that had the AI pass its turn holding the
+  // only blocker it had, so this is the matchup that says whether bounding it
+  // cost anything.
+  const replaces: AiConfig = { ...champ, rolloutMix: 1 };
+  await arena('blended lookahead vs replacing', champ, replaces, pairs, workers);
   console.log('');
   await arena('race-eval vs legacy-eval', champ, legacy, pairs, workers);
   await arena('champion  vs greedy', champ, greedy, pairs, workers);

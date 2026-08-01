@@ -36,6 +36,11 @@ const SIG_MS = 1400;
  * once the fade in and out were accounted for, which is not long enough to read
  * a sentence on a phone. With the animation holding full opacity across 86% of
  * its run, this leaves a shade under a second of actual reading.
+ *
+ * `.declare` in `globals.css` runs for exactly this long, and must keep doing
+ * so. When it was 100ms shorter the band went blank while the queue was still
+ * holding the beat, and every declaration lost a tenth of its reading time to
+ * nothing at all.
  */
 const MIN_SPOKEN_MS = 1100;
 

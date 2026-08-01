@@ -45,3 +45,7 @@ next-env.d.ts
 /.cache
 /public/apple-touch-icon.png
 /public/icon-*.png
+
+# A snapshot of a previous ai.ts, written on demand by scripts/ai-ab.ts.
+# A build artefact of the comparison: stale the moment it exists.
+/src/game/ai-baseline.ts

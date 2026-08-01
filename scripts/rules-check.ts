@@ -751,5 +751,34 @@ console.log('\nEvery line the duel records is spoken on the field');
   ok(new Set(notes).size === notes.length, 'and no line is announced twice', notes.join(' | '));
 }
 
+console.log('\nA malformed action is refused rather than half-played');
+{
+  /* Actions come off the network — the API route hands `body.action` straight
+     to the engine, and a TypeScript type is no help there. A summon with no
+     zone at all used to pass its own bounds check, because `undefined < 0` and
+     `undefined >= 3` are both false; the card was then spliced out of the hand
+     and written to `p.monsters[undefined]`. It vanished, with no error and
+     nothing on the field. */
+  for (const [label, zone] of [
+    ['no zone', undefined],
+    ['NaN', NaN],
+    ['fractional', 1.5],
+    ['a string', '0'],
+  ] as const) {
+    const s = fresh();
+    const c = card(ME, 'battle-ox');
+    s.players[ME].hand = [c];
+    const res = applyAction(s, ME, { type: 'normalSummon', uid: c.uid, zone, position: 'atk', face: 'up' } as never);
+    const kept = res.state.players[ME].hand.length === 1;
+    ok(!!res.error && kept, `${label} is refused and the card stays in hand`, res.error ?? `hand ${res.state.players[ME].hand.length}`);
+  }
+  // And the valid one still works, so the guard did not simply refuse everything.
+  const s = fresh();
+  const c = card(ME, 'battle-ox');
+  s.players[ME].hand = [c];
+  const good = act(s, ME, { type: 'normalSummon', uid: c.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(!!good.players[ME].monsters[0], 'and a real zone still summons');
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

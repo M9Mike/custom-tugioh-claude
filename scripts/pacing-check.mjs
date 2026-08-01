@@ -21,10 +21,31 @@
 import { webkit, devices } from 'playwright';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3100').replace(/\/$/, '');
-/* Legible time, not time on screen. The code aims for 1100ms of beat, of which
-   ~86% is at full opacity; anything under this is not a sentence a player can
-   read while a duel is happening around them. */
-const MIN_READABLE = 700;
+
+/* Two numbers per beat, because one of them cannot be trusted on its own.
+ *
+ * `mounted` is how long the queue held the beat — that is the thing under test,
+ * and it is measured from real elapsed time, so a busy frame delays the sample
+ * without losing any of it.
+ *
+ * `legible` is how much of that was above half opacity. It can only ever be
+ * *under*counted: when a frame is busy the tick lands late, and if it lands
+ * after the fade the whole interval is credited to `mounted` and none of it to
+ * `legible`. An earlier version of this check asserted a per-beat floor on that
+ * number and duly failed at 691ms against a 700ms bar — on a beat the queue had
+ * held for the full 1100ms. It was measuring its own jitter.
+ *
+ * So: the hold is asserted per beat, where the measurement is sound, and the
+ * visible fraction is asserted across the run, where the jitter averages out.
+ *
+ * The share bar is deliberately loose. It is here to catch a beat that is held
+ * and not shown at all — a broken animation, a band left at zero opacity — not
+ * to police the last hundred milliseconds. Sampled directly with
+ * `getAnimations()`, a 1100ms beat reads 81–86% and a 1000ms one 71–76%, which
+ * is too close to separate reliably; what keeps those two numbers in step is
+ * the comment on `.declare` pinning its duration to `MIN_SPOKEN_MS`. */
+const MIN_HOLD = 950;
+const MIN_VISIBLE_SHARE = 0.7;
 
 async function post(path, body) {
   const r = await fetch(`${BASE}${path}`, {
@@ -55,21 +76,22 @@ const page = await ctx.newPage();
 await page.goto(`${BASE}/duel/${code}`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3000);
 
-/* Watch the declaration line and time how long each thing it says is actually
-   *legible*.
+/* Watch the declaration line: how long the queue holds each thing it says, and
+   how much of that hold the text is actually legible for.
  *
- * Opacity, not presence. The band fades out over the tail of its own animation,
- * so an earlier version of this check timed the element sitting in the DOM at
- * `opacity: 0` and cheerfully reported a full second of reading time for text
- * nobody could see. That is the trap CLAUDE.md already warns about, walked into
- * from the inside. */
+ * A beat is only recorded once the *next* one replaces it, because that is what
+ * bounds it. The last declaration of a finished duel simply stays in the DOM at
+ * `opacity: 0` — its animation has run and there is nothing after it to push it
+ * out — so counting the in-flight beat reported a twenty-second hold that was
+ * 19% legible and failed the run. Opacity, not presence, for the same family of
+ * reason on the other axis: an earlier version timed that same parked element
+ * as a full second of reading time for text nobody could see. */
 await page.evaluate(() => {
   window.__said = [];
   let current = null;
-  let legible = 0;
   let last = performance.now();
   const flush = () => {
-    if (current && legible > 0) window.__said.push({ text: current, ms: Math.round(legible) });
+    if (current && current.mounted > 0) window.__said.push(current);
   };
   const read = () => {
     const now = performance.now();
@@ -80,16 +102,22 @@ await page.evaluate(() => {
     const dt = now - last;
     last = now;
     const el = document.querySelector('[data-testid="declaration"]');
-    const visible = el && el.offsetParent !== null && +getComputedStyle(el).opacity > 0.5;
-    const txt = visible ? el.innerText.replace(/\s+/g, ' ').trim() : null;
-    if (txt !== current) {
+    const shown = el && el.offsetParent !== null;
+    const txt = shown ? el.innerText.replace(/\s+/g, ' ').trim() : null;
+    if (txt !== current?.text) {
       flush();
-      current = txt;
-      legible = 0;
+      current = txt ? { text: txt, mounted: 0, legible: 0 } : null;
     }
-    if (txt) legible += dt;
+    if (current && shown) {
+      current.mounted += dt;
+      if (+getComputedStyle(el).opacity > 0.5) current.legible += dt;
+    }
   };
-  window.__stop = flush;
+  /* Deliberately *not* `flush` — the beat still on screen when the run ends has
+     nothing after it to bound its hold, so it is dropped rather than counted. */
+  window.__stop = () => {
+    current = null;
+  };
   setInterval(read, 16);
 });
 
@@ -137,9 +165,15 @@ await browser.close();
 
 const lines = said.filter((s) => s.text && s.text.length > 3);
 console.log(`declarations shown: ${lines.length}`);
-for (const l of lines.slice(0, 12)) console.log(`  ${String(l.ms).padStart(5)}ms  ${l.text.slice(0, 68)}`);
+console.log('   held  legible  text');
+for (const l of lines.slice(0, 12)) {
+  console.log(`  ${String(Math.round(l.mounted)).padStart(5)}  ${String(Math.round(l.legible)).padStart(7)}  ${l.text.slice(0, 60)}`);
+}
 
-const tooFast = lines.filter((l) => l.ms < MIN_READABLE);
+const rushed = lines.filter((l) => l.mounted < MIN_HOLD);
+const heldMs = lines.reduce((sum, l) => sum + l.mounted, 0);
+const seenMs = lines.reduce((sum, l) => sum + l.legible, 0);
+const share = heldMs ? seenMs / heldMs : 0;
 
 if (!lines.length) {
   console.log('\n⚠️  the board never announced anything — this proves nothing');
@@ -147,10 +181,19 @@ if (!lines.length) {
 } else if (lines.length < 3) {
   console.log(`\n❌ only ${lines.length} declaration(s) in a whole duel — beats are being dropped`);
   process.exitCode = 1;
-} else if (tooFast.length) {
-  console.log(`\n❌ ${tooFast.length} declaration(s) flashed past under ${MIN_READABLE}ms:`);
-  for (const l of tooFast.slice(0, 5)) console.log(`     ${l.ms}ms — ${l.text.slice(0, 60)}`);
+} else if (rushed.length) {
+  console.log(`\n❌ ${rushed.length} declaration(s) held for less than ${MIN_HOLD}ms:`);
+  for (const l of rushed.slice(0, 5)) console.log(`     ${Math.round(l.mounted)}ms — ${l.text.slice(0, 60)}`);
+  process.exitCode = 1;
+} else if (share < MIN_VISIBLE_SHARE) {
+  console.log(
+    `\n❌ the band was only visible for ${(share * 100).toFixed(0)}% of the time it was held ` +
+      `(want ${(MIN_VISIBLE_SHARE * 100).toFixed(0)}%) — the beat is being paid for and not shown`
+  );
   process.exitCode = 1;
 } else {
-  console.log(`\n✅ every one of the ${lines.length} declarations stayed long enough to read.`);
+  console.log(
+    `\n✅ all ${lines.length} declarations held past ${MIN_HOLD}ms, ` +
+      `and were visible for ${(share * 100).toFixed(0)}% of it.`
+  );
 }

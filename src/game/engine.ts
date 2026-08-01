@@ -1800,7 +1800,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!def || def.kind !== 'monster') return { state: prev, error: 'That is not a monster.' };
       const blocked = summonBlocked(state, pid, c.slug);
       if (blocked) return { state: prev, error: blocked };
-      if (action.zone < 0 || action.zone >= MONSTER_ZONES) {
+      // `Number.isInteger` first, and it is not belt-and-braces: an action
+      // arriving with no zone at all sailed through `undefined < 0 ||
+      // undefined >= 3` — both false — and the summon then wrote to
+      // `p.monsters[undefined]` after the card had already been spliced out of
+      // the hand. The card simply vanished, with no error and nothing on the
+      // field. Actions come off the network, so this is the boundary.
+      if (!Number.isInteger(action.zone) || action.zone < 0 || action.zone >= MONSTER_ZONES) {
         return { state: prev, error: 'Invalid Monster Zone.' };
       }
       const need = tributesRequired(c.slug, state, pid);
@@ -2033,7 +2039,11 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         chosen.push(remaining[j]);
         remaining.splice(j, 1);
       }
-      if (action.zone < 0 || action.zone >= MONSTER_ZONES) return { state: prev, error: 'Invalid zone.' };
+      // Same reason as the Normal Summon above: a missing zone must be refused
+      // before anything is spent, not indexed with.
+      if (!Number.isInteger(action.zone) || action.zone < 0 || action.zone >= MONSTER_ZONES) {
+        return { state: prev, error: 'Invalid zone.' };
+      }
 
       p.grave.push(p.hand.splice(poly, 1)[0]);
       for (const m of chosen) {

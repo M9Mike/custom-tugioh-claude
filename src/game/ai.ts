@@ -49,6 +49,17 @@ export interface AiConfig {
    * because a turn search costs well under a tenth of the time budget.
    */
   depth: number;
+  /**
+   * How much of a line's final score comes from the lookahead rather than from
+   * the board we can actually read. 0 ignores the playout entirely, 1 lets it
+   * replace the immediate evaluation outright.
+   *
+   * It used to replace it, and that was wrong: a playout is one sample of a
+   * future the AI cannot see, played by a deliberately cheap model, so it is a
+   * hint about where a line leads and not a verdict on it. See `blendRollout`.
+   * Defaults to 0.5.
+   */
+  rolloutMix?: number;
   /** Evaluation weights; defaults to the tuned set. */
   weights?: EvalWeights;
 }
@@ -500,8 +511,88 @@ export function planTurn(state: DuelState, pid: PlayerId, level: AiSetting = 'ch
 export type AiSetting = AiLevel | AiConfig;
 const cfgOf = (s: AiSetting): AiConfig => (typeof s === 'string' ? AI_LEVELS[s] : s);
 
-/** Cheap, deterministic settings used to model the opponent's reply turn. */
+/** Cheap, deterministic settings used to model a reply turn or a trap window. */
 const MODEL_CFG: AiConfig = { beam: 2, branch: 10, slack: 0, depth: 0 };
+
+/**
+ * Plays out every response window a position is holding open, so a line is
+ * judged on what happened rather than on what was merely declared.
+ *
+ * Declaring an attack opens a window, and the search used to stop the line
+ * there and score the board with the attack still hanging in the air — the
+ * blow neither landed nor answered. Against a face-up Mirror Wall that reads as
+ * a clean kill, when what really follows is the attack negated, the attacker
+ * permanently halved and 300 Life Points to the other side. It is why the AI
+ * kept swinging into walls it had every reason to respect, and why it could
+ * never plan a second attack in a turn where the first drew a response.
+ *
+ * `viewer` is the seat doing the planning, and it is the whole difference
+ * between reading the board and reading the cards. The AI may model a response
+ * only with what it could legitimately see: everything in its own seat, and
+ * only *face-up* cards in the other. Without that filter this would settle a
+ * face-down Set trap by its real text — the AI would sidestep a card it has
+ * never been shown, which is both cheating and, from the other side of the
+ * table, unmistakable.
+ *
+ * Which leaves the question of what to assume when it *cannot* see. "They
+ * decline" is the obvious answer and it is a bad one — see `canSeeResponse`,
+ * which is why the turn search does not call this unless it can see.
+ */
+function settleWindows(state: DuelState, viewer: PlayerId, w: EvalWeights): DuelState {
+  if (!state.pending) return state;
+  const model: AiConfig = { ...MODEL_CFG, weights: w };
+  let cur = state;
+  for (let guard = 0; guard < 4 && cur.pending && !cur.winner; guard++) {
+    const responder = cur.pending.player;
+    const res = applyAction(cur, responder, chooseVisibleResponse(cur, responder, viewer, model));
+    if (res.error) break;
+    cur = res.state;
+  }
+  return cur;
+}
+
+/**
+ * True when `viewer` can actually see what would answer this window.
+ *
+ * Measured, and the measurement was the surprise of this whole change: settling
+ * a window the AI cannot see into costs about six points of win rate over 800
+ * games. The reason is that there is no honest way to settle it. Not seeing the
+ * card, the only thing to assume is that the opponent declines — so the attack
+ * is scored as landing cleanly, and the AI walks into every Set trap on the
+ * table. Leaving the line where it was is *also* wrong, in the other direction:
+ * the blow is scored neither landed nor answered, which reads as nothing having
+ * happened. But that pessimism turns out to be much the better error, and it is
+ * what the AI did before any of this.
+ *
+ * So the turn search settles the windows it can read and leaves the rest
+ * exactly as they were. Face-up Mirror Wall: respected, which is the whole
+ * point. Face-down anything: unchanged, and no worse than it ever was.
+ *
+ * The playout is the exception — it has to resolve a window to keep playing —
+ * and it can afford to, being a guess about several turns' time either way.
+ */
+function canSeeResponse(state: DuelState, viewer: PlayerId): boolean {
+  if (!state.pending) return false;
+  if (state.pending.player === viewer) return true;
+  const p = state.players[state.pending.player];
+  return state.pending.options.some((uid) => p.spellTrap?.uid === uid && p.spellTrap.face === 'up');
+}
+
+/**
+ * The response `viewer` should expect, using only the cards it is entitled to
+ * know about. Its own seat is fully known; the other seat is known only as far
+ * as what is face-up on the field.
+ */
+function chooseVisibleResponse(state: DuelState, responder: PlayerId, viewer: PlayerId, cfg: AiConfig): DuelAction {
+  if (responder === viewer) return chooseTrapResponse(state, responder, cfg);
+  const p = state.players[responder];
+  const seen = (state.pending?.options ?? []).filter((uid) => p.spellTrap?.uid === uid && p.spellTrap.face === 'up');
+  if (!seen.length) return { type: 'respondTrap', uid: null };
+  // Decide on a view holding only what is showing, then play that decision
+  // against the real position — the chosen card is face-up either way.
+  const view: DuelState = { ...state, pending: { ...state.pending!, options: seen } };
+  return chooseTrapResponse(view, responder, cfg);
+}
 
 function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: number): DuelAction[] {
   // `budgetMs` is a hard bound on the whole call, because a human is waiting on
@@ -527,12 +618,13 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
         if (Date.now() > deadline) break;
         const res = applyAction(line.state, pid, action);
         if (res.error) continue;
-        const ends = action.type === 'endTurn' || res.state.active !== pid || !!res.state.winner;
+        const after = canSeeResponse(res.state, pid) ? settleWindows(res.state, pid, w) : res.state;
+        const ends = action.type === 'endTurn' || after.active !== pid || !!after.winner;
         next.push({
-          state: res.state,
+          state: after,
           actions: [...line.actions, action],
-          score: evaluate(res.state, pid, w),
-          done: ends || !!res.state.pending,
+          score: evaluate(after, pid, w),
+          done: ends || !!after.pending,
         });
       }
     }
@@ -551,7 +643,34 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
     if (!lines.length) break;
   }
 
-  const all = [...finished, ...lines].filter((l) => l.actions.length);
+  // Close out anything the search left half-played, so the pool it picks from
+  // is all complete turns. Pruning already keeps the two kinds apart — a
+  // mid-turn board has not paid for handing the turn over, so it flatters
+  // itself against a finished one — but the final comparison put them straight
+  // back in together, and the winner could be a plan that simply stops.
+  //
+  // Measured, not assumed: over eight full duels it never actually happened,
+  // because the step loop finishes every line long before it runs out of steps.
+  // So this closes a hole rather than fixing a symptom — worth doing because
+  // the alternative is a rule the code states in one place and breaks two
+  // dozen lines later, but it is not what made the AI misplay.
+  for (const line of lines) {
+    const res = applyAction(line.state, pid, { type: 'endTurn' });
+    // A line cut short by an open response window cannot be closed from here.
+    // It is judged as it stands, which is the best that can be said for it.
+    if (res.error) {
+      finished.push(line);
+      continue;
+    }
+    finished.push({
+      state: res.state,
+      actions: [...line.actions, { type: 'endTurn' }],
+      score: evaluate(res.state, pid, w),
+      done: true,
+    });
+  }
+
+  const all = finished.filter((l) => l.actions.length);
   if (!all.length) return [{ type: 'endTurn' }];
 
   for (const line of all) line.score = evaluate(line.state, pid, w);
@@ -564,23 +683,118 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
   // without an answer.
   if (cfg.depth > 0) {
     const examine = all.slice(0, cfg.beam >= 8 ? 12 : 6);
-    // Share whatever is left of the budget out over the lines still to check,
-    // so the first few cannot starve the rest.
+    // Only lines that were actually played out get re-ranked. One that ran out
+    // of budget keeps the score we can defend — the board as it stands — and
+    // sits behind the ones we looked at properly, which costs nothing because
+    // `examine` is already in immediate-score order.
+    const judged: Line[] = [];
+    const starved: Line[] = [];
     for (let i = 0; i < examine.length; i++) {
       const line = examine[i];
+      // A line that already ended the duel is settled, not speculative: there
+      // is nothing to play out and its score is exact, so it ranks on merit.
+      if (line.state.winner) {
+        judged.push(line);
+        continue;
+      }
       const left = hardDeadline - Date.now();
-      if (line.state.winner || left <= 0) continue;
-      line.score = rollout(line.state, pid, cfg.depth, left / (examine.length - i), w);
+      if (left <= 0) {
+        starved.push(line);
+        continue;
+      }
+      const seen = rollout(line.state, pid, cfg.depth, left / (examine.length - i), w);
+      line.score = blendRollout(line.score, seen, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX);
+      judged.push(line);
     }
-    examine.sort((a, b) => b.score - a.score);
+    judged.sort((a, b) => b.score - a.score);
     const rest = all.slice(examine.length);
     all.length = 0;
-    all.push(...examine, ...rest);
+    all.push(...judged, ...starved, ...rest);
   }
 
   // Slack lets the easier levels pick a line that is merely good.
   const index = cfg.slack > 0 ? Math.min(all.length - 1, Math.floor(Math.random() * cfg.slack * all.length)) : 0;
   return all[index].actions;
+}
+
+/** How much of a line's score the playout is allowed to be, by default. */
+const DEFAULT_ROLLOUT_MIX = 0.5;
+
+/**
+ * The most a playout may move a line's score, either way.
+ *
+ * Roughly the full range of the evaluation's own race term — ±4 turns at 900 a
+ * turn — and that is the right size, because a playout is a second opinion
+ * about how the race goes and not about the arithmetic on the table. `evaluate`
+ * returns ±1e9 for a decided duel, and a duel decided three modelled turns away
+ * over a shuffled deck is not decided at all; unbounded, one such guess
+ * outranked every real reading of the board.
+ */
+const ROLLOUT_AUTHORITY = 3600;
+
+/**
+ * Mixes what the board says now with what the playout thinks happens next.
+ *
+ * It used to be a straight replacement, and that lost real duels: with a 2200
+ * body in hand and a 2500 attacker across the table, the board said summon by
+ * nearly 6000 points — the blocker is worth that much — and the playout
+ * overruled it with "pass, and you win in two turns". Now the playout can
+ * re-rank lines the evaluation rates closely, which is its job, and cannot
+ * overturn a reading this decisive, which never was.
+ */
+function blendRollout(immediate: number, seen: number, mix: number): number {
+  const k = Math.max(0, Math.min(1, mix));
+  const shift = (seen - immediate) * k;
+  return immediate + Math.max(-ROLLOUT_AUTHORITY, Math.min(ROLLOUT_AUTHORITY, shift));
+}
+
+/**
+ * Reshuffles everything the AI is not entitled to know, before a playout reads
+ * the future by living it.
+ *
+ * `rollout` plays real turns through the real `applyAction`, which draws the
+ * real next card — so an untouched playout is clairvoyant. That is not a
+ * theoretical worry: it is precisely why the AI passed its turn holding the one
+ * monster that could block a lethal swing. Passing "won", three modelled turns
+ * later, because the card that won was on top of the deck and the playout knew
+ * it.
+ *
+ * Both decks are reordered, from the state's own seed so a rerun repeats. Card
+ * counts and contents are untouched — only the order the future arrives in,
+ * which is the part nobody can see.
+ *
+ * This costs about five points of win rate, and that is the correct sign.
+ * Measured against the AI as it shipped, everything else in this change is
+ * level (49.0% ±5.7 over 300 games with the reshuffle disabled, 45.7% ±4.0 over
+ * 600 with it on) — so the whole difference is games the old search was winning
+ * by knowing its own next three draws. `blendRollout` alone would have fixed
+ * the reported blunder, by bounding what any playout may claim; this removes
+ * what was making the claim wrong. The file's first paragraph promises the AI
+ * plans from the view a player would have, and it was not true of the
+ * lookahead.
+ *
+ * If that strength is wanted back, the honest way is variance reduction —
+ * average two or three sampled futures instead of trusting one — not letting it
+ * read the deck again.
+ */
+function hideTheFuture(state: DuelState): DuelState {
+  const view = structuredClone(state);
+  let s = state.seed >>> 0;
+  const rnd = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const deck = view.players[pid].deck;
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+  }
+  return view;
 }
 
 /**
@@ -597,7 +811,7 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
  * over a poor model, and the reason this plays whole turns properly instead.
  */
 function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number, w: EvalWeights): number {
-  let cur = state;
+  let cur = hideTheFuture(state);
   const model: AiConfig = { ...MODEL_CFG, weights: w };
   const deadline = Date.now() + budgetMs;
   const per = Math.max(8, budgetMs / Math.max(1, turns));
@@ -605,12 +819,7 @@ function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number
   for (let t = 0; t < turns; t++) {
     if (cur.winner || Date.now() > deadline) break;
     // Resolve any response window that is owed before the turn can proceed.
-    for (let guard = 0; guard < 4 && cur.pending; guard++) {
-      const responder = cur.pending.player;
-      const res = applyAction(cur, responder, chooseTrapResponse(cur, responder, model));
-      if (res.error) break;
-      cur = res.state;
-    }
+    cur = settleWindows(cur, me, w);
     if (cur.winner) break;
 
     const mover = cur.active;
@@ -620,12 +829,7 @@ function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number
       cur = res.state;
       if (cur.winner) break;
       // A window opened mid-turn: settle it and carry on with the plan.
-      for (let guard = 0; guard < 4 && cur.pending; guard++) {
-        const responder = cur.pending.player;
-        const r2 = applyAction(cur, responder, chooseTrapResponse(cur, responder, model));
-        if (r2.error) break;
-        cur = r2.state;
-      }
+      cur = settleWindows(cur, me, w);
     }
     // If the turn did not actually change hands, stop rather than spin.
     if (cur.active === mover && !cur.winner) break;

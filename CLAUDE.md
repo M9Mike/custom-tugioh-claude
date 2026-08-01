@@ -60,6 +60,7 @@ npm run rules            # regressions for rules that were wrong once
 npm run audit            # every card's effect, resolved and checked (256/256)
 npm run playable         # every card in every deck can actually be reached
 npm run text             # no card's text promises more than its effects do
+npm run ai               # the computer plays obvious positions the obvious way
 npm run sim 400          # random duels; reports rule errors
 npm run e2e      -- http://localhost:3100 3          # two players over HTTP
 npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
@@ -595,6 +596,96 @@ signature cards, so a duel that never draws one proves nothing. Rex Raptor's
 Two-Headed King Rex and Bakura's Man-Eater Bug are the cheap ones — level four and
 below, out with a plain Normal Summon. Kaiba's Blue-Eyes needs two tributes and will
 not show up.
+
+**A declared attack is not a landed one.** Reported as "the AI is not trained to
+play against Mirror Wall". It was worse than untrained: declaring an attack opens
+a response window, and the search stopped the line right there and scored the
+board with the blow hanging in the air — neither landed nor answered. Swinging
+into a face-up Mirror Wall therefore looked like a clean kill, when what follows
+is the attack negated, the attacker permanently halved and 300 Life Points to the
+other side. It also meant the AI could never plan a second attack in any turn
+where the first drew a response. `settleWindows()` plays the window out before
+scoring, using the same `chooseTrapResponse` that will really settle it.
+
+**Then check it is not reading the cards.** That fix, written the obvious way,
+made the AI sidestep *face-down* traps too — it was settling the window by the
+Set card's real text. Strictly stronger, completely unplayable to sit across
+from, and a straight contradiction of the promise at the top of `ai.ts`. A
+response may only be modelled with what the planning seat could see: everything
+in its own seat, face-up cards in the other, nothing else. The check pairs
+"refuses a face-up Mirror Wall" with "attacks into a face-down one" for exactly
+this reason — remove the visibility filter and the second goes 0/10.
+
+**The lookahead was reading the deck.** `rollout` plays real turns through the
+real `applyAction`, which draws the real next card — so it could discover that
+passing "wins" two turns later, because the winning card was on top and the
+playout knew it. That is how the AI came to pass its turn holding the only
+blocker it had, with the board rating the summon nearly 6000 points higher.
+`hideTheFuture()` reshuffles both decks first, deterministically from the state's
+own seed.
+
+**And its verdict was replacing the board, not refining it.** `line.score =
+rollout(...)` threw away the immediate evaluation outright, so one cheap playout
+— beam 2, no lookahead, budget-starved — could erase a decisive one-ply read, and
+`evaluate`'s ±1e9 for a decided duel meant a *speculative* win outranked
+everything real. A playout now shifts a line by at most `ROLLOUT_AUTHORITY`
+(3600, about the full range of the race term): enough to re-rank lines the
+evaluation rates closely, which is its job, never enough to overturn arithmetic.
+
+**Three of those only bite on some deck orders**, so `npm run ai` plays every
+position over ten of them. On one board the buggy AI passed all nine cases; over
+ten it scores 7/10 and 9/10 where the fixed one is 10/10. A single position is
+not a test of a search that has any randomness downstream of it.
+
+**Measure "better", not "different".** All of the above is worth nothing if the
+AI got weaker, and nothing else in the battery can tell you: `npm run sim` and
+`npm run deck-bench` put the same brain in both seats, so a change to the AI
+moves both sides at once and the numbers barely stir. `npm run ai-ab` plays the
+working copy against a snapshot of what it is replacing:
+
+```bash
+git show HEAD:src/game/ai.ts > src/game/ai-baseline.ts   # git-ignored
+npm run ai-ab -- 600
+```
+
+Believe the interval. At 300 games it is ±5.7, so two configs five points apart
+are the same config; 600 games buys ±4.
+
+**And then read the sign before you panic.** This change measured 45.7% ±4.0 —
+a real regression, not noise. Bisecting it: with only the deck reshuffle
+disabled it is 49.0% ±5.7, level. So every point of the loss is
+`hideTheFuture`, and those are games the old search was winning by knowing its
+own next three draws. A cheat being removed *should* cost win rate against the
+cheat. The other three parts of the change cost nothing measurable.
+
+Bisect the same way — one piece reverted at a time, against the same baseline —
+before concluding a fix was wrong. The first sweep here compared "working at
+depth 0" against "baseline at depth 3" and read the gap as evidence about the
+fix, when it was only ever a measurement of depth. Both arms have to differ in
+exactly one thing.
+
+**The declaration animation has to last as long as the beat.** `.declare` ran
+for 1000ms while the queue held a spoken beat for `MIN_SPOKEN_MS` = 1100, so
+every declaration ended with 100ms of blank band inside a hold it was still
+being paid for. Sampled with `getAnimations()`, that is 71–76% of the beat
+legible against 81–86% once the two numbers match — a tenth of the reading time,
+on the one thing a player asked for more of. Both constants now name each other.
+
+Found because `npm run pacing` failed at 691ms against a 700ms bar — and then
+the fix appeared to make it *worse*, because that bar was measuring the probe's
+own jitter. Visible time can only ever be undercounted: a busy frame delays the
+tick, and if it lands after the fade the whole interval is credited to the hold
+and none of it to the reading. The check asserts the hold per beat, where the
+measurement is sound, and the visible share across the run, where the jitter
+averages out. Three runs in a row now, where it used to fail one in three.
+
+**A guard that compares with `<` needs to know it has a number.** Found while
+probing the above: `normalSummon` with no `zone` sailed through
+`action.zone < 0 || action.zone >= MONSTER_ZONES` — both false for `undefined` —
+and the card was spliced out of the hand and written to `p.monsters[undefined]`.
+It vanished, with no error and nothing on the field. The API route hands
+`body.action` straight to the engine and a TypeScript type is no help at a
+network boundary, so `Number.isInteger` goes first in every such guard.
 
 ## Shape of the thing
 

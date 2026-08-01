@@ -669,7 +669,12 @@ body {
          animation-timing-function: ease-in; }
   100% { transform: translateY(-5px) scale(0.99); opacity: 0; }
 }
-.declare { animation: declare-in 1000ms linear forwards; }
+/* 1100ms because that is `MIN_SPOKEN_MS` in `Duel.tsx` — the two have to be the
+   same number. At 1000ms the text finished fading out while the queue was still
+   holding the beat, so every declaration ended with 100ms of blank band and the
+   legible window was a tenth shorter than the code believed it was granting.
+   `npm run pacing` caught it as a 691ms reading of a beat meant to last 1100. */
+.declare { animation: declare-in 1100ms linear forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .declare { animation: none !important; }
