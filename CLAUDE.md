@@ -53,6 +53,7 @@ npm run e2e      -- http://localhost:3100 3          # two players over HTTP
 npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
 npm run e2e-tournament -- http://localhost:3100 6 yugi --skilled   # whole brackets
 npm run iphone   http://localhost:3100 /tmp/shots    # WebKit, both iPhone sizes
+npm run pwa      http://localhost:3100               # standalone insets
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -75,6 +76,16 @@ in the DOM but never reaches React — and it *looks* fine, because setting empt
 to empty is a no-op and nothing re-renders. The next render throws it away. Any test
 that checks the input still holds the text proves nothing; check what the room was
 actually created with.
+
+**Safe areas, twice.** The chrome ran under the notch in the installed app, was
+"fixed" behind `@media (display-mode: standalone)` — which an iOS home-screen app
+does not reliably match — and so did not change at all. Detect standalone with
+`navigator.standalone`; that has always worked on iOS. And do not use a
+`black-translucent` status bar: it draws the page under the clock and then reports
+`env(safe-area-inset-top)` as 0, leaving nothing to inset by. Plain `black` has iOS
+reserve the bar itself, which needs no pixel guessing. `npm run pwa` guards the
+detection; `/diag` reads the real numbers off the phone when something still looks
+wrong, because none of this reproduces off-device.
 
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down

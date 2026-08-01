@@ -8,17 +8,26 @@
 /* ------------------------------------------------------------------
    Safe areas
 
-   Added to the home screen, the app runs with a black-translucent status
-   bar, which means the page really does extend under the Dynamic Island
-   and the home indicator. Two things go wrong there and both are handled
-   here rather than at each call site:
+   Two separate things went wrong here, and the first fix only addressed
+   the second of them:
 
    1. Only the duel board used to inset itself, so the home page and the
-      lobby ran under the notch once launched as an app.
-   2. iOS sometimes reports env(safe-area-inset-*) as 0 in standalone
-      mode. A floor is applied while standalone so the chrome is cleared
-      even when the insets come back empty; on a device that reports them
-      properly the real value is larger and wins.
+      lobby ran under the notch once launched as an app. Every full-height
+      page now carries `.safe-page`.
+   2. Added to the home screen with a *black-translucent* status bar, iOS
+      draws the page under the clock and then reports
+      `env(safe-area-inset-top)` as 0 — there is nothing to inset by. The
+      previous fix floored the value behind `@media (display-mode:
+      standalone)`, which an iOS home-screen app does not reliably match,
+      so the floor never applied and nothing changed. The status bar is
+      now plain `black`, which makes iOS reserve it and start the web view
+      underneath — correct on every device with no magic numbers.
+
+   The bottom is different: the view really does extend to the screen edge
+   over the home indicator, so that inset is real and is used. The floor
+   below is belt-and-braces for the case where standalone reports it as 0
+   too, and is keyed off `data-standalone` (set from `navigator.standalone`
+   in the document head) rather than the media query.
    ------------------------------------------------------------------ */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
@@ -27,10 +36,13 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+:root[data-standalone='1'] {
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}
+
 @media (display-mode: standalone) {
   :root {
-    --safe-top: max(env(safe-area-inset-top, 0px), 44px);
-    --safe-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
   }
 }
 

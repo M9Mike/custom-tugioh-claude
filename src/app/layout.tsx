@@ -23,7 +23,14 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Shadow Duel',
-    statusBarStyle: 'black-translucent',
+    /* NOT `black-translucent`. That one draws the page under the status bar and
+       then — in a home-screen app, on every iOS to date — reports
+       `env(safe-area-inset-top)` as 0, so there is nothing to inset by and the
+       board runs under the clock. `black` has iOS reserve the status bar and lay
+       the web view out beneath it, which is correct on a notch, a Dynamic Island
+       and a home-button phone alike, with no pixel guessing on our side. The bar
+       is black against a #0a0c11 app, so nothing looks cut off. */
+    statusBarStyle: 'black',
   },
   icons: {
     icon: [{ url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
@@ -53,6 +60,17 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             the home screen, and one of the two phones this is built for is old
             enough to care. */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
+        {/* `@media (display-mode: standalone)` is not dependable in an iOS
+            home-screen app — `navigator.standalone` is, and always has been.
+            This runs before the first paint so the layout is never briefly
+            wrong, and it is inline because a module would be too late. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(navigator.standalone===true||matchMedia('(display-mode: standalone)').matches)" +
+              "document.documentElement.dataset.standalone='1'}catch(e){}",
+          }}
+        />
       </head>
       <body className="min-h-full">
         <div className="arena-bg" aria-hidden />
