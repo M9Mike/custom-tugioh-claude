@@ -22,7 +22,8 @@
     "audit": "tsx scripts/card-audit.ts",
     "rules": "tsx scripts/rules-check.ts",
     "e2e-tournament": "tsx scripts/e2e-tournament.ts",
-    "playable": "tsx scripts/playable-check.ts"
+    "playable": "tsx scripts/playable-check.ts",
+    "text": "tsx scripts/text-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

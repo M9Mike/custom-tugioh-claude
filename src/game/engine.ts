@@ -215,6 +215,12 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
 
     for (const eff of def.effects) {
       if (eff.trigger !== 'continuous' || !eff.aura) continue;
+      /* An aura can be conditional — "while you control another Warrior" — and
+         the condition was simply not read here, so every such card granted its
+         bonus unconditionally. Masaki was indestructible alone on the field.
+         `conditionMet` only reads counts and slugs, never effective stats, so
+         calling it from inside the stat calculation cannot recurse. */
+      if (eff.condition && !conditionMet(state, eff, source, controller)) continue;
       const s = eff.aura.target;
       // Which side is the aura looking at, relative to the aura's controller?
       const wantSide: Side = s.side;
@@ -255,6 +261,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('untargetable')) merged.untargetable = true;
   if (grants.has('indestructibleByBattle')) merged.indestructibleByBattle = true;
   if (grants.has('doubleAttack')) merged.extraAttacks = (merged.extraAttacks ?? 0) + 1;
+  if (grants.has('cannotAttack')) merged.cannotAttack = true;
   return merged;
 }
 
@@ -1137,6 +1144,15 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
       p.field?.slug === cond.requiresOnField;
     if (!has) return false;
   }
+  if (cond.controlsOtherOfType) {
+    const has = p.monsters.some(
+      (m) => m && m.uid !== c.uid && m.face === 'up' && CARDS[m.slug]?.type === cond.controlsOtherOfType
+    );
+    if (!has) return false;
+  }
+  if (cond.controlsNoOtherMonster) {
+    if (p.monsters.some((m) => m && m.uid !== c.uid)) return false;
+  }
   if (cond.requiresField) {
     const has = state.players.p1.field?.slug === cond.requiresField || state.players.p2.field?.slug === cond.requiresField;
     if (!has) return false;
@@ -1484,6 +1500,9 @@ export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance):
   if (state.phase !== 'battle' || state.active !== pid || state.winner || state.pending) return false;
   if (state.turn === 1) return false;
   if (monstersFrozen(state, pid)) return false;
+  // Held down by something on the field rather than by a timed lock, so it
+  // lifts the instant that card is gone.
+  if (effFlags(state, c, pid).cannotAttack) return false;
   if (c.face === 'down' || c.position !== 'atk') return false;
   if (c.summonedOnTurn === state.turn && c.isToken) return false;
   return c.attacksUsed < maxAttacks(state, c, pid);

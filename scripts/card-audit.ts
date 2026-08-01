@@ -437,6 +437,15 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   if (cond.countersAtLeast != null && self) self.counters = cond.countersAtLeast;
   if (cond.turnAtLeast != null) s.turn = Math.max(s.turn, cond.turnAtLeast);
   if (cond.opponentHasMonster && s.players[FOE].monsters.every((m) => !m)) place(s, FOE, 0, 'harpie-lady');
+  if (cond.controlsOtherOfType && self) {
+    const mate = Object.values(CARDS).find((c) => c.type === cond.controlsOtherOfType && c.slug !== self.slug);
+    const z = s.players[ME].monsters.findIndex((m) => !m || m.uid !== self.uid);
+    if (mate && z >= 0) place(s, ME, z, mate.slug);
+  }
+  // "The only monster you control" — clear the board of everything else.
+  if (cond.controlsNoOtherMonster && self) {
+    s.players[ME].monsters = s.players[ME].monsters.map((m) => (m && m.uid === self.uid ? m : null));
+  }
   if (cond.requiresField) s.players[ME].field = mint(s, ME, cond.requiresField);
   if (cond.requiresOnField) {
     const need = cond.requiresOnField;
@@ -742,11 +751,37 @@ for (const def of Object.values(CARDS)) {
           if (fz >= 0) place(s, FOE, fz, match.slug);
         }
       }
+      /* An aura can be conditional — "while you control no other monsters",
+         "while you control Time Wizard" — and probing it on a board that fails
+         the condition reports the card broken for a reason that is entirely
+         about this position. The card goes down first so `satisfy` can arrange
+         the field around it. */
+      let selfCard: CardInstance | undefined;
+      const zone: 'monster' | 'field' | 'spellTrap' =
+        def.kind === 'monster' ? 'monster' : def.subKind === 'Field' ? 'field' : 'spellTrap';
+      if (zone === 'monster') selfCard = place(s, ME, 2, def.slug);
+      else if (zone === 'field') s.players[ME].field = selfCard = mint(s, ME, def.slug);
+      else s.players[ME].spellTrap = selfCard = mint(s, ME, def.slug);
+      satisfy(s, eff, selfCard);
+
+      /* Snapshotted with the card lifted out and then put back, so the
+         comparison is "with it" against "without it" on the very same board —
+         `satisfy` may have arranged that board around the card, and taking the
+         "before" reading first would compare two different positions. */
+      const lift = () => {
+        if (zone === 'monster') s.players[ME].monsters = s.players[ME].monsters.map((m) => (m?.uid === selfCard!.uid ? null : m));
+        else if (zone === 'field') s.players[ME].field = null;
+        else s.players[ME].spellTrap = null;
+      };
+      const restore = () => {
+        if (zone === 'monster') s.players[ME].monsters[2] = selfCard!;
+        else if (zone === 'field') s.players[ME].field = selfCard!;
+        else s.players[ME].spellTrap = selfCard!;
+      };
+      lift();
       const before = snap(s);
       const fb = allFlags(s);
-      if (def.kind === 'monster') place(s, ME, 2, def.slug);
-      else if (def.subKind === 'Field') s.players[ME].field = mint(s, ME, def.slug);
-      else s.players[ME].spellTrap = mint(s, ME, def.slug);
+      restore();
       const after = snap(s);
       const fa = allFlags(s);
       const aura = eff.aura;

@@ -201,7 +201,14 @@ export type Op =
   | { op: 'flipFaceUp'; target: Selector }
   | { op: 'win' };
 
-export type EquipGrant = 'pierce' | 'doubleAttack' | 'directAttack' | 'indestructibleByBattle' | 'untargetable';
+export type EquipGrant =
+  | 'pierce'
+  | 'doubleAttack'
+  | 'directAttack'
+  | 'indestructibleByBattle'
+  | 'untargetable'
+  /** Held down by an aura — lapses the moment the card holding it leaves. */
+  | 'cannotAttack';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -250,6 +257,10 @@ export interface EffectCondition {
   opponentHasMonster?: boolean;
   /** Requires the named field spell to be active for either player. */
   requiresField?: string;
+  /** You control at least one *other* face-up monster of this type. */
+  controlsOtherOfType?: string;
+  /** This card is the only monster you control. */
+  controlsNoOtherMonster?: boolean;
   /** Turn number must be at least this. */
   turnAtLeast?: number;
 }
@@ -268,6 +279,8 @@ export interface CardFlags {
   extraAttacks?: number;
   attackAll?: boolean;
   noBattleDamage?: boolean;
+  /** Pinned down by a card on the field, not by a timed lock. */
+  cannotAttack?: boolean;
 }
 
 export interface CardInstance {

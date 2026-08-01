@@ -49,6 +49,7 @@ npm run build && npx next start -p 3100     # always test a production build
 npm run rules            # regressions for rules that were wrong once
 npm run audit            # every card's effect, resolved and checked (256/256)
 npm run playable         # every card in every deck can actually be reached
+npm run text             # no card's text promises more than its effects do
 npm run sim 400          # random duels; reports rule errors
 npm run e2e      -- http://localhost:3100 3          # two players over HTTP
 npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
@@ -228,6 +229,31 @@ removed on first success (iOS re-suspends whenever it likes), and nothing is
 scheduled against a suspended clock, where it is silently lost. `/diag` reports
 the context state and has a button that makes a noise inside a real gesture,
 which is the only way to tell "never unlocked" from the ringer switch.
+
+**A card's text is a promise, and the audit cannot read it.** The audit drives
+each effect and proves it fires — which can only ever check the half of the card
+that was written. It is blind to a sentence with no effect behind it, and three
+cards were reported by a player for exactly that: Sword Arm of Dragon's "1800 or
+less ATK" was hung on a boolean immunity flag and evaporated, leaving a 1750 body
+unkillable; Masaki's "while you control another Warrior" was granted permanently
+on summon, so he was immortal alone; Rocket Warrior's second sentence did not
+exist at all. `npm run text` reads the rules text and insists the effects account
+for it — a phrase naming a trigger must have that trigger, a phrase naming a
+condition must carry one, and an ATK threshold must land in a filter that can
+hold it. It found eight more the same day it was written.
+
+**Auras can be conditional, and were not being read that way.** `aurasFor`
+ignored `eff.condition` entirely, so every conditional aura applied
+unconditionally. `conditionMet` only reads counts and slugs, never effective
+stats, so calling it from inside the stat calculation cannot recurse.
+
+**A passive that is granted on summon is not a property.** Roughly thirty cards
+grant themselves `pierce`, `directAttack` or battle immunity through an
+`onSummon` op. A Flip Summon fires `onSummon` so that path is fine, but a monster
+flipped face-up *by being attacked* is not summoned — so its own "cannot be
+destroyed by battle" does not apply in the battle that revealed it. A continuous
+aura on self is the representation that holds however the card arrived; the ones
+whose text says "while this card is face-up" have been moved to it.
 
 **Loops the rules allow.** A monster could once be turned between Attack and Defence
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,

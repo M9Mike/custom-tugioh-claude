@@ -98,18 +98,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'thousand-eyes-restrict': {
-    text: 'Fusion: Relinquished + Illusionist Faceless Mage. When Fusion Summoned: absorb 1 monster your opponent controls and gain its ATK and DEF. While this card is face-up, your opponent\'s monsters cannot attack or change position.',
+    /* The lock was a 99-turn ongoing effect, which outlived the card that cast
+       it — destroying Thousand-Eyes Restrict left the opponent frozen anyway.
+       Its own text says "while this card is face-up", and now that is what it
+       does: an aura, read live, gone the moment the card is. */
+    text: 'Fusion: Relinquished + Illusionist Faceless Mage. When Fusion Summoned: absorb 1 monster your opponent controls and gain its ATK and DEF. While this card is face-up, your opponent\'s monsters cannot attack.',
     cry: 'A thousand eyes are watching you.',
     fusionMaterials: ['relinquished', 'illusionist-faceless-mage'],
     effects: [
       {
         trigger: 'onSummon',
         targets: 1,
-        ops: [
-          { op: 'absorb', target: OPP_PICK },
-          { op: 'freezeMonsters', who: 'opp', turns: 99 },
-        ],
+        ops: [{ op: 'absorb', target: OPP_PICK }],
       },
+      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, grants: ['cannotAttack'] } },
     ],
   },
 
@@ -190,26 +192,52 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'celtic-guardian': {
-    text: 'This card cannot be destroyed by battle with a monster whose ATK is 1900 or more, and cannot be targeted by your opponent\'s card effects.',
+    /* "With a monster whose ATK is 1900 or more" is a threshold the engine
+       cannot express, so what it actually did was make a 1400 body immune to
+       every battle forever — the Sword Arm of Dragon hole again. Elusive rather
+       than invincible now, which is the same idea and is true. */
+    text: 'This card cannot be targeted by your opponent\'s card effects, and inflicts piercing battle damage.',
+    cry: 'Too slow!',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
           { op: 'untargetable', duration: 'permanent' },
-          { op: 'indestructibleByBattle', duration: 'permanent' },
+          { op: 'pierce', duration: 'permanent' },
         ],
       },
     ],
   },
 
   'beaver-warrior': {
-    text: 'Gains 500 ATK during your Battle Phase while you control no other monsters.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }] }],
+    /* Was a flat, permanent +500 handed out on summon — it kept the bonus with a
+       full board and kept it outside the Battle Phase. A live aura is read every
+       time the stat is asked for, so it lapses the moment a comrade arrives. */
+    text: 'Gains 500 ATK while you control no other monsters.',
+    effects: [
+      {
+        trigger: 'continuous',
+        condition: { controlsNoOtherMonster: true },
+        ops: [],
+        aura: { target: SELF, atk: 500 },
+      },
+    ],
   },
 
   'mystical-elf': {
-    text: 'While this card is face-up on the field, you take no battle damage from attacks against your other Defense Position monsters. When summoned: gain 800 Life Points.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 800, to: 'own' }] }],
+    /* The protection sentence had nothing behind it. Expressed as what the
+       engine can actually do — she shields the monsters beside her rather than
+       nothing at all. */
+    text: 'While this card is face-up, your other Defense Position monsters cannot be destroyed by battle. When summoned: gain 800 Life Points.',
+    cry: 'A gentle light shields us.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'heal', amount: 800, to: 'own' }] },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { position: 'def' } }), grants: ['indestructibleByBattle'] },
+      },
+    ],
   },
 
   'feral-imp': {
@@ -409,7 +437,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'baby-dragon': {
     text: 'While you control "Time Wizard", this card gains 1200 ATK. When summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      // The pair-up was written in the text and nowhere else.
+      {
+        trigger: 'continuous',
+        condition: { requiresOnField: 'time-wizard' },
+        ops: [],
+        aura: { target: SELF, atk: 1200 },
+      },
+    ],
   },
 
   'time-wizard': {
@@ -448,8 +485,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'rocket-warrior': {
+    /* The second sentence had no effect behind it at all — the card was half
+       written. It reads the same as before; it now also does it. */
     text: 'This card cannot be destroyed by battle. When it attacks, the monster it battles loses 500 ATK permanently.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
+    cry: 'Rocket punch!',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] },
+      {
+        trigger: 'onDeclareAttack',
+        ops: [{ op: 'gainAtk', amount: -500, target: sel('opp', 'attackTarget'), duration: 'permanent' }],
+      },
+    ],
   },
 
   "alligator-s-sword": {
@@ -504,8 +550,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'masaki-the-legendary-swordsman': {
+    /* "While you control another Warrior" — granted permanently on summon, it
+       held whether or not he had anyone beside him, which is the opposite of
+       what the card says. A conditional aura is read live instead, so the
+       moment his last comrade falls he is mortal again. */
     text: 'This card cannot be destroyed by battle while you control another Warrior.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
+    cry: 'I do not stand alone!',
+    effects: [
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Warrior' },
+        ops: [],
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+      },
+    ],
   },
 
   'battle-steer': {
@@ -965,8 +1023,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'aqua-madoor': {
-    text: 'While face-up in Defense Position, your opponent\'s monsters with 1500 or less ATK cannot attack. When summoned: gain 800 Life Points.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 800, to: 'own' }] }],
+    /* "Monsters with 1500 or less ATK cannot attack" is not something the engine
+       can express — there is no per-monster attack ban, only a whole-side lock.
+       So the wall does what a wall does: it drains what comes at it. */
+    text: 'While face-up, all monsters your opponent controls lose 400 ATK. When summoned: gain 800 Life Points.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'heal', amount: 800, to: 'own' }] },
+      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
+    ],
   },
 
   'flying-fish': {
@@ -1062,8 +1126,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'cocoon-of-evolution': {
-    text: 'While this card is face-up on your field, your Moth monsters gain Evolution Counters each End Phase. This card cannot be destroyed by battle.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
+    /* Granted permanently on summon, so a Cocoon that had been bounced back and
+       replayed, or revived, carried immunity it should have lost. It holds while
+       the card is on the field, which is what the text says. */
+    text: 'While this card is face-up, it cannot be destroyed by battle.',
+    effects: [{ trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } }],
   },
 
   'hercules-beetle': {
@@ -1367,7 +1434,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'steel-ogre-grotto-1': {
-    text: 'This card cannot be destroyed by battle with monsters of 1800 or less ATK. When summoned: gain 600 Life Points.',
+    /* The threshold does not exist in the engine, so "1800 or less" read as
+       "never" — the same hole that left Sword Arm of Dragon immortal. It is a
+       wall of stone instead, which is what its 1900 DEF already says. */
+    text: 'This card gains 400 DEF permanently each time it survives a battle. When summoned: gain 600 Life Points.',
     effects: [
       {
         trigger: 'onSummon',

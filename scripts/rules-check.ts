@@ -450,5 +450,62 @@ console.log('\nA card already face-up on the field cannot be activated again');
   }
 }
 
+console.log('\nA card does what its text says, not a convenient half of it');
+{
+  /* Masaki survives battle only "while you control another Warrior". The grant
+     was handed out permanently on summon instead, so he was immortal standing
+     alone — which is the opposite of the card. */
+  const alone = fresh('battle');
+  const m1 = card(FOE, 'masaki-the-legendary-swordsman');
+  m1.summonedOnTurn = 0;
+  alone.players[FOE].monsters[0] = m1;
+  const killer = card(ME, 'summoned-skull');
+  killer.summonedOnTurn = 0;
+  alone.players[ME].monsters[0] = killer;
+  const after = act(alone, ME, { type: 'attack', uid: killer.uid, targetUid: m1.uid });
+  ok(!after.players[FOE].monsters.some((m) => m?.uid === m1.uid), 'Masaki alone is destroyed in battle');
+
+  const guarded = fresh('battle');
+  const m2 = card(FOE, 'masaki-the-legendary-swordsman');
+  m2.summonedOnTurn = 0;
+  guarded.players[FOE].monsters[0] = m2;
+  guarded.players[FOE].monsters[1] = card(FOE, 'celtic-guardian'); // another Warrior
+  const killer2 = card(ME, 'summoned-skull');
+  killer2.summonedOnTurn = 0;
+  guarded.players[ME].monsters[0] = killer2;
+  const after2 = act(guarded, ME, { type: 'attack', uid: killer2.uid, targetUid: m2.uid });
+  ok(
+    after2.players[FOE].monsters.some((m) => m?.uid === m2.uid),
+    'and survives with another Warrior beside him'
+  );
+
+  /* Rocket Warrior's second sentence had no effect behind it at all. It is
+     Normal Summoned rather than placed, because its first sentence is granted
+     by the summon — dropping it onto the field skips that and the test would be
+     asking the wrong question. */
+  const r = fresh();
+  const rocket = card(ME, 'rocket-warrior');
+  r.players[ME].hand = [rocket];
+  const summoned = act(r, ME, { type: 'normalSummon', uid: rocket.uid, zone: 0, position: 'atk', face: 'up' });
+  Object.assign(r, summoned);
+  r.phase = 'battle';
+  r.players[ME].monsters[0]!.summonedOnTurn = 0;
+  const victim = card(FOE, 'summoned-skull');
+  victim.summonedOnTurn = 0;
+  r.players[FOE].monsters[0] = victim;
+  const beforeAtk = effAtk(r, victim, FOE);
+  const hit = act(r, ME, { type: 'attack', uid: rocket.uid, targetUid: victim.uid });
+  const still = hit.players[FOE].monsters.find((m) => m?.uid === victim.uid);
+  ok(
+    !!still && effAtk(hit, still, FOE) === beforeAtk - 500,
+    'Rocket Warrior takes 500 ATK off what it attacks',
+    still ? `went ${beforeAtk} → ${effAtk(hit, still, FOE)}` : 'the monster was destroyed'
+  );
+  ok(
+    hit.players[ME].monsters.some((m) => m?.uid === rocket.uid),
+    'and survives the battle it could not win'
+  );
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;
