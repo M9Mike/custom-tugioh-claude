@@ -529,7 +529,10 @@ function checkExodia(state: DuelState) {
       state.winner = pid;
       state.winReason = `${state.players[pid].name} assembled Exodia the Forbidden One!`;
       log(state, `EXODIA! ${state.players[pid].name} assembled all five pieces!`, 'system', pid);
-      anim(state, { kind: 'win', player: pid, text: 'EXODIA, OBLITERATE!' });
+      /* The slug is what earns it a moment on screen: the client only gives the
+         2.5D flourish to a card it can name, and without one the five pieces
+         came together and the victory modal simply appeared. */
+      anim(state, { kind: 'win', player: pid, slug: 'exodia-the-forbidden-one', text: 'EXODIA, OBLITERATE!' });
     }
   }
 }

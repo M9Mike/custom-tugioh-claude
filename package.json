@@ -24,7 +24,8 @@
     "rules": "tsx scripts/rules-check.ts",
     "e2e-tournament": "tsx scripts/e2e-tournament.ts",
     "playable": "tsx scripts/playable-check.ts",
-    "text": "tsx scripts/text-check.ts"
+    "text": "tsx scripts/text-check.ts",
+    "deck-bench": "tsx scripts/deck-bench.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

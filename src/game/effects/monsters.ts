@@ -1015,14 +1015,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   '7-colored-fish': {
     text: 'While "Umi" is on the field, this card gains 800 ATK and inflicts piercing battle damage.',
+    /* "While Umi is on the field" is a live condition, not a question asked
+       once. As a one-shot on summon the order of play decided everything:
+       Umi down first and the fish kept the 800 for good, even after Umi was
+       destroyed; summon first and it never got them at all, however long Umi
+       then sat there. A conditional aura is read from the field every time the
+       stat is calculated, so it simply follows Umi. */
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'continuous',
         condition: { requiresField: 'umi' },
-        ops: [
-          { op: 'gainAtk', amount: 800, target: SELF, duration: 'permanent' },
-          { op: 'pierce', duration: 'permanent' },
-        ],
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, atk: 800, grants: ['pierce'] },
       },
     ],
   },
@@ -1084,14 +1088,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'amphibian-beast': {
     text: 'While "Umi" is on the field, this card gains 500 ATK and can attack twice each Battle Phase.',
+    // Same as 7 Colored Fish: the condition has to keep being asked.
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'continuous',
         condition: { requiresField: 'umi' },
-        ops: [
-          { op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' },
-          { op: 'extraAttacks', count: 1 },
-        ],
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, atk: 500, grants: ['doubleAttack'] },
       },
     ],
   },

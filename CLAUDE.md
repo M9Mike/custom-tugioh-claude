@@ -85,6 +85,7 @@ npm run iphone   http://localhost:3100 /tmp/shots    # WebKit, both iPhone sizes
 npm run pwa      http://localhost:3100               # standalone insets
 npm run anim     http://localhost:3100               # the flourish moves, the LP bar glides
 npm run audio    http://localhost:3100               # the AudioContext waits for a tap
+npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -237,6 +238,50 @@ a copy of the rule. Two of those copies had already drifted.
 never draws its enabler on purpose. Measured with the real search he wins 68% ±12
 and has Toon World down in 73% of games. Believe the AI's number, not the random
 one, before rebalancing anything.
+
+**A condition asked once is not a condition.** "While *Umi* is on the field,
+this card gains 800 ATK" was an `onSummon` op behind a `condition`, so the order
+of play decided everything: Umi down first and 7 Colored Fish kept the 800 for
+good — even after Umi was destroyed — while summoning first meant it never got
+them at all, however long Umi then sat there. Reported from a real duel, and
+Amphibian Beast had the same shape. A conditional *continuous* aura is re-read
+every time the stat is wanted, so it simply follows Umi. `aurasFor` already
+honours `eff.condition`; the cards just were not using it.
+
+**A Tribute Summon makes its own room.** The hand sheet required a free Monster
+Zone before offering any summon, so a full board locked out the one summon a
+full board is *for* — exactly backwards. The engine was always fine, and
+`finishSummon` already resolved the destination after the tributes were paid;
+only the gate was wrong. A summon costing nothing needs a spare zone, a Tribute
+Summon needs bodies.
+
+**The bye rode to the final.** `matchesForRound` walks the survivors in pairs, so
+an odd count always leaves the *last* name over — and a bye winner stayed last,
+having been last when they got the bye. The same duelist could go from the
+quarter-final to the trophy without duelling once; half of all brackets had a
+repeat bye. Whoever just had one now goes to the front of the queue, which is a
+real match by construction. The player still comes first of all, so the bye is
+never theirs.
+
+**Only the picker could show a deck.** The deck viewer's markup lived inside the
+`if (picking)` branch, so opening it from the home page's duelist strip set the
+state and drew nothing whatsoever. It is one function rendered by both screens
+now. Worth remembering when a modal "does not open": check it is on the screen
+you are looking at.
+
+**Exodia had no moment.** `case 'win': break;` — the five pieces came together
+and the victory modal simply appeared, for the one card in the game that ends a
+duel outright. The flourish is earned by carrying a slug the client can name, so
+the engine sends one and the signature set includes Exodia even though it is
+nobody's emblem and wins from the hand rather than the field. The win screen
+already waits for the queue, so giving the event a real beat delays it for free.
+
+**Believe `npm run deck-bench`, not `npm run sim`.** Pegasus measures **29%**
+under random play and **85% ±7** under the real AI, because a combo deck at
+random never draws its enabler on purpose. The gap is not a rounding error, it
+is the whole picture — check a deck change with `npm run deck-bench <duelist>`
+before concluding anything. It prints a 95% interval, which at a hundred games
+is around ±8: two runs a dozen points apart are usually the same deck.
 
 **"Gains 200 ATK for each card in your Graveyard" is a number that keeps
 moving.** Six cards granted it *once, on summon* — when the Graveyard is

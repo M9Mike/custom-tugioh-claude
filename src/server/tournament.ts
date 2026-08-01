@@ -252,7 +252,24 @@ export function advanceRound(t: Tournament): boolean {
     if (t.status !== 'eliminated') t.status = 'won';
     return false;
   }
-  const survivors = thisRound.map((m) => m.winner!);
+  /* Whoever just had a bye goes to the front of the queue.
+   *
+   * `matchesForRound` walks the list in pairs, so an odd count always leaves
+   * the *last* name over — and a bye winner stayed last, having been last when
+   * they got the bye. The same duelist could ride byes from the quarter-final
+   * to the trophy without duelling once. Moving them forward puts them in slot
+   * zero, which is a real match by construction, and pushes the next bye onto
+   * somebody who has actually been fighting.
+   *
+   * The human still comes first of all, for the reason `matchesForRound`
+   * gives: the bye is never theirs to take. */
+  const justByed = new Set(thisRound.filter((m) => !m.a || !m.b).map((m) => m.winner!));
+  const survivors = thisRound
+    .map((m) => m.winner!)
+    .sort((x, y) => {
+      const rank = (d: string) => (d === t.humanDuelist ? 0 : justByed.has(d) ? 1 : 2);
+      return rank(x) - rank(y);
+    });
   t.round += 1;
   t.matches.push(...matchesForRound(survivors, t.round, t.humanDuelist));
   // An eliminated player is a spectator from here: the bracket keeps resolving

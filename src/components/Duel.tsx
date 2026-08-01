@@ -298,12 +298,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
    */
   /* A duelist's signature card gets a moment. Only these ten, and only when
      they attack or go off — otherwise the game would be all cutscene. */
-  const SIGNATURE = useMemo(() => new Set(DUELISTS.map((d) => d.emblem)), []);
+  const SIGNATURE = useMemo(
+    // Exodia is nobody's emblem and wins from the hand rather than the field,
+    // so it never qualified — the five pieces came together and the victory
+    // modal simply appeared, with no moment at all for the one card in the game
+    // that ends a duel outright.
+    () => new Set([...DUELISTS.map((d) => d.emblem), 'exodia-the-forbidden-one']),
+    []
+  );
   const isSignature = (a: AnimEvent | null): boolean =>
     !!a &&
     !!a.slug &&
     SIGNATURE.has(a.slug) &&
-    (a.kind === 'attack' || a.kind === 'directAttack' || a.kind === 'activate' || a.kind === 'trap' || a.kind === 'fusion');
+    (a.kind === 'attack' ||
+      a.kind === 'directAttack' ||
+      a.kind === 'activate' ||
+      a.kind === 'trap' ||
+      a.kind === 'fusion' ||
+      a.kind === 'win');
 
   /**
    * `form: 'actor'` reads "Kaiba activates Dark Hole"; `form: 'card'` reads
@@ -335,6 +347,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         return { ...actor, verb: `attacks ${a.text ?? ''} with`.replace('  ', ' ') };
       case 'directAttack':
         return { ...actor, verb: 'attacks directly with' };
+      case 'win':
+        // Only Exodia carries a slug here, and "assembles" is the line that
+        // belongs to it — the five pieces coming together, not a card played.
+        return { ...actor, verb: 'assembles' };
       default:
         return null;
     }
@@ -394,6 +410,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0, kind: 'heal' });
           break;
         case 'win':
+          // Exodia arrives with a slug and gets the full flourish; an ordinary
+          // win is silent here, because the victory screen has its own fanfare.
+          if (a.slug) sfx.bigSummon();
           break;
       }
   }, [me]);
@@ -828,14 +847,25 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     if (handDef.kind === 'monster') {
       const need = tributesRequired(handCard.slug, state, me);
       const bodies = mine.monsters.filter((m): m is CardInstance => !!m && !m.isToken).length;
-      const canSummon = myTurn && state.phase === 'main' && !mine.normalSummonUsed && freeZone && bodies >= need;
+      /* A Tribute Summon *makes* its own room — the tributes leave the field
+         before the new monster arrives, and `finishSummon` already resolves the
+         destination after they are paid. Demanding a free zone up front meant a
+         full board locked out the one summon a full board is for, which is
+         exactly backwards. Only a summon costing nothing needs a zone going
+         spare. */
+      const roomFor = need > 0 ? bodies >= need : freeZone;
+      const canSummon = myTurn && state.phase === 'main' && !mine.normalSummonUsed && roomFor;
       /* The engine's own answer, asked here rather than left to refuse at the
          end: offering "Normal Summon" for a Ritual monster walked the player all
          the way through choosing what to absorb before telling them it was never
          allowed. The reason is shown on the button instead. */
       const gate = summonBlocked(state, me, handCard.slug);
       acts.push({
-        label: need > 0 ? `Tribute Summon (${need})` : 'Normal Summon',
+        /* A gated monster gets a label that tells the truth. "Tribute Summon
+           (2)" on a Ritual monster reads as a route that exists and is merely
+           unavailable right now, when the level and its tributes have nothing
+           to do with how the card is summoned at all. */
+        label: gate ? 'Cannot be Normal Summoned' : need > 0 ? `Tribute Summon (${need})` : 'Normal Summon',
         disabled: !canSummon || !!gate,
         hint:
           gate ??
@@ -844,16 +874,18 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               ? 'Already summoned this turn'
               : need > bodies
                 ? `Needs ${need} tribute(s)`
-                : undefined
+                : 'No free Monster Zone'
             : undefined),
         run: () => startSummon(handCard.uid, 'atk', 'up'),
       });
-      acts.push({
-        label: 'Set (face-down)',
-        disabled: !canSummon || !!gate,
-        hint: gate ?? undefined,
-        run: () => startSummon(handCard.uid, 'def', 'down'),
-      });
+      if (!gate) {
+        acts.push({
+          label: 'Set (face-down)',
+          disabled: !canSummon,
+          hint: !canSummon && need > bodies ? `Needs ${need} tribute(s)` : undefined,
+          run: () => startSummon(handCard.uid, 'def', 'down'),
+        });
+      }
     } else {
       const canAct = canActivateFromHand(state, me, handCard);
       if (handDef.kind === 'spell') {
@@ -956,8 +988,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       </div>
 
-      {/* ---- opponent hand (backs only) ---- */}
-      <div className="flex shrink-0 justify-center gap-0.5 px-2 py-1">
+      {/* ---- opponent hand (backs only) ----
+          Sits high, just under their bar, and the backs are separated rather
+          than touching. Knowing how many cards they are holding is real
+          information in a duel, and a tight row of near-identical backs has to
+          be counted twice to be trusted. */}
+      <div className="flex shrink-0 justify-center gap-[3px] px-2 pb-1.5 pt-0">
         {theirs.hand.slice(0, 12).map((c) => (
           <div key={c.uid} className="w-[clamp(20px,3.4vw,34px)]">
             <GameCard card={c} faceDown compact />

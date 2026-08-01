@@ -112,6 +112,35 @@ export default function Home() {
     router.push(`/duel/${res.code}`);
   };
 
+  /* The deck viewer, rendered by both screens.
+     It used to live only inside the picker's markup, so opening it from
+     anywhere else set the state and drew nothing at all. */
+  const deckViewer = () =>
+    deck && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
+        <div className="panel grain thin-scroll max-h-[85dvh] w-full max-w-3xl overflow-y-auto rounded p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-lg text-parchment">{deck.name} — 25 cards</h3>
+            <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>✕</button>
+          </div>
+          <div className="brass-rule my-3" />
+          {deckInspect && (
+            <div className="mb-3">
+              <CardDetail card={deckInspect} onClose={() => setDeckInspect(null)} layout="row" />
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {previewInstances([...deck.deck, ...deck.extra.map((x) => [x, 1] as [string, number])]).map((c) => (
+              <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
+                <GameCard card={c} />
+                <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+
   if (picking) {
     return (
       <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col justify-center gap-4 p-5">
@@ -204,30 +233,7 @@ export default function Home() {
           Back
         </button>
 
-        {deck && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
-            <div className="panel grain thin-scroll max-h-[85dvh] w-full max-w-3xl overflow-y-auto rounded p-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-display text-lg text-parchment">{deck.name} — 25 cards</h3>
-                <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>✕</button>
-              </div>
-              <div className="brass-rule my-3" />
-              {deckInspect && (
-                <div className="mb-3">
-                  <CardDetail card={deckInspect} onClose={() => setDeckInspect(null)} layout="row" />
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {previewInstances([...deck.deck, ...deck.extra.map((x) => [x, 1] as [string, number])]).map((c) => (
-                  <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
-                    <GameCard card={c} />
-                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {deckViewer()}
       </main>
     );
   }
@@ -329,8 +335,20 @@ export default function Home() {
           Ten duelists · ten decks
         </p>
         <div className="thin-scroll flex justify-start gap-2 overflow-x-auto pb-2 sm:justify-center">
+          {/* Tapping a duelist opens their deck. The strip looked like a menu
+              and behaved like a picture, which is the worst of both — the same
+              viewer the picker already uses is one line away. */}
           {DUELISTS.map((d) => (
-            <div key={d.id} className="group w-[92px] shrink-0 text-center" title={`${d.name} — ${d.epithet}`}>
+            <button
+              key={d.id}
+              type="button"
+              className="group w-[92px] shrink-0 text-center"
+              title={`${d.name} — ${d.epithet}. See the deck.`}
+              onClick={() => {
+                sfx.click();
+                setDeckOpen(d.id);
+              }}
+            >
               <div
                 className="h-[68px] w-full overflow-hidden rounded border"
                 style={{ borderColor: d.accent }}
@@ -343,7 +361,7 @@ export default function Home() {
                 />
               </div>
               <p className="mt-1 truncate font-display text-[10px] text-ptext/80">{d.name}</p>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -352,6 +370,8 @@ export default function Home() {
         A private, non-commercial fan project. Yu-Gi-Oh! and all card artwork are the property of Kazuki Takahashi and
         Konami. Card effects here are original and do not match the official game.
       </footer>
+
+      {deckViewer()}
     </main>
   );
 }

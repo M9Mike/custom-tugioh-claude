@@ -611,5 +611,33 @@ console.log('\n"Gains N ATK for each …" keeps counting, rather than freezing a
   ok(effAtk(s2, king, ME) === alone + 200, 'and ignores anything that is not a Machine', `${effAtk(s2, king, ME)}`);
 }
 
+console.log('\n"While Umi is on the field" follows Umi, whatever order things happen in');
+{
+  /* Reported from a real duel: activate Umi then summon and the fish kept
+     everything; summon then activate Umi and it got only Umi's own 400. It was
+     an `onSummon` op behind a condition, so the question was asked once and the
+     answer kept for good — which also meant the bonus survived Umi being
+     destroyed. A conditional aura is re-read every time the stat is wanted. */
+  const s = fresh();
+  const fish = card(ME, '7-colored-fish');
+  const beast = card(ME, 'amphibian-beast');
+  s.players[ME].monsters[0] = fish;
+  s.players[ME].monsters[1] = beast;
+
+  const fishBare = effAtk(s, fish, ME);
+  ok(fishBare === 1800, '7 Colored Fish is 1800 with no Umi', `${fishBare}`);
+
+  s.players[ME].field = card(ME, 'umi');
+  // 1800 + 800 of its own + 400 from Umi's WATER aura.
+  ok(effAtk(s, fish, ME) === 3000, 'and 3000 once Umi is up, having been summoned first', `${effAtk(s, fish, ME)}`);
+  ok(effFlags(s, fish, ME).pierce === true, 'with the piercing its text promises');
+  ok(effAtk(s, beast, ME) === 2400 + 500 + 400, 'Amphibian Beast gains its 500 too', `${effAtk(s, beast, ME)}`);
+  ok((effFlags(s, beast, ME).extraAttacks ?? 0) === 1, 'and can attack twice');
+
+  s.players[ME].field = null;
+  ok(effAtk(s, fish, ME) === 1800, 'and it all lapses when Umi leaves', `${effAtk(s, fish, ME)}`);
+  ok(!effFlags(s, fish, ME).pierce, 'piercing included');
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;
