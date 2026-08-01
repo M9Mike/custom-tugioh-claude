@@ -23,7 +23,8 @@ import { chooseAction, legalActions } from '../src/game/autoplay';
 import { aiNext, createAiRuntime, invalidatePlan } from '../src/game/ai';
 import { GAME_AI } from '../src/game/ai-levels';
 import type { DuelAction, DuelState, PlayerId } from '../src/game/types';
-import type { Tournament } from '../src/server/tournament';
+import { bracketSlots, roundsFor, type Tournament } from '../src/server/tournament';
+import { DUELISTS } from '../src/game/cards';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const RUNS = Number(process.argv[3] ?? 2);
@@ -62,16 +63,27 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 function checkBracket(t: Tournament): string | null {
-  if (t.entrants.length !== 8) return `bracket has ${t.entrants.length} entrants`;
-  if (new Set(t.entrants).size !== 8) return 'a duelist appears twice in the bracket';
-  if (!t.entrants.includes(t.humanDuelist)) return 'the human is not in their own bracket';
-  for (const r of [0, 1, 2]) {
+  const slots = t.entrants.length;
+  if (slots !== bracketSlots(DUELISTS.length)) {
+    return `bracket has ${slots} slots, expected ${bracketSlots(DUELISTS.length)} for ${DUELISTS.length} duelists`;
+  }
+  const named = t.entrants.filter((e): e is string => !!e);
+  // Every duelist on the roster is in the draw, exactly once. This is the whole
+  // point of sizing the bracket to the roster rather than fixing it at eight.
+  if (named.length !== DUELISTS.length) return `${named.length} duelists drawn, roster has ${DUELISTS.length}`;
+  if (new Set(named).size !== named.length) return 'a duelist appears twice in the bracket';
+  if (!named.includes(t.humanDuelist)) return 'the human is not in their own bracket';
+
+  const rounds = roundsFor(slots);
+  for (let r = 0; r < rounds; r++) {
     const n = t.matches.filter((m) => m.round === r).length;
-    if (n && n !== [4, 2, 1][r]) return `round ${r} has ${n} matches`;
+    if (n && n !== slots >> (r + 1)) return `round ${r} has ${n} matches, expected ${slots >> (r + 1)}`;
     const mine = t.matches.filter((m) => m.round === r && m.human);
     if (n && mine.length !== 1) return `round ${r} has ${mine.length} matches for the human`;
     for (const m of mine) {
       if (m.a !== t.humanDuelist && m.b !== t.humanDuelist) return `round ${r}: human absent from their own match`;
+      // A bye in your own bracket means turning up and watching a screen.
+      if (r === 0 && (!m.a || !m.b)) return 'the human was given a bye in the opening round';
     }
   }
   return null;
@@ -168,7 +180,7 @@ async function playOne(run: number): Promise<{ ok: boolean; detail: string }> {
   if (new Set(faced).size !== faced.length) return { ok: false, detail: 'faced the same duelist twice' };
   return {
     ok: ended,
-    detail: `as ${AS} → ${t.status} in the ${['quarter-final', 'semi-final', 'final'][t.round]} ` +
+    detail: `as ${AS} → ${t.status} in round ${t.round + 1}/${roundsFor(t.entrants.length)} ` +
       `(faced ${faced.join(', ') || 'nobody'}; ${duels} duels, ${nudges} nudges` +
       `${rejected ? `, ${rejected} resyncs` : ''})`,
   };

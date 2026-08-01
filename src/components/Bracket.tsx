@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { DUELIST_BY_ID, artUrl } from '@/game/cards';
-import { ROUND_NAMES, type Tournament, type TourMatch } from '@/server/tournament';
+import { roundNameAt, roundsFor, type Tournament, type TourMatch } from '@/server/tournament';
 
 interface Props {
   t: Tournament;
@@ -44,19 +44,37 @@ function Slot({ id, winner, you }: { id: string | null; winner: string | null; y
     as two more entries in a list — on a phone they are otherwise indistinguishable. */
 function Match({ m, you }: { m: TourMatch; you: string }) {
   const yours = m.human && !m.winner;
+  /* A bracket wider than the roster leaves empty places. They are byes: the
+     duelist opposite walks through without duelling. */
+  const bye = (!!m.a) !== (!!m.b);
   return (
     <div
       className={`rounded border px-1 py-1 ${
         yours ? 'border-brass/70 bg-brass/[0.07]' : 'border-stoneline/70 bg-black/30'
       }`}
     >
-      <Slot id={m.a} winner={m.winner} you={you} />
-      <div className="flex items-center gap-2 px-1 py-0.5">
-        <div className="h-px flex-1 bg-stoneline/70" />
-        <span className="font-display text-[8px] uppercase tracking-[0.2em] text-ptextdim">vs</span>
-        <div className="h-px flex-1 bg-stoneline/70" />
-      </div>
-      <Slot id={m.b} winner={m.winner} you={you} />
+      {bye ? (
+        /* A bye is one name walking through, so it gets one line — otherwise a
+           bracket of ten in sixteen slots is mostly empty boxes to scroll past. */
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <Slot id={m.a ?? m.b} winner={m.winner} you={you} />
+          </div>
+          <span className="shrink-0 rounded bg-black/40 px-1.5 py-0.5 font-display text-[8px] uppercase tracking-[0.2em] text-ptextdim">
+            bye
+          </span>
+        </div>
+      ) : (
+        <>
+          <Slot id={m.a} winner={m.winner} you={you} />
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <div className="h-px flex-1 bg-stoneline/70" />
+            <span className="font-display text-[8px] uppercase tracking-[0.2em] text-ptextdim">vs</span>
+            <div className="h-px flex-1 bg-stoneline/70" />
+          </div>
+          <Slot id={m.b} winner={m.winner} you={you} />
+        </>
+      )}
       {yours && (
         <p className="mt-0.5 text-center font-display text-[8px] uppercase tracking-[0.2em] text-brass">
           your match
@@ -67,8 +85,12 @@ function Match({ m, you }: { m: TourMatch; you: string }) {
 }
 
 export default function Bracket({ t, busy, onContinue }: Props) {
-  const rounds = [0, 1, 2].map((r) => t.matches.filter((m) => m.round === r));
+  // Derived from the bracket rather than fixed at three, so a bigger roster
+  // simply grows another column.
+  const total = roundsFor(t.entrants.length);
+  const rounds = Array.from({ length: total }, (_, r) => t.matches.filter((m) => m.round === r));
   const done = t.status === 'won' || t.status === 'eliminated';
+  const nameAt = (r: number) => roundNameAt(t.entrants.length, r);
 
   return (
     <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col justify-center gap-3 p-4">
@@ -79,24 +101,24 @@ export default function Bracket({ t, busy, onContinue }: Props) {
             ? '👑 Champion of the Kingdom'
             : t.status === 'eliminated'
               ? 'Eliminated'
-              : ROUND_NAMES[t.round]}
+              : nameAt(t.round)}
         </h1>
         <div className="brass-rule mx-auto my-2 w-48" />
       </div>
 
-      {/* The bracket. Three columns side by side once there is room for them;
-          stacked on a phone, where 520px of tree would mean scrolling to find
-          out who is in the final. */}
+      {/* One column per round, side by side once there is room; stacked on a
+          phone, where a wide tree would mean scrolling sideways to find out who
+          is in the final. */}
       <div className="panel grain thin-scroll max-h-[62dvh] overflow-y-auto rounded p-3 sm:max-h-none sm:overflow-visible">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
           {rounds.map((matches, r) => (
             <div key={r} className="flex flex-1 flex-col gap-1.5 sm:justify-around">
               <p className="text-center font-display text-[9px] uppercase tracking-[0.25em] text-ptextdim">
-                {ROUND_NAMES[r]}
+                {nameAt(r)}
               </p>
               {matches.length === 0 ? (
                 <div className="grid flex-1 place-items-center rounded border border-dashed border-stoneline/50 px-2 py-4 text-center text-[10px] leading-relaxed text-ptextdim/70">
-                  Waiting on the {ROUND_NAMES[r - 1]?.toLowerCase() ?? 'earlier rounds'}
+                  Waiting on the {r > 0 ? nameAt(r - 1).toLowerCase() : 'draw'}
                 </div>
               ) : (
                 matches.map((m) => <Match key={`${m.round}-${m.slot}`} m={m} you={t.humanDuelist} />)
@@ -115,12 +137,13 @@ export default function Bracket({ t, busy, onContinue }: Props) {
 
       {t.status === 'won' && (
         <p className="text-center text-sm leading-relaxed text-ptext/85">
-          Three duels, three wins, against a computer that never once played down to you.
+          {t.matches.filter((m) => m.human).length} duels, all of them won, against a computer that never once
+          played down to you.
         </p>
       )}
       {t.status === 'eliminated' && (
         <p className="text-center text-sm leading-relaxed text-ptext/85">
-          Knocked out in the {ROUND_NAMES[t.round].toLowerCase()}. The bracket does not offer a rematch.
+          Knocked out in the {nameAt(t.round).toLowerCase()}. The bracket does not offer a rematch.
         </p>
       )}
 

@@ -82,8 +82,12 @@ const main = async () => {
 
   console.log('• choose duelists');
   await a.click('button:has-text("Seto Kaiba")');
+  await a.waitForTimeout(400);
+  await a.click('button:has-text("Duel as Seto")');
   await a.waitForTimeout(700);
   await b.click('button:has-text("Yugi Muto")');
+  await b.waitForTimeout(400);
+  await b.click('button:has-text("Duel as Yugi")');
   await a.waitForTimeout(2200);
   await shot(a, '05-duel-start-A');
   await shot(b, '06-duel-start-B');
@@ -201,8 +205,12 @@ const main = async () => {
   await d.waitForURL(/\/duel\//, { timeout: 20000 });
   await d.waitForTimeout(1200);
   await m.click('button:has-text("Mai Valentine")');
+  await m.waitForTimeout(400);
+  await m.click('button:has-text("Duel as Mai")');
   await m.waitForTimeout(600);
   await d.click('button:has-text("Joey Wheeler")');
+  await d.waitForTimeout(400);
+  await d.click('button:has-text("Duel as Joey")');
   await m.waitForTimeout(2500);
   await shot(m, '15-mobile-duel');
   // Summon on mobile to check the action sheet and board with a monster out.

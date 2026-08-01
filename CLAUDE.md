@@ -48,6 +48,7 @@ npm run build && npx next start -p 3100     # always test a production build
 
 npm run rules            # regressions for rules that were wrong once
 npm run audit            # every card's effect, resolved and checked (256/256)
+npm run playable         # every card in every deck can actually be reached
 npm run sim 400          # random duels; reports rule errors
 npm run e2e      -- http://localhost:3100 3          # two players over HTTP
 npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
@@ -103,6 +104,15 @@ the time, which reads as a pass. Not reaching the prompt is now a failure.
 because none of this reproduces off-device. And iOS caches the status-bar style at
 install time — after changing it the app has to be removed from the home screen
 and added again.
+
+**"The effect works" is not "the card works".** The audit resolves every effect
+directly and was perfectly happy while three cards sat dead in their owners' hands:
+The Dark Door, Dark Sanctuary and Umi are Continuous or Field Spells whose whole
+effect is an aura, so they carry no `activate` trigger — and the rule deciding what
+may be played from the hand asked for one. `npm run playable` asks the engine's own
+gates instead. Related: Relinquished fired on `onNormalSummon`, and it is a Ritual
+monster, so it never fired at all. If a card looks inert, check that a player can
+reach it before checking the effect.
 
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down

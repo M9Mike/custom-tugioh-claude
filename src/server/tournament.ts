@@ -17,10 +17,38 @@ import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import type { DuelState, PlayerId } from '@/game/types';
 
-export const BRACKET_SIZE = 8;
-export const ROUNDS = 3; // quarter-final, semi-final, final
+/**
+ * The bracket holds *every* duelist, whatever the roster grows to.
+ *
+ * It used to be a fixed eight, which quietly left two of the ten out. The size
+ * is now the next power of two at or above the roster, and the empty slots
+ * become byes — so adding a duelist needs no change here at all. Ten entrants
+ * give a bracket of sixteen: six byes, two real first-round matches, four
+ * rounds to the crown.
+ */
+export const bracketSlots = (entrants: number): number => {
+  let n = 2;
+  while (n < entrants) n *= 2;
+  return n;
+};
 
-export const ROUND_NAMES = ['Quarter-final', 'Semi-final', 'Final'] as const;
+/** How many rounds a bracket of this many slots takes. */
+export const roundsFor = (slots: number): number => Math.round(Math.log2(Math.max(2, slots)));
+
+/**
+ * What a round is called, from how many duelists are still standing. Naming it
+ * from the survivors rather than the round number means the same code says
+ * "Round of 16" or "Quarter-final" as the roster grows.
+ */
+export function roundName(remaining: number): string {
+  if (remaining <= 2) return 'Final';
+  if (remaining === 4) return 'Semi-final';
+  if (remaining === 8) return 'Quarter-final';
+  return `Round of ${remaining}`;
+}
+
+/** The name of round `r` in a bracket of `slots`. */
+export const roundNameAt = (slots: number, r: number): string => roundName(slots >> r);
 
 export interface TourMatch {
   round: number;
@@ -34,8 +62,8 @@ export interface TourMatch {
 }
 
 export interface Tournament {
-  /** Duelist ids seeded into the eight bracket positions. */
-  entrants: string[];
+  /** Duelist ids by bracket position; `null` is a bye. */
+  entrants: (string | null)[];
   /** Which bracket position the human occupies. */
   humanSeat: number;
   humanDuelist: string;
@@ -50,7 +78,8 @@ export interface Tournament {
 const seatInRound = (seat: number, round: number) => seat >> round;
 
 export function createTournament(humanDuelist: string, seed: number): Tournament {
-  const others = DUELISTS.map((d) => d.id).filter((id) => id !== humanDuelist);
+  const roster = DUELISTS.map((d) => d.id);
+  const others = roster.filter((id) => id !== humanDuelist);
   // Deterministic shuffle from the seed, so the same bracket is rebuilt if a
   // creation request is retried.
   let r = seed >>> 0;
@@ -58,17 +87,46 @@ export function createTournament(humanDuelist: string, seed: number): Tournament
     r = (r * 1664525 + 1013904223) >>> 0;
     return r / 4294967296;
   };
-  for (let i = others.length - 1; i > 0; i--) {
-    const j = Math.floor(rnd() * (i + 1));
-    [others[i], others[j]] = [others[j], others[i]];
+  const shuffle = <T,>(xs: T[]) => {
+    for (let i = xs.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [xs[i], xs[j]] = [xs[j], xs[i]];
+    }
+    return xs;
+  };
+  shuffle(others);
+
+  const slots = bracketSlots(roster.length);
+  const firstRoundMatches = slots / 2;
+  /* With more slots than duelists the spare places are byes. How many matches
+     are real falls straight out of it: every real match uses two duelists and
+     every bye uses one, so `real = roster - matches`. */
+  const realMatches = Math.max(1, roster.length - firstRoundMatches);
+
+  const matchOrder = shuffle([...Array(firstRoundMatches).keys()]);
+  const entrants: (string | null)[] = new Array(slots).fill(null);
+
+  /* The human is always put in a real match. A bye in the opening round would
+     mean turning up to a tournament and watching a screen. */
+  const pool = [...others];
+  const humanMatch = matchOrder[0];
+  entrants[humanMatch * 2] = humanDuelist;
+  entrants[humanMatch * 2 + 1] = pool.shift() ?? null;
+
+  for (let i = 1; i < firstRoundMatches; i++) {
+    const m = matchOrder[i];
+    const real = i < realMatches;
+    entrants[m * 2] = pool.shift() ?? null;
+    if (real) entrants[m * 2 + 1] = pool.shift() ?? null;
   }
-  const field = others.slice(0, BRACKET_SIZE - 1);
-  const humanSeat = Math.floor(rnd() * BRACKET_SIZE);
-  const entrants: string[] = [];
-  for (let i = 0, k = 0; i < BRACKET_SIZE; i++) {
-    entrants.push(i === humanSeat ? humanDuelist : field[k++]);
+  // Anyone left over (possible only if the arithmetic above is ever changed)
+  // takes the first free slot rather than being dropped from their own bracket.
+  for (const left of pool) {
+    const free = entrants.indexOf(null);
+    if (free >= 0) entrants[free] = left;
   }
 
+  const humanSeat = entrants.indexOf(humanDuelist);
   return {
     entrants,
     humanSeat,
@@ -81,7 +139,7 @@ export function createTournament(humanDuelist: string, seed: number): Tournament
 }
 
 /** Builds the pairings for a round from the surviving duelists. */
-function matchesForRound(survivors: string[], round: number, humanSeat: number): TourMatch[] {
+function matchesForRound(survivors: (string | null)[], round: number, humanSeat: number): TourMatch[] {
   const out: TourMatch[] = [];
   const humanAt = seatInRound(humanSeat, round);
   for (let slot = 0; slot * 2 < survivors.length; slot++) {
@@ -168,6 +226,17 @@ export function recordHumanResult(t: Tournament, won: boolean) {
 
 /** Resolves one outstanding computer match. Returns false when none are left. */
 export function resolveOneSideMatch(t: Tournament): boolean {
+  /* Byes first, and all of them at once: they cost nothing to settle, and
+     stepping through six of them one request at a time would leave the player
+     watching a spinner for no reason. */
+  let settled = false;
+  for (const m of t.matches) {
+    if (m.round !== t.round || m.winner || m.human) continue;
+    if (m.a && !m.b) { m.winner = m.a; settled = true; }
+    else if (m.b && !m.a) { m.winner = m.b; settled = true; }
+  }
+  if (settled) return true;
+
   const m = nextSideMatch(t);
   if (!m || !m.a || !m.b) return false;
   // The seed folds in the round and slot so every match is its own duel, and so
@@ -184,7 +253,8 @@ export function advanceRound(t: Tournament): boolean {
   const thisRound = t.matches.filter((m) => m.round === t.round);
   if (thisRound.some((m) => !m.winner)) return false;
 
-  if (t.round >= ROUNDS - 1) {
+  // The final is the round with a single match, whatever the bracket's size.
+  if (thisRound.length <= 1) {
     t.status = 'won';
     return false;
   }

@@ -615,6 +615,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   return (
     <div className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'shake' : ''}`}>
+      {/* Shown instead of the board when a phone is turned sideways — see the
+          landscape rules in globals.css. Everything else is hidden by CSS, so
+          no resize listener and no re-render. */}
+      <div className="rotate-notice absolute inset-0 z-[80] place-items-center bg-ink p-8 text-center">
+        <div>
+          <p className="font-display text-4xl">📱</p>
+          <h2 className="mt-3 font-display text-xl tracking-wide text-brassbright">Turn your phone upright</h2>
+          <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-ptext/85">
+            The board needs the height: two players&rsquo; rows, both Life Point bars and your hand. Sideways there
+            is not enough room and the field ends up under the cards.
+          </p>
+          <p className="mt-3 text-[11px] text-ptextdim">Your duel is safe — it is waiting on the server.</p>
+        </div>
+      </div>
+
       {/* ---- top strip ---- */}
       <div className="flex shrink-0 items-center gap-2 px-2 pt-2">
         <div className="min-w-0 flex-1">

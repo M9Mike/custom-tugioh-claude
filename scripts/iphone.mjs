@@ -115,9 +115,14 @@ const main = async () => {
     await seatedAs(b, 'Sis');
     await shot(b, '03-lobby-iphone11');
 
+    // Tapping a card only selects it now; the panel's own button commits.
     await a.tap('button:has-text("Seto Kaiba")');
+    await a.waitForTimeout(500);
+    await a.tap('button:has-text("Duel as Seto")');
     await a.waitForTimeout(800);
     await b.tap('button:has-text("Mai Valentine")');
+    await b.waitForTimeout(500);
+    await b.tap('button:has-text("Duel as Mai")');
     await a.waitForTimeout(2600);
     await shot(a, '04-duel-17promax');
     await shot(b, '05-duel-iphone11');
@@ -219,7 +224,7 @@ const main = async () => {
     await shot(c, '11-tournament-pick');
     await c.tap('button:has-text("Yugi Muto")');
     await c.waitForURL(/\/duel\//, { timeout: 25000 });
-    await c.waitForSelector('text=Quarter-final', { timeout: 25000 });
+    await c.waitForSelector('text=Round of', { timeout: 25000 });
     await c.waitForTimeout(1200);
     await shot(c, '12-bracket');
     const toDuel = c.locator('button:has-text("To the duel")');
@@ -227,6 +232,9 @@ const main = async () => {
     await toDuel.first().tap();
     await c.waitForSelector('button:has-text("End Turn"), [data-testid="hand-card"]', { timeout: 25000 });
     await c.waitForTimeout(900);
+    // Tapping a card inspects it, and the inspector is a modal on a phone. It
+    // is dismissed before each tap below rather than assumed away.
+    await dismissInspector(c);
     await shot(c, '13-tournament-duel');
     // Mid-duel, the 🏆 button must go back to the standings and the "To the
     // duel" button must bring the same duel back, untouched.
@@ -234,10 +242,15 @@ const main = async () => {
     if (!(await peek.count())) {
       errors.push('[cup] no way back to the bracket from a tournament duel');
     } else {
+      // A synthetic pointer coming to rest over a hand card opens the inspector,
+      // whose scrim then swallows the tap. A finger does the same thing.
+      await dismissInspector(c);
       await peek.first().tap();
-      await c.waitForSelector('text=Quarter-final', { timeout: 15000 });
+      await c.waitForSelector('text=Round of', { timeout: 15000 });
+      await dismissInspector(c);
       await c.tap('button:has-text("To the duel")');
       await c.waitForSelector('[data-testid="hand-card"]', { timeout: 15000 });
+      await dismissInspector(c);
       console.log('  bracket peek and back ✓');
     }
 

@@ -91,8 +91,8 @@ export default function Home() {
           <h1 className="mt-2 font-display text-3xl tracking-wide text-brassbright">Choose your duelist</h1>
           <div className="brass-rule mx-auto my-3 w-48" />
           <p className="mx-auto max-w-md text-xs leading-relaxed text-ptext/85">
-            Seven rivals are drawn against you in a bracket of eight. Three wins takes the crown — lose once and the
-            run is over.
+            Every duelist enters. You are drawn against them in a single-elimination bracket — lose once and the run
+            is over.
           </p>
         </div>
 
@@ -193,8 +193,8 @@ export default function Home() {
         </button>
 
         <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
-          Eight duelists, single elimination. Win three duels and the Kingdom is yours. The computer plays at full
-          strength in every one of them — there is no easy setting.
+          Every duelist enters, single elimination. Win your way to the final and the Kingdom is yours. The computer
+          plays at full strength in every duel — there is no easy setting.
         </p>
 
         <div className="my-4 flex items-center gap-3">

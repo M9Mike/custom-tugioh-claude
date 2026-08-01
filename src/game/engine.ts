@@ -12,6 +12,7 @@ import {
   OPENING_HAND,
   STARTING_LP,
   type AnimEvent,
+  type CardDef,
   type CardEffect,
   type CardFilter,
   type CardFlags,
@@ -1409,6 +1410,17 @@ function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: 
 }
 
 /** Cards in hand this player may activate right now. */
+/**
+ * A Spell that stays on the field and does its work by simply being there —
+ * an aura, or something that fires on a later trigger. It has no `activate`
+ * effect to resolve, so activation is nothing more than putting it down.
+ */
+function isPassiveSpell(def: CardDef): boolean {
+  if (def.kind !== 'spell') return false;
+  if (def.subKind !== 'Continuous' && def.subKind !== 'Field') return false;
+  return def.effects.length > 0;
+}
+
 export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
   const def = CARDS[c.slug];
@@ -1416,8 +1428,13 @@ export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInst
   if (def.kind === 'trap') return false; // traps must be set first
   if (def.slug === 'polymerization') return false; // used via the Fusion button
   const eff = def.effects.find((e) => e.trigger === 'activate');
-  if (!eff) return false;
-  if (!canPayCost(state, pid, eff)) return false;
+  /* A Continuous or Field Spell whose whole effect is an aura has nothing to
+     resolve on activation — putting it on the field *is* the activation. They
+     used to be judged by the same "has an `activate` trigger" rule as one-shot
+     Spells and so could never be played at all: The Dark Door, Dark Sanctuary
+     and Umi sat dead in their owners' hands. */
+  if (!eff && !isPassiveSpell(def)) return false;
+  if (eff && !canPayCost(state, pid, eff)) return false;
   const p = state.players[pid];
   if (def.subKind === 'Field') return true; // field zone is separate
   return p.spellTrap === null;
@@ -1599,19 +1616,21 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       const def = CARDS[c.slug];
       if (!def || def.kind !== 'spell') return { state: prev, error: 'That is not a Spell.' };
       const eff = def.effects.find((e) => e.trigger === 'activate');
-      if (!eff) return { state: prev, error: 'That card cannot be activated.' };
+      // No `activate` effect is fine for a Continuous or Field Spell: it works
+      // by sitting on the field, so playing it is the whole of the activation.
+      if (!eff && !isPassiveSpell(def)) return { state: prev, error: 'That card cannot be activated.' };
       const isField = def.subKind === 'Field';
       // An Equip Spell stays face-up in the Spell/Trap Zone holding its monster,
       // exactly like a Continuous Spell — it is not spent on activation.
       const isContinuous = def.subKind === 'Continuous' || isField || isEquipSpell(c.slug);
       if (!isField && p.spellTrap) return { state: prev, error: 'Your Spell/Trap Zone is occupied.' };
 
-      if (eff.cost?.lp) {
+      if (eff?.cost?.lp) {
         if (p.lp <= eff.cost.lp) return { state: prev, error: 'Not enough Life Points.' };
         p.lp -= eff.cost.lp;
         log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
       }
-      if (eff.cost?.discard) {
+      if (eff?.cost?.discard) {
         const n = Math.min(eff.cost.discard, p.hand.length - 1);
         for (let i = 0; i < n; i++) {
           const idx = p.hand.findIndex((h) => h.uid !== c.uid);
@@ -1619,7 +1638,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
           p.grave.push(p.hand.splice(idx, 1)[0]);
         }
       }
-      if (eff.cost?.tribute) {
+      if (eff?.cost?.tribute) {
         const alive = p.monsters.filter((m): m is CardInstance => !!m);
         if (alive.length < eff.cost.tribute) return { state: prev, error: 'Not enough monsters to tribute.' };
         for (let i = 0; i < eff.cost.tribute; i++) toGrave(state, alive[i].uid, true);
@@ -1640,8 +1659,10 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
         p.spellTrap = c;
       }
 
-      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
-      runOps(ctx, eff.ops);
+      if (eff) {
+        const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
+        runOps(ctx, eff.ops);
+      }
 
       if (!isContinuous && !isField) {
         // One-shot spells go straight to the Graveyard.

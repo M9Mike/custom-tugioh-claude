@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
 import { primeAudio, sfx } from '@/lib/sfx';
@@ -53,6 +53,13 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
   const foeSeat = view.seats[foe];
   const isAi = !!foeSeat?.ai;
   const [hovered, setHovered] = useState<string | null>(null);
+  /* What a tap selects. Tapping a card used to call `chooseDuelist` straight
+     away, which locked the seat and started the duel — there was no way to read
+     a deck first, and on a phone the detail panel never updated at all because
+     it was driven by hover. A tap now only selects; the panel's own buttons
+     commit. */
+  const [selected, setSelected] = useState<string | null>(null);
+  const detailRef = useRef<HTMLElement>(null);
   const [nameDraft, setNameDraft] = useState(mySeat?.name ?? '');
   const [copied, setCopied] = useState(false);
   const [deckOpen, setDeckOpen] = useState<string | null>(null);
@@ -65,7 +72,13 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mySeat?.name]);
 
-  const detail = useMemo(() => DUELISTS.find((d) => d.id === (hovered ?? mySeat?.duelistId)) ?? DUELISTS[0], [hovered, mySeat?.duelistId]);
+  const detail = useMemo(
+    /* An explicit tap beats a stray hover: with a synthetic pointer the two can
+       disagree, and the panel followed the hover to whichever card the cursor
+       happened to be over rather than the one that was actually chosen. */
+    () => DUELISTS.find((d) => d.id === (selected ?? hovered ?? mySeat?.duelistId)) ?? DUELISTS[0],
+    [hovered, selected, mySeat?.duelistId]
+  );
   const deck = useMemo(() => (deckOpen ? DUELISTS.find((d) => d.id === deckOpen) : null), [deckOpen]);
 
   const copy = async () => {
@@ -201,12 +214,21 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => {
                   sfx.click();
-                  chooseDuelist(d.id);
+                  setSelected(d.id);
+                  // The panel stacks below the grid on a phone, so bring it into
+                  // view — otherwise a tap looks like it did nothing.
+                  detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 }}
                 /* flex-col matters: a <button> centres its content by default,
                    which would leave dead bands above and below the artwork. */
                 className={`panel grain group relative flex flex-col overflow-hidden rounded p-0 text-left transition-transform hover:-translate-y-0.5 ${
-                  isMine ? 'ring-2 ring-brass' : takenByFoe ? 'opacity-70 ring-1 ring-oxblood' : ''
+                  isMine
+                    ? 'ring-2 ring-brass'
+                    : takenByFoe
+                      ? 'opacity-70 ring-1 ring-oxblood'
+                      : selected === d.id
+                        ? 'ring-2 ring-brassdim'
+                        : ''
                 }`}
               >
                 <div className="relative min-h-[92px] w-full flex-1 overflow-hidden">
@@ -241,7 +263,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
           })}
         </div>
 
-        <aside className="panel grain flex flex-col rounded p-4">
+        <aside ref={detailRef} className="panel grain flex flex-col rounded p-4">
           <div
             className="mb-3 h-24 w-full overflow-hidden rounded border"
             style={{ borderColor: detail.accent }}

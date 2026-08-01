@@ -229,5 +229,45 @@ console.log('Rules regressions\n');
   );
 }
 
+/* ------------------------------------------------------------------ */
+console.log('\nRelinquished absorbs when its Ritual summons it');
+{
+  const s = fresh();
+  // The victim: something worth stealing.
+  const prey = card(FOE, 'summoned-skull');
+  s.players[FOE].monsters[0] = prey;
+  // A body to pay the ritual's tribute, and the ritual itself in hand.
+  s.players[ME].monsters[0] = card(ME, 'kuriboh');
+  const ritual = card(ME, 'black-illusion-ritual');
+  s.players[ME].hand = [ritual];
+  s.players[ME].deck.push(card(ME, 'relinquished'));
+
+  const after = act(s, ME, { type: 'activateSpell', uid: ritual.uid });
+  const rel = on(after, ME).find((c) => c.slug === 'relinquished');
+
+  ok(!!rel, 'Relinquished arrives from the Ritual');
+  ok(
+    !!rel && rel.absorbed.length === 1,
+    'and absorbs on arrival — it used to trigger on Normal Summon only, which a Ritual never is',
+    rel ? `absorbed ${rel.absorbed.length}` : 'no Relinquished'
+  );
+  ok(!!rel && effAtk(after, rel) > 0, 'taking the absorbed monster\'s ATK with it', rel ? `ATK ${effAtk(after, rel)}` : '');
+  ok(!!rel && !!rel.flags.indestructibleByBattle, 'and cannot be destroyed by battle');
+  ok(on(after, FOE).length === 0, 'the absorbed monster is gone from their field');
+}
+
+/* ------------------------------------------------------------------ */
+console.log('\nContinuous and Field Spells with no activation effect can still be played');
+{
+  for (const slug of ['the-dark-door', 'dark-sanctuary', 'umi']) {
+    const s = fresh();
+    const c = card(ME, slug);
+    s.players[ME].hand = [c];
+    const after = act(s, ME, { type: 'activateSpell', uid: c.uid });
+    const placed = after.players[ME].field?.slug === slug || after.players[ME].spellTrap?.slug === slug;
+    ok(placed, `${slug} reaches the field`);
+  }
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

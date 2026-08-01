@@ -139,8 +139,12 @@ const main = async () => {
   await b.page.waitForTimeout(1400);
 
   await a.page.tap('button:has-text("Seto Kaiba")');
+  await a.page.waitForTimeout(500);
+  await a.page.tap('button:has-text("Duel as Seto")');
   await a.page.waitForTimeout(700);
   await b.page.tap('button:has-text("Mai Valentine")');
+  await b.page.waitForTimeout(500);
+  await b.page.tap('button:has-text("Duel as Mai")');
   await a.page.waitForSelector('[data-testid="hand-card"]', { timeout: 25000 });
   await a.page.waitForTimeout(1800);
 
@@ -209,7 +213,14 @@ const main = async () => {
   for (let turn = 0; turn < 10 && !promptChecked; turn += 1) {
     for (const who of [a, b]) {
       if (promptChecked) break;
-      if (!(await who.page.locator('button:has-text("End Turn")').count())) continue;
+      /* Wait for the turn rather than testing for it: the clients poll about
+         once a second, and a bare check spun through every iteration in
+         milliseconds without either seat ever holding the turn. */
+      try {
+        await who.page.locator('button:has-text("End Turn")').first().waitFor({ timeout: 12000 });
+      } catch {
+        continue;
+      }
 
       await summonAndPass(who);
       await dismiss(who.page);
@@ -242,6 +253,28 @@ const main = async () => {
       }
     }
   }
+
+  /* Landscape. The board is a fixed, non-scrolling surface sized against the
+     height; sideways a phone has ~414px of it and the field ends up under the
+     hand. The notice replaces it rather than showing something unplayable. */
+  const land = await browser.newContext({ viewport: { width: 896, height: 414 }, isMobile: true, hasTouch: true });
+  const lp = await land.newPage();
+  await lp.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await lp.waitForTimeout(900);
+  await lp.tap('button:has-text("Duel the computer")');
+  await lp.waitForURL(/\/duel\//, { timeout: 25000 });
+  await lp.waitForTimeout(1200);
+  await lp.tap('button:has-text("Seto Kaiba")');
+  await lp.waitForTimeout(500);
+  await lp.tap('button:has-text("Duel as Seto")');
+  await lp.waitForTimeout(2000);
+  const notice = await lp.locator('.rotate-notice').isVisible();
+  const boardShown = await lp.locator('[data-testid="hand-strip"]').isVisible().catch(() => false);
+  console.log(`\nlandscape 896x414`);
+  console.log(`  ${notice ? '✅' : '❌'} the turn-upright notice is shown`);
+  console.log(`  ${boardShown ? '❌' : '✅'} the unplayable board is not`);
+  if (!notice || boardShown) bad += 1;
+  await land.close();
 
   if (!promptChecked) {
     console.log('  ❌ never opened the attack prompt — it went unchecked, which is not a pass');

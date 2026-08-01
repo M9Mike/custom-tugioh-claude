@@ -612,15 +612,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   relinquished: {
-    text: 'When this card is summoned: absorb 1 monster your opponent controls — this card gains its ATK and DEF, and the monster is banished. This card cannot be destroyed by battle.',
+    text:
+      'When this card is summoned: absorb 1 monster your opponent controls — this card gains its ATK and DEF, ' +
+      'and the monster is banished. This card cannot be destroyed by battle or by card effects, and its battle ' +
+      'damage pierces defence.',
     cry: 'Your monster is mine now, Yugi-boy.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        /* `onSummon`, not `onNormalSummon`. Relinquished is a Ritual monster —
+           it only ever arrives through Black Illusion Ritual, which Special
+           Summons it, so the normal-summon trigger never fired and the card did
+           nothing at all. */
+        trigger: 'onSummon',
         targets: 1,
         ops: [
           { op: 'absorb', target: OPP_PICK },
           { op: 'indestructibleByBattle', duration: 'permanent' },
+          { op: 'indestructibleByEffect', duration: 'permanent' },
+          { op: 'pierce', duration: 'permanent' },
         ],
       },
     ],

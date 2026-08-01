@@ -506,6 +506,26 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* ------------------------------------------------------------------
+   Landscape on a phone
+
+   The board is a fixed, non-scrolling surface: two players' rows, two bars
+   and a hand, sized against the height. Turned sideways a phone has about
+   414px of it, and the fixed chrome alone is 300px — so the field ends up
+   underneath the hand and nothing is tappable.
+
+   The manifest asks for portrait, but iOS ignores `orientation` for web
+   content in Safari *and* in a home-screen app, so it has to be handled
+   here. Rather than show a board that cannot be played, ask for the phone
+   the right way up. The height bound keeps laptops and tablets out of it.
+   ------------------------------------------------------------------ */
+.rotate-notice { display: none; }
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .duel-root > *:not(.rotate-notice) { display: none; }
+  .rotate-notice { display: grid; }
+}
+
 @supports not (height: 100svh) {
   .duel-root {
     --board-h: calc(100vh - 300px);
