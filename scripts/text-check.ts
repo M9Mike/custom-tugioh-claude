@@ -54,18 +54,20 @@ const ATK_THRESHOLD =
   /\b(of|with) \d{3,4} or (less|fewer|lower|more|higher) ATK\b|\bATK is \d{3,4} or (less|fewer|lower|more|higher)\b/i;
 
 function thresholdIsExpressed(def: CardDef): boolean {
-  const bounded = (f: unknown) =>
-    !!f && typeof f === 'object' && ((f as CardFilter).maxAtk != null || (f as CardFilter).minAtk != null);
+  const bounded = (f: CardFilter | undefined) => !!f && (f.maxAtk != null || f.minAtk != null);
   for (const eff of def.effects) {
-    for (const op of eff.ops as Record<string, unknown>[]) {
-      // The bound lives on the op's own filter, or on the filter inside the
-      // selector it targets — `destroy` carries its in `target.filter`, which
-      // is where four cards were being reported as broken while being fine.
-      if (bounded(op.filter)) return true;
-      const target = op.target as { filter?: unknown } | undefined;
-      if (bounded(target?.filter)) return true;
+    for (const op of eff.ops) {
+      /* `in` rather than a cast: `Op` is a discriminated union and only some
+         members carry a filter or a target, so narrowing asks the type which
+         ones do instead of asserting a shape over the top of it.
+
+         The bound lives on the op's own filter, or on the filter inside the
+         selector it targets — `destroy` carries its in `target.filter`, which
+         is where four cards were being reported as broken while being fine. */
+      if ('filter' in op && bounded(op.filter)) return true;
+      if ('target' in op && bounded(op.target.filter)) return true;
     }
-    if (eff.aura && bounded((eff.aura.target as { filter?: unknown }).filter)) return true;
+    if (bounded(eff.aura?.target.filter)) return true;
   }
   return false;
 }
