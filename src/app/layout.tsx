@@ -47,6 +47,13 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} h-full antialiased`}>
+      <head>
+        {/* Next emits only the standardised `mobile-web-app-capable`. iOS below
+            16.4 still wants the vendor-prefixed one to launch full screen from
+            the home screen, and one of the two phones this is built for is old
+            enough to care. */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </head>
       <body className="min-h-full">
         <div className="arena-bg" aria-hidden />
         {children}

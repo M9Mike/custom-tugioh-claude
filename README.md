@@ -5,7 +5,8 @@ Yu-Gi-Oh!. Ten hand-built 25-card decks, real card artwork, and **every single c
 rewritten with an overpowered, anime-flavoured effect**.
 
 Start a duel, send the link or the four-letter room code to your opponent, both pick a
-duelist, and play.
+duelist, and play. Or take the **vs computer** route and play on your own — pick which
+duelist it brings and how hard it plays.
 
 **Built for two iPhones.** The board is laid out phone-first and tested on the real
 Safari engine at both 414×896 and 440×956: safe-area insets for the notch and home
@@ -43,6 +44,74 @@ Bakura Ryou · Mako Tsunami · Weevil Underwood · Rex Raptor · Bandit Keith
 Each has a 25-card deck drawn from what they actually played in the anime, and a
 signature card used as their emblem.
 
+## The computer opponent
+
+Not a scripted bot. A turn here is a *sequence* of decisions — summon, equip, flip a
+trap, swing three times, pass — so the AI runs a beam search over whole-turn sequences,
+scores the position each line arrives at, and plays the best one it found. It answers
+trap windows by simulating both branches. It gets no special access: face-down cards on
+your side of the field are scored as an average body, never their real stats.
+
+Three levels, which differ in how wide they search and how willing they are to settle
+for a merely good line:
+
+| | Search | Looks ahead | Behaviour |
+|---|---|---|---|
+| Rookie | 1 line, 6 moves considered | — | Scores the board the moment its turn ends, and deliberately settles for a merely good line |
+| Duelist | 4 lines, 14 moves | 1 turn | Plays your whole reply turn out before committing |
+| Champion | 10 lines, 26 moves | 3 turns | Plays your reply, its own answer and your answer to that — and never settles for second best |
+
+Champion's depth is affordable because searching one turn costs about a fifth
+of a second — a twelfth of the time it is allowed: it plays out the turns that
+follow each of its dozen best lines and scores where they actually lead, rather
+than where the board happens to sit the instant it stops moving.
+
+How much each extra turn is worth, at identical search width:
+
+| Same width, different depth | |
+|---|---|
+| 3 turns vs no lookahead at all | **64.9% ± 8.8** over 240 games |
+| 3 turns vs 1 turn | 53.9% ± 4.6 over 500 games |
+
+The first is decisive: looking ahead at all is what matters. The second is
+**not** — its interval is [49.3%, 58.5%], which still contains 50% (p ≈ 0.10).
+The third turn is probably worth a few points, and the estimate came out
+positive in two separate runs, but it has not been *proven* better than one
+turn and is not presented as though it had. It stays because it costs
+essentially nothing and has never measured worse.
+
+**What makes it play well is the evaluation, not the search.** With 4000 Life Points and
+3000 ATK monsters, a duel is decided in two or three connected attacks, so the position
+is really a *race*: how many turns do I need to finish you, versus how many do you need
+to finish me. The evaluation computes both clocks directly and scores the difference;
+material is priced low on top of that, because a monster's worth is mostly already
+expressed by the clock it puts you on.
+
+That distinction is measurable. Over 320 mirrored games per matchup — every seed and
+deck pair played from both seats:
+
+| Matchup | |
+|---|---|
+| race evaluation vs the old material one, equal search width | 57.4% ± 8.2 |
+| full-width search vs a one-ply greedy pick, same evaluation | 64.9% ± 7.5 |
+| Champion vs Duelist | 68.2% ± 7.4 |
+| Champion vs Rookie | 76.8% ± 6.6 |
+| Champion vs random legal moves | 96.9% ± 2.7 |
+
+Against the earlier evaluation, which added up ATK the way you would in a long game,
+widening the search bought nothing outside the noise, and Champion actually *lost* to
+Duelist — the classic sign of searching hard over a badly calibrated score. Both are
+fixed by the evaluation change alone.
+
+```bash
+npm run ai-arena -- --games 400   # forks one worker per core; prints 95% intervals
+npx tsx scripts/ai-bench.ts       # fast tactical positions with one right answer
+```
+
+Confidence intervals are printed because they matter here: at 30 games a matchup is
+±18%, which is wide enough to hide any real difference between two configurations, and
+early tuning against numbers that noisy sent this AI down a blind alley.
+
 ## How it is built
 
 - **Next.js (App Router) + TypeScript + Tailwind**, deployed on Vercel.
@@ -53,7 +122,11 @@ signature card used as their emblem.
   - `effects/monsters.ts`, `effects/spells.ts` — the custom effect for every card.
   - `engine.ts` — summons, battle, triggers, trap windows, win conditions.
   - `autoplay.ts` — legal-move enumeration, used by the tests.
-- **`src/server/rooms.ts`** — in-memory duel rooms.
+  - `ai.ts` — the computer opponent: evaluation, move generation, beam search.
+- **`src/server/rooms.ts`** — duel rooms. A room may seat the computer instead of a
+  second player; the client nudges `/api/room/[code]/ai` on a timer and the server plays
+  one action per call, which is what paces the board so a human can follow it. The turn
+  is searched once and cached on the room, so only the first action of a turn is slow.
 - **Regions** — functions are pinned to `cdg1` (Paris) in `vercel.json` to sit beside
   the MongoDB cluster. The database is read and written on every move, so co-locating
   compute and storage matters more than shaving the player's own hop.
@@ -80,6 +153,7 @@ npm run dev
 
 npm run sim 800  # play 800 random duels offline; reports rule errors + win rates
 npm run e2e      # drive two HTTP clients through full duels against a running server
+npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run shots    # drive two desktop browsers and screenshot the whole flow
 npm run iphone   # play a full duel on WebKit at both iPhone sizes, by tapping
 npm run cards    # re-resolve decklists against the card database (authoring only)

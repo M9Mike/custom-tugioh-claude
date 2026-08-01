@@ -170,3 +170,17 @@ export function artUrl(slug: string): string {
   const c = CARDS[slug];
   return c ? `/art/${c.artId}.webp` : '/art/placeholder.webp';
 }
+
+/**
+ * Pegasus's cartoon monsters that the card name does not give away.
+ *
+ * Toon World's whole job is to make these summonable and to buff them, and it
+ * used to find them by looking for "Toon" in the name. That quietly left out
+ * Ryu-Ran and friends — Toons every bit as much in the anime — so half his
+ * deck stayed stranded behind two tributes with no payoff.
+ */
+const TOON_EXTRA = new Set(['ryu-ran', 'manga-ryu-ran', 'bickuribox', 'parrot-dragon', 'dark-rabbit']);
+
+export function isToon(slug: string): boolean {
+  return CARDS[slug]?.name.includes('Toon') || TOON_EXTRA.has(slug);
+}

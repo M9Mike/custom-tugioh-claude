@@ -1,5 +1,6 @@
 import {
   chooseDuelist,
+  configureAi,
   leaveToLobby,
   loadRoom,
   performAction,
@@ -8,6 +9,7 @@ import {
   setName,
   viewOf,
 } from '@/server/rooms';
+import type { AiLevel } from '@/game/ai';
 import type { DuelAction } from '@/game/types';
 
 export const runtime = 'nodejs';
@@ -15,6 +17,7 @@ export const dynamic = 'force-dynamic';
 
 type Body =
   | { kind: 'chooseDuelist'; token: string; duelistId: string }
+  | { kind: 'configureAi'; token: string; duelistId?: string; level?: AiLevel }
   | { kind: 'setName'; token: string; name: string }
   | { kind: 'rematch'; token: string }
   | { kind: 'toLobby'; token: string }
@@ -34,6 +37,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
   switch (body.kind) {
     case 'chooseDuelist':
       error = await chooseDuelist(room, pid, body.duelistId);
+      break;
+    case 'configureAi':
+      error = await configureAi(room, body.duelistId, body.level);
       break;
     case 'setName':
       await setName(room, pid, body.name);

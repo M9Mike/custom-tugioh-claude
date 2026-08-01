@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import GameCard from './GameCard';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
+import { AI_LEVEL_LABELS, AI_LEVEL_ORDER } from '@/game/ai-levels';
 import { primeAudio, sfx } from '@/lib/sfx';
 import { other } from '@/game/engine';
 import type { CardInstance } from '@/game/types';
@@ -13,7 +14,9 @@ interface Props {
   chooseDuelist: (id: string) => void;
   setPlayerName: (name: string) => void;
   shareUrl: string;
+  configureAi?: (opts: { duelistId?: string; level?: string }) => void;
 }
+
 
 /** Builds throwaway instances so the deck preview can reuse the card renderer. */
 function previewInstances(slugs: [string, number][]): CardInstance[] {
@@ -44,11 +47,12 @@ function previewInstances(slugs: [string, number][]): CardInstance[] {
   return out;
 }
 
-export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: Props) {
+export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, configureAi }: Props) {
   const me = view.you;
   const foe = other(me);
   const mySeat = view.seats[me];
   const foeSeat = view.seats[foe];
+  const aiLevel = foeSeat?.ai;
   const [hovered, setHovered] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState(mySeat?.name ?? '');
   const [copied, setCopied] = useState(false);
@@ -77,7 +81,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: 
   };
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-4 p-4">
+    <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-4 p-4">
       {/* header */}
       <header className="panel grain rounded p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -115,9 +119,11 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: 
 
           <div className="flex-1" />
 
-          <button className="btn rounded px-3 py-2 text-[11px]" onClick={copy}>
-            {copied ? '✓ Link copied' : 'Copy invite link'}
-          </button>
+          {!aiLevel && (
+            <button className="btn rounded px-3 py-2 text-[11px]" onClick={copy}>
+              {copied ? '✓ Link copied' : 'Copy invite link'}
+            </button>
+          )}
         </div>
 
         {!foeSeat && (
@@ -125,6 +131,36 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: 
             Send the invite link (or the room code <strong className="tracking-widest">{view.code}</strong>) to your
             opponent. The duel begins the moment you have both chosen.
           </p>
+        )}
+
+        {aiLevel && (
+          <div className="mt-3 rounded border border-brassdim/60 bg-black/30 p-3">
+            <p className="font-display text-[10px] uppercase tracking-widest text-ptextdim">Opponent strength</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {AI_LEVEL_ORDER.map((l) => (
+                <button
+                  key={l}
+                  onClick={() => {
+                    sfx.click();
+                    configureAi?.({ level: l });
+                  }}
+                  className={`flex flex-col rounded border px-2 py-1.5 text-left transition-colors ${
+                    aiLevel === l ? 'border-brass bg-brass/12' : 'border-stoneline hover:border-brass/50'
+                  }`}
+                >
+                  <span className={`font-display text-[11px] ${aiLevel === l ? 'text-brassbright' : 'text-ptext/85'}`}>
+                    {AI_LEVEL_LABELS[l].name}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
+              {AI_LEVEL_LABELS[aiLevel].blurb} It is holding{' '}
+              <span className="text-parchment">{DUELISTS.find((d) => d.id === foeSeat?.duelistId)?.name ?? 'a deck'}</span>
+              &rsquo;s deck — pick a different one for it from the panel on the right, then choose your own duelist to
+              begin.
+            </p>
+          </div>
         )}
       </header>
 
@@ -151,6 +187,11 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: 
                 <p className="truncate font-display text-sm text-parchment">
                   {seat?.name ?? 'Waiting for a duelist…'}
                   {pid === me && <span className="ml-1 text-[10px] text-brass">(you)</span>}
+                  {seat?.ai && (
+                    <span className="ml-1 rounded bg-brass/20 px-1 py-0.5 text-[9px] uppercase tracking-wider text-brass">
+                      CPU · {AI_LEVEL_LABELS[seat.ai].name}
+                    </span>
+                  )}
                 </p>
                 <p className="truncate text-[11px] text-ptextdim">
                   {d ? `${d.name} — ${d.epithet}` : seat ? 'Choosing…' : 'Empty seat'}
@@ -237,6 +278,17 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl }: 
           <button className="btn mt-3 rounded px-3 py-2 text-[11px]" onClick={() => setDeckOpen(detail.id)}>
             View 25-card deck
           </button>
+          {aiLevel && (
+            <button
+              className="btn mt-2 rounded px-3 py-2 text-[11px]"
+              onClick={() => {
+                sfx.click();
+                configureAi?.({ duelistId: detail.id });
+              }}
+            >
+              Face {detail.name.split(' ')[0]} instead
+            </button>
+          )}
           <button
             className="btn btn-primary mt-2 rounded px-3 py-2 text-xs"
             onClick={() => {

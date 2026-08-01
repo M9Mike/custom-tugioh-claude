@@ -16,7 +16,7 @@ import {
   other,
   tributesRequired,
 } from './engine';
-import { targetSpecFor } from './ui';
+import { summonTargetSpec, targetSpecFor } from './ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from './types';
 
 export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number): DuelAction[] {
@@ -113,7 +113,7 @@ export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number)
 
 /** Picks plausible targets for a card's effect, mirroring what the UI would collect. */
 function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'activate' | 'ignition' | 'trap' | 'onSummon', rnd: () => number): string[] {
-  const spec = targetSpecFor(slug, trigger);
+  const spec = trigger === 'onSummon' ? summonTargetSpec(slug) : targetSpecFor(slug, trigger);
   if (!spec) return [];
   const sides: PlayerId[] = spec.side === 'own' ? [pid] : spec.side === 'opp' ? [other(pid)] : [pid, other(pid)];
   const pool: string[] = [];

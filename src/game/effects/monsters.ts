@@ -116,14 +116,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'dark-magician': {
-    text: 'The ultimate wizard in terms of attack and defense. Gains 200 ATK for every Spellcaster in your Graveyard. Once per turn: destroy every Spell and Trap your opponent controls.',
+    text: 'The ultimate wizard in terms of attack and defense. When Summoned: it gains 200 ATK for each card in your Graveyard. Once per turn: destroy every Spell and Trap your opponent controls.',
     cry: 'Dark Magic Attack!',
     effects: [
-      {
-        trigger: 'continuous',
-        ops: [],
-        aura: { target: SELF, atk: 0 },
-      },
       {
         trigger: 'onSummon',
         ops: [{ op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' }],
@@ -157,7 +152,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'Lightning Strike!',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'damage', amount: 600, to: 'opp' },
           { op: 'pierce', duration: 'permanent' },
@@ -170,7 +165,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: it may attack twice this turn. This card inflicts piercing battle damage.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'pierce', duration: 'permanent' },
@@ -251,23 +246,23 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'exodia-the-forbidden-one': {
     text: 'If you have all five pieces of the Forbidden One in your hand, you win the Duel immediately. When Normal Summoned: draw 2 cards.',
     cry: 'EXODIA! OBLITERATE!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] }],
   },
   'left-arm-of-the-forbidden-one': {
     text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-arm-of-the-forbidden-one': {
     text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'left-leg-of-the-forbidden-one': {
     text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-leg-of-the-forbidden-one': {
     text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
 
   /* ================================================================ */
@@ -341,7 +336,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'judge-man': {
     text: 'When this card is Normal Summoned: destroy all face-down monsters your opponent controls.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }] },
     ],
   },
 
@@ -354,7 +349,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: draw 1 card, then discard 1 card at random.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'draw', count: 1, who: 'own' },
           { op: 'discard', count: 1, who: 'own' },
@@ -370,7 +365,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'ryu-kishin-powered': {
     text: 'When this card is Normal Summoned: destroy 1 Spell or Trap your opponent controls.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
   },
 
   /* ================================================================ */
@@ -447,14 +442,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'rocket-warrior': {
     text: 'This card cannot be destroyed by battle. When it attacks, the monster it battles loses 500 ATK permanently.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
   },
 
   "alligator-s-sword": {
     text: 'When this card is Normal Summoned: it gains 400 ATK until the end of the turn and can attack directly this turn.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' },
           { op: 'directAttack', duration: 'turn' },
@@ -498,7 +493,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'tiger-axe': {
     text: 'When this card is Normal Summoned: force 1 monster your opponent controls into face-up Defense Position.',
-    effects: [{ trigger: 'onSummon', targets: 1, ops: [{ op: 'forceDefense', target: OPP_PICK }] }],
+    effects: [{ trigger: 'onNormalSummon', targets: 1, ops: [{ op: 'forceDefense', target: OPP_PICK }] }],
   },
 
   'masaki-the-legendary-swordsman': {
@@ -515,7 +510,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: your opponent discards 1 random card and you draw 1 card.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'discard', count: 1, who: 'opp' },
           { op: 'draw', count: 1, who: 'own' },
@@ -583,7 +578,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: gain 700 Life Points and inflict 400 damage to your opponent.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'heal', amount: 700, to: 'own' },
           { op: 'damage', amount: 400, to: 'opp' },
@@ -604,12 +599,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'sonic-maid': {
     text: 'When this card is Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
 
   'happy-lover': {
     text: 'When this card is Normal Summoned: gain 1000 Life Points.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
   },
 
   /* ================================================================ */
@@ -621,7 +616,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'Your monster is mine now, Yugi-boy.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         targets: 1,
         ops: [
           { op: 'absorb', target: OPP_PICK },
@@ -658,8 +653,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-alligator': {
-    text: 'Requires "Toon World". Can attack your opponent directly.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] }],
+    text: 'Can attack your opponent directly. When this card is Normal Summoned: add "Toon World" from your Deck to your hand.',
+    cry: 'Snap to it!',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
+      // Pegasus's deck does nothing until Toon World is down, and drawing into
+      // one of two copies is not something to leave to luck. The cheapest body
+      // in the deck is the one that goes and fetches it.
+      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['toon-world'] } }] },
+    ],
   },
 
   'manga-ryu-ran': {
@@ -800,7 +802,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: gain 600 Life Points and draw 1 card.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'heal', amount: 600, to: 'own' },
           { op: 'draw', count: 1, who: 'own' },
@@ -850,7 +852,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'the-earl-of-demise': {
     text: 'When this card is Normal Summoned: destroy 1 face-down card your opponent controls.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
   },
 
   'dark-assailant': {
@@ -918,7 +920,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'giant-red-seasnake': {
     text: 'When this card is Normal Summoned: Special Summon 1 WATER monster with 1600 or less ATK from your Graveyard.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { attribute: 'WATER', maxAtk: 1600 }, count: 1, position: 'atk' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { attribute: 'WATER', maxAtk: 1600 }, count: 1, position: 'atk' }] },
     ],
   },
 
@@ -999,9 +1001,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'great-moth': {
-    text: 'This card inflicts piercing battle damage and cannot be destroyed by battle with monsters of 2000 or less ATK.',
+    text: 'Inflicts piercing battle damage and cannot be destroyed by battle. Gains 1 Evolution Counter during each of your End Phases; at 4 it becomes the Perfectly Ultimate Great Moth.',
+    cry: 'The cocoon opens!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'pierce', duration: 'permanent' },
+          // The old text promised immunity to anything under 2000 ATK and the
+          // card did not have it at all. Straight battle immunity is what a
+          // four-turn evolution deserves, and now the text is true.
+          { op: 'indestructibleByBattle', duration: 'permanent' },
+        ],
+      },
       { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
     ],
   },
@@ -1046,7 +1058,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is Normal Summoned: draw 1 card. This card inflicts piercing battle damage.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'draw', count: 1, who: 'own' },
           { op: 'pierce', duration: 'permanent' },
@@ -1065,7 +1077,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'My parasite is inside your deck!',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'mill', count: 3, who: 'opp' },
           { op: 'discard', count: 1, who: 'opp' },
@@ -1132,7 +1144,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'crawling-dragon': {
     text: 'When this card is Normal Summoned: Special Summon 1 Dinosaur with 1500 or less ATK from your Graveyard.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1500 }, count: 1, position: 'def' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1500 }, count: 1, position: 'def' }] },
     ],
   },
 
@@ -1145,7 +1157,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'This card inflicts piercing battle damage and cannot be destroyed by battle with monsters of 1800 or less ATK.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'pierce', duration: 'permanent' },
           { op: 'indestructibleByBattle', duration: 'permanent' },
@@ -1158,7 +1170,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is summoned: destroy every face-down card your opponent controls.',
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'onNormalSummon',
         ops: [
           { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
           { op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) },
@@ -1169,7 +1181,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   trakodon: {
     text: 'When this card is Normal Summoned: inflict 400 damage to your opponent.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'damage', amount: 400, to: 'opp' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'damage', amount: 400, to: 'opp' }] }],
   },
 
   anthrosaurus: {
@@ -1182,14 +1194,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'mad-sword-beast': {
     text: 'This card inflicts piercing battle damage. When it attacks, it gains 500 ATK until the end of the turn.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
       { trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'turn' }] },
     ],
   },
 
   sabersaurus: {
     text: 'When this card is Normal Summoned: it can attack directly this turn.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'turn' }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'directAttack', duration: 'turn' }] }],
   },
 
   /* ================================================================ */
