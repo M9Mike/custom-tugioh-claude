@@ -428,6 +428,9 @@ export interface AnimEvent {
   uid?: string;
   targetUid?: string;
   slug?: string;
+  /** The cards this one was made from — the Fusion Materials, so the board can
+      show them becoming the monster rather than just announcing the result. */
+  from?: string[];
   amount?: number;
   text?: string;
 }

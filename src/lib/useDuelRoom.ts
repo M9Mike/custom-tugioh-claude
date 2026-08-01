@@ -95,6 +95,16 @@ export function useDuelRoom(code: string | null) {
   const revisionRef = useRef(-1);
   const viewRef = useRef<RoomView | null>(null);
 
+  /* Set by the board while it still has animations to play. A ref rather than
+     state: it must not re-render the tree, and the nudge only ever reads it at
+     the moment it fires. */
+  const busyRef = useRef(false);
+  const [animating, setAnimatingState] = useState(false);
+  const setAnimating = useCallback((busy: boolean) => {
+    busyRef.current = busy;
+    setAnimatingState(busy);
+  }, []);
+
   const applyView = useCallback((v: RoomView) => {
     revisionRef.current = v.revision;
     viewRef.current = v;
@@ -228,6 +238,13 @@ export function useDuelRoom(code: string | null) {
     if (!code || !(view?.aiToMove || view?.bracketBusy)) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
+      /* Hold while the board is still narrating. The computer used to be asked
+         for its next action every 750ms whatever was on screen, so a turn of
+         six actions was six requests deep before the first one had finished
+         announcing itself — the board raced ahead and the declarations piled
+         up behind it. Asking only once the last beat has played is what makes
+         a turn read as one thing after another. */
+      if (busyRef.current && !cancelled) return;
       const token = tokenRef.current;
       if (cancelled || !token) return;
       try {
@@ -252,7 +269,9 @@ export function useDuelRoom(code: string | null) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code, view, applyView]);
+    /* `animating` is in the deps so the turn resumes the moment the board goes
+       quiet, rather than waiting for the next poll to nudge it along. */
+  }, [code, view, applyView, animating]);
 
   const act = useCallback((action: DuelAction) => send({ kind: 'duel', action }), [send]);
   const chooseDuelist = useCallback((duelistId: string) => send({ kind: 'chooseDuelist', duelistId }), [send]);
@@ -275,6 +294,7 @@ export function useDuelRoom(code: string | null) {
     rematch,
     toLobby,
     configureAi,
+    setAnimating,
     clearError: () => setError(null),
   };
 }

@@ -25,7 +25,8 @@
     "e2e-tournament": "tsx scripts/e2e-tournament.ts",
     "playable": "tsx scripts/playable-check.ts",
     "text": "tsx scripts/text-check.ts",
-    "deck-bench": "tsx scripts/deck-bench.ts"
+    "deck-bench": "tsx scripts/deck-bench.ts",
+    "pacing": "node scripts/pacing-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

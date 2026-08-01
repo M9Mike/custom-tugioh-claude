@@ -757,3 +757,105 @@ body {
   }
   .sig-stage { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   A Fusion Summon's moment.
+
+   Polymerization is three cards spent at once for the strongest body in the
+   game, and it used to resolve with the same small banner as drawing a card.
+   The materials swing in from the sides, meet in the middle, flare, and the
+   result comes out of the flash — so the summon reads as a thing being *made*
+   rather than a monster that simply appeared.
+
+   Depth comes from `perspective` on the stage, exactly like `.sig-stage`: this
+   is an overlay, so nothing about the board's own hit-testing or layout is in
+   3D. Everything animated here is transform/opacity/filter, which the
+   compositor handles without a repaint.
+--------------------------------------------------------------------------- */
+.fuse-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 52;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  perspective: 1100px;
+  perspective-origin: 50% 46%;
+  animation: sig-dim 1400ms ease-out forwards;
+}
+
+/* The materials. Each is handed its own start angle and offset by the element's
+   `--i`, so two-card and three-card recipes both fan correctly. */
+.fuse-mat {
+  position: absolute;
+  width: min(30vw, 118px);
+  transform-style: preserve-3d;
+  animation: fuse-in 1400ms cubic-bezier(0.4, 0, 0.25, 1) forwards;
+}
+@keyframes fuse-in {
+  /* Out wide and turned away, already visible so the travel is seen. */
+  0% {
+    transform: translate3d(calc(var(--dx) * 1px), calc(var(--dy) * 1px), -240px)
+      rotateY(calc(var(--spin) * 1deg)) scale(0.92);
+    opacity: 0;
+  }
+  12% { opacity: 1; }
+  /* Converging on the centre, squaring up as they come. */
+  46% {
+    transform: translate3d(calc(var(--dx) * 0.28px), calc(var(--dy) * 0.28px), -60px)
+      rotateY(calc(var(--spin) * 0.3deg)) scale(1);
+    opacity: 1;
+  }
+  /* Meet, and are consumed by the flare. */
+  62% {
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(0.72);
+    opacity: 0.85;
+    filter: brightness(2.4);
+  }
+  74%, 100% {
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(0.4);
+    opacity: 0;
+    filter: brightness(3);
+  }
+}
+
+/* The flash the result is born out of. */
+.fuse-flare {
+  position: absolute;
+  width: min(74vw, 300px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 248, 222, 0.95) 0%, rgba(255, 206, 110, 0.6) 34%, rgba(190, 120, 255, 0.25) 58%, transparent 72%);
+  mix-blend-mode: screen;
+  animation: fuse-flare 1400ms ease-out forwards;
+}
+@keyframes fuse-flare {
+  0%, 52%  { transform: scale(0.2); opacity: 0; }
+  66%      { transform: scale(1.15); opacity: 1; }
+  84%      { transform: scale(1.5); opacity: 0.28; }
+  100%     { transform: scale(1.7); opacity: 0; }
+}
+
+/* The fusion monster, arriving out of the flash rather than rushing past — it
+   is staying on the board, so it settles instead of leaving. */
+.fuse-result {
+  position: relative;
+  width: min(58vw, 232px);
+  transform-style: preserve-3d;
+  animation: fuse-out 1400ms cubic-bezier(0.16, 0.9, 0.28, 1) forwards;
+}
+@keyframes fuse-out {
+  0%, 58% { transform: translateZ(-120px) rotateY(-14deg) scale(0.5); opacity: 0; }
+  70%     { transform: translateZ(120px) rotateY(6deg) scale(1.06); opacity: 1; }
+  84%     { transform: translateZ(70px) rotateY(0deg) scale(1); opacity: 1; }
+  100%    { transform: translateZ(40px) rotateY(0deg) scale(0.98); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fuse-stage { display: none; }
+  .fuse-mat,
+  .fuse-flare,
+  .fuse-result {
+    animation: none !important;
+  }
+}

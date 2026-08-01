@@ -113,6 +113,7 @@ const main = async () => {
     await ctx.close();
   }
 
+  await fusionMomentMoves(browser, errors);
   await lifeBarSurvivesARender(browser, errors);
 
   await browser.close();
@@ -123,6 +124,86 @@ const main = async () => {
   }
   console.log('\nThe signature flourish arrives, holds and rushes past, and the Life Point bar glides. ✅');
 };
+
+/**
+ * A Fusion Summon's moment: the materials converge and the monster comes out of
+ * the flash. Sampled through the Web Animations API rather than screenshotted,
+ * for the reason the signature check already learned — a still frame lands
+ * wherever it lands, and a card that never travels looks identical to one that
+ * covered all its depth in the first 200ms.
+ */
+async function fusionMomentMoves(browser, errors) {
+  const ctx = await browser.newContext({ viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0d12';
+    host.innerHTML = `
+      <div class="fuse-stage" id="fstage">
+        <div class="fuse-mat" id="m0" style="--dx:-150;--dy:20;--spin:-70">
+          <div class="card-shell" style="aspect-ratio:59/86;background:#241a0e;border:2px solid #b98a2e"></div>
+        </div>
+        <div class="fuse-mat" id="m1" style="--dx:150;--dy:20;--spin:70">
+          <div class="card-shell" style="aspect-ratio:59/86;background:#241a0e;border:2px solid #b98a2e"></div>
+        </div>
+        <div class="fuse-flare" id="flare"></div>
+        <div class="fuse-result" id="result">
+          <div class="card-shell" style="aspect-ratio:59/86;background:#241a0e;border:2px solid #b98a2e"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(host);
+  });
+
+  const running = await page.evaluate(() => document.getAnimations().map((a) => a.animationName ?? '?'));
+  for (const name of ['fuse-in', 'fuse-flare', 'fuse-out']) {
+    if (!running.includes(name)) errors.push(`${name} never started — the Fusion moment is not wired up`);
+  }
+  if (errors.length) {
+    await ctx.close();
+    return;
+  }
+
+  const frames = await page.evaluate((duration) => {
+    const el = (id) => document.getElementById(id);
+    const baseOf = (id) => parseFloat(getComputedStyle(el(id)).width);
+    const bases = { m0: baseOf('m0'), result: baseOf('result') };
+    const out = [];
+    for (let pct = 0; pct <= 100; pct += 2) {
+      for (const a of document.getAnimations()) { a.pause(); a.currentTime = (duration * pct) / 100; }
+      const m = el('m0').getBoundingClientRect();
+      const r = el('result').getBoundingClientRect();
+      out.push({
+        pct,
+        matX: Math.round(m.left + m.width / 2),
+        matOpacity: +getComputedStyle(el('m0')).opacity,
+        resScale: r.width / bases.result,
+        resOpacity: +getComputedStyle(el('result')).opacity,
+      });
+    }
+    return out;
+  }, DURATION);
+
+  const centre = 414 / 2;
+  const matSeen = frames.filter((f) => f.matOpacity > 0.35);
+  const startOff = Math.abs(matSeen[0].matX - centre);
+  const endOff = Math.abs(matSeen[matSeen.length - 1].matX - centre);
+  const resSeen = frames.filter((f) => f.resOpacity > 0.35);
+  const peak = Math.max(...resSeen.map((f) => f.resScale));
+
+  console.log(
+    `\n  fusion: material travels ${Math.round(startOff)}px → ${Math.round(endOff)}px from centre, ` +
+      `result peaks at ${peak.toFixed(2)}×`
+  );
+
+  if (startOff < 60) errors.push(`the Fusion materials start ${Math.round(startOff)}px from centre — they never come from anywhere`);
+  if (endOff > startOff * 0.5) errors.push('the Fusion materials never converge on the centre');
+  if (!resSeen.length) errors.push('the Fusion result never becomes visible');
+  else if (peak < 1.0) errors.push(`the Fusion result peaks at ${peak.toFixed(2)}× — it never arrives`);
+  else if (resSeen[0].pct < 40) errors.push('the Fusion result is visible before its materials have met');
+
+  await ctx.close();
+}
 
 /**
  * The Life Point bar has a 500ms width transition, which only runs if the same

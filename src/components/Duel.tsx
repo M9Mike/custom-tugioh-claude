@@ -29,6 +29,8 @@ import type { RoomView } from '@/server/rooms';
 
 /** How long a signature card's moment runs. Must match the `sig-*` keyframes. */
 const SIG_MS = 1400;
+/** The least time a beat that names a card stays on screen, so it can be read. */
+const MIN_SPOKEN_MS = 800;
 
 /** A pointer that can genuinely hover: a mouse or a trackpad, never a finger. */
 const HOVER_QUERY = '(hover: hover) and (pointer: fine)';
@@ -77,6 +79,9 @@ interface Props {
   connection: string;
   /** Present during a tournament: return to the bracket. */
   onBracket?: () => void;
+  /** Tells the room whether the board is still narrating, so the computer's
+      next action waits for the current one to finish being announced. */
+  setAnimating?: (busy: boolean) => void;
 }
 
 /* The board is sized from the space actually left after the fixed chrome, so
@@ -159,7 +164,7 @@ function PlayerBar({
   );
 }
 
-export default function Duel({ view, act, rematch, toLobby, connection, onBracket }: Props) {
+export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating }: Props) {
   const state = view.state!;
   const me = view.you;
   const foe = other(me);
@@ -194,6 +199,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const [settled, setSettled] = useState(true);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
+  /** False until the first view has been absorbed without playing it. */
+  const primedAnims = useRef(false);
   const fxTimer = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const handRef = useRef<HTMLDivElement>(null);
@@ -306,16 +313,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     () => new Set([...DUELISTS.map((d) => d.emblem), 'exodia-the-forbidden-one']),
     []
   );
-  const isSignature = (a: AnimEvent | null): boolean =>
-    !!a &&
-    !!a.slug &&
-    SIGNATURE.has(a.slug) &&
-    (a.kind === 'attack' ||
+  const isSignature = (a: AnimEvent | null): boolean => {
+    if (!a || !a.slug) return false;
+    // A Fusion Summon is rare, costs three cards, and is the most spectacular
+    // thing in the game — it earns the flourish whoever is holding it, not
+    // only when the result happens to be a duelist's emblem.
+    if (a.kind === 'fusion') return true;
+    if (!SIGNATURE.has(a.slug)) return false;
+    return (
+      a.kind === 'attack' ||
       a.kind === 'directAttack' ||
       a.kind === 'activate' ||
       a.kind === 'trap' ||
-      a.kind === 'fusion' ||
-      a.kind === 'win');
+      a.kind === 'win'
+    );
+  };
 
   /**
    * `form: 'actor'` reads "Kaiba activates Dark Hole"; `form: 'card'` reads
@@ -421,6 +433,15 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      reacting to; the cards read it to decide whether they lunge, recoil, turn
      over or drop in. */
   useEffect(() => {
+    /* The server now keeps a short tail of past events so a client that missed
+       a version still receives them. On the *first* view that tail is history,
+       not news — replaying it would open a duel by re-enacting the last dozen
+       beats, and reloading mid-duel would do it again. */
+    if (!primedAnims.current) {
+      primedAnims.current = true;
+      for (const a of state.anims) seenAnims.current.add(a.id);
+      return;
+    }
     const fresh = state.anims.filter((a) => !seenAnims.current.has(a.id));
     if (!fresh.length) return;
     for (const a of fresh) seenAnims.current.add(a.id);
@@ -431,6 +452,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     if (drainingRef.current) return;
     drainingRef.current = true;
     setSettled(false);
+    setAnimating?.(true);
 
     const step = () => {
       const next = fxQueue.current.shift();
@@ -439,6 +461,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         drainingRef.current = false;
         setFx(null);
         setSettled(true);
+        setAnimating?.(false);
         return;
       }
       setFx(next);
@@ -458,7 +481,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
          thing it exists for, and a combo becomes a blur again. */
       const scale = signature ? 1 : backlog > 18 ? 0.62 : backlog > 10 ? 0.8 : 1;
       const base = signature ? SIG_MS : (FX_MS[next.kind] ?? 300);
-      const hold = Math.max(70, base * scale);
+      /* An event that puts a line on screen has to stay long enough to read it.
+         The computer plays a whole turn in one breath, so its backlog is always
+         long and compression used to squeeze the declarations down to a blur —
+         the summon, the fusion and the attack all announced themselves and none
+         of them could be read. Silent beats still compress freely; the ones
+         that speak have a floor. */
+      const speaks = declare(next) !== null;
+      const hold = Math.max(speaks ? MIN_SPOKEN_MS : 70, base * scale);
       setFxHold(hold);
       fxTimer.current = window.setTimeout(step, hold);
     };
@@ -474,8 +504,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   useEffect(
     () => () => {
       if (fxTimer.current) window.clearTimeout(fxTimer.current);
+      // Leaving mid-drain must not strand the computer waiting for a board
+      // that is no longer on screen.
+      setAnimating?.(false);
     },
-    []
+    [setAnimating]
   );
 
   /* A backstop, because "the duel is over but nothing says so" is a far worse
@@ -1171,7 +1204,41 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* A signature card's moment: it comes out of the depth of the screen,
           turns as it arrives and rushes past. The board keeps playing behind
           it — this is a flourish, not a modal. */}
-      {isSignature(fx) && (
+      {/* A Fusion Summon gets its own moment: the materials swing in, meet, and
+          the monster comes out of the flash. Three cards spent at once for the
+          strongest body in the game used to resolve with the same small banner
+          as drawing a card. */}
+      {fx?.kind === 'fusion' && (
+        <div key={`fuse-${fx.id}`} className="fuse-stage" aria-hidden>
+          {(fx.from ?? []).map((slug, i, all) => {
+            /* Fanned by index so a two-card and a three-card recipe both read:
+               spread across a half-circle, then pushed out to the edges. */
+            const spread = all.length === 1 ? 0 : (i / (all.length - 1) - 0.5) * 2;
+            return (
+              <div
+                key={`${slug}-${i}`}
+                className="fuse-mat"
+                style={
+                  {
+                    '--dx': Math.round(spread * 150),
+                    '--dy': Math.round(Math.abs(spread) * 40 - 20),
+                    '--spin': Math.round(spread * 70),
+                    animationDelay: `${i * 70}ms`,
+                  } as React.CSSProperties
+                }
+              >
+                <GameCard card={previewInstances([[slug, 1]])[0]} compact />
+              </div>
+            );
+          })}
+          <div className="fuse-flare" />
+          <div className="fuse-result">
+            <GameCard card={previewInstances([[fx.slug!, 1]])[0]} />
+          </div>
+        </div>
+      )}
+
+      {isSignature(fx) && fx?.kind !== 'fusion' && (
         <div key={`sig-${fx!.id}`} className="sig-stage" aria-hidden>
           {/* No separate title. The card is legible at this size and the
               declaration below already names it — three copies of "Two-Headed
@@ -1199,6 +1266,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             style={{ top: foeSide ? 'calc(var(--safe-top) + 14%)' : 'auto', bottom: foeSide ? 'auto' : 'calc(var(--safe-bottom) + 22%)' }}
           >
             <div
+              data-testid="declaration"
               className="declare flex max-w-[92%] items-center gap-2.5 rounded border border-brass/70 bg-ink/95 px-3 py-2 shadow-2xl"
               style={{ animationDuration: `${fxHold}ms` }}
             >

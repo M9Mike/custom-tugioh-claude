@@ -103,7 +103,13 @@ function log(state: DuelState, text: string, tone: 'normal' | 'attack' | 'effect
 }
 
 function anim(state: DuelState, ev: Omit<AnimEvent, 'id'>) {
-  state.anims.push({ id: `a${state.anims.length}_${state.version}`, ...ev });
+  /* Unique across versions, because the list is no longer emptied between
+     actions — `state.anims.length` alone repeats as the tail is trimmed.
+     Counted off the state rather than a module counter, so the engine stays
+     deterministic and two serverless instances cannot mint the same id. */
+  const prefix = `a${state.version}_`;
+  const n = state.anims.reduce((k, a) => (a.id.startsWith(prefix) ? k + 1 : k), 0);
+  state.anims.push({ id: `${prefix}${n}`, ...ev });
 }
 
 export function displayName(c: CardInstance): string {
@@ -1683,9 +1689,25 @@ export function fusionOptions(state: DuelState, pid: PlayerId): { extraUid: stri
 /* Action application                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * How many animation events stay readable after the action that produced them.
+ *
+ * Every action used to clear the list outright, which is correct only if the
+ * client sees every single version. It does not: the computer plays one action
+ * per nudge while the poll loop runs on its own timer, so a poll landing after
+ * two AI actions jumped a version — and the skipped action's events had already
+ * been destroyed. A whole turn of summons and attacks arrived as nothing but
+ * its final beat, which is exactly "I just saw their fusion on the board".
+ *
+ * Keeping a short tail costs a few hundred bytes in the saved room and lets a
+ * client that missed a version still receive what happened. Ids are unique per
+ * version, and the client already ignores any it has played.
+ */
+const ANIM_HISTORY = 48;
+
 export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction): { state: DuelState; error?: string } {
   const state: DuelState = structuredClone(prev);
-  state.anims = [];
+  state.anims = state.anims.slice(-ANIM_HISTORY);
   state.version += 1;
 
   if (state.winner) return { state: prev, error: 'The duel is already over.' };
@@ -1975,7 +1997,14 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       ex.summonedOnTurn = state.turn;
       p.monsters[zone] = ex;
       log(state, `${p.name} Fusion Summons ${CARDS[ex.slug].name}!`, 'summon', pid);
-      anim(state, { kind: 'fusion', uid: ex.uid, slug: ex.slug, player: pid, text: CARDS[ex.slug].cry ?? 'Fusion Summon!' });
+      anim(state, {
+        kind: 'fusion',
+        uid: ex.uid,
+        slug: ex.slug,
+        from: chosen.map((m) => m.slug),
+        player: pid,
+        text: CARDS[ex.slug].cry ?? 'Fusion Summon!',
+      });
       fireTriggers(state, ex, pid, 'onSummon', {}, action.targets ?? []);
       if (!state.winner) openTrapWindow(state, other(pid), 'opponentSummon', `${p.name} Fusion Summoned.`, { attackerUid: ex.uid });
       return { state };

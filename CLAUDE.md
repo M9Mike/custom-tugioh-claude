@@ -69,6 +69,7 @@ npm run pwa      http://localhost:3100               # standalone insets
 npm run anim     http://localhost:3100               # the flourish moves, the LP bar glides
 npm run audio    http://localhost:3100               # the AudioContext waits for a tap
 npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
+npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -137,6 +138,41 @@ the way: `pendingPrompt` is gated on `mode.kind === 'idle'`.
 **Flip effects resolve after the damage step**, not before. Firing them first let
 Man-Eater Bug remove the attacker and end the battle early, so the bug itself
 survived untouched. `resolveFlip()` runs on every exit path from an attack.
+
+**An action used to destroy the previous action's animations.** `applyAction`
+emptied `state.anims` every time, which is only correct if the client sees every
+single version — and it does not. The computer plays one action per nudge while
+the poll loop runs on its own 1.1s timer, so a poll landing after two AI actions
+jumped a version, and the skipped action's events were already gone. A whole
+turn arrived as nothing but its final beat: *"I instantly just saw their fusion
+on the board."* The same hole is worse in a two-player duel, where the other
+player can summon, attack and end their turn inside one 2.6s poll. `anims` keeps
+a rolling tail of 48 now, ids are unique per version, and the client ignores any
+it has already played — plus it swallows the tail on the *first* view, or
+opening a duel would re-enact its recent history.
+
+**The board must wait for its own narration.** The nudge asked the computer for
+its next action every 750ms regardless of what was on screen, so a six-action
+turn was six requests deep before the first had finished announcing itself.
+`setAnimating` reports the drain to the room, the nudge holds while it is true,
+and the turn resumes the moment the board goes quiet. That, not the queue alone,
+is what makes a turn read as one thing after another. A beat carrying a
+declaration also has a floor (`MIN_SPOKEN_MS`) so backlog compression can never
+squeeze a line below readable — silent beats still compress freely.
+
+`npm run pacing` plays a real vs-AI duel and times every declaration the board
+puts up. Note that its own loop has to wait for the computer rather than click
+on a timer: the first version clicked End Turn every 400ms, outran the improved
+pacing, and reported the fix as a regression.
+
+**A Fusion Summon is a thing being made.** Three cards spent at once for the
+strongest body in the game, and it resolved with the same small banner as
+drawing a card. The materials now swing in from the sides, meet, flare, and the
+monster comes out of the flash — and the event carries `from` (the material
+slugs) so the board can show what it was made of. Every Fusion gets it, not only
+a duelist's emblem card. Sampled by `npm run anim` the same way as the signature
+flourish: materials travel 121px inward to dead centre, the result peaks at
+1.18×, and the result must not appear before its materials have met.
 
 **Effects are queued, not batched.** Every animation the server reports used to be
 played in one frame, so a turn snapped to its final state. `Duel.tsx` drains them one

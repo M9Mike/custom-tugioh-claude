@@ -679,5 +679,35 @@ console.log('\n"Attacks every monster once each" survives its own kills');
   ok(menu.uids.includes(soft.uid), 'while the fresh target is on it');
 }
 
+console.log('\nAnimation events survive the action after them');
+{
+  /* Every action used to empty `state.anims`, which is only correct if the
+     client sees every single version. It does not. Against the computer the
+     nudge now waits for the board to finish narrating, but in a two-player
+     duel the other player can summon, attack and end their turn inside one
+     2.6s poll — and everything but the last action's events had already been
+     destroyed. The whole turn arrived as its final beat. */
+  const s = fresh();
+  const a = card(ME, 'baby-dragon');
+  const b = card(ME, 'mystical-elf');
+  s.players[ME].hand = [a, b];
+
+  const first = act(s, ME, { type: 'normalSummon', uid: a.uid, zone: 0, position: 'atk', face: 'up' });
+  const summonAnims = first.anims.filter((x) => x.kind === 'summon');
+  ok(summonAnims.length > 0, 'a summon announces itself', `${first.anims.length} events`);
+
+  // A second action in the same breath, exactly as another player would.
+  const second = act(first, ME, { type: 'toPhase', phase: 'battle' });
+  ok(
+    second.anims.some((x) => summonAnims.some((y) => y.id === x.id)),
+    'and is still readable after the next action',
+    `${second.anims.length} events, none of them the summon`
+  );
+
+  // Ids stay unique across versions now that the list is not emptied.
+  const ids = second.anims.map((x) => x.id);
+  ok(new Set(ids).size === ids.length, 'with every event id still unique', ids.join(','));
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;
