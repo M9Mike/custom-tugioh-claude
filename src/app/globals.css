@@ -558,22 +558,29 @@ body {
    ------------------------------------------------------------------ */
 
 /* A face-down card turning over. The parent zone carries the perspective. */
+/* The depth here is a `perspective()` inside the transform rather than the
+   property on a parent: the board's zones stay plain 2D boxes, so nothing about
+   hit-testing, clipping or layout changes — only the card being animated is
+   ever in 3D, and only while it is moving. */
 @keyframes fx-flip {
-  0%   { transform: rotateY(0deg);   }
-  100% { transform: rotateY(360deg); }
+  0%   { transform: perspective(760px) rotateY(0deg)   translateZ(0);    }
+  50%  { transform: perspective(760px) rotateY(180deg) translateZ(26px); }
+  100% { transform: perspective(760px) rotateY(360deg) translateZ(0);    }
 }
 .fx-flip { animation: fx-flip 460ms cubic-bezier(0.3, 0.7, 0.2, 1); }
 
-/* An attacker lunging at the other side of the field and coming back. */
+/* An attacker lunging at the other side of the field and coming back. It leans
+   towards the viewer as it goes rather than simply scaling up, so the lunge
+   reads as coming off the board. */
 @keyframes fx-strike-up {
-  0%, 100% { transform: translateY(0) scale(1); }
-  40%      { transform: translateY(-30%) scale(1.07); }
-  55%      { transform: translateY(-24%) scale(1.05); }
+  0%, 100% { transform: perspective(900px) translateY(0)    translateZ(0)    rotateX(0deg); }
+  40%      { transform: perspective(900px) translateY(-30%) translateZ(48px) rotateX(7deg); }
+  55%      { transform: perspective(900px) translateY(-24%) translateZ(34px) rotateX(4deg); }
 }
 @keyframes fx-strike-down {
-  0%, 100% { transform: translateY(0) scale(1); }
-  40%      { transform: translateY(30%) scale(1.07); }
-  55%      { transform: translateY(24%) scale(1.05); }
+  0%, 100% { transform: perspective(900px) translateY(0)   translateZ(0)    rotateX(0deg);  }
+  40%      { transform: perspective(900px) translateY(30%) translateZ(48px) rotateX(-7deg); }
+  55%      { transform: perspective(900px) translateY(24%) translateZ(34px) rotateX(-4deg); }
 }
 .fx-strike-up   { animation: fx-strike-up 460ms cubic-bezier(0.25, 0.9, 0.3, 1); }
 .fx-strike-down { animation: fx-strike-down 460ms cubic-bezier(0.25, 0.9, 0.3, 1); }
@@ -587,12 +594,13 @@ body {
 }
 .fx-recoil { animation: fx-recoil 440ms ease-out; }
 
-/* A card arriving on the field. */
+/* A card arriving on the field — laid down onto it, tilted away and settling
+   flat, rather than sliding in from off-screen. */
 @keyframes fx-arrive {
-  from { transform: translateY(-18%) scale(0.82) rotate(-6deg); opacity: 0; }
-  to   { transform: none; opacity: 1; }
+  from { transform: perspective(720px) translateY(-20%) translateZ(-90px) rotateX(46deg); opacity: 0; }
+  to   { transform: perspective(720px) translateY(0)    translateZ(0)     rotateX(0deg);  opacity: 1; }
 }
-.fx-arrive { animation: fx-arrive 340ms cubic-bezier(0.2, 0.9, 0.25, 1); }
+.fx-arrive { animation: fx-arrive 380ms cubic-bezier(0.2, 0.9, 0.25, 1); }
 
 /* A Spell or Trap going off. */
 @keyframes fx-charge {
@@ -663,4 +671,101 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .declare { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+   Signature moments
+
+   The one place 2.5D earns its keep. Tilting the whole board costs
+   playability on a 414px phone — the far row shrinks and vertical space is
+   already the scarce thing — but a duelist's signature card getting a moment
+   costs nothing when it is not happening, and gives the big plays weight.
+
+   Real perspective: the card comes out of the depth of the screen, turns as
+   it arrives and rushes past the viewer. Still only `transform` and
+   `opacity`, so it composites like everything else and no engine is needed.
+   ------------------------------------------------------------------ */
+.sig-stage {
+  position: absolute;
+  inset: 0;
+  /* Under the declaration band (55), over the damage bloom (45): the dim takes
+     the board back but "Rex attacks Feral Imp with…" still reads on top of it. */
+  z-index: 52;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  perspective: 1000px;
+  perspective-origin: 50% 45%;
+  animation: sig-dim 1400ms ease-out forwards;
+}
+@keyframes sig-dim {
+  0%   { background: rgba(0, 0, 0, 0); }
+  10%  { background: rgba(0, 0, 0, 0.72); }
+  82%  { background: rgba(0, 0, 0, 0.66); }
+  100% { background: rgba(0, 0, 0, 0); }
+}
+
+/* Sized here rather than with a width utility: the stage centres a shrink-to-fit
+   box, so a percentage width resolved against the card's own content and came
+   out a third of the size it should have been. */
+.sig-card {
+  width: min(58vw, 232px);
+  transform-style: preserve-3d;
+  animation: sig-rush 1400ms linear forwards;
+}
+/* Every segment is shaped by its own timing function rather than one curve over
+   the whole run. With a single ease-out the card covered the entire 600px of
+   depth in the first 200ms — while it was still fading in — so it appeared
+   already arrived, at its final size, and just sat there. Measured, not
+   guessed: the frames were sampled through the Web Animations API. */
+@keyframes sig-rush {
+  /* Small and angled, deep in the screen, and visible almost at once — the
+     travel has to happen where it can be seen. */
+  0%   { transform: translateZ(-620px) rotateY(46deg) rotateX(10deg); opacity: 0;
+         animation-timing-function: linear; }
+  10%  { transform: translateZ(-470px) rotateY(38deg) rotateX(9deg); opacity: 1;
+         animation-timing-function: cubic-bezier(0.26, 0.58, 0.36, 1); }
+  /* Squares up to the viewer… */
+  52%  { transform: translateZ(46px) rotateY(0deg) rotateX(0deg); opacity: 1;
+         animation-timing-function: ease-out; }
+  /* …holds long enough to read the card… */
+  78%  { transform: translateZ(64px) rotateY(0deg) rotateX(0deg); opacity: 1;
+         animation-timing-function: cubic-bezier(0.62, 0, 0.9, 0.52); }
+  /* …then accelerates past the viewer. Accelerating, or it reads as a shrink. */
+  100% { transform: translateZ(760px) rotateY(0deg) rotateX(0deg); opacity: 0; }
+}
+
+/* A blade of light crossing the card as it lands. The clip is its own element
+   so the blade stops at the card's edge — an unclipped gradient swept across
+   the dimmed board instead of across the card, which read as a screen wipe. */
+.sig-glint {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 6px; /* the same corner as .card-shell */
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.sig-glint::after {
+  content: '';
+  position: absolute;
+  inset: -20% -60%;
+  background: linear-gradient(72deg, transparent 42%, rgba(255, 246, 214, 0.62) 50%, transparent 58%);
+  animation: sig-glint 1400ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+/* Crosses just after the card squares up, so the blade lands on the hold. */
+@keyframes sig-glint {
+  0%, 50% { transform: translateX(-100%); opacity: 0; }
+  64%     { transform: translateX(0%); opacity: 1; }
+  80%     { transform: translateX(100%); opacity: 0; }
+  100%    { transform: translateX(100%); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sig-stage,
+  .sig-card,
+  .sig-glint::after {
+    animation: none !important;
+  }
+  .sig-stage { display: none; }
 }

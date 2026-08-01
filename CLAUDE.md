@@ -55,6 +55,7 @@ npm run e2e-ai   -- http://localhost:3100 3          # one seat is the computer
 npm run e2e-tournament -- http://localhost:3100 6 yugi --skilled   # whole brackets
 npm run iphone   http://localhost:3100 /tmp/shots    # WebKit, both iPhone sizes
 npm run pwa      http://localhost:3100               # standalone insets
+npm run anim     http://localhost:3100               # the signature flourish moves
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -134,6 +135,16 @@ state is already current and input never blocks on it.
 compositor handles for free. A WebGL context would roughly double a 1MB bundle to
 draw the same rectangles, and CSS does a real rotateY card flip natively.
 
+**2.5D by the moment, never the board.** Tilting the whole field costs playability on
+a 414px phone: the far row shrinks and vertical space is already the scarce thing.
+Depth is spent where it is free instead — a signature card's flourish, the flip, the
+lunge, a card being laid onto the field. Those use `perspective()` *inside* the
+transform rather than the property on a parent, so the zones stay plain 2D boxes and
+nothing about hit-testing, clipping or layout changes; only the card being animated is
+ever in 3D, and only while it moves. The signature moment is the one thing exempt from
+the queue's backlog compression — cut to a third it stops mid-rush, which reads as a
+bug rather than a flourish.
+
 **Check the thing, not a proxy for it.** Three separate false results this way:
 a deploy watcher grepping the HTML for a class that only exists in the CSS bundle;
 another looking for `/_next/static/css/` when Next serves it from `/chunks/`; and a
@@ -155,6 +166,34 @@ win count.
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,
 suspect a repeatable no-op action, not the search. `stepAI` caps a turn at 60 actions
 as a backstop.
+
+**`pointerType === 'mouse'` does not mean a mouse.** iOS synthesises mouse events
+after a tap on anything carrying `:hover` styling — the hand cards lift, so they
+qualify. The hover preview was gated on the pointer type and fired on taps anyway,
+opening the card inspector over the board; the inspector is a modal, so the next tap
+went into its scrim and the board looked dead. Ask the device what it can do
+(`matchMedia('(hover: hover) and (pointer: fine)')`), not the event what it claims to
+be. The hand also now sits *above* the inspector's scrim, so reading a card can never
+take your own cards away from you.
+
+That one surfaced as a one-in-four flake in `npm run iphone`, reported as
+`<div …> intercepts pointer events` after a thirty-second timeout — a message that
+names the symptom and hides everything else. The check now says which element is on
+top and screenshots the board, which is what turned a week-old mystery into an
+afternoon.
+
+**Sample animations, do not squint at them.** A signature card's flourish looked
+static in screenshots and it was: with one ease-out over the whole run, the card
+covered all 600px of its depth in the first 200ms — while still fading in — so it
+appeared already arrived and just sat there. Pause the animation and step it with
+`document.getAnimations()`, then read `getBoundingClientRect()` at each point. The
+projected scale is the answer; a screenshot lands wherever it lands.
+
+**Emblems worth knowing when testing the flourish.** It only fires for the ten
+signature cards, so a duel that never draws one proves nothing. Rex Raptor's
+Two-Headed King Rex and Bakura's Man-Eater Bug are the cheap ones — level four and
+below, out with a plain Normal Summon. Kaiba's Blue-Eyes needs two tributes and will
+not show up.
 
 ## Shape of the thing
 

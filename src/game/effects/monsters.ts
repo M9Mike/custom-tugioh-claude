@@ -162,10 +162,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'gaia-the-fierce-knight': {
-    text: 'When this card is Normal Summoned: it may attack twice this turn. This card inflicts piercing battle damage.',
+    text: 'When this card is summoned: it may attack twice this turn. This card inflicts piercing battle damage.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'pierce', duration: 'permanent' },
@@ -442,7 +442,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'rocket-warrior': {
     text: 'This card cannot be destroyed by battle. When it attacks, the monster it battles loses 500 ATK permanently.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] }],
   },
 
   "alligator-s-sword": {
@@ -1170,14 +1170,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'sword-arm-of-dragon': {
-    text: 'This card inflicts piercing battle damage and cannot be destroyed by battle with monsters of 1800 or less ATK.',
+    /* The old text promised immunity to monsters "of 1800 or less ATK" — a
+       threshold the engine has no concept of, so what it actually did was make
+       a 1750 ATK monster permanently unkillable in battle. A cut-off of 1800 on
+       a body of 1750 says almost nothing anyway. It grows instead, which is
+       what a dinosaur with a sword for an arm ought to do. */
+    text: 'This card inflicts piercing battle damage, and gains 400 ATK each time it destroys a monster in battle.',
+    cry: 'Cut them down!',
     effects: [
+      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
       {
-        trigger: 'onNormalSummon',
-        ops: [
-          { op: 'pierce', duration: 'permanent' },
-          { op: 'indestructibleByBattle', duration: 'permanent' },
-        ],
+        trigger: 'onBattleDestroy',
+        ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' }],
       },
     ],
   },
@@ -1210,14 +1214,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'mad-sword-beast': {
     text: 'This card inflicts piercing battle damage. When it attacks, it gains 500 ATK until the end of the turn.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
       { trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'turn' }] },
     ],
   },
 
   sabersaurus: {
-    text: 'When this card is Normal Summoned: it can attack directly this turn.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'directAttack', duration: 'turn' }] }],
+    text: 'When this card is summoned: it can attack directly this turn.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'turn' }] }],
   },
 
   /* ================================================================ */

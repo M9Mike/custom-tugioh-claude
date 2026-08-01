@@ -17,13 +17,34 @@ const PHONES = {
 };
 
 
-/** The card inspector is a modal on phones; dismiss it before driving the board. */
-const dismissInspector = async (page) => {
+/**
+ * The card inspector is a modal on phones; dismiss it before driving the board.
+ *
+ * If it will not go, say so here rather than leaving the next tap to time out
+ * thirty seconds later against "scrim intercepts pointer events" — that message
+ * names the symptom and hides the cause, which cost an afternoon once. A modal
+ * a player cannot close is a real bug, so it is worth reporting precisely.
+ */
+const dismissInspector = async (page, errors) => {
   const scrim = page.locator('[data-testid="inspector-scrim"]');
-  if (await scrim.count()) {
-    await scrim.tap({ position: { x: 5, y: 5 } });
-    await page.waitForTimeout(220);
+  if (!(await scrim.count())) return true;
+  try {
+    await scrim.tap({ position: { x: 5, y: 5 }, timeout: 5000 });
+  } catch {
+    const on = await page.evaluate(() => {
+      const s = document.querySelector('[data-testid="inspector-scrim"]');
+      if (!s) return 'gone by the time it was read';
+      const r = s.getBoundingClientRect();
+      const el = document.elementFromPoint(r.x + 5, r.y + 5);
+      return el ? `${el.tagName.toLowerCase()} ${(el.className || '').toString().slice(0, 90)}` : 'nothing';
+    });
+    errors?.push(`the card inspector could not be tapped shut — on top of it: ${on}`);
+    return false;
   }
+  await page.waitForTimeout(220);
+  if (!(await scrim.count())) return true;
+  errors?.push('the card inspector stayed open after being tapped');
+  return false;
 };
 
 /**
@@ -150,14 +171,31 @@ const main = async () => {
       for (const [tag, page] of [['mine', a], ['hers', b]]) {
         if (!(await page.locator('button:has-text("End Turn")').count())) continue;
 
-        await dismissInspector(page);
+        await dismissInspector(page, errors);
         const hand = page.locator('[data-testid="hand-card"]');
         const n = await hand.count();
         for (let h = 0; h < n; h++) {
           // The inspector can open from a previous tap; it is a modal, so it
-          // has to go before the next one lands.
-          await dismissInspector(page);
-          await hand.nth(h).tap();
+          // has to go before the next one lands. If it will not go, stop rather
+          // than tapping into it and timing out on a message about the symptom.
+          if (!(await dismissInspector(page, errors))) break;
+          try {
+            await hand.nth(h).tap({ timeout: 8000 });
+          } catch {
+            /* Something is over the hand. Say what, and at which point — a bare
+               "intercepts pointer events" after thirty seconds names only the
+               symptom. */
+            const on = await page.evaluate(() => {
+              const card = document.querySelectorAll('[data-testid="hand-card"]')[0];
+              if (!card) return 'the hand is empty';
+              const r = card.getBoundingClientRect();
+              const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+              return `${el?.tagName.toLowerCase()} ${(el?.className || '').toString().slice(0, 110)}`;
+            });
+            errors.push(`[${tag}] a hand card could not be tapped — over it: ${on}`);
+            await shot(page, `xx-hand-blocked-${tag}`);
+            break;
+          }
           await page.waitForTimeout(320);
           const summon = page.locator('button:has-text("Normal Summon")');
           if ((await summon.count()) && (await summon.first().isEnabled())) {
@@ -173,7 +211,7 @@ const main = async () => {
           await page.waitForTimeout(140);
         }
 
-        await dismissInspector(page);
+        await dismissInspector(page, errors);
         const battle = page.locator('button:has-text("Battle")');
         if ((await battle.count()) && (await battle.first().isEnabled())) {
           await battle.first().tap();
@@ -202,7 +240,7 @@ const main = async () => {
           const nothing = p.locator('button:has-text("Do nothing")');
           if (await nothing.count()) { await shot(p, '08-trap-window'); await nothing.tap(); await p.waitForTimeout(500); }
         }
-        await dismissInspector(page);
+        await dismissInspector(page, errors);
         const et = page.locator('button:has-text("End Turn")');
         if (await et.count()) { await et.first().tap(); await page.waitForTimeout(800); }
         for (const p of [a, b]) {
@@ -241,7 +279,7 @@ const main = async () => {
     await c.waitForTimeout(900);
     // Tapping a card inspects it, and the inspector is a modal on a phone. It
     // is dismissed before each tap below rather than assumed away.
-    await dismissInspector(c);
+    await dismissInspector(c, errors);
     await shot(c, '13-tournament-duel');
     // Mid-duel, the 🏆 button must go back to the standings and the "To the
     // duel" button must bring the same duel back, untouched.
@@ -251,13 +289,13 @@ const main = async () => {
     } else {
       // A synthetic pointer coming to rest over a hand card opens the inspector,
       // whose scrim then swallows the tap. A finger does the same thing.
-      await dismissInspector(c);
+      await dismissInspector(c, errors);
       await peek.first().tap();
       await c.waitForSelector('text=Round of', { timeout: 15000 });
-      await dismissInspector(c);
+      await dismissInspector(c, errors);
       await c.tap('button:has-text("To the duel")');
       await c.waitForSelector('[data-testid="hand-card"]', { timeout: 15000 });
-      await dismissInspector(c);
+      await dismissInspector(c, errors);
       console.log('  bracket peek and back ✓');
     }
 

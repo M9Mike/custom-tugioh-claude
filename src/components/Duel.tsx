@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import GameCard from './GameCard';
 import { previewInstances } from './deckPreview';
 import CardDetail from './CardDetail';
-import { CARDS, DUELIST_BY_ID, artUrl } from '@/game/cards';
+import { CARDS, DUELIST_BY_ID, DUELISTS, artUrl } from '@/game/cards';
 import {
   canActivateFromHand,
   canActivateSetCard,
@@ -25,6 +25,12 @@ import { effectLabel, summonTargetSpec, targetSpecFor, type TargetSpec } from '@
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
+
+/** How long a signature card's moment runs. Must match the `sig-*` keyframes. */
+const SIG_MS = 1400;
+
+/** A pointer that can genuinely hover: a mouse or a trackpad, never a finger. */
+const HOVER_QUERY = '(hover: hover) and (pointer: fine)';
 
 type Mode =
   | { kind: 'idle' }
@@ -83,6 +89,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const seenAnims = useRef<Set<string>>(new Set());
   /** The event the board is reacting to right now, and the queue behind it. */
   const [fx, setFx] = useState<AnimEvent | null>(null);
+  /* How long the current event is being held for. The declaration band takes
+     its fade from this rather than a fixed second, or it vanished halfway
+     through the longer events — a trap, or a signature card's moment — leaving
+     the card on screen with nothing saying whose move it was. */
+  const [fxHold, setFxHold] = useState(900);
   const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number } | null>(null);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
@@ -183,6 +194,15 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
    * board reacting to it, which is what makes a chain readable rather than a
    * result that has already happened.
    */
+  /* A duelist's signature card gets a moment. Only these ten, and only when
+     they attack or go off — otherwise the game would be all cutscene. */
+  const SIGNATURE = useMemo(() => new Set(DUELISTS.map((d) => d.emblem)), []);
+  const isSignature = (a: AnimEvent | null): boolean =>
+    !!a &&
+    !!a.slug &&
+    SIGNATURE.has(a.slug) &&
+    (a.kind === 'attack' || a.kind === 'directAttack' || a.kind === 'activate' || a.kind === 'trap' || a.kind === 'fusion');
+
   const declare = (a: AnimEvent): { verb: string; name: string; slug: string; who: PlayerId } | null => {
     if (!a.slug || !a.player) return null;
     const name = CARDS[a.slug]?.name ?? a.slug;
@@ -280,12 +300,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       }
       setFx(next);
       playOne(next);
+      const signature = isSignature(next);
       /* A backlog is the computer's whole turn arriving at once. Rather than
          make the player sit through it, the queue compresses — down to a third
          of the time once a dozen events are waiting. */
       const backlog = fxQueue.current.length;
-      const scale = backlog > 12 ? 0.34 : backlog > 6 ? 0.6 : 1;
-      fxTimer.current = window.setTimeout(step, Math.max(70, (FX_MS[next.kind] ?? 300) * scale));
+      /* A signature moment is never compressed. It is one event out of a whole
+         turn, and the animation is written for its full run — cut to a third it
+         stops mid-rush, which looks like a bug rather than a flourish. */
+      const scale = signature ? 1 : backlog > 12 ? 0.34 : backlog > 6 ? 0.6 : 1;
+      const base = signature ? SIG_MS : (FX_MS[next.kind] ?? 300);
+      const hold = Math.max(70, base * scale);
+      setFxHold(hold);
+      fxTimer.current = window.setTimeout(step, hold);
     };
     step();
     /* Deliberately no cleanup here. This effect re-runs on every state update —
@@ -349,9 +376,34 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   }, [state.version]);
 
   /* ---------------- derived helpers ---------------- */
-  /** Hover preview — mouse only, so taps never trigger it. */
+  /**
+   * Whether this device can hover at all.
+   *
+   * `pointerType === 'mouse'` was supposed to keep the preview off phones, and
+   * it does not hold: iOS synthesises mouse events after a tap on anything that
+   * has `:hover` styling — which the hand cards do, they lift. So a tap on a
+   * card in hand could open the card inspector instead of its action sheet, and
+   * because the inspector is a modal with a full-screen scrim, the next tap
+   * went into the scrim rather than the card. It looked exactly like the board
+   * had stopped responding.
+   *
+   * A phone cannot hover, so ask the device rather than trusting the event. The
+   * server has no way to know, and guessing "can hover" there would flash the
+   * preview on before hydration corrected it — so it assumes touch.
+   */
+  const canHover = useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(HOVER_QUERY);
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(HOVER_QUERY).matches,
+    () => false
+  );
+
+  /** Hover preview — real pointers only, so taps never trigger it. */
   const hoverInspect = (c: CardInstance | null) => (e: React.PointerEvent) => {
-    if (c && e.pointerType === 'mouse') setInspect(c);
+    if (canHover && c && e.pointerType === 'mouse') setInspect(c);
   };
 
   const statsOf = useCallback(
@@ -870,8 +922,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       </div>
 
-      {/* ---- my bar + hand + controls ---- */}
-      <div className="shrink-0 px-2 pb-2 pt-1">
+      {/* ---- my bar + hand + controls ----
+          Above the card inspector's scrim on purpose. The inspector is a modal
+          over the board, and it was eating taps meant for your own cards — so
+          reading a card left the hand dead until you closed it. Your hand and
+          the turn controls stay live behind it; the action sheets sit higher
+          still, so nothing this opens ends up underneath. */}
+      <div className="relative z-[31] shrink-0 px-2 pb-2 pt-1">
         <PlayerBar pid={me} top={false} />
 
         <div className="mt-1.5 flex items-end gap-2">
@@ -975,6 +1032,22 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* ================= overlays ================= */}
 
+      {/* A signature card's moment: it comes out of the depth of the screen,
+          turns as it arrives and rushes past. The board keeps playing behind
+          it — this is a flourish, not a modal. */}
+      {isSignature(fx) && (
+        <div key={`sig-${fx!.id}`} className="sig-stage" aria-hidden>
+          {/* No separate title. The card is legible at this size and the
+              declaration below already names it — three copies of "Two-Headed
+              King Rex" on screen at once was clutter, and the title collided
+              with the card as it grew towards the viewer. */}
+          <div className="sig-card relative">
+            <GameCard card={previewInstances([[fx!.slug!, 1]])[0]} />
+            <div className="sig-glint" />
+          </div>
+        </div>
+      )}
+
       {/* The declaration for whatever is resolving right now. It sits above the
           board so both players read the same line at the same moment, whether
           the computer or a person made the move. */}
@@ -989,7 +1062,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             className="pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-3"
             style={{ top: foeSide ? 'calc(var(--safe-top) + 14%)' : 'auto', bottom: foeSide ? 'auto' : 'calc(var(--safe-bottom) + 22%)' }}
           >
-            <div className="declare flex max-w-[92%] items-center gap-2.5 rounded border border-brass/70 bg-ink/95 px-3 py-2 shadow-2xl">
+            <div
+              className="declare flex max-w-[92%] items-center gap-2.5 rounded border border-brass/70 bg-ink/95 px-3 py-2 shadow-2xl"
+              style={{ animationDuration: `${fxHold}ms` }}
+            >
               <div className="w-10 shrink-0">
                 <GameCard card={previewInstances([[d.slug, 1]])[0]} compact />
               </div>
