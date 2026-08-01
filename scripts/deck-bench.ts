@@ -31,6 +31,15 @@ if (!who || !DUELISTS.some((d) => d.id === who)) {
 const brain = AI_LEVELS[GAME_AI];
 const others = DUELISTS.map((d) => d.id).filter((d) => d !== who);
 
+/* Cannot happen with ten duelists, and would be silent if it ever did:
+   `i % 0` is NaN, so every opponent would be `undefined` and the run would
+   report a win rate over whatever `playGame` made of that. Reported by Corgea
+   on the pull request that added this file. */
+if (!others.length) {
+  console.error(`No opponent for ${who} — the roster holds nobody else to duel.`);
+  process.exit(1);
+}
+
 let wins = 0;
 let played = 0;
 for (let i = 0; i < games; i++) {
