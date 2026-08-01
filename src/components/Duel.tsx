@@ -29,8 +29,15 @@ import type { RoomView } from '@/server/rooms';
 
 /** How long a signature card's moment runs. Must match the `sig-*` keyframes. */
 const SIG_MS = 1400;
-/** The least time a beat that names a card stays on screen, so it can be read. */
-const MIN_SPOKEN_MS = 800;
+/**
+ * The least time a beat that says something stays on screen.
+ *
+ * Measured rather than guessed: at 800ms the line was legible for 200–540ms
+ * once the fade in and out were accounted for, which is not long enough to read
+ * a sentence on a phone. With the animation holding full opacity across 86% of
+ * its run, this leaves a shade under a second of actual reading.
+ */
+const MIN_SPOKEN_MS = 1100;
 
 /** A pointer that can genuinely hover: a mouse or a trackpad, never a finger. */
 const HOVER_QUERY = '(hover: hover) and (pointer: fine)';
@@ -530,6 +537,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
          Marking it here rather than when the hold ends is deliberate — this is
          the moment the beat is on screen, so the board should agree with it. */
       markPlayed(next.id);
+      lastBeatAt.current = performance.now();
       playOne(next);
       const signature = isSignature(next);
       /* A backlog is the computer's whole turn arriving at once. Rather than
@@ -577,16 +585,26 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   );
 
   /* A backstop, because "the duel is over but nothing says so" is a far worse
-     failure than a win screen arriving over the tail of an animation. If the
-     queue has not finished eight seconds after the duel ended, show it anyway. */
+     failure than a win screen arriving over the tail of an animation.
+     
+     It watches for a *stall* rather than counting down from the moment the duel
+     ended. A fixed eight seconds was fine when beats were brief, and became a
+     guillotine once each one held for over a second: the turn that killed you
+     is the longest chain in the duel — summon, summon, battle, attack, damage,
+     attack, damage — and the timer cut it off partway, which is why the end of
+     a losing duel was the part nobody could follow. As long as beats keep
+     arriving the tail plays out in full; three seconds of silence means
+     something really is stuck. */
   const [forceWin, setForceWin] = useState(false);
+  const lastBeatAt = useRef(0);
   useEffect(() => {
     if (!state.winner) return;
-    const t = window.setTimeout(() => {
+    const t = window.setInterval(() => {
+      if (performance.now() - lastBeatAt.current < 3000) return;
       setSettled(true);
       setForceWin(true);
-    }, 8000);
-    return () => window.clearTimeout(t);
+    }, 500);
+    return () => window.clearInterval(t);
   }, [state.winner]);
 
   useEffect(() => {

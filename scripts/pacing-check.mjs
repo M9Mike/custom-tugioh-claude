@@ -21,7 +21,10 @@
 import { webkit, devices } from 'playwright';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3100').replace(/\/$/, '');
-const MIN_READABLE = 500; // generous floor; the code aims for 800
+/* Legible time, not time on screen. The code aims for 1100ms of beat, of which
+   ~86% is at full opacity; anything under this is not a sentence a player can
+   read while a duel is happening around them. */
+const MIN_READABLE = 700;
 
 async function post(path, body) {
   const r = await fetch(`${BASE}${path}`, {
@@ -52,25 +55,42 @@ const page = await ctx.newPage();
 await page.goto(`${BASE}/duel/${code}`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3000);
 
-/* Watch the declaration line and time every distinct thing it says. Reading the
-   DOM rather than the state is the point — this is what a person sees. */
+/* Watch the declaration line and time how long each thing it says is actually
+   *legible*.
+ *
+ * Opacity, not presence. The band fades out over the tail of its own animation,
+ * so an earlier version of this check timed the element sitting in the DOM at
+ * `opacity: 0` and cheerfully reported a full second of reading time for text
+ * nobody could see. That is the trap CLAUDE.md already warns about, walked into
+ * from the inside. */
 await page.evaluate(() => {
   window.__said = [];
   let current = null;
-  let since = performance.now();
+  let legible = 0;
+  let last = performance.now();
+  const flush = () => {
+    if (current && legible > 0) window.__said.push({ text: current, ms: Math.round(legible) });
+  };
   const read = () => {
+    const now = performance.now();
+    /* Real elapsed time between ticks, not a fixed step. A busy frame delays
+       the interval, and counting a constant per tick undercounted exactly the
+       beats with the most animation behind them — which then read as the game
+       rushing when it was the probe blinking. */
+    const dt = now - last;
+    last = now;
     const el = document.querySelector('[data-testid="declaration"]');
-    const txt = el && el.offsetParent !== null ? el.innerText.replace(/\s+/g, ' ').trim() : null;
+    const visible = el && el.offsetParent !== null && +getComputedStyle(el).opacity > 0.5;
+    const txt = visible ? el.innerText.replace(/\s+/g, ' ').trim() : null;
     if (txt !== current) {
-      if (current) window.__said.push({ text: current, ms: Math.round(performance.now() - since) });
+      flush();
       current = txt;
-      since = performance.now();
+      legible = 0;
     }
+    if (txt) legible += dt;
   };
-  window.__stop = () => {
-    if (current) window.__said.push({ text: current, ms: Math.round(performance.now() - since) });
-  };
-  setInterval(read, 40);
+  window.__stop = flush;
+  setInterval(read, 16);
 });
 
 /* Play several turns, waiting for the computer between them rather than
@@ -82,12 +102,24 @@ const myTurnVisible = async () => {
   return btn.isEnabled({ timeout: 800 }).catch(() => false);
 };
 
-for (let turn = 0; turn < 6; turn++) {
-  // Wait for my turn (up to 30s — a full AI turn now narrates itself).
+/* Played to the death on purpose. The report that prompted this check was
+   "until I lost I didn't understand anything" — the rush is at the *end* of a
+   duel, where a losing turn arrives as one long chain, so a run that stops
+   after a few polite turns never sees it. */
+const duelOver = async () =>
+  page
+    .getByText(/victory|defeat|wins the duel|you win|you lose/i)
+    .first()
+    .isVisible({ timeout: 400 })
+    .catch(() => false);
+
+for (let turn = 0; turn < 30; turn++) {
+  if (await duelOver()) break;
   let mine = false;
-  for (let i = 0; i < 60 && !mine; i++) {
+  for (let i = 0; i < 80 && !mine; i++) {
+    if (await duelOver()) break;
     mine = await myTurnVisible();
-    if (!mine) await page.waitForTimeout(500);
+    if (!mine) await page.waitForTimeout(400);
   }
   if (!mine) break;
   await page
@@ -95,9 +127,9 @@ for (let turn = 0; turn < 6; turn++) {
     .first()
     .click({ timeout: 4000 })
     .catch(() => {});
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(500);
 }
-await page.waitForTimeout(4000);
+await page.waitForTimeout(5000);
 
 await page.evaluate(() => window.__stop());
 const said = await page.evaluate(() => window.__said);

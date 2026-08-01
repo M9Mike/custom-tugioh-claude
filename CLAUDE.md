@@ -139,6 +139,29 @@ the way: `pendingPrompt` is gated on `mode.kind === 'idle'`.
 Man-Eater Bug remove the attacker and end the battle early, so the bug itself
 survived untouched. `resolveFlip()` runs on every exit path from an attack.
 
+**Time on screen is not reading time.** The declaration held for 800ms and was
+*legible* for 200–540ms of it: one cubic-bezier stretched over the whole run
+dragged the fade-in out and started the fade-out early, so most of the beat was
+spent at an opacity nobody could read. Reported as "texts showed but so fast I
+didn't understand anything", and invisible to `npm run pacing`, which was timing
+`offsetParent !== null` — the element sitting there at `opacity: 0` counted as
+shown. That is the exact trap two notes below, walked into from the inside.
+Each segment carries its own timing function now, full opacity across 86% of the
+run, and the floor is 1100ms.
+
+Measuring it needs care too: accumulating a fixed step per `setInterval` tick
+undercounts precisely the beats with the most animation behind them, so the
+probe blamed the game for its own blinking. Sum the real elapsed time between
+ticks.
+
+**A timeout is not a stall detector.** The win screen's backstop counted eight
+seconds from the moment the duel ended — fine when beats were brief, a
+guillotine once each held for over a second. The turn that kills you is the
+longest chain in the duel (summon, summon, battle, attack, damage, attack,
+damage), so the end of a losing duel was the one part nobody could follow. It
+watches for three seconds of *silence* instead: while beats keep arriving the
+tail plays out in full, and a genuine stall still shows the result.
+
 **One line, in the middle, for every beat.** There used to be two: the card's
 cry in the centre of the screen and the declaration near the edge — so Crush
 Card Virus, whose cry is "Crush Card!", printed its own name twice. The cry

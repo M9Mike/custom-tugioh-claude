@@ -649,13 +649,27 @@ body {
 }
 
 /* A move being declared before it resolves. */
+/* Nearly all of the beat is spent at full opacity.
+ *
+ * The old curve was one cubic-bezier stretched over the whole run, with the
+ * hold nominally from 14% to 82%. Measured, an 800ms beat was legible for as
+ * little as 200ms: the easing dragged the fade-in out and the fade-out began
+ * early, so the reading window was a fraction of the time the element was on
+ * screen. A player reported exactly that — "texts showed but so fast I didn't
+ * understand anything".
+ *
+ * Each segment carries its own timing function now, the same way `sig-rush`
+ * does, so the arrival is quick and the text then simply sits there. */
 @keyframes declare-in {
-  0%   { transform: translateY(10px) scale(0.94); opacity: 0; }
-  14%  { transform: translateY(0) scale(1); opacity: 1; }
-  82%  { opacity: 1; }
-  100% { transform: translateY(-6px) scale(0.98); opacity: 0; }
+  0%   { transform: translateY(8px) scale(0.96); opacity: 0;
+         animation-timing-function: cubic-bezier(0.2, 0.9, 0.25, 1); }
+  7%   { transform: translateY(0) scale(1); opacity: 1;
+         animation-timing-function: linear; }
+  93%  { transform: translateY(0) scale(1); opacity: 1;
+         animation-timing-function: ease-in; }
+  100% { transform: translateY(-5px) scale(0.99); opacity: 0; }
 }
-.declare { animation: declare-in 1000ms cubic-bezier(0.2, 0.9, 0.25, 1) forwards; }
+.declare { animation: declare-in 1000ms linear forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .declare { animation: none !important; }
