@@ -164,7 +164,11 @@ moves could go on for ever.
   live.
 - **Artwork** — the official cropped card art, downloaded and re-encoded to WebP at
   build time by `scripts/prepare-art.mjs` (never hot-linked at runtime). Card frames,
-  layout and all rules text are drawn by us.
+  layout and all rules text are drawn by us. The illustration fills the whole frame
+  and the name and stats ride on tinted bands over it, rather than sitting in a window
+  with the frame colour filling the rest: the crop is then set by the card's own 59:86
+  shape alone, so it is identical on every card at every size — and a board of nine
+  cards is nine illustrations rather than nine coloured rectangles.
 - **Sound** — synthesised at runtime with the Web Audio API; no audio files.
 
 ## Working on it

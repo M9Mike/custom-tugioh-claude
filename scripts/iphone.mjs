@@ -36,7 +36,12 @@ const enterName = async (page, value) => {
   const input = page.locator('input[placeholder="Enter your name"]');
   for (let i = 0; i < 20; i++) {
     await input.fill(value);
-    await page.waitForTimeout(200);
+    // Two checks, because the first only proves the DOM took it. Hydration
+    // lands a moment later and re-renders the controlled input from React's
+    // own (still empty) state, wiping it — so the value has to *stay*.
+    await page.waitForTimeout(250);
+    if ((await input.inputValue()) !== value) continue;
+    await page.waitForTimeout(450);
     if ((await input.inputValue()) === value) return;
   }
   throw new Error('the name field never kept its value — did the page hydrate?');

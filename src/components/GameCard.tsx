@@ -110,23 +110,25 @@ export default function GameCard({
                 e.currentTarget.style.display = 'none';
               }}
             />
+            {/* Kept clear of the name and stats bands, which now overlay the
+                top and bottom sixth of the artwork. */}
             {card.counters > 0 && (
-              <div className="card-badge absolute right-[4%] top-[4%] rounded-full bg-black/75 px-[6%] py-[2%] font-bold text-brassbright ring-1 ring-brass">
+              <div className="card-badge absolute right-[5%] top-[17%] z-10 rounded-full bg-black/75 px-[6%] py-[2%] font-bold text-brassbright ring-1 ring-brass">
                 {card.counters}
               </div>
             )}
             {card.equips.length > 0 && (
-              <div className="card-badge absolute left-[4%] top-[4%] rounded bg-black/70 px-[5%] text-brassbright">
+              <div className="card-badge absolute left-[5%] top-[17%] z-10 rounded bg-black/70 px-[5%] text-brassbright">
                 ⚔{card.equips.length}
               </div>
             )}
             {card.absorbed.length > 0 && (
-              <div className="card-badge absolute left-[4%] bottom-[4%] rounded bg-black/70 px-[5%] text-[#d5b7f0]">
+              <div className="card-badge absolute bottom-[17%] left-[5%] z-10 rounded bg-black/70 px-[5%] text-[#d5b7f0]">
                 👁{card.absorbed.length}
               </div>
             )}
             {card.flags.negated && (
-              <div className="absolute inset-0 grid place-items-center bg-black/55">
+              <div className="absolute inset-0 z-10 grid place-items-center bg-black/55">
                 <span className="card-badge font-display font-bold text-[#e0b4b4]">NEGATED</span>
               </div>
             )}
