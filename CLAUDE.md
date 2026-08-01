@@ -219,6 +219,26 @@ never draws its enabler on purpose. Measured with the real search he wins 68% ±
 and has Toon World down in 73% of games. Believe the AI's number, not the random
 one, before rebalancing anything.
 
+**A count is not a finding.** `npm run audit` printed "effects not driven: 9" and
+never said which — so nobody noticed that seven of the nine were *every Fusion
+monster in the game*, the most exciting cards there are, whose effects had
+therefore never been verified once. It names them now. Driving all seven through
+a real Fusion Summon found five correct and turned up the hole below.
+
+**Nothing was asking whether the Extra Deck could be reached.** Every playability
+check drives a card the player could hold, and a Fusion monster is never held.
+Four duelists carried a Polymerization with no Fusion to summon — a dead card in
+a twenty-five card deck, roughly one wasted draw in six games — and Mai had a
+Normal Spell, Harpie Lady Phoenix Formation, filed in her Extra Deck where
+nothing could ever reach it. Polymerization *is* the relationship: it does
+nothing alone, so it is only playable if some Fusion in the same Extra Deck has a
+recipe whose materials sit in the same main deck, and `npm run playable` checks
+exactly that now. Mai's Spell moved to her main deck where it works; the other
+three swapped the dead card for a second copy of a monster that already defines
+the deck. Flame Swordsman and Bickuribox are still flagged `isFusion` with no
+recipe, which is harmless only because no deck lists them — the check would catch
+it the moment one did.
+
 **Gating also stranded cards.** Both Ritual Spells searched only the Deck, so a
 Ritual monster you had *drawn* became a dead card the moment it could no longer be
 Normal Summoned. And Crab Turtle had no Ritual Spell in the game at all. `from` on

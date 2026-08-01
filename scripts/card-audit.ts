@@ -927,7 +927,13 @@ if (ONLY) {
   console.log(`checks: ${passedChecks}/${totalChecks} passed`);
   console.log(`effects that do nothing: ${dead.length}`);
   console.log(`ops not observable in this harness: ${unverified}`);
-  if (skipped.length) console.log(`effects not driven: ${skipped.length}`);
+  /* Name them. A bare count is the shape of a gap nobody looks at — and an
+     effect this harness never drives is exactly where a bug survives, because
+     every other check here is about the ones it does drive. */
+  if (skipped.length) {
+    console.log(`effects not driven: ${skipped.length}`);
+    for (const s of skipped) console.log(`  · ${s}`);
+  }
   console.log(failures.length ? `\n${failures.length} card(s) FAILED` : '\nEvery exercised effect behaved as written. ✅');
 }
 

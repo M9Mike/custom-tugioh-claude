@@ -148,6 +148,59 @@ for (const [slug, owners] of inDecks) {
   }
 }
 
+/* ---------------------------------------------------------------------- *
+ * The Extra Deck, which the loop above never sees.
+ *
+ * Every check here drives a card the player could hold. A Fusion monster is
+ * never held, so nothing was asking whether one could actually come out — and
+ * four duelists were carrying a Polymerization with no Fusion to summon, which
+ * is a dead card in a twenty-five card deck, plus Mai had a Normal Spell filed
+ * in her Extra Deck where it could never be reached at all.
+ *
+ * Polymerization is the whole relationship: it does nothing on its own, so it
+ * is only playable if some Fusion in the same Extra Deck has a recipe whose
+ * materials are in the same main deck.
+ * ---------------------------------------------------------------------- */
+for (const du of DUELISTS) {
+  const owned: Record<string, number> = {};
+  for (const [slug, n] of du.deck) owned[slug] = (owned[slug] ?? 0) + n;
+
+  const summonable: string[] = [];
+  for (const slug of du.extra ?? []) {
+    const def = CARDS[slug];
+    if (!def) {
+      dead.push(`${slug} is in ${du.name}'s Extra Deck but is not a card`);
+      continue;
+    }
+    const recipe = def.fusionMaterials ?? [];
+    if (!recipe.length) {
+      dead.push(
+        `${def.name} (${slug}) sits in ${du.name}'s Extra Deck with no Fusion recipe, so it can never be summoned`
+      );
+      continue;
+    }
+    const need: Record<string, number> = {};
+    for (const m of recipe) need[m] = (need[m] ?? 0) + 1;
+    const missing = Object.entries(need).filter(([m, n]) => (owned[m] ?? 0) < n);
+    if (missing.length) {
+      dead.push(
+        `${def.name} (${slug}) needs ${recipe.join(' + ')}, but ${du.name}'s deck is missing ` +
+          missing.map(([m, n]) => `${m} ×${n - (owned[m] ?? 0)}`).join(', ')
+      );
+      continue;
+    }
+    if (!owned['polymerization']) {
+      dead.push(`${def.name} (${slug}) is in ${du.name}'s Extra Deck but the deck has no Polymerization`);
+      continue;
+    }
+    summonable.push(slug);
+  }
+
+  if (owned['polymerization'] && !summonable.length) {
+    dead.push(`Polymerization is in ${du.name}'s deck with no Fusion monster it can ever summon`);
+  }
+}
+
 console.log(`Playability — ${checked} distinct cards across ${DUELISTS.length} decks\n`);
 if (dead.length) {
   console.log('Cards a player can never use:');

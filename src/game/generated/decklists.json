@@ -409,10 +409,6 @@
           1
         ],
         [
-          "polymerization",
-          1
-        ],
-        [
           "pot-of-greed",
           1
         ],
@@ -439,11 +435,13 @@
         [
           "malevolent-nuzzler",
           1
+        ],
+        [
+          "harpie-lady-phoenix-formation",
+          1
         ]
       ],
-      "extra": [
-        "harpie-lady-phoenix-formation"
-      ]
+      "extra": []
     },
     {
       "id": "pegasus",
@@ -697,7 +695,7 @@
         ],
         [
           "7-colored-fish",
-          1
+          2
         ],
         [
           "giant-red-seasnake",
@@ -737,10 +735,6 @@
         ],
         [
           "pot-of-greed",
-          1
-        ],
-        [
-          "polymerization",
           1
         ],
         [
@@ -806,7 +800,7 @@
         ],
         [
           "killer-needle",
-          1
+          2
         ],
         [
           "basic-insect",
@@ -846,10 +840,6 @@
         ],
         [
           "insect-armor-with-laser-cannon",
-          1
-        ],
-        [
-          "polymerization",
           1
         ],
         [
@@ -915,7 +905,7 @@
         ],
         [
           "megazowler",
-          1
+          2
         ],
         [
           "trakodon",
@@ -939,10 +929,6 @@
         ],
         [
           "monster-reborn",
-          1
-        ],
-        [
-          "polymerization",
           1
         ],
         [

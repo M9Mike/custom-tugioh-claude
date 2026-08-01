@@ -409,10 +409,6 @@
           1
         ],
         [
-          "Polymerization",
-          1
-        ],
-        [
           "Pot of Greed",
           1
         ],
@@ -439,11 +435,13 @@
         [
           "Malevolent Nuzzler",
           1
+        ],
+        [
+          "Harpie Lady Phoenix Formation",
+          1
         ]
       ],
-      "extra": [
-        "Harpie Lady Phoenix Formation"
-      ]
+      "extra": []
     },
     {
       "id": "pegasus",
@@ -697,7 +695,7 @@
         ],
         [
           "7 Colored Fish",
-          1
+          2
         ],
         [
           "Giant Red Seasnake",
@@ -737,10 +735,6 @@
         ],
         [
           "Pot of Greed",
-          1
-        ],
-        [
-          "Polymerization",
           1
         ],
         [
@@ -806,14 +800,14 @@
         ],
         [
           "Killer Needle",
-          1
+          2
         ],
         [
           "Basic Insect",
           1
         ],
         [
-          "Kuwagata α",
+          "Kuwagata \u03b1",
           1
         ],
         [
@@ -846,10 +840,6 @@
         ],
         [
           "Insect Armor with Laser Cannon",
-          1
-        ],
-        [
-          "Polymerization",
           1
         ],
         [
@@ -915,7 +905,7 @@
         ],
         [
           "Megazowler",
-          1
+          2
         ],
         [
           "Trakodon",
@@ -939,10 +929,6 @@
         ],
         [
           "Monster Reborn",
-          1
-        ],
-        [
-          "Polymerization",
           1
         ],
         [
