@@ -13,16 +13,35 @@ Not "here is a PR, shall I merge it?" — carry it through.
    refuses the pull request with "No commits between…", and the change ships
    with no record of why. Done exactly that once; the ordering is the whole
    guard.
-3. Merge it *immediately*. **Do not sit waiting on the CI checks** — the owner
+3. **Take it out of draft straight away** (`update_pull_request`, `draft: false`).
+   CodeRabbit answers a draft with "Review skipped — Draft detected" and nothing
+   else, which it did on four pull requests in a row. Since the plan is to read
+   the findings on the *next* piece of work, a review that never runs makes the
+   whole arrangement quietly worthless — the reading ritual is only worth having
+   if something is there to read.
+4. Merge it *immediately*. **Do not sit waiting on the CI checks** — the owner
    has said so explicitly for this project. The security scan takes anywhere
    from one to ten minutes and has never once caught something the local battery
-   did not; the local run *is* the gate. Glance at the previous pull request's
-   review comments when picking up the next piece of work, which is soon enough.
-4. Re-run the end-to-end tests **against `https://custom-tugioh-claude.vercel.app`**,
+   did not; the local run *is* the gate. The review lands after the merge, which
+   is fine: it gets read at the start of the next piece of work (step 0 below),
+   and anything real becomes its own commit.
+5. Re-run the end-to-end tests **against `https://custom-tugioh-claude.vercel.app`**,
    not just the local server. Production is Vercel functions plus MongoDB in Paris;
    a bug that only appears with real latency and a cold start will not show up on
    localhost. One already did — see *Hydration* below.
-5. Report what was verified where.
+6. Report what was verified where.
+
+And step **0**, at the start of every new piece of work, before touching
+anything: read the reviews and check runs on the pull requests merged since last
+time. That is where the delayed CI lands, and it is the whole reason merging
+without waiting is safe. Act on anything real as its own commit; say plainly if
+there was nothing, rather than leaving it ambiguous whether it was checked.
+
+```
+mcp__github__pull_request_read  method=get_reviews         # CodeRabbit's findings
+mcp__github__pull_request_read  method=get_review_comments # line-level threads
+mcp__github__pull_request_read  method=get_check_runs      # Corgea, Vercel
+```
 
 **Merge by fast-forwarding `main` locally, not with the button.** Once CI is green:
 
