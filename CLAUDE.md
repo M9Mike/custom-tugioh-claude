@@ -77,15 +77,32 @@ to empty is a no-op and nothing re-renders. The next render throws it away. Any 
 that checks the input still holds the text proves nothing; check what the room was
 actually created with.
 
-**Safe areas, twice.** The chrome ran under the notch in the installed app, was
-"fixed" behind `@media (display-mode: standalone)` — which an iOS home-screen app
-does not reliably match — and so did not change at all. Detect standalone with
-`navigator.standalone`; that has always worked on iOS. And do not use a
-`black-translucent` status bar: it draws the page under the clock and then reports
-`env(safe-area-inset-top)` as 0, leaving nothing to inset by. Plain `black` has iOS
-reserve the bar itself, which needs no pixel guessing. `npm run pwa` guards the
-detection; `/diag` reads the real numbers off the phone when something still looks
-wrong, because none of this reproduces off-device.
+**Safe areas, three times.** Three separate causes, and each fix revealed the next:
+
+1. Only the duel board inset itself, so the home page ran under the notch.
+2. The fix for that was keyed off `@media (display-mode: standalone)`, which an
+   iOS home-screen app does not reliably match, so it did nothing. Detect
+   standalone with `navigator.standalone` — that has always worked on iOS. And do
+   not use a `black-translucent` status bar: it draws the page under the clock and
+   *then* reports `env(safe-area-inset-top)` as 0, so there is nothing to inset by
+   and any fix is a guessed pixel value. Plain `black` has iOS reserve the bar.
+3. **Overlays are positioned against the padding box.** Every overlay in the duel
+   is absolutely positioned inside `.duel-root`, which is both the positioning
+   context *and* the element carrying the safe-area padding — so `top: 0` on a
+   child is the physical top of the screen, above the inset. The Direct Attack
+   prompt sat under the Dynamic Island for exactly this reason. Anything pinned to
+   an edge inside `.duel-root` has to add `var(--safe-top)`/`var(--safe-bottom)`
+   itself.
+
+`npm run pwa` guards all of it, and forces a 59px notch to do so. Note that its
+overlay half drives *two human seats* rather than the computer: against the AI it
+reached an attack only sometimes and reported the check "unchecked" the rest of
+the time, which reads as a pass. Not reaching the prompt is now a failure.
+
+`/diag` reads the real numbers off the phone when something still looks wrong,
+because none of this reproduces off-device. And iOS caches the status-bar style at
+install time — after changing it the app has to be removed from the home screen
+and added again.
 
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down

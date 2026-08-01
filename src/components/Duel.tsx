@@ -839,7 +839,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* hand action sheet */}
       {handCard && handDef && (
-        <div className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 sm:items-center" onClick={() => setMode({ kind: 'idle' })}>
+        <div
+          className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 sm:items-center"
+          style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
+          onClick={() => setMode({ kind: 'idle' })}
+        >
           <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex gap-3">
               <div className="w-24 shrink-0">
@@ -881,6 +885,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {monsterCard && monsterDef && (
         <div
           className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 sm:items-center"
+          style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
           onClick={() => setMode({ kind: 'idle' })}
         >
           <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
@@ -948,7 +953,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* targeting / tribute prompt */}
       {(mode.kind === 'target' || mode.kind === 'tributes' || mode.kind === 'attack') && (
-        <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-3">
+        <div
+          data-testid="target-prompt"
+          className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-3"
+          style={{ paddingTop: 'calc(var(--safe-top) + 0.5rem)' }}
+        >
           <div className="pointer-events-auto flex items-center gap-3 rounded border border-brass bg-ink/95 px-4 py-2 shadow-xl">
             <span className="font-display text-[11px] uppercase tracking-wider text-brassbright">
               {mode.kind === 'target'
@@ -1088,7 +1097,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* duel log */}
       {showLog && (
-        <div className="absolute inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col panel grain p-3">
+        <div
+          className="absolute inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col panel grain p-3"
+          style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
+        >
           <div className="flex items-center justify-between">
             <h3 className="font-display text-sm text-parchment">Duel Log</h3>
             <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setShowLog(false)}>
@@ -1175,7 +1187,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
       {/* connection banner */}
       {connection !== 'live' && (
-        <div className="absolute inset-x-0 top-0 z-[70] bg-oxblood/90 py-1 text-center text-[11px] text-parchment">
+        <div
+          className="absolute inset-x-0 top-0 z-[70] bg-oxblood/90 pb-1 text-center text-[11px] text-parchment"
+          style={{ paddingTop: 'calc(var(--safe-top) + 0.25rem)' }}
+        >
           {connection === 'lost' ? 'Connection lost — trying to restore your duel…' : 'Reconnecting…'}
         </div>
       )}

@@ -8,10 +8,17 @@
  * standalone. So this fakes the one signal iOS really does expose,
  * `navigator.standalone`, and checks the floor lands only then.
  *
- * What it cannot check is the *top* inset, which is now iOS's job: the status
- * bar is `black` rather than `black-translucent`, so the web view starts below
- * the clock and no inset is wanted. `/diag` reads the real numbers off the
- * device if that ever needs confirming.
+ * It then forces a notch-sized inset and plays far enough into a duel to open
+ * the attack prompt, because the second bug here was subtler than a missing
+ * value: every overlay is absolutely positioned inside `.duel-root`, which is
+ * both the positioning context *and* the element carrying the safe-area
+ * padding. An absolutely positioned child resolves against the padding box, so
+ * `top: 0` is the physical top of the screen — and the Direct Attack prompt sat
+ * under the Dynamic Island even with the inset reported correctly.
+ *
+ * The top inset itself is now iOS's job: the status bar is `black` rather than
+ * `black-translucent`, so the web view starts below the clock. `/diag` reads
+ * the real numbers off the device if that ever needs confirming.
  *
  *   PLAYWRIGHT_BROWSERS_PATH=... node scripts/pwa-check.mjs [baseUrl]
  */
@@ -85,8 +92,166 @@ const main = async () => {
     await ctx.close();
   }
 
+  /* Now the overlays, with a notch forced in.
+
+     Two human seats rather than the computer: the attack prompt only exists
+     during targeting, and reaching it has to be deterministic. Against the AI
+     this run reached an attack sometimes and reported "unchecked" the rest of
+     the time, which reads as a pass and is exactly the blind spot that let this
+     bug through in the first place. Not reaching it is now a failure. */
+  const NOTCH = 59; // an iPhone 17 Pro Max Dynamic Island, the worst case
+  const HOME = 34;  // and its home indicator
+
+  const phone = async () => {
+    const ctx = await browser.newContext({
+      viewport: { width: 414, height: 896 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    await ctx.addInitScript((px) => {
+      const css = `:root{--safe-top:${px.top}px!important;--safe-bottom:${px.bottom}px!important}`;
+      const apply = () => {
+        const el = document.createElement('style');
+        el.textContent = css;
+        document.head.appendChild(el);
+      };
+      if (document.head) apply();
+      else document.addEventListener('DOMContentLoaded', apply);
+    }, { top: NOTCH, bottom: HOME });
+    return { ctx, page: await ctx.newPage() };
+  };
+
+  const a = await phone();
+  const b = await phone();
+
+  await a.page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await a.page.waitForTimeout(900);
+  await a.page.tap('text=Start a new duel');
+  await a.page.waitForURL(/\/duel\//, { timeout: 25000 });
+  await a.page.waitForTimeout(1400);
+  const code = a.page.url().split('/').pop();
+
+  await b.page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await b.page.waitForTimeout(900);
+  await b.page.fill('input[placeholder="CODE"]', code);
+  await b.page.tap('button:has-text("Join")');
+  await b.page.waitForURL(/\/duel\//, { timeout: 25000 });
+  await b.page.waitForTimeout(1400);
+
+  await a.page.tap('button:has-text("Seto Kaiba")');
+  await a.page.waitForTimeout(700);
+  await b.page.tap('button:has-text("Mai Valentine")');
+  await a.page.waitForSelector('[data-testid="hand-card"]', { timeout: 25000 });
+  await a.page.waitForTimeout(1800);
+
+  console.log(`\noverlays, with a ${NOTCH}px notch and a ${HOME}px home indicator forced in`);
+
+  const dismiss = async (page) => {
+    const scrim = page.locator('[data-testid="inspector-scrim"]');
+    if (await scrim.count()) { await scrim.tap({ position: { x: 5, y: 5 } }); await page.waitForTimeout(200); }
+  };
+
+  /** Nothing interactive may start above the notch. */
+  const clearsTop = async (label, locator) => {
+    const box = await locator.boundingBox();
+    if (!box) { console.log(`  ❌ ${label}: not on screen`); bad += 1; return; }
+    const ok = box.y >= NOTCH - 1;
+    console.log(`  ${ok ? '✅' : '❌'} ${label}: starts at ${Math.round(box.y)}px, notch ends at ${NOTCH}`);
+    if (!ok) bad += 1;
+  };
+  /** Nor may anything sit on the home indicator. */
+  const clearsBottom = async (label, locator) => {
+    const box = await locator.boundingBox();
+    if (!box) { console.log(`  ❌ ${label}: not on screen`); bad += 1; return; }
+    const gap = 896 - (box.y + box.height);
+    const ok = gap >= HOME - 5;
+    console.log(`  ${ok ? '✅' : '❌'} ${label}: ${Math.round(gap)}px above the edge, indicator is ${HOME}`);
+    if (!ok) bad += 1;
+  };
+
+  // The hand action sheet is pinned to the bottom on a phone.
+  await dismiss(a.page);
+  await a.page.locator('[data-testid="hand-card"]').first().tap();
+  await a.page.waitForTimeout(500);
+  const sheetCancel = a.page.locator('button:has-text("Cancel")').last();
+  if (await sheetCancel.count()) {
+    await clearsBottom('hand action sheet', sheetCancel);
+    await sheetCancel.tap();
+    await a.page.waitForTimeout(300);
+  } else {
+    console.log('  ❌ hand action sheet never opened'); bad += 1;
+  }
+
+  /* Then play until someone can attack. Both seats are driven, so this does not
+     depend on either deck opening well. */
+  const summonAndPass = async (who) => {
+    await dismiss(who.page);
+    const hand = who.page.locator('[data-testid="hand-card"]');
+    for (let h = 0; h < (await hand.count()); h += 1) {
+      await hand.nth(h).tap();
+      await who.page.waitForTimeout(260);
+      const summon = who.page.locator('button:has-text("Normal Summon")');
+      if ((await summon.count()) && (await summon.first().isEnabled())) {
+        await summon.first().tap();
+        await who.page.waitForTimeout(700);
+        const pick = who.page.locator('[data-testid="foe-monster-zone"] .targetable');
+        if (await pick.count()) { await pick.first().tap(); await who.page.waitForTimeout(600); }
+        return true;
+      }
+      const cancel = who.page.locator('button:has-text("Cancel")').last();
+      if (await cancel.count()) await cancel.tap();
+      await who.page.waitForTimeout(120);
+    }
+    return false;
+  };
+
+  let promptChecked = false;
+  for (let turn = 0; turn < 10 && !promptChecked; turn += 1) {
+    for (const who of [a, b]) {
+      if (promptChecked) break;
+      if (!(await who.page.locator('button:has-text("End Turn")').count())) continue;
+
+      await summonAndPass(who);
+      await dismiss(who.page);
+
+      const battle = who.page.locator('button:has-text("Battle")');
+      if ((await battle.count()) && (await battle.first().isEnabled())) {
+        await battle.first().tap();
+        await who.page.waitForTimeout(500);
+        const mine = who.page.locator('[data-testid="my-monster-zone"] .selectable');
+        if (await mine.count()) {
+          await mine.first().tap();
+          await who.page.waitForTimeout(400);
+          const atk = who.page.locator('button:has-text("Attack (")');
+          if (await atk.count()) { await atk.first().tap(); await who.page.waitForTimeout(400); }
+          const prompt = who.page.locator('[data-testid="target-prompt"] > *');
+          if (await prompt.count()) {
+            await clearsTop('attack / targeting prompt', prompt.first());
+            promptChecked = true;
+            break;
+          }
+        }
+      }
+
+      await dismiss(who.page);
+      const et = who.page.locator('button:has-text("End Turn")');
+      if (await et.count()) { await et.first().tap(); await who.page.waitForTimeout(900); }
+      for (const p2 of [a, b]) {
+        const nothing = p2.page.locator('button:has-text("Do nothing")');
+        if (await nothing.count()) { await nothing.first().tap(); await p2.page.waitForTimeout(400); }
+      }
+    }
+  }
+
+  if (!promptChecked) {
+    console.log('  ❌ never opened the attack prompt — it went unchecked, which is not a pass');
+    bad += 1;
+  }
+
+  await a.ctx.close();
+  await b.ctx.close();
   await browser.close();
-  console.log(bad ? `\n${bad} problem(s)` : '\nStandalone detection and insets behave. ✅');
+  console.log(bad ? `\n${bad} problem(s)` : '\nStandalone detection, insets and overlays behave. ✅');
   if (bad) process.exitCode = 1;
 };
 
