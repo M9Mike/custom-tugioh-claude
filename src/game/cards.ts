@@ -104,6 +104,20 @@ function liftPassives(effects: CardEffect[]): CardEffect[] {
          "this turn", which is tied to the moment it arrived — lifting that into
          an aura would quietly let it do so every turn instead, and the text
          check caught exactly that when it first ran. */
+      /* "Attacks every monster once each" and "can attack twice" are
+         properties of the monster too, and were granted the same broken way:
+         a Monster Reborn'd Blue-Eyes Ultimate Dragon lost its multi-attack,
+         and a Set Two-Headed King Rex flipped face-up by an attack attacked
+         once for the rest of the duel. Neither op carries a duration — an
+         explicitly turn-scoped grant (Parrot Dragon's) stays behind. */
+      if (o.op === 'attackAllMonsters') {
+        grants.add('attackAll');
+        return false;
+      }
+      if (o.op === 'extraAttacks' && o.count === 1 && (!('duration' in o) || o.duration === 'permanent')) {
+        grants.add('doubleAttack');
+        return false;
+      }
       if (!PASSIVE_OPS.has(o.op) || !('duration' in o) || o.duration !== 'permanent') return true;
       grants.add(o.op as EquipGrant);
       return false;

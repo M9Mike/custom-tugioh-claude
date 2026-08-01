@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -637,6 +637,46 @@ console.log('\n"While Umi is on the field" follows Umi, whatever order things ha
   s.players[ME].field = null;
   ok(effAtk(s, fish, ME) === 1800, 'and it all lapses when Umi leaves', `${effAtk(s, fish, ME)}`);
   ok(!effFlags(s, fish, ME).pierce, 'piercing included');
+}
+
+console.log('\n"Attacks every monster once each" survives its own kills');
+{
+  /* `maxAttacks` read the opponent's *current* monster count, so every kill
+     shrank the allowance: against three defenders Blue-Eyes Ultimate Dragon
+     killed two and the third was suddenly unreachable, because the ceiling had
+     dropped below the attacks already spent. And nothing remembered which
+     monster had been visited, so it could hammer one survivor repeatedly. */
+  const s = fresh('battle');
+  const beud = card(ME, 'blue-eyes-ultimate-dragon');
+  s.players[ME].monsters[0] = beud;
+  // Enough Life Points that the demonstration is about attacks, not lethal.
+  s.players[FOE].lp = 30000;
+  for (let i = 0; i < 3; i++) s.players[FOE].monsters[i] = card(FOE, 'mystical-elf');
+
+  let st = s;
+  for (let i = 0; i < 3; i++) {
+    const target = st.players[FOE].monsters.find((m) => m)!;
+    const atk = st.players[ME].monsters[0]!;
+    ok(canAttackWith(st, ME, atk), `attack ${i + 1} of 3 is allowed`, `used ${atk.attacksUsed}`);
+    st = act(st, ME, { type: 'attack', uid: atk.uid, targetUid: target.uid });
+  }
+  ok(on(st, FOE).length === 0, 'and all three defenders are gone', `${on(st, FOE).length} left`);
+  ok(!canAttackWith(st, ME, st.players[ME].monsters[0]!), 'with no bonus direct attack afterwards');
+
+  // Once each: a survivor cannot be hammered while a fresh target remains.
+  const t = fresh('battle');
+  const dragon = card(ME, 'blue-eyes-ultimate-dragon');
+  t.players[ME].monsters[0] = dragon;
+  const wall = card(FOE, 'mystical-elf');
+  wall.flags.indestructibleByBattle = true;
+  const soft = card(FOE, 'mystical-elf');
+  t.players[FOE].monsters[0] = wall;
+  t.players[FOE].monsters[1] = soft;
+
+  const afterWall = act(t, ME, { type: 'attack', uid: dragon.uid, targetUid: wall.uid });
+  const menu = legalAttackTargets(afterWall, ME, afterWall.players[ME].monsters[0]!);
+  ok(!menu.uids.includes(wall.uid), 'a survivor already visited is off the menu', menu.uids.join(','));
+  ok(menu.uids.includes(soft.uid), 'while the fresh target is on it');
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');

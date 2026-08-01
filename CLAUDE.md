@@ -12,38 +12,21 @@ Not "here is a PR, shall I merge it?" — carry it through.
    fast-forwarding `main` first leaves no commits between the two, GitHub
    refuses the pull request with "No commits between…", and the change ships
    with no record of why. Done exactly that once; the ordering is the whole
-   guard.
-3. **Take it out of draft straight away** (`update_pull_request`, `draft: false`).
-   CodeRabbit answers a draft with "Review skipped — Draft detected" and nothing
-   else, which it did on four pull requests in a row. Since the plan is to read
-   the findings on the *next* piece of work, a review that never runs makes the
-   whole arrangement quietly worthless — the reading ritual is only worth having
-   if something is there to read.
-4. Merge it *immediately*. **Do not sit waiting on the CI checks** — the owner
-   has said so explicitly for this project. The security scan takes anywhere
-   from one to ten minutes and has never once caught something the local battery
-   did not; the local run *is* the gate. The review lands after the merge, which
-   is fine: it gets read at the start of the next piece of work (step 0 below),
-   and anything real becomes its own commit.
-5. Re-run the end-to-end tests **against `https://custom-tugioh-claude.vercel.app`**,
+   guard. The pull request is a record, nothing more.
+3. Merge it *immediately*. The owner's explicit instruction: **do not wait on,
+   read, or rely on the bot reviews (Corgea, CodeRabbit) at all** — the local
+   battery before the push and the production battery after the deploy are the
+   whole gate, and they are yours to run. CodeRabbit rate-limits at this
+   shipping pace anyway, and in six pull requests the bots produced one
+   defensive nit between them.
+4. Re-run the end-to-end tests **against `https://custom-tugioh-claude.vercel.app`**,
    not just the local server. Production is Vercel functions plus MongoDB in Paris;
    a bug that only appears with real latency and a cold start will not show up on
    localhost. One already did — see *Hydration* below.
-6. Report what was verified where.
+5. Report what was verified where.
 
-And step **0**, at the start of every new piece of work, before touching
-anything: read the reviews and check runs on the pull requests merged since last
-time. That is where the delayed CI lands, and it is the whole reason merging
-without waiting is safe. Act on anything real as its own commit; say plainly if
-there was nothing, rather than leaving it ambiguous whether it was checked.
-
-```
-mcp__github__pull_request_read  method=get_reviews         # CodeRabbit's findings
-mcp__github__pull_request_read  method=get_review_comments # line-level threads
-mcp__github__pull_request_read  method=get_check_runs      # Corgea, Vercel
-```
-
-**Merge by fast-forwarding `main` locally, not with the button.** Once CI is green:
+**Merge by fast-forwarding `main` locally, not with the button.** As soon as the
+local battery is green:
 
 ```bash
 git fetch origin main
@@ -416,6 +399,27 @@ Only `duration: 'permanent'` is lifted. Sabersaurus can attack directly "this
 turn", which belongs to the moment it arrived — lifting that would quietly let it
 do so every turn, and `npm run text` caught precisely that within a minute of the
 change.
+
+The same class had two stragglers found later: `attackAllMonsters` and a
+permanent `extraAttacks` are properties too, and were still `onSummon` ops — so
+a Monster Reborn'd Blue-Eyes Ultimate Dragon lost "attacks every monster once
+each", and a Set Two-Headed King Rex flipped face-up by an attack attacked once
+for the rest of the duel. Both lift into aura grants now (`attackAll`,
+`doubleAttack`). Parrot Dragon's "attack once more *this turn*" is the
+counter-example: the op carries `duration: 'turn'` and stays behind, because it
+used to be applied permanently and stacked — one extra attack per turn for every
+monster it had ever killed.
+
+**"Once each" needs a memory.** `maxAttacks` read the opponent's *current*
+monster count, so every kill shrank the allowance: against three defenders the
+Ultimate Dragon killed two and the third was unreachable, the ceiling having
+dropped below the attacks already spent. And nothing remembered which monster
+had been visited, so it could hammer one survivor repeatedly. `attacked` on the
+instance records the visits (declaration counts, outcome does not), resets with
+`attacksUsed`, and the allowance is spent-plus-unvisited so a kill never revokes
+the next attack. The audit only began driving Fusion Summons the same day —
+every Fusion monster's effect had shipped unverified, which is where this class
+of bug had been hiding.
 
 **Audio: the context must be *built* inside a gesture, not merely resumed in
 one.** The report was exact — "when I switch to the background and come back the

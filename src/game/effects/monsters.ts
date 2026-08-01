@@ -183,7 +183,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'gaia-the-fierce-knight': {
-    text: 'When this card is summoned: it may attack twice this turn. This card inflicts piercing battle damage.',
+    /* Said "attack twice this turn" while the engine had always granted it
+       permanently — the words were wrong long before the grant became an aura;
+       the trigger's mere existence was what satisfied the text check. Worded
+       like its siblings now, matching what it has always actually done. */
+    text: 'This card can attack twice each Battle Phase and inflicts piercing battle damage.',
     effects: [
       {
         trigger: 'onSummon',
@@ -797,7 +801,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'parrot-dragon': {
     text: 'When this card destroys a monster in battle: it may attack once more this turn.',
-    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'extraAttacks', count: 1 }] }],
+    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'extraAttacks', count: 1, duration: 'turn' }] }],
   },
 
   'dragon-piper': {

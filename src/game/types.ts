@@ -179,7 +179,7 @@ export type Op =
   | { op: 'addCounter'; amount: number }
   | { op: 'negateAttack' }
   | { op: 'endBattlePhase' }
-  | { op: 'extraAttacks'; count: number }
+  | { op: 'extraAttacks'; count: number; duration?: Duration }
   | { op: 'attackAllMonsters' }
   | { op: 'directAttack'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
@@ -211,7 +211,9 @@ export type EquipGrant =
   | 'indestructibleByEffect'
   | 'untargetable'
   /** Held down by an aura — lapses the moment the card holding it leaves. */
-  | 'cannotAttack';
+  | 'cannotAttack'
+  /** Attacks every opposing monster once each Battle Phase. */
+  | 'attackAll';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -333,6 +335,12 @@ export interface CardInstance {
   turnFlags: CardFlags;
   summonedOnTurn: number;
   attacksUsed: number;
+  /**
+   * Monsters this card has declared an attack on this turn, for "attacks every
+   * monster your opponent controls once each". Optional so hand-built test
+   * instances stay valid; the engine always reads it through `?? []`.
+   */
+  attacked?: string[];
   effectUsedOnTurn: number;
   /**
    * Turn this monster last changed battle position. A monster may do so only

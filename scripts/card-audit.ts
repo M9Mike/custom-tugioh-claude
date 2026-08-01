@@ -655,12 +655,40 @@ for (const def of Object.values(CARDS)) {
 
     /* ---- Monsters summoned from the hand ---- */
     if (eff.trigger === 'onSummon' || eff.trigger === 'onNormalSummon') {
-      if (def.isFusion) {
-        // Reaches the field only through the Fusion button, which the fusion
-        // path already covers; Normal Summoning it is correctly illegal.
-        skipped.push(`${def.slug} (Fusion, summoned via Extra Deck)`);
+      if (def.isFusion && (def.fusionMaterials ?? []).length) {
+        /* Driven through a real Fusion Summon. This used to be skipped with a
+           note claiming another path covered it — nothing did, and every
+           Fusion monster in the game shipped with its effect never verified
+           once. That is how Blue-Eyes Ultimate Dragon's "attacks every monster
+           once each" could shrink with every kill and no check noticed.
+
+           Materials go to the hand, which `fusionSummon` accepts, so recipes
+           of any size fit whatever the board looks like. */
+        const s = stocked();
+        const c = mint(s, ME, def.slug);
+        s.players[ME].extra.push(c);
+        s.players[ME].hand.push(mint(s, ME, 'polymerization'));
+        const mats = (def.fusionMaterials ?? []).map((m) => {
+          const inst = mint(s, ME, m);
+          s.players[ME].hand.push(inst);
+          return inst.uid;
+        });
+        satisfy(s, eff, c);
+        audit(def, eff, s, (st) =>
+          run(st, ME, {
+            type: 'fusionSummon',
+            extraUid: c.uid,
+            materials: mats,
+            zone: st.players[ME].monsters.findIndex((m) => !m),
+            position: 'atk',
+            targets: targetsFor(st, def),
+          })
+        );
         continue;
       }
+      /* A Fusion with no recipe — Flame Swordsman, Bickuribox — lives in a
+         main deck as a plain beater, so the ordinary Normal Summon below is
+         exactly how a player reaches it. */
       const s = stocked();
       const c = mint(s, ME, def.slug);
       s.players[ME].hand.push(c);

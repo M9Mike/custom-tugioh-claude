@@ -290,17 +290,25 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('indestructibleByEffect')) merged.indestructibleByEffect = true;
   if (grants.has('doubleAttack')) merged.extraAttacks = (merged.extraAttacks ?? 0) + 1;
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
+  if (grants.has('attackAll')) merged.attackAll = true;
   return merged;
 }
 
 export function maxAttacks(state: DuelState, c: CardInstance, controller: PlayerId): number {
   const f = effFlags(state, c, controller);
-  let n = 1 + (f.extraAttacks ?? 0);
-  if (f.attackAll) {
-    const oppMonsters = state.players[other(controller)].monsters.filter(Boolean).length;
-    n = Math.max(n, oppMonsters);
-  }
-  return n;
+  const base = 1 + (f.extraAttacks ?? 0);
+  if (!f.attackAll) return base;
+  /* "Attacks every monster your opponent controls once each." Counting the
+     *current* board shrank the allowance with every kill: three defenders
+     became two attacks, because the second kill lowered the ceiling below the
+     attacks already spent and the third defender was suddenly unreachable.
+     The allowance is what has been spent plus the monsters not yet visited,
+     so destroying a target never revokes the next one. */
+  const visited = c.attacked ?? [];
+  const fresh = state.players[other(controller)].monsters.filter(
+    (m): m is CardInstance => !!m && !visited.includes(m.uid)
+  ).length;
+  return Math.max(base, c.attacksUsed + fresh);
 }
 
 /* ------------------------------------------------------------------ */
@@ -431,6 +439,7 @@ function resetInstance(c: CardInstance) {
   c.flags = {};
   c.turnFlags = {};
   c.attacksUsed = 0;
+  c.attacked = [];
   c.absorbed = [];
   c.face = 'up';
   c.position = 'atk';
@@ -809,6 +818,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.position = 'atk';
           t.face = 'up';
           t.attacksUsed = 0;
+          t.attacked = [];
           if (op.duration !== 'permanent') t.controlRevertsOnTurn = state.turn;
           state.players[ctx.controller].monsters[dest] = t;
           log(state, `${state.players[ctx.controller].name} takes control of ${displayName(t)}!`, 'effect', ctx.controller);
@@ -966,9 +976,17 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'endBattlePhase':
         ctx.battlePhaseEnded = true;
         break;
-      case 'extraAttacks':
-        applyFlag(ctx.source, 'extraAttacks', (ctx.source.flags.extraAttacks ?? 0) + op.count, 'permanent');
+      case 'extraAttacks': {
+        /* Parrot Dragon's "it may attack once more this turn" was applied
+           permanently — every kill added an attack per turn for the rest of
+           the duel, stacking without limit. The op carries its duration now,
+           and a turn-scoped grant accumulates in turnFlags, which the end of
+           turn already wipes. */
+        const dur = op.duration ?? 'permanent';
+        const store = dur === 'turn' ? ctx.source.turnFlags : ctx.source.flags;
+        applyFlag(ctx.source, 'extraAttacks', (store.extraAttacks ?? 0) + op.count, dur);
         break;
+      }
       case 'attackAllMonsters':
         applyFlag(ctx.source, 'attackAll', true, 'permanent');
         break;
@@ -1282,6 +1300,10 @@ function beginAttack(state: DuelState, attackerUid: string, targetUid: string | 
   const controller = found.controller;
   const defender = other(controller);
 
+  // The visit is the declaration, not the outcome — a negated attack still
+  // spent this monster's "once" against that target.
+  if (targetUid) attacker.attacked = [...(attacker.attacked ?? []), targetUid];
+
   fireTriggers(state, attacker, controller, 'onDeclareAttack', { attackerUid, targetUid: targetUid ?? undefined });
   if (state.winner) return;
 
@@ -1416,6 +1438,7 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       m.turnDefMod = 0;
       m.turnFlags = {};
       m.attacksUsed = 0;
+      m.attacked = [];
     }
   }
   // Return borrowed monsters.
@@ -1545,6 +1568,14 @@ export function legalAttackTargets(state: DuelState, pid: PlayerId, c: CardInsta
   const flags = effFlags(state, c, pid);
   if (flags.directAttack) return { uids: monsters.map((m) => m.uid), direct: true };
   if (monsters.length === 0) return { uids: [], direct: true };
+  if (flags.attackAll) {
+    // Once each: a monster already visited this turn is off the menu while an
+    // unvisited one remains. If every one has been visited, only the base
+    // allowance can justify another swing, and then the field reopens.
+    const visited = c.attacked ?? [];
+    const freshOnes = monsters.filter((m) => !visited.includes(m.uid));
+    return { uids: (freshOnes.length ? freshOnes : monsters).map((m) => m.uid), direct: false };
+  }
   return { uids: monsters.map((m) => m.uid), direct: false };
 }
 
@@ -1716,6 +1747,7 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       c.face = action.face;
       c.summonedOnTurn = state.turn;
       c.attacksUsed = 0;
+      c.attacked = [];
       p.monsters[action.zone] = c;
       p.normalSummonUsed = true;
 
