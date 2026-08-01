@@ -9,6 +9,7 @@
  *   npx tsx scripts/rules-check.ts
  */
 import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk } from '../src/game/engine';
+import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -422,7 +423,7 @@ console.log('\nSwords of Revealing Light locks the opponent, not the caster');
   ok(!canAttackWith(foeTurn, FOE, foeTurn.players[FOE].monsters[0]!), "the opponent's cannot");
 }
 
-console.log('\nA continuous trap that is not reusable goes off once');
+console.log('\nA card already face-up on the field cannot be activated again');
 {
   // Call of the Haunted stays face-up after it resolves. Being on the field is
   // not the same as being armed again, or it would fire every single turn.
@@ -432,6 +433,21 @@ console.log('\nA continuous trap that is not reusable goes off once');
   trap.summonedOnTurn = 0;
   s.players[ME].spellTrap = trap;
   ok(!canActivateSetCard(s, ME, trap), 'a face-up continuous trap is not offered again');
+
+  /* And the same for every Continuous or Field Spell — those sit in the zone
+     for the rest of the duel, so "still there" must not read as "ready". Shadow
+     Spell and the other reusable traps are the deliberate exception: they are
+     an ongoing threat that fires each time an attack is declared, which is the
+     whole reason they are allowed to stay. */
+  for (const slug of ['toon-world', 'the-dark-door', 'dark-sanctuary', 'umi', 'insect-barrier', 'harpies-hunting-ground', 'tornado-wall']) {
+    const z = fresh();
+    const c = card(ME, slug);
+    c.face = 'up';
+    c.summonedOnTurn = 0;
+    if (CARDS[slug]?.subKind === 'Field') z.players[ME].field = c;
+    else z.players[ME].spellTrap = c;
+    ok(!canActivateSetCard(z, ME, c), `${CARDS[slug]?.name ?? slug} cannot be activated a second time`);
+  }
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
