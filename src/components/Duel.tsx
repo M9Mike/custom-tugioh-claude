@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import CardDetail from './CardDetail';
@@ -77,7 +78,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      all on the devices this is built for. */
   const [graveInspect, setGraveInspect] = useState<CardInstance | null>(null);
   const [soundOn, setSoundOn] = useState(true);
+  const [leaving, setLeaving] = useState(false);
   const seenAnims = useRef<Set<string>>(new Set());
+  /** The event the board is reacting to right now, and the queue behind it. */
+  const [fx, setFx] = useState<AnimEvent | null>(null);
+  const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number } | null>(null);
+  const fxQueue = useRef<AnimEvent[]>([]);
+  const drainingRef = useRef(false);
+  const fxTimer = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const handRef = useRef<HTMLDivElement>(null);
   const [handOverflow, setHandOverflow] = useState(false);
@@ -138,16 +146,34 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const respondingToTrap = state.pending?.player === me;
   const busy = !!state.pending && !respondingToTrap;
 
-  /* ---------------- animation + sound reactions ---------------- */
-  useEffect(() => {
-    const fresh = state.anims.filter((a) => !seenAnims.current.has(a.id));
-    if (!fresh.length) return;
-    for (const a of fresh) seenAnims.current.add(a.id);
-    if (seenAnims.current.size > 400) seenAnims.current = new Set([...seenAnims.current].slice(-200));
+  /* ---------------- the resolve queue ----------------
+     Every animation the server reported used to be played in one burst, so a
+     whole turn landed in a single frame: the board simply snapped to its final
+     state, which is what made it feel like a spreadsheet rather than a duel.
+     Events are now played one at a time, each held long enough to read.
 
-    let damaged = false;
-    for (const a of fresh) {
-      switch (a.kind) {
+     It is purely cosmetic — the board state is already current, so input stays
+     live throughout and nothing waits on the queue. When a long line arrives
+     (the computer playing out a combo) the queue speeds itself up rather than
+     letting the player sit through it. */
+  const FX_MS: Record<string, number> = {
+    draw: 130,
+    phase: 200,
+    summon: 300,
+    heal: 300,
+    destroy: 340,
+    damage: 420,
+    flip: 440,
+    attack: 440,
+    directAttack: 440,
+    activate: 480,
+    trap: 560,
+    fusion: 850,
+    win: 0,
+  };
+
+  const playOne = useCallback((a: AnimEvent) => {
+    switch (a.kind) {
         case 'draw':
           sfx.draw();
           break;
@@ -186,9 +212,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           if (a.text) setBanner({ text: a.text, tone: 'phase' });
           break;
         case 'damage':
-          damaged = true;
           sfx.damage();
-          pushFloat(a, `-${a.amount}`, 'dmg');
+          // No small floating number: the struck player gets the big one below.
+          setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0 });
+          setShakeOn(true);
+          window.setTimeout(() => setShakeOn(false), 520);
           break;
         case 'heal':
           sfx.heal();
@@ -197,11 +225,43 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         case 'win':
           break;
       }
-    }
-    if (damaged) {
-      setShakeOn(true);
-      setTimeout(() => setShakeOn(false), 460);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
+
+  /* Drains the queue one event at a time. `fx` is what the board is currently
+     reacting to; the cards read it to decide whether they lunge, recoil, turn
+     over or drop in. */
+  useEffect(() => {
+    const fresh = state.anims.filter((a) => !seenAnims.current.has(a.id));
+    if (!fresh.length) return;
+    for (const a of fresh) seenAnims.current.add(a.id);
+    if (seenAnims.current.size > 400) seenAnims.current = new Set([...seenAnims.current].slice(-200));
+    fxQueue.current.push(...fresh);
+
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+
+    const step = () => {
+      const next = fxQueue.current.shift();
+      if (!next) {
+        drainingRef.current = false;
+        setFx(null);
+        return;
+      }
+      setFx(next);
+      playOne(next);
+      /* A backlog is the computer's whole turn arriving at once. Rather than
+         make the player sit through it, the queue compresses — down to a third
+         of the time once a dozen events are waiting. */
+      const backlog = fxQueue.current.length;
+      const scale = backlog > 12 ? 0.34 : backlog > 6 ? 0.6 : 1;
+      fxTimer.current = window.setTimeout(step, Math.max(70, (FX_MS[next.kind] ?? 300) * scale));
+    };
+    step();
+
+    return () => {
+      if (fxTimer.current) window.clearTimeout(fxTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.version]);
 
@@ -366,6 +426,26 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   /* ---------------- render pieces ---------------- */
 
+  /**
+   * What the event currently playing asks of this particular card.
+   *
+   * `owner` decides which way an attacker lunges: your monsters strike upward
+   * at their half of the field, theirs strike down at yours.
+   */
+  const fxClass = (uid: string | undefined, owner: PlayerId): string => {
+    if (!fx || !uid) return '';
+    if (fx.uid === uid) {
+      if (fx.kind === 'flip') return 'fx-flip';
+      if (fx.kind === 'summon' || fx.kind === 'fusion') return 'fx-arrive';
+      if (fx.kind === 'activate' || fx.kind === 'trap') return 'fx-charge';
+      if (fx.kind === 'attack' || fx.kind === 'directAttack') {
+        return owner === me ? 'fx-strike-up' : 'fx-strike-down';
+      }
+    }
+    if (fx.targetUid === uid && fx.kind === 'attack') return 'fx-recoil';
+    return '';
+  };
+
   const renderMonsterZone = (owner: PlayerId, idx: number) => {
     const p = state.players[owner];
     const c = p.monsters[idx];
@@ -416,12 +496,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 targetable ? 'targetable' : attackable || selectable ? 'selectable' : ''
               }`}
             >
+              <div className={fxClass(c.uid, owner)}>
               <GameCard
                 card={c}
                 {...statsOf(c, owner)}
                 faceDown={c.face === 'down'}
                 compact
               />
+              </div>
             </div>
             {c.face === 'up' && (
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-between bg-black/70 px-1 font-display text-[9px] leading-tight text-parchment">
@@ -606,7 +688,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   };
 
   /* ---------------- overlays ---------------- */
-  const pendingPrompt = respondingToTrap && state.pending;
+  /* The response window is a full-screen modal, so it has to get out of the way
+     the moment a trap that needs a target is chosen — Michizure and Ring of
+     Destruction both ask you to point at a monster, and the modal was sitting
+     over the board with no way past it. Cancelling targeting drops `mode` back
+     to idle and the window comes straight back. */
+  const pendingPrompt = respondingToTrap && state.pending && mode.kind === 'idle';
   const pendingCards = pendingPrompt
     ? state.pending!.options
         .map((uid) => mine.hand.find((h) => h.uid === uid) ?? (mine.spellTrap?.uid === uid ? mine.spellTrap : null))
@@ -614,7 +701,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     : [];
 
   return (
-    <div className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'shake' : ''}`}>
+    <div className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'hit-shake' : ''}`}>
       {/* Shown instead of the board when a phone is turned sideways — see the
           landscape rules in globals.css. Everything else is hidden by CSS, so
           no resize listener and no re-render. */}
@@ -650,6 +737,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           </button>
           <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setShowLog((v) => !v)} title="Duel log">
             ☰
+          </button>
+          {/* A way out. The room lives on the server, so leaving loses nothing —
+              the same link brings you straight back to this duel. */}
+          <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => setLeaving(true)} title="Menu">
+            ⌂
           </button>
           {/* Only in a bracket match: look at the standings mid-duel and come
               back. Nothing is conceded by leaving the board — the duel is on
@@ -825,6 +917,61 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       </div>
 
       {/* ================= overlays ================= */}
+
+      {leaving && (
+        <div
+          className="absolute inset-0 z-[75] flex items-center justify-center bg-black/80 p-6"
+          style={{ paddingTop: 'calc(var(--safe-top) + 1.5rem)', paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}
+          onClick={() => setLeaving(false)}
+        >
+          <div className="panel grain w-full max-w-xs rounded p-5 text-center" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg text-brassbright">Leave the duel?</h3>
+            <p className="mt-2 text-[11px] leading-relaxed text-ptext/85">
+              It stays exactly where it is. Open the same link and you are back in, on the same turn.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Link className="btn btn-primary rounded px-4 py-2 text-xs" href="/">
+                Back to the arena
+              </Link>
+              <button className="btn rounded px-4 py-2 text-xs" onClick={() => setLeaving(false)}>
+                Keep duelling
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Taking damage. The bloom leans in from the struck player's own edge,
+          so a hit reads as landing on someone rather than on the screen. */}
+      {hit && (
+        <div
+          key={hit.id}
+          className="hit-vignette"
+          style={{
+            background:
+              hit.who === me
+                ? 'radial-gradient(120% 70% at 50% 108%, rgba(190,40,48,0.62) 0%, rgba(150,25,35,0.28) 38%, transparent 72%)'
+                : 'radial-gradient(120% 70% at 50% -8%, rgba(190,40,48,0.62) 0%, rgba(150,25,35,0.28) 38%, transparent 72%)',
+          }}
+          onAnimationEnd={() => setHit((h) => (h?.id === hit.id ? null : h))}
+          aria-hidden
+        />
+      )}
+      {hit && hit.amount > 0 && (
+        <div
+          key={`${hit.id}-n`}
+          className="pointer-events-none absolute inset-x-0 z-[46] flex justify-center"
+          style={{ top: hit.who === me ? '58%' : '26%' }}
+          aria-hidden
+        >
+          <span
+            className="dmg-pop font-display text-[13vw] font-black leading-none sm:text-6xl"
+            style={{ color: '#ff6b6b', textShadow: '0 0 18px rgba(220,40,50,0.75), 0 4px 0 rgba(0,0,0,0.55)' }}
+          >
+            −{hit.amount}
+          </span>
+        </div>
+      )}
 
       {banner && (
         <div className="pointer-events-none absolute inset-x-0 top-[38%] z-40 flex justify-center px-4">

@@ -114,6 +114,26 @@ gates instead. Related: Relinquished fired on `onNormalSummon`, and it is a Ritu
 monster, so it never fired at all. If a card looks inert, check that a player can
 reach it before checking the effect.
 
+**A modal over the board is a trap.** Michizure and Ring of Destruction ask you to
+point at a monster, and the trap response window is full-screen — so choosing the
+trap left the prompt sitting on top of the board with no way past it and the card
+could not be used at all. Anything that starts a target selection has to get out of
+the way: `pendingPrompt` is gated on `mode.kind === 'idle'`.
+
+**Flip effects resolve after the damage step**, not before. Firing them first let
+Man-Eater Bug remove the attacker and end the battle early, so the bug itself
+survived untouched. `resolveFlip()` runs on every exit path from an attack.
+
+**Effects are queued, not batched.** Every animation the server reports used to be
+played in one frame, so a turn snapped to its final state. `Duel.tsx` drains them one
+at a time and compresses the timing when a backlog builds, so the computer's turn
+still reads as a sequence without making anyone wait. It is cosmetic only — the board
+state is already current and input never blocks on it.
+
+**No 3D engine.** Every effect animates `transform`, `opacity` or `filter`, which the
+compositor handles for free. A WebGL context would roughly double a 1MB bundle to
+draw the same rectangles, and CSS does a real rotateY card flip natively.
+
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down
 a blind alley. `scripts/ai-arena.ts` prints 95% intervals; believe those, not a raw

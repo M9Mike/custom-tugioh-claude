@@ -89,7 +89,8 @@ export default function Bracket({ t, busy, onContinue }: Props) {
   // simply grows another column.
   const total = roundsFor(t.entrants.length);
   const rounds = Array.from({ length: total }, (_, r) => t.matches.filter((m) => m.round === r));
-  const done = t.status === 'won' || t.status === 'eliminated';
+  // Eliminated is not "done" until the bracket has actually crowned someone.
+  const done = t.status === 'won' || (t.status === 'eliminated' && !!t.champion);
   const nameAt = (r: number) => roundNameAt(t.entrants.length, r);
 
   return (
@@ -143,7 +144,13 @@ export default function Bracket({ t, busy, onContinue }: Props) {
       )}
       {t.status === 'eliminated' && (
         <p className="text-center text-sm leading-relaxed text-ptext/85">
-          Knocked out in the {nameAt(t.round).toLowerCase()}. The bracket does not offer a rematch.
+          Knocked out in the {nameAt(t.round).toLowerCase()}. The bracket does not offer a rematch — but it plays
+          itself out, so you can see how it ended.
+        </p>
+      )}
+      {t.champion && t.champion !== t.humanDuelist && (
+        <p className="text-center font-display text-sm text-brassbright">
+          👑 {DUELIST_BY_ID[t.champion]?.name ?? t.champion} takes the Kingdom.
         </p>
       )}
 

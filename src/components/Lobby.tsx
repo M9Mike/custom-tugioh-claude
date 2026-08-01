@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
@@ -102,6 +103,9 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
             <p className="text-xs text-ptextdim">Duelist Kingdom · choose your duelist</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link className="btn rounded px-2.5 py-1 text-[11px]" href="/" title="Back to the arena">
+              ← Arena
+            </Link>
             <span className="font-display text-[11px] uppercase tracking-widest text-ptextdim">Room</span>
             <span className="rounded border border-brass bg-black/40 px-3 py-1 font-display text-xl tracking-[0.3em] text-brassbright">
               {view.code}

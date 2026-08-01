@@ -1235,18 +1235,33 @@ function resolveBattle(state: DuelState) {
   }
   const target = targetFound.c;
 
-  if (target.face === 'down') {
+  /* The attack turns a face-down monster up, but its flip effect waits until
+     after damage has been calculated.
+     
+     Firing it first let a destructive flip effect — Man-Eater Bug — remove the
+     attacker and end the battle before any damage was worked out, so the bug
+     itself walked away untouched. Resolving it after the damage step means a
+     set monster attacked and destroyed still gets its effect, and still dies:
+     a one-for-one trade, which is both the real rule and what anyone expects. */
+  const flipped = target.face === 'down';
+  if (flipped) {
     target.face = 'up';
     anim(state, { kind: 'flip', uid: target.uid, slug: target.slug, player: defender });
     log(state, `${displayName(target)} is flipped face-up!`, 'effect', defender);
-    fireTriggers(state, target, defender, 'onFlip', { attackerUid: attacker.uid, targetUid: target.uid });
-    if (state.winner) return;
-    // A flip effect may have removed the attacker or the target.
-    if (!findOnField(state, attacker.uid) || !findOnField(state, target.uid)) return;
   }
 
+  /** Runs after the damage step, whether or not the monster survived it. */
+  const resolveFlip = () => {
+    if (!flipped || state.winner) return;
+    fireTriggers(state, target, defender, 'onFlip', { attackerUid: attacker.uid, targetUid: target.uid });
+  };
+
   fireTriggers(state, target, defender, 'onAttacked', { attackerUid: attacker.uid, targetUid: target.uid });
-  if (state.winner || !findOnField(state, attacker.uid) || !findOnField(state, target.uid)) return;
+  if (state.winner || !findOnField(state, attacker.uid) || !findOnField(state, target.uid)) {
+    // The battle was called off, but the monster was still turned face-up.
+    resolveFlip();
+    return;
+  }
 
   anim(state, { kind: 'attack', uid: attacker.uid, targetUid: target.uid, player: controller });
 
@@ -1283,6 +1298,8 @@ function resolveBattle(state: DuelState) {
       log(state, `${displayName(target)} holds firm.`, 'attack', defender);
     }
   }
+
+  resolveFlip();
 }
 
 /* ------------------------------------------------------------------ */

@@ -79,7 +79,11 @@ function checkBracket(t: Tournament): string | null {
     const n = t.matches.filter((m) => m.round === r).length;
     if (n && n !== slots >> (r + 1)) return `round ${r} has ${n} matches, expected ${slots >> (r + 1)}`;
     const mine = t.matches.filter((m) => m.round === r && m.human);
-    if (n && mine.length !== 1) return `round ${r} has ${mine.length} matches for the human`;
+    // Once knocked out the player is in no further match, which is correct —
+    // their conqueror carries on in that slot.
+    const stillIn = r === 0 || t.matches.some((m) => m.round === r - 1 && m.winner === t.humanDuelist);
+    if (n && stillIn && mine.length !== 1) return `round ${r} has ${mine.length} matches for the human`;
+    if (n && !stillIn && mine.length !== 0) return `round ${r} still claims a match for an eliminated human`;
     for (const m of mine) {
       if (m.a !== t.humanDuelist && m.b !== t.humanDuelist) return `round ${r}: human absent from their own match`;
       // A bye in your own bracket means turning up and watching a screen.
@@ -110,7 +114,9 @@ async function playOne(run: number): Promise<{ ok: boolean; detail: string }> {
 
   for (let guard = 0; guard < 4000; guard++) {
     const t = view.tournament!;
-    if (t.status === 'won' || t.status === 'eliminated') break;
+    // Being knocked out is not the end of the run: the bracket plays itself out
+    // so the player sees who took it. Keep nudging until someone is crowned.
+    if (t.status === 'won' || (t.status === 'eliminated' && t.champion)) break;
 
     const bad = checkBracket(t);
     if (bad) return { ok: false, detail: `after ${duels} duels: ${bad}` };
@@ -178,10 +184,17 @@ async function playOne(run: number): Promise<{ ok: boolean; detail: string }> {
   const t = view.tournament!;
   const ended = t.status === 'won' || t.status === 'eliminated';
   if (new Set(faced).size !== faced.length) return { ok: false, detail: 'faced the same duelist twice' };
+  // Either way the bracket must have reached a champion — that is the whole
+  // point of playing on past a loss.
+  if (!t.champion) return { ok: false, detail: `${t.status} but no champion was crowned` };
+  if (t.status === 'won' && t.champion !== t.humanDuelist) {
+    return { ok: false, detail: `won the bracket but ${t.champion} is recorded as champion` };
+  }
+  if (t.matches.some((m) => !m.winner)) return { ok: false, detail: 'the bracket has undecided matches' };
   return {
     ok: ended,
     detail: `as ${AS} → ${t.status} in round ${t.round + 1}/${roundsFor(t.entrants.length)} ` +
-      `(faced ${faced.join(', ') || 'nobody'}; ${duels} duels, ${nudges} nudges` +
+      `(champion ${t.champion}; faced ${faced.join(', ') || 'nobody'}; ${duels} duels, ${nudges} nudges` +
       `${rejected ? `, ${rejected} resyncs` : ''})`,
   };
 }

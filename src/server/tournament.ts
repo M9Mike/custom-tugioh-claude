@@ -70,12 +70,11 @@ export interface Tournament {
   round: number;
   matches: TourMatch[];
   status: 'duelling' | 'resolving' | 'won' | 'eliminated';
+  /** Set once the final is decided — including brackets the human lost. */
+  champion?: string;
   /** Seed base so a bracket replays identically if a request is retried. */
   seed: number;
 }
-
-/** Which bracket position a duelist occupies in a given round. */
-const seatInRound = (seat: number, round: number) => seat >> round;
 
 export function createTournament(humanDuelist: string, seed: number): Tournament {
   const roster = DUELISTS.map((d) => d.id);
@@ -132,25 +131,26 @@ export function createTournament(humanDuelist: string, seed: number): Tournament
     humanSeat,
     humanDuelist,
     round: 0,
-    matches: matchesForRound(entrants, 0, humanSeat),
+    matches: matchesForRound(entrants, 0, humanDuelist),
     status: 'duelling',
     seed,
   };
 }
 
-/** Builds the pairings for a round from the surviving duelists. */
-function matchesForRound(survivors: (string | null)[], round: number, humanSeat: number): TourMatch[] {
+/**
+ * Builds the pairings for a round from the surviving duelists.
+ *
+ * `human` is read off the entrants rather than the seat. Deriving it from the
+ * seed position marked a slot as the player's own long after they had been
+ * knocked out of it — which mattered once the bracket kept playing past a loss,
+ * because "your match" then pointed at two duelists the player was not.
+ */
+function matchesForRound(survivors: (string | null)[], round: number, humanDuelist: string): TourMatch[] {
   const out: TourMatch[] = [];
-  const humanAt = seatInRound(humanSeat, round);
   for (let slot = 0; slot * 2 < survivors.length; slot++) {
-    out.push({
-      round,
-      slot,
-      a: survivors[slot * 2] ?? null,
-      b: survivors[slot * 2 + 1] ?? null,
-      winner: null,
-      human: Math.floor(humanAt / 2) === slot,
-    });
+    const a = survivors[slot * 2] ?? null;
+    const b = survivors[slot * 2 + 1] ?? null;
+    out.push({ round, slot, a, b, winner: null, human: a === humanDuelist || b === humanDuelist });
   }
   return out;
 }
@@ -167,9 +167,16 @@ export function humanOpponent(t: Tournament): string | null {
   return m.a === t.humanDuelist ? m.b : m.a;
 }
 
-/** The next unresolved computer-versus-computer match in the current round. */
+/**
+ * The next unresolved computer-versus-computer match in the current round.
+ *
+ * Once the human is out, their own slot is a computer match too: the duelist
+ * who knocked them out carries on, and the bracket is played to a champion so
+ * the run ends with standings rather than a dead screen.
+ */
 export function nextSideMatch(t: Tournament): TourMatch | undefined {
-  return t.matches.find((m) => m.round === t.round && !m.human && !m.winner);
+  const out = t.status === 'eliminated';
+  return t.matches.find((m) => m.round === t.round && !m.winner && (out || !m.human));
 }
 
 /**
@@ -230,8 +237,9 @@ export function resolveOneSideMatch(t: Tournament): boolean {
      stepping through six of them one request at a time would leave the player
      watching a spinner for no reason. */
   let settled = false;
+  const out = t.status === 'eliminated';
   for (const m of t.matches) {
-    if (m.round !== t.round || m.winner || m.human) continue;
+    if (m.round !== t.round || m.winner || (m.human && !out)) continue;
     if (m.a && !m.b) { m.winner = m.a; settled = true; }
     else if (m.b && !m.a) { m.winner = m.b; settled = true; }
   }
@@ -255,12 +263,17 @@ export function advanceRound(t: Tournament): boolean {
 
   // The final is the round with a single match, whatever the bracket's size.
   if (thisRound.length <= 1) {
-    t.status = 'won';
+    t.champion = thisRound[0]?.winner ?? undefined;
+    // A player who was knocked out stays knocked out — but they still get to
+    // see who took the crown.
+    if (t.status !== 'eliminated') t.status = 'won';
     return false;
   }
   const survivors = thisRound.map((m) => m.winner!);
   t.round += 1;
-  t.matches.push(...matchesForRound(survivors, t.round, t.humanSeat));
-  t.status = 'duelling';
+  t.matches.push(...matchesForRound(survivors, t.round, t.humanDuelist));
+  // An eliminated player is a spectator from here: the bracket keeps resolving
+  // rather than waiting for a duel they are not in.
+  if (t.status !== 'eliminated') t.status = 'duelling';
   return true;
 }

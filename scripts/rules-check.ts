@@ -269,5 +269,31 @@ console.log('\nContinuous and Field Spells with no activation effect can still b
   }
 }
 
+/* ------------------------------------------------------------------ */
+console.log('\nA set monster destroyed by an attack still flips and fires');
+{
+  const s = fresh('battle');
+  // Face-down Man-Eater Bug: flipping it destroys a monster, and it is weak
+  // enough that the attack kills it in the same breath.
+  const bug = card(FOE, 'man-eater-bug');
+  bug.face = 'down';
+  bug.position = 'def';
+  s.players[FOE].monsters[0] = bug;
+
+  const big = card(ME, 'summoned-skull');
+  s.players[ME].monsters[0] = big;
+  const spare = card(ME, 'beaver-warrior');
+  s.players[ME].monsters[1] = spare;
+
+  const after = act(s, ME, { type: 'attack', uid: big.uid, targetUid: bug.uid });
+
+  ok(on(after, FOE).length === 0, 'the attacked face-down monster is destroyed');
+  ok(
+    on(after, ME).length < 2,
+    'and its flip effect still resolved — being destroyed by the attack does not cancel it',
+    `attacker side went 2 -> ${on(after, ME).length}`
+  );
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
 if (failures) process.exitCode = 1;

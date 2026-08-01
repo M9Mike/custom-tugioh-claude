@@ -366,6 +366,8 @@ body {
 
 .zone {
   position: relative;
+  /* So a card flipping inside it turns in real 3D rather than squashing. */
+  perspective: 900px;
   border: 1px solid var(--stone-line);
   border-radius: 4px;
   background:
@@ -538,5 +540,114 @@ body {
     /* Room is also left for the 210px inspector column. */
     --cw: clamp(42px, min((100vw - 268px) / 7.4, var(--board-h) / 2.95), 138px);
     --sw: var(--cw);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Board effects
+
+   Every one of these animates `transform`, `opacity` or `filter` only, so
+   they run on the compositor and cost a phone nothing. That is also why
+   there is no 3D engine here: a real rotateY card flip, a lunge and an
+   impact are things CSS does natively, and a WebGL context would roughly
+   double the bundle to draw the same rectangles.
+
+   They are driven one at a time by the resolve queue in Duel.tsx — the
+   whole point being that a turn reads as a sequence of events rather than
+   the board snapping to its final state.
+   ------------------------------------------------------------------ */
+
+/* A face-down card turning over. The parent zone carries the perspective. */
+@keyframes fx-flip {
+  0%   { transform: rotateY(0deg);   }
+  100% { transform: rotateY(360deg); }
+}
+.fx-flip { animation: fx-flip 460ms cubic-bezier(0.3, 0.7, 0.2, 1); }
+
+/* An attacker lunging at the other side of the field and coming back. */
+@keyframes fx-strike-up {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%      { transform: translateY(-30%) scale(1.07); }
+  55%      { transform: translateY(-24%) scale(1.05); }
+}
+@keyframes fx-strike-down {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%      { transform: translateY(30%) scale(1.07); }
+  55%      { transform: translateY(24%) scale(1.05); }
+}
+.fx-strike-up   { animation: fx-strike-up 460ms cubic-bezier(0.25, 0.9, 0.3, 1); }
+.fx-strike-down { animation: fx-strike-down 460ms cubic-bezier(0.25, 0.9, 0.3, 1); }
+
+/* And the monster on the receiving end. */
+@keyframes fx-recoil {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  18%      { transform: translateX(-8%) rotate(-4deg); }
+  42%      { transform: translateX(7%) rotate(3deg); }
+  68%      { transform: translateX(-4%) rotate(-1.5deg); }
+}
+.fx-recoil { animation: fx-recoil 440ms ease-out; }
+
+/* A card arriving on the field. */
+@keyframes fx-arrive {
+  from { transform: translateY(-18%) scale(0.82) rotate(-6deg); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.fx-arrive { animation: fx-arrive 340ms cubic-bezier(0.2, 0.9, 0.25, 1); }
+
+/* A Spell or Trap going off. */
+@keyframes fx-charge {
+  0%, 100% { filter: none; transform: scale(1); }
+  35%      { filter: brightness(1.7) saturate(1.35); transform: scale(1.06); }
+}
+.fx-charge { animation: fx-charge 520ms ease-in-out; }
+
+/* ---- taking damage ----------------------------------------------- */
+
+/* One decisive hit rather than three flashes of the whole screen. */
+@keyframes hit-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  14%      { transform: translate3d(-10px, 5px, 0); }
+  28%      { transform: translate3d(9px, -6px, 0); }
+  44%      { transform: translate3d(-7px, -3px, 0); }
+  62%      { transform: translate3d(5px, 4px, 0); }
+  82%      { transform: translate3d(-3px, -2px, 0); }
+}
+.hit-shake { animation: hit-shake 520ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+
+/* A red bloom from the edges, strongest at the struck player's side. */
+.hit-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  animation: hit-bloom 700ms ease-out forwards;
+}
+@keyframes hit-bloom {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* The number itself: punched in, held, then lifted away. */
+@keyframes dmg-pop {
+  0%   { transform: scale(0.35) rotate(-10deg); opacity: 0; }
+  16%  { transform: scale(1.22) rotate(3deg);   opacity: 1; }
+  30%  { transform: scale(1) rotate(0);         opacity: 1; }
+  72%  { transform: scale(1) translateY(0);     opacity: 1; }
+  100% { transform: scale(0.95) translateY(-28px); opacity: 0; }
+}
+.dmg-pop { animation: dmg-pop 1250ms cubic-bezier(0.2, 0.9, 0.25, 1) forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-flip,
+  .fx-strike-up,
+  .fx-strike-down,
+  .fx-recoil,
+  .fx-arrive,
+  .fx-charge,
+  .hit-shake,
+  .hit-vignette,
+  .dmg-pop {
+    animation: none !important;
   }
 }

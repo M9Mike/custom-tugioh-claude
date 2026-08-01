@@ -193,7 +193,10 @@ export async function stepTournament(room: Room): Promise<boolean> {
     return true;
   }
 
-  if (t.status !== 'resolving') return false;
+  // A knocked-out player is a spectator: the bracket carries on to a champion
+  // so the run ends on standings rather than a dead screen.
+  const spectating = t.status === 'eliminated' && !t.champion;
+  if (t.status !== 'resolving' && !spectating) return false;
 
   // 2. Play out one outstanding computer match.
   if (resolveOneSideMatch(t)) {
@@ -206,8 +209,11 @@ export async function stepTournament(room: Room): Promise<boolean> {
     room.state = null;
     room.rematch = [];
     room.aiPlan = undefined;
-    seatOpponent(room);
-    maybeStart(room);
+    // Nothing to seat or start once the player is out — they only watch.
+    if (t.status !== 'eliminated') {
+      seatOpponent(room);
+      maybeStart(room);
+    }
   }
   await saveRoom(room);
   return true;
@@ -218,6 +224,9 @@ export function tournamentPending(room: Room): boolean {
   const t = room.tournament;
   if (!t) return false;
   if (t.status === 'resolving') return true;
+  // Knocked out is not finished: the rest of the bracket is still played so the
+  // run ends on standings and a champion rather than a dead screen.
+  if (t.status === 'eliminated') return t.matches.some((m) => !m.winner) || !t.champion;
   return t.status === 'duelling' && !!room.state?.winner;
 }
 
