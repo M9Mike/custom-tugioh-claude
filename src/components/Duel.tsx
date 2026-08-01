@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import GameCard from './GameCard';
+import GameCard, { statTint } from './GameCard';
 import { previewInstances } from './deckPreview';
 import CardDetail from './CardDetail';
-import { CARDS, DUELIST_BY_ID, DUELISTS, artUrl } from '@/game/cards';
+import { CARDS, DUELIST_BY_ID, DUELISTS, artUrl, baseAtk, baseDef } from '@/game/cards';
 import {
   canActivateFromHand,
   canActivateSetCard,
@@ -31,6 +31,25 @@ const SIG_MS = 1400;
 
 /** A pointer that can genuinely hover: a mouse or a trackpad, never a finger. */
 const HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+
+/**
+ * Life Points still waiting to be shown, per player.
+ *
+ * The board state is current the moment the server replies, but the animations
+ * that explain it are still queued — so the total dropped before the attack
+ * that took it landed, and the number gave the result away. Adding back what
+ * has not been played yet holds the displayed total until its own moment, and
+ * it converges on its own: when the queue is empty there is nothing to add.
+ */
+function pendingLpIn(queue: AnimEvent[]): Record<PlayerId, number> {
+  const out: Record<PlayerId, number> = { p1: 0, p2: 0 };
+  for (const a of queue) {
+    if (!a.player || !a.amount) continue;
+    if (a.kind === 'damage') out[a.player] += a.amount;
+    else if (a.kind === 'heal') out[a.player] -= a.amount;
+  }
+  return out;
+}
 
 type Mode =
   | { kind: 'idle' }
@@ -94,6 +113,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      the card on screen with nothing saying whose move it was. */
   const [fxHold, setFxHold] = useState(900);
   const [hit, setHit] = useState<{ id: string; who: PlayerId; amount: number; kind: 'damage' | 'heal' } | null>(null);
+  /** Life Points whose animation has not played yet — see `pendingLpIn`. */
+  const [pending, setPending] = useState<Record<PlayerId, number>>({ p1: 0, p2: 0 });
+  /** True once the queue has finished, so the win screen can wait for it. */
+  const [settled, setSettled] = useState(true);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
   const fxTimer = useRef<number | null>(null);
@@ -310,15 +333,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     for (const a of fresh) seenAnims.current.add(a.id);
     if (seenAnims.current.size > 400) seenAnims.current = new Set([...seenAnims.current].slice(-200));
     fxQueue.current.push(...fresh);
+    setPending(pendingLpIn(fxQueue.current));
 
     if (drainingRef.current) return;
     drainingRef.current = true;
+    setSettled(false);
 
     const step = () => {
       const next = fxQueue.current.shift();
+      setPending(pendingLpIn(fxQueue.current));
       if (!next) {
         drainingRef.current = false;
         setFx(null);
+        setSettled(true);
         return;
       }
       setFx(next);
@@ -357,6 +384,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     },
     []
   );
+
+  /* A backstop, because "the duel is over but nothing says so" is a far worse
+     failure than a win screen arriving over the tail of an animation. If the
+     queue has not finished eight seconds after the duel ended, show it anyway. */
+  const [forceWin, setForceWin] = useState(false);
+  useEffect(() => {
+    if (!state.winner) return;
+    const t = window.setTimeout(() => {
+      setSettled(true);
+      setForceWin(true);
+    }, 8000);
+    return () => window.clearTimeout(t);
+  }, [state.winner]);
 
   useEffect(() => {
     if (!banner) return;
@@ -636,10 +676,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               </div>
             </div>
             {c.face === 'up' && (
+              /* The board renders its cards compact, so these are the figures a
+                 player actually reads off the field — and they are tinted for
+                 the same reason the full card's are: a monster hollowed out by
+                 a die roll looked exactly like an untouched one. */
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-between bg-black/70 px-1 font-display text-[9px] leading-tight text-parchment">
-                <span>{statsOf(c, owner).atk}</span>
+                <span style={statTint(statsOf(c, owner).atk, baseAtk(c.slug))}>{statsOf(c, owner).atk}</span>
                 <span className="text-brass">{c.position === 'atk' ? 'ATK' : 'DEF'}</span>
-                <span>{statsOf(c, owner).def}</span>
+                <span style={statTint(statsOf(c, owner).def, baseDef(c.slug))}>{statsOf(c, owner).def}</span>
               </div>
             )}
             {isMine && attackable && (
@@ -701,7 +745,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const p = state.players[pid];
     const duelist = DUELIST_BY_ID[p.duelistId];
     const isActive = state.active === pid && !state.winner;
-    const lpPct = Math.max(0, Math.min(100, (p.lp / 4000) * 100));
+    // The total the player should be looking at, which is the real one plus
+    // whatever has not been animated yet. See `pendingLpIn`.
+    const shownLp = Math.max(0, p.lp + pending[pid]);
+    const lpPct = Math.max(0, Math.min(100, (shownLp / 4000) * 100));
     return (
       <div className={`panel grain relative flex items-center gap-2 rounded px-2 py-1.5 ${isActive ? 'ring-1 ring-brass' : ''}`}>
         <div
@@ -721,7 +768,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 </span>
               )}
             </span>
-            <span className="font-display text-sm tabular-nums text-brassbright">{p.lp}</span>
+            <span className="font-display text-sm tabular-nums text-brassbright">{shownLp}</span>
           </div>
           <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-black/60">
             <div
@@ -1261,7 +1308,17 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                     setMode({ kind: 'attack', uid: monsterCard.uid });
                   }}
                 >
-                  ⚔ Attack ({maxAttacks(state, monsterCard, me) - monsterCard.attacksUsed} left)
+                  {/* The ATK it will actually swing with, not just how many
+                      attacks are left. A die roll or a Trap can hollow a monster
+                      out between the board and this button, and attacking into
+                      nothing because the number was somewhere else on screen is
+                      not a mistake worth being allowed to make. */}
+                  ⚔ Attack with {statsOf(monsterCard, me).atk} ATK
+                  {maxAttacks(state, monsterCard, me) - monsterCard.attacksUsed > 1 && (
+                    <span className="ml-1 normal-case opacity-70">
+                      · {maxAttacks(state, monsterCard, me) - monsterCard.attacksUsed} attacks
+                    </span>
+                  )}
                 </button>
               )}
               {canIgnite(state, me, monsterCard) && (
@@ -1490,7 +1547,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* duel log */}
       {showLog && (
         <div
-          className="absolute inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col panel grain p-3"
+          className="absolute inset-y-0 right-0 z-[80] flex w-full max-w-sm flex-col panel grain p-3"
           style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
         >
           <div className="flex items-center justify-between">
@@ -1544,8 +1601,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       )}
 
-      {/* win screen */}
-      {state.winner && (
+      {/* The win screen waits for the board to finish. It used to land on top of
+          the last attack still playing, so the duel ended before you had seen
+          how — and with the log underneath it there was no way to find out.
+          The queue being empty is not enough on its own: the blow that ended the
+          duel is still popping for another second after its event has played. */}
+      {state.winner && (forceWin || (settled && !hit && !banner)) && (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
           <div className="panel grain w-full max-w-md rounded p-6 text-center">
             <p className="font-display text-3xl tracking-wide" style={{ color: state.winner === me ? '#e6c980' : '#c98a8a' }}>
@@ -1554,6 +1615,17 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <p className="mt-2 text-sm text-ptext/85">{state.winReason}</p>
             <div className="brass-rule my-4" />
             <div className="flex flex-col gap-2">
+              {/* The last few turns are worth being able to read back, and this
+                  is the only screen still on top of them. */}
+              <button
+                className="btn rounded px-4 py-2 text-xs"
+                onClick={() => {
+                  sfx.click();
+                  setShowLog(true);
+                }}
+              >
+                📜 What happened
+              </button>
               {onBracket ? (
                 /* A bracket match has no rematch: the result stands. */
                 <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={onBracket}>

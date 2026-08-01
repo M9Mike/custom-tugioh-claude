@@ -35,6 +35,8 @@ export default function Home() {
   const chosen = DUELISTS.find((d) => d.id === pickedId) ?? null;
   const deck = deckOpen ? DUELISTS.find((d) => d.id === deckOpen) ?? null : null;
   const nameRef = useRef<HTMLInputElement>(null);
+  /** The tournament picker's choice panel, scrolled to when a duelist is tapped. */
+  const pickRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
   /* Both fields are controlled, so React's first commit after hydration
@@ -126,6 +128,10 @@ export default function Home() {
               onClick={() => {
                 sfx.click();
                 setPicked(d.id);
+                // The panel stacks below the grid on a phone, so bring it into
+                // view — otherwise a tap looks like it did nothing, exactly as
+                // it does in the versus lobby.
+                requestAnimationFrame(() => pickRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
               }}
               className={`panel grain group relative flex flex-col overflow-hidden rounded p-0 text-left transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
                 pickedId === d.id ? 'ring-2 ring-brass' : ''
@@ -155,7 +161,7 @@ export default function Home() {
         {/* Tapping a portrait chooses, it does not commit — a three-duel run is
             worth reading the deck for first. */}
         {chosen && (
-          <div className="panel grain rounded p-3">
+          <div ref={pickRef} className="panel grain rounded p-3">
             <div className="flex items-start gap-3">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded border" style={{ borderColor: chosen.accent }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}

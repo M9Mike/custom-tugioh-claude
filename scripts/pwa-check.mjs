@@ -233,7 +233,7 @@ const main = async () => {
         if (await mine.count()) {
           await mine.first().tap();
           await who.page.waitForTimeout(400);
-          const atk = who.page.locator('button:has-text("Attack (")');
+          const atk = who.page.locator('button:has-text("Attack with")');
           if (await atk.count()) { await atk.first().tap(); await who.page.waitForTimeout(400); }
           const prompt = who.page.locator('[data-testid="target-prompt"] > *');
           if (await prompt.count()) {

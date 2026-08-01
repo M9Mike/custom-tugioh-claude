@@ -34,6 +34,22 @@ export function setSfxEnabled(on: boolean) {
   }
 }
 
+/**
+ * What the audio engine is actually doing, for `/diag`.
+ *
+ * None of this reproduces off an iPhone — a desktop WebKit build recovers from
+ * a suspended context happily — so when sound is intermittent the only way to
+ * find out why is to read it off the phone. "suspended" means the context never
+ * unlocked; "running" with no sound means the ringer switch.
+ */
+export function audioState(): { state: string; sampleRate: string; enabled: boolean } {
+  return {
+    state: ctx ? ctx.state : 'not created yet',
+    sampleRate: ctx ? `${ctx.sampleRate}Hz` : '—',
+    enabled: getSfxEnabled(),
+  };
+}
+
 export function getSfxEnabled(): boolean {
   if (typeof window === 'undefined') return true;
   try {
@@ -59,7 +75,7 @@ export function primeAudio() {
 
   const unlock = () => {
     const cur = ac();
-    if (!cur) return;
+    if (!cur || cur.state === 'running') return;
     void cur.resume();
     try {
       const buf = cur.createBuffer(1, 1, 22050);
@@ -70,21 +86,23 @@ export function primeAudio() {
     } catch {
       /* the resume above is the part that matters */
     }
-    if (cur.state === 'running') {
-      for (const ev of ['touchend', 'pointerdown', 'click', 'keydown'] as const) {
-        window.removeEventListener(ev, unlock);
-      }
-    }
   };
 
+  /* The listeners stay bound for the life of the page rather than being removed
+     once the context first reaches "running". iOS suspends it again whenever it
+     feels like it — switching apps, a phone call, the screen locking — and once
+     the one-shot unlock had fired there was nothing left to bring it back, so
+     the duel simply went quiet and stayed quiet. `unlock` returns immediately
+     when the context is already running, so leaving them bound costs nothing. */
   for (const ev of ['touchend', 'pointerdown', 'click', 'keydown'] as const) {
     window.addEventListener(ev, unlock, { passive: true });
   }
 
-  // Safari also suspends the context when the tab is backgrounded.
+  // Coming back to the tab, and coming back from the bfcache.
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) void ac()?.resume();
   });
+  window.addEventListener('pageshow', () => void ac()?.resume());
 }
 
 function tone(opts: {
@@ -99,6 +117,11 @@ function tone(opts: {
   if (!enabled) return;
   const c = ac();
   if (!c || !master) return;
+  /* `resume()` is asynchronous, so a sound scheduled in the same tick as the
+     resume is scheduled against a clock that is not running yet and is simply
+     lost. That is what made the audio intermittent rather than absent: whichever
+     sounds happened to land first after a suspend never played. */
+  if (c.state !== 'running') return;
   const t0 = c.currentTime + (opts.delay ?? 0);
   const osc = c.createOscillator();
   const g = c.createGain();
@@ -121,6 +144,7 @@ function noise(opts: { dur: number; gain?: number; delay?: number; filter?: numb
   if (!enabled) return;
   const c = ac();
   if (!c || !master) return;
+  if (c.state !== 'running') return; // see `tone` — a suspended clock swallows it
   const t0 = c.currentTime + (opts.delay ?? 0);
   const frames = Math.max(1, Math.floor(c.sampleRate * opts.dur));
   const buf = c.createBuffer(1, frames, c.sampleRate);

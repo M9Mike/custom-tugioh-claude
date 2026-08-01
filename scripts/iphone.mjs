@@ -221,7 +221,7 @@ const main = async () => {
             await mine.first().tap();
             await page.waitForTimeout(420);
             // The monster action sheet opens first: attack, effect, or position.
-            const attackBtn = page.locator('button:has-text("Attack (")');
+            const attackBtn = page.locator('button:has-text("Attack with")');
             if (await attackBtn.count()) {
               if (!sheetShot) { await shot(page, `06b-monster-sheet-${tag}`); sheetShot = true; }
               await attackBtn.first().tap();

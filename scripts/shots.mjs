@@ -135,7 +135,7 @@ const main = async () => {
           await mine.first().click();
           await page.waitForTimeout(500);
           // The monster action sheet opens first.
-          const attackBtn = page.locator('button:has-text("Attack (")');
+          const attackBtn = page.locator('button:has-text("Attack with")');
           if (await attackBtn.count()) {
             await attackBtn.first().click();
             await page.waitForTimeout(400);

@@ -1731,6 +1731,10 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
         if (p.lp <= eff.cost.lp) return { state: prev, error: 'Not enough Life Points.' };
         p.lp -= eff.cost.lp;
         log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
+        /* A cost is still Life Points leaving, so it is announced like any
+           other. The total must never move with nothing on screen saying why —
+           that is exactly what made damage look like it landed early. */
+        anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
       }
       if (eff?.cost?.discard) {
         const n = Math.min(eff.cost.discard, p.hand.length - 1);
@@ -1832,6 +1836,10 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
         if (p.lp <= eff.cost.lp) return { state: prev, error: 'Not enough Life Points.' };
         p.lp -= eff.cost.lp;
         log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
+        /* A cost is still Life Points leaving, so it is announced like any
+           other. The total must never move with nothing on screen saying why —
+           that is exactly what made damage look like it landed early. */
+        anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
       }
       if (eff.cost?.tribute) {
         const fodder = p.monsters.filter((m): m is CardInstance => !!m && m.uid !== c.uid);

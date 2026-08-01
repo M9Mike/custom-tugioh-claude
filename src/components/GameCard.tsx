@@ -42,6 +42,20 @@ interface Props {
   compact?: boolean;
 }
 
+/**
+ * Red when a stat has been lowered from its base value, green when raised.
+ *
+ * The base is the one the engine uses, override included — comparing against
+ * the printed number would leave every card we restatted permanently tinted for
+ * no reason a player could see.
+ */
+export function statTint(shown: number | undefined, base: number | null | undefined): React.CSSProperties | undefined {
+  if (shown == null || base == null || shown === base) return undefined;
+  return shown < base
+    ? { color: '#ff8f8f', textShadow: '0 0 6px rgba(200,50,60,0.55)' }
+    : { color: '#8ef0a8', textShadow: '0 0 6px rgba(60,200,110,0.55)' };
+}
+
 export default function GameCard({
   card,
   atk,
@@ -136,12 +150,21 @@ export default function GameCard({
 
           {!compact && isMonster && (
             <div className="card-stats">
-              <span>{atk ?? (isToken ? card.tokenAtk : cardDef?.atk) ?? 0}</span>
+              {/* Tinted when it is not the printed number. A die roll or a Trap
+                  can hollow a monster out, and with the figure rendered exactly
+                  like an untouched one the only way to notice was to remember
+                  what it started at — which is how a 0 ATK monster gets sent
+                  into an attack. */}
+              <span style={statTint(atk, isToken ? card.tokenAtk : (cardDef?.atkOverride ?? cardDef?.atk))}>
+                {atk ?? (isToken ? card.tokenAtk : cardDef?.atk) ?? 0}
+              </span>
               <span className="card-level opacity-70">
                 {isToken ? '★' : '★'.repeat(Math.min(cardDef?.level ?? 0, 4))}
                 {!isToken && (cardDef?.level ?? 0) > 4 ? `+${(cardDef?.level ?? 0) - 4}` : ''}
               </span>
-              <span>{def ?? (isToken ? card.tokenDef : cardDef?.def) ?? 0}</span>
+              <span style={statTint(def, isToken ? card.tokenDef : (cardDef?.defOverride ?? cardDef?.def))}>
+                {def ?? (isToken ? card.tokenDef : cardDef?.def) ?? 0}
+              </span>
             </div>
           )}
           {!compact && !isMonster && (

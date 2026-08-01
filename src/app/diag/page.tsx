@@ -10,8 +10,12 @@
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { audioState, primeAudio, sfx } from '@/lib/sfx';
 
 interface Reading {
+  audio: string;
+  audioRate: string;
+  audioEnabled: string;
   standalone: string;
   displayMode: string;
   envTop: string;
@@ -43,7 +47,11 @@ export default function Diag() {
     const nav = navigator as Navigator & { standalone?: boolean };
     const root = getComputedStyle(document.documentElement);
     const vv = window.visualViewport;
+    const a = audioState();
     setR({
+      audio: a.state,
+      audioRate: a.sampleRate,
+      audioEnabled: a.enabled ? 'on' : 'off (turned off in the duel menu)',
       standalone: nav.standalone === undefined ? 'undefined (not iOS)' : String(nav.standalone),
       displayMode: ['standalone', 'fullscreen', 'minimal-ui', 'browser']
         .filter((m) => window.matchMedia(`(display-mode: ${m})`).matches)
@@ -63,6 +71,9 @@ export default function Diag() {
 
   const rows: [string, string][] = r
     ? [
+        ['AudioContext state', r.audio],
+        ['audio sample rate', r.audioRate],
+        ['sound setting', r.audioEnabled],
         ['navigator.standalone', r.standalone],
         ['display-mode matches', r.displayMode],
         ['env(safe-area-inset-top)', r.envTop],
@@ -113,6 +124,22 @@ export default function Diag() {
             </div>
           ))}
         </div>
+
+        {/* Tapping this is a real user gesture, which is the only thing iOS
+            will unlock audio inside. If the state above says "suspended" and
+            this makes a noise, the context needed a gesture; if it says
+            "running" and you hear nothing, it is the ringer switch. */}
+        <button
+          className="btn mx-auto rounded px-5 py-2 text-xs"
+          onClick={() => {
+            primeAudio();
+            sfx.attack();
+            const a = audioState();
+            setR((cur) => (cur ? { ...cur, audio: a.state, audioRate: a.sampleRate } : cur));
+          }}
+        >
+          🔊 Test the sound
+        </button>
 
         <Link href="/" className="btn mx-auto rounded px-5 py-2 text-xs">
           Back to the arena

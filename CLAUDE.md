@@ -200,6 +200,35 @@ Rabbit cannot be Summoned without it. Toon Alligator is the way in — it is nev
 gated, and Normal Summoning it fetches Toon World from the Deck. Ryu-Ran,
 Bickuribox and Parrot Dragon take the aura but do not need it.
 
+**The board runs ahead of the queue, so the numbers have to be held back.**
+`Duel.tsx` drains animations one at a time while the state from the server is
+already final — which meant Life Points dropped before the attack that took them
+landed, and the win screen arrived on top of the blow that ended the duel. The
+total shown is now the real one *plus* whatever damage or healing is still
+queued, which converges on its own: an empty queue adds nothing. The win screen
+waits for the queue, the damage number and the banner, with an eight-second
+backstop, because "the duel is over and nothing says so" is far worse than a
+modal over a tail of animation. Paying Life Points as a cost emits a `damage`
+event for the same reason — the total must never move with nothing on screen
+saying why.
+
+**The board's cards are `compact`.** That skips the whole name/stat block in
+`GameCard`, so the ATK and DEF on the field come from a separate overlay bar in
+`Duel.tsx`. A change to the card's own stats is invisible on the board. Both are
+tinted when a stat is off its base now — red for lowered, green for raised —
+because a monster hollowed out by Skull Dice looked exactly like an untouched
+one, which is how a 0 ATK monster gets sent into an attack.
+
+**Audio does not reproduce off an iPhone.** Desktop WebKit recovers from a
+suspended AudioContext by itself, so the "sometimes plays, sometimes not" report
+cannot be reproduced or its fix proved here — a probe that suspends the context
+and taps passes on the broken code too. What is defensible without proof: the
+unlock listeners now stay bound for the life of the page rather than being
+removed on first success (iOS re-suspends whenever it likes), and nothing is
+scheduled against a suspended clock, where it is silently lost. `/diag` reports
+the context state and has a button that makes a noise inside a real gesture,
+which is the only way to tell "never unlocked" from the ringer switch.
+
 **Loops the rules allow.** A monster could once be turned between Attack and Defence
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,
 suspect a repeatable no-op action, not the search. `stepAI` caps a turn at 60 actions
