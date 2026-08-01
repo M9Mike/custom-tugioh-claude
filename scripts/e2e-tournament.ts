@@ -94,7 +94,7 @@ function checkBracket(t: Tournament): string | null {
   return null;
 }
 
-async function playOne(run: number): Promise<{ ok: boolean; detail: string }> {
+async function playOne(): Promise<{ ok: boolean; detail: string }> {
   const created = await post<{ code: string; token: string; view: RoomView }>('/api/room', {
     name: 'Mihail',
     tournament: true,
@@ -206,7 +206,7 @@ const main = async () => {
   for (let i = 0; i < RUNS; i++) {
     const t0 = Date.now();
     try {
-      const r = await playOne(i);
+      const r = await playOne();
       console.log(`${r.ok ? '✅' : '❌'} run ${i + 1}: ${r.detail} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
       if (r.ok) pass += 1;
     } catch (err) {

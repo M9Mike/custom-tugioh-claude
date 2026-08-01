@@ -85,6 +85,80 @@ const BOARD_CARD = 'w-[var(--cw)]';
 const SIDE_CARD = 'w-[var(--sw)]';
 const HAND_CARD = 'w-[var(--hw)]';
 
+/**
+ * A duelist's name, portrait, Life Points and counts.
+ *
+ * Declared here rather than inside `Duel` on purpose. A component defined in
+ * the render body is a new function identity every render, which React reads as
+ * a different component type — so it unmounted and remounted this whole subtree
+ * on every single render. The bar below carries a 500ms width transition, and a
+ * node that mounts already at its final width has nothing to transition *from*,
+ * so the Life Points snapped instead of sliding. Everything the queue does to
+ * pace damage was landing on a bar that jumped anyway.
+ */
+function PlayerBar({
+  player,
+  duelist,
+  isActive,
+  isAi,
+  shownLp,
+  onGrave,
+}: {
+  player: DuelState['players'][PlayerId];
+  duelist: (typeof DUELISTS)[number] | undefined;
+  isActive: boolean;
+  isAi: boolean;
+  shownLp: number;
+  onGrave: () => void;
+}) {
+  const lpPct = Math.max(0, Math.min(100, (shownLp / 4000) * 100));
+  return (
+    <div className={`panel grain relative flex items-center gap-2 rounded px-2 py-1.5 ${isActive ? 'ring-1 ring-brass' : ''}`}>
+      <div
+        className="h-8 w-8 shrink-0 overflow-hidden rounded-full border"
+        style={{ borderColor: duelist?.accent ?? '#8a723d' }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={artUrl(duelist?.emblem ?? '')} alt="" className="h-full w-full object-cover" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="truncate font-display text-[13px] text-parchment">
+            {player.name}
+            {isAi && (
+              <span className="ml-1 align-middle text-[9px] uppercase tracking-wider text-brass">
+                CPU
+              </span>
+            )}
+          </span>
+          <span className="font-display text-sm tabular-nums text-brassbright">{shownLp}</span>
+        </div>
+        <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-black/60">
+          <div
+            className="h-full rounded-full transition-[width] duration-500"
+            style={{
+              width: `${lpPct}%`,
+              background:
+                lpPct > 50
+                  ? 'linear-gradient(90deg,#7a9a52,#c2a15a)'
+                  : lpPct > 22
+                    ? 'linear-gradient(90deg,#c2a15a,#d2673a)'
+                    : 'linear-gradient(90deg,#d2673a,#93313a)',
+            }}
+          />
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5 font-display text-[10px] text-ptextdim">
+        <span title="Cards in hand">✋{player.hand.length}</span>
+        <span title="Cards left in Deck">🂠{player.deck.length}</span>
+        <button className="btn rounded px-1 py-0.5 text-[9px]" onClick={onGrave} title="View Graveyard">
+          ⚰{player.grave.length}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Duel({ view, act, rematch, toLobby, connection, onBracket }: Props) {
   const state = view.state!;
   const me = view.you;
@@ -322,7 +396,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         case 'win':
           break;
       }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
 
   /* Drains the queue one event at a time. `fx` is what the board is currently
@@ -742,65 +815,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     );
   };
 
-  const PlayerBar = ({ pid, top }: { pid: PlayerId; top: boolean }) => {
-    const p = state.players[pid];
-    const duelist = DUELIST_BY_ID[p.duelistId];
-    const isActive = state.active === pid && !state.winner;
-    // The total the player should be looking at, which is the real one plus
-    // whatever has not been animated yet. See `pendingLpIn`.
-    const shownLp = Math.max(0, p.lp + pending[pid]);
-    const lpPct = Math.max(0, Math.min(100, (shownLp / 4000) * 100));
-    return (
-      <div className={`panel grain relative flex items-center gap-2 rounded px-2 py-1.5 ${isActive ? 'ring-1 ring-brass' : ''}`}>
-        <div
-          className="h-8 w-8 shrink-0 overflow-hidden rounded-full border"
-          style={{ borderColor: duelist?.accent ?? '#8a723d' }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={artUrl(duelist?.emblem ?? '')} alt="" className="h-full w-full object-cover" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate font-display text-[13px] text-parchment">
-              {p.name}
-              {view.seats[pid]?.ai && (
-                <span className="ml-1 align-middle text-[9px] uppercase tracking-wider text-brass">
-                  CPU
-                </span>
-              )}
-            </span>
-            <span className="font-display text-sm tabular-nums text-brassbright">{shownLp}</span>
-          </div>
-          <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-black/60">
-            <div
-              className="h-full rounded-full transition-[width] duration-500"
-              style={{
-                width: `${lpPct}%`,
-                background:
-                  lpPct > 50
-                    ? 'linear-gradient(90deg,#7a9a52,#c2a15a)'
-                    : lpPct > 22
-                      ? 'linear-gradient(90deg,#c2a15a,#d2673a)'
-                      : 'linear-gradient(90deg,#d2673a,#93313a)',
-              }}
-            />
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5 font-display text-[10px] text-ptextdim">
-          <span title="Cards in hand">✋{p.hand.length}</span>
-          <span title="Cards left in Deck">🂠{p.deck.length}</span>
-          <button
-            className="btn rounded px-1 py-0.5 text-[9px]"
-            onClick={() => setGraveOpen(pid)}
-            title="View Graveyard"
-          >
-            ⚰{p.grave.length}
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   /* ---------------- hand action sheet ---------------- */
   const handCard = mode.kind === 'hand' ? mine.hand.find((h) => h.uid === mode.uid) : null;
   const handDef = handCard ? CARDS[handCard.slug] : null;
@@ -899,7 +913,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* ---- top strip ---- */}
       <div className="flex shrink-0 items-center gap-2 px-2 pt-2">
         <div className="min-w-0 flex-1">
-          <PlayerBar pid={foe} top />
+          <PlayerBar
+            player={state.players[foe]}
+            duelist={DUELIST_BY_ID[state.players[foe].duelistId]}
+            isActive={state.active === foe && !state.winner}
+            isAi={!!view.seats[foe]?.ai}
+            /* The real total plus whatever damage or healing is still queued,
+               so the number never runs ahead of the blow that caused it. */
+            shownLp={Math.max(0, state.players[foe].lp + pending[foe])}
+            onGrave={() => setGraveOpen(foe)}
+          />
         </div>
         <div className="flex shrink-0 flex-col gap-1">
           <button
@@ -999,7 +1022,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           the turn controls stay live behind it; the action sheets sit higher
           still, so nothing this opens ends up underneath. */}
       <div className="relative z-[31] shrink-0 px-2 pb-2 pt-1">
-        <PlayerBar pid={me} top={false} />
+        <PlayerBar
+          player={state.players[me]}
+          duelist={DUELIST_BY_ID[state.players[me].duelistId]}
+          isActive={state.active === me && !state.winner}
+          isAi={!!view.seats[me]?.ai}
+          shownLp={Math.max(0, state.players[me].lp + pending[me])}
+          onGrave={() => setGraveOpen(me)}
+        />
 
         <div className="mt-1.5 flex items-end gap-2">
           <div className="relative min-w-0 flex-1">

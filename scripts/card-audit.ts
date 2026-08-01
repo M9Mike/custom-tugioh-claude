@@ -15,7 +15,7 @@
  *   npx tsx scripts/card-audit.ts            # audit everything
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
-import { applyAction, createDuel, effAtk, effDef, effFlags, other, tributesRequired } from '../src/game/engine';
+import { applyAction, createDuel, effAtk, effDef, effFlags, tributesRequired } from '../src/game/engine';
 import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,

@@ -12,13 +12,14 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  createDuel,
   fusionOptions,
   legalAttackTargets,
   other,
   summonBlocked,
   tributesRequired,
 } from '../src/game/engine';
-import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from '../src/game/types';
+import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 let rngState = 12345;
 function rnd(): number {
@@ -134,7 +135,6 @@ interface Result {
 }
 
 function playGame(seed: number, d1: string, d2: string, verbose = false): Result {
-  const { createDuel } = require('../src/game/engine') as typeof import('../src/game/engine');
   let state = createDuel({ seed, p1: { duelistId: d1, name: d1 }, p2: { duelistId: d2, name: d2 } });
   let steps = 0;
 

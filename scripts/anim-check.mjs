@@ -113,14 +113,88 @@ const main = async () => {
     await ctx.close();
   }
 
+  await lifeBarSurvivesARender(browser, errors);
+
   await browser.close();
   if (errors.length) {
-    console.error('\nThe signature flourish does not read:');
+    console.error('\nThe animation does not read:');
     for (const e of errors) console.error(`  ❌ ${e}`);
     process.exit(1);
   }
-  console.log('\nThe signature flourish arrives, holds and rushes past. ✅');
+  console.log('\nThe signature flourish arrives, holds and rushes past, and the Life Point bar glides. ✅');
 };
+
+/**
+ * The Life Point bar has a 500ms width transition, which only runs if the same
+ * DOM node survives from one render to the next.
+ *
+ * `PlayerBar` was declared inside `Duel`, making it a fresh function identity
+ * every render — React reads that as a different component type and remounts
+ * the subtree, and a node that mounts already at its final width has nothing to
+ * transition *from*. So the bar snapped while everything else about pacing
+ * damage was being carefully held back. Nothing in a screenshot says so, and no
+ * rules test can see it; the tell is whether the element is still the same one.
+ */
+async function lifeBarSurvivesARender(browser, errors) {
+  const post = async (path, body) => {
+    const r = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`${path} → ${r.status}`);
+    return r.json();
+  };
+
+  const { code, token } = await post('/api/room', { name: 'Mihail', vsAi: true });
+  await post(`/api/room/${code}/act`, { kind: 'chooseDuelist', token, duelistId: 'yugi' });
+
+  const ctx = await browser.newContext({ viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(
+    ([k, id]) => {
+      try {
+        localStorage.setItem(k, JSON.stringify(id));
+      } catch {
+        /* the check just lands on the "duel is full" screen and says so */
+      }
+    },
+    [`duel-identity:${code.toUpperCase()}`, { code, token }]
+  );
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/duel/${code}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3500);
+
+  const SEL = '.duel-root .transition-\\[width\\]';
+  const before = await page.evaluate((sel) => {
+    const els = [...document.querySelectorAll(sel)];
+    els.forEach((el, i) => el.setAttribute('data-probe', String(i)));
+    return els.length;
+  }, SEL);
+
+  if (!before) {
+    // Reaching neither state proves nothing, so say that rather than pass.
+    errors.push('could not find a Life Point bar to test — this check proved nothing');
+    await ctx.close();
+    return;
+  }
+
+  // Any state change re-renders the board; the sound toggle changes nothing else.
+  await page
+    .locator('.duel-root button')
+    .first()
+    .click({ timeout: 5000 })
+    .catch(() => {});
+  await page.waitForTimeout(500);
+
+  const after = await page.locator('[data-probe]').count();
+  console.log(`\n  life point bars: ${before} tagged, ${after} survived a re-render`);
+  if (after < before) {
+    errors.push(
+      `the Life Point bar is rebuilt every render (${after}/${before} survived), so its 500ms transition never runs`
+    );
+  }
+  await ctx.close();
+}
 
 main().catch((e) => {
   console.error(e);
