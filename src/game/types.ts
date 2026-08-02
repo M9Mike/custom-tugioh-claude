@@ -165,7 +165,14 @@ export interface CardFilter {
 export interface Selector {
   side: Side;
   /** Defaults to 'monster'. */
-  zone?: 'monster' | 'spellTrap' | 'field' | 'hand' | 'grave' | 'deck' | 'extra' | 'banished';
+  /**
+   * `spellTrap` is the Spell/Trap Zone only; `field` the Field Zone only;
+   * `backrow` is both, which is what "1 Spell or Trap your opponent controls"
+   * actually means — a Field Spell is a Spell they control. Toon World could
+   * not be removed by De-Spell, Harpie Lady or anything else that says those
+   * words, which in Pegasus's matchup is the whole duel.
+   */
+  zone?: 'monster' | 'spellTrap' | 'field' | 'backrow' | 'hand' | 'grave' | 'deck' | 'extra' | 'banished';
   pick: Pick;
   count?: number;
   filter?: CardFilter;
@@ -532,6 +539,13 @@ export interface DuelState {
   winner: PlayerId | 'draw' | null;
   winReason?: string;
   seed: number;
+  /**
+   * Stable for the life of one duel, unlike `seed`, which advances every time
+   * the engine rolls anything. The server keys the computer's per-turn plan on
+   * it: keyed by turn number alone, a rematch's turn 3 collided with the
+   * previous duel's turn 3 and the bookkeeping carried straight over.
+   */
+  duelId?: string;
   version: number;
   /** Monotonic counter for card instance ids; lives in state so duels stay reproducible. */
   uidSeq: number;

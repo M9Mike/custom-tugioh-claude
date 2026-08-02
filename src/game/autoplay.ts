@@ -129,9 +129,9 @@ function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'act
   for (const id of sides) {
     const pl = state.players[id];
     if (spec.zone === 'monster') pool.push(...pl.monsters.filter((m): m is CardInstance => !!m).map((m) => m.uid));
-    else if (spec.zone === 'spellTrap') {
+    else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
       if (pl.spellTrap) pool.push(pl.spellTrap.uid);
-      if (pl.field) pool.push(pl.field.uid);
+      if (spec.zone === 'backrow' && pl.field) pool.push(pl.field.uid);
     } else if (spec.zone === 'grave') {
       pool.push(...pl.grave.filter((c) => CARDS[c.slug]?.kind === 'monster').map((c) => c.uid));
     } else if (spec.zone === 'hand' && id === pid) pool.push(...pl.hand.map((c) => c.uid));

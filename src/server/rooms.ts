@@ -18,7 +18,7 @@ import {
   resolveOneSideMatch,
   type Tournament,
 } from './tournament';
-import { claim, readJson, writeJson } from './store';
+import { claim, readJson, writeJsonIf } from './store';
 import type { DuelAction, DuelState, PlayerId } from '@/game/types';
 
 export interface Seat {
@@ -88,10 +88,30 @@ export async function loadRoom(code: string): Promise<Room | null> {
   return readJson<Room>(key(code));
 }
 
+/**
+ * Thrown when the room moved underneath us between load and save.
+ *
+ * Every mutation is load -> change -> save, and two of those interleaving is a
+ * plain lost update. The route reloads and replays rather than clobbering.
+ */
+export class StaleRoom extends Error {
+  constructor() {
+    super('The room changed while this move was being made.');
+    this.name = 'StaleRoom';
+  }
+}
+
 async function saveRoom(room: Room): Promise<void> {
+  const from = room.revision;
   room.revision += 1;
   room.lastActivity = Date.now();
-  await writeJson(key(room.code), room);
+  const written = await writeJsonIf(key(room.code), room, from, room.revision);
+  if (!written) {
+    // Nothing was written, so this object is a fiction now — put its revision
+    // back and let the caller start again from what is really stored.
+    room.revision = from;
+    throw new StaleRoom();
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -209,6 +229,7 @@ export async function stepTournament(room: Room): Promise<boolean> {
     room.state = null;
     room.rematch = [];
     room.aiPlan = undefined;
+    room.aiActions = undefined;
     // Nothing to seat or start once the player is out — they only watch.
     if (t.status !== 'eliminated') {
       seatOpponent(room);
@@ -257,7 +278,13 @@ export async function stepAI(room: Room): Promise<boolean> {
   // indefinitely — every move legal, the turn never ending — so past a
   // generous ceiling the turn is simply given up. The cap is well above any
   // real turn: the search itself never plans more than two dozen actions.
-  const turnKey = `${s.turn}:${pid}`;
+  /* Keyed by the duel as well as the turn. With just `turn:pid`, a rematch —
+     which starts a fresh duel back at turn 1 — walked straight into the
+     previous duel's bookkeeping: the action count for "3:p2" kept accumulating
+     across duels until it crossed the 60 ceiling, at which point the computer
+     began giving up that turn the moment it arrived. Which is exactly the
+     shape of "the more rematches, the more it misbehaves". */
+  const turnKey = `${s.duelId ?? 'legacy'}:${s.turn}:${pid}`;
   if (room.aiActions?.key !== turnKey) room.aiActions = { key: turnKey, count: 0 };
   room.aiActions.count += 1;
   if (room.aiActions.count > 60 && !s.pending) {
@@ -278,7 +305,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     room.aiPlan = undefined;
     action = chooseTrapResponse(s, pid, GAME_AI);
   } else {
-    const key = `${s.turn}:${pid}`;
+    const key = turnKey;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
       /* Four seconds to plan the whole turn, once per turn. The board narrates
          every beat for over a second anyway, so the think overlaps the tail of
@@ -374,14 +401,29 @@ export function viewOf(room: Room, pid: PlayerId): RoomView {
 }
 
 /** Records that this seat is alive, without forcing a write on every poll. */
+/**
+ * Marks a seat as still there. Deliberately does NOT write.
+ *
+ * This used to persist the *whole room* — including the duel — from whatever
+ * snapshot the poll had loaded, every eight seconds, per player. It also wrote
+ * through `writeJson` rather than `saveRoom`, so it did not bump `revision`
+ * and nothing could detect it. A summon that landed between a poll's read and
+ * its write was simply undone: the monster went back to the hand, a destroyed
+ * Set trap came back, and the client — which correctly refuses a view older
+ * than the one on screen — then sat showing a board the server did not have,
+ * until the next action was refused for being in the wrong phase. All of that
+ * was reported from real duels, and it got worse the longer a room lived,
+ * because it is a rate, not an event.
+ *
+ * A write on the read path was never worth it: `connected` is derived from
+ * `lastSeen` and no screen displays it. The timestamp is updated in memory so
+ * the view built from this request is current, and real writes (joining,
+ * acting) persist it as a side effect.
+ */
 export async function touch(room: Room, pid: PlayerId): Promise<void> {
   const seat = room.seats[pid];
   if (!seat) return;
-  // Only write when the timestamp is stale enough to matter for the presence
-  // indicator — polls happen every second or two and must stay cheap.
-  if (Date.now() - seat.lastSeen < 8000) return;
   seat.lastSeen = Date.now();
-  await writeJson(key(room.code), room);
 }
 
 /* ------------------------------------------------------------------ */
@@ -436,6 +478,7 @@ function maybeStart(room: Room) {
   });
   room.rematch = [];
   room.aiPlan = undefined;
+  room.aiActions = undefined;
 }
 
 export async function requestRematch(room: Room, pid: PlayerId): Promise<void> {
@@ -463,6 +506,7 @@ export async function leaveToLobby(room: Room): Promise<void> {
   room.state = null;
   room.rematch = [];
   room.aiPlan = undefined;
+  room.aiActions = undefined;
   for (const id of ['p1', 'p2'] as PlayerId[]) {
     const seat = room.seats[id];
     if (!seat) continue;

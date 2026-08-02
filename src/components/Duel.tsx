@@ -911,9 +911,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               .filter((m) => pid === me || !effFlags(state, m, pid).untargetable)
               .map((m) => m.uid)
           );
-        else if (spec.zone === 'spellTrap') {
+        else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
           if (p.spellTrap) out.push(p.spellTrap.uid);
-          if (p.field) out.push(p.field.uid);
+          // Only `backrow` reaches the Field Zone. This used to offer the Field
+          // Spell for a plain `spellTrap` spec, which the engine would then
+          // refuse to touch — the client and the engine disagreeing about what
+          // the words meant, with the player left pointing at a card nothing
+          // would destroy.
+          if (spec.zone === 'backrow' && p.field) out.push(p.field.uid);
         } else if (spec.zone === 'grave') {
           out.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster').map((c) => c.uid));
         } else if (spec.zone === 'deck' && pid === me) {

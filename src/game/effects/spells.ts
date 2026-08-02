@@ -8,6 +8,11 @@ const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector =>
 const OPP_PICK = sel('opp', 'chosen');
 const OPP_ALL = sel('opp', 'all');
 const OPP_ST = sel('opp', 'all', { zone: 'spellTrap' });
+/* "1 Spell or Trap your opponent controls" — a Field Spell is a Spell they
+   control, so this reaches the Field Zone too and the player picks which.
+   Toon World sat in that zone untouchable by everything that says those
+   words, which against Pegasus is the card the whole deck is built on. */
+const OPP_ONE_BACKROW = sel('opp', 'chosen', { zone: 'backrow', count: 1 });
 const OWN_PICK = sel('own', 'chosen');
 
 export const SPELL_EFFECTS: Record<string, EffectDef> = {
@@ -110,8 +115,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'activate',
+        targets: 1,
         ops: [
-          { op: 'destroy', target: OPP_ST },
+          { op: 'destroy', target: OPP_ONE_BACKROW },
           { op: 'draw', count: 1, who: 'own' },
         ],
       },
@@ -302,7 +308,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'giant-trunade': {
     text: 'Return every Spell and Trap on the field to their owners\' hands.',
-    effects: [{ trigger: 'activate', ops: [{ op: 'bounce', target: sel('both', 'all', { zone: 'spellTrap' }) }] }],
+    effects: [{ trigger: 'activate', ops: [{ op: 'bounce', target: sel('both', 'all', { zone: 'backrow' }) }] }],
   },
 
   salamandra: {
@@ -410,7 +416,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   'harpies-hunting-ground': {
     text: 'Field Spell: all Winged Beast monsters gain 300 ATK and 300 DEF. When activated: destroy 1 Spell or Trap your opponent controls.',
     effects: [
-      { trigger: 'activate', ops: [{ op: 'destroy', target: OPP_ST }] },
+      { trigger: 'activate', targets: 1, ops: [{ op: 'destroy', target: OPP_ONE_BACKROW }] },
       {
         trigger: 'continuous',
         ops: [],
@@ -487,7 +493,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         ops: [],
         aura: {
-          target: sel('own', 'all', { filter: { toon: true } }),
+          /* Toon *monsters*. Without `kind`, `isToon` matches the card's own
+             name, so Toon World granted itself `untargetable` — the one card
+             Pegasus's whole deck depends on could not be destroyed by anything
+             that targets, sitting in a zone nothing could reach either.
+             Reported as "Toon World as a field spell should be destroyable". */
+          target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
           atk: 800,
           grants: ['directAttack', 'untargetable', 'pierce'],
         },

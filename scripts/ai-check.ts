@@ -140,6 +140,45 @@ const CASES: Case[] = [
     want: (plan) => !did(plan, 'attack'),
   },
   {
+    /* Straight off a duel log the owner sent: Mai at 2350 Life Points swung a
+       1400 into a 3100 Dark Magician for 1700, then a 1200 into the same
+       monster for 1900, and killed herself. The cause was not the evaluation —
+       it was that Mike had a card Set, so declaring an attack opened a window
+       the AI could not read, and a window it cannot read is left exactly where
+       it is. The line was then scored with the blow hanging in the air: no
+       damage, no loss, nothing having happened. Blindness to what an attack
+       *costs* it, dressed up as caution. */
+    name: 'will not swing into a monster that kills it, Set card or no Set card',
+    because: 'the attack is refused whatever the Set card turns out to be — it loses 1700 Life Points even if nobody responds',
+    build: (s) => {
+      s.players[ME].lp = 2350;
+      s.players[ME].monsters[0] = card(ME, 'winged-dragon-guardian-of-the-fortress-1');
+      s.players[ME].monsters[1] = card(ME, 'sonic-maid');
+      const magician = card(FOE, 'dark-magician');
+      magician.atkMod = 600; // as it stood in the log, at 3100
+      s.players[FOE].monsters[0] = magician;
+      const set = card(FOE, 'mirror-force');
+      set.face = 'down';
+      set.summonedOnTurn = 0;
+      s.players[FOE].spellTrap = set;
+    },
+    want: (plan) => !did(plan, 'attack'),
+  },
+  {
+    name: 'CONTROL: swings when the same unread Set card sits behind a monster it beats',
+    because: 'without this, an AI that had stopped attacking whenever anything was Set would pass the case above',
+    build: (s) => {
+      s.players[ME].lp = 2350;
+      s.players[ME].monsters[0] = card(ME, 'summoned-skull');
+      s.players[FOE].monsters[0] = card(FOE, 'aqua-madoor');
+      const set = card(FOE, 'mirror-force');
+      set.face = 'down';
+      set.summonedOnTurn = 0;
+      s.players[FOE].spellTrap = set;
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
     name: 'CONTROL: attacks the same board with no wall on it',
     because: 'without this, an AI that had simply forgotten how to attack would pass the two above',
     build: (s) => {

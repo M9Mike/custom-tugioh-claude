@@ -629,12 +629,28 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
         if (Date.now() > deadline) break;
         const res = applyAction(line.state, pid, action);
         if (res.error) continue;
-        const after = canSeeResponse(res.state, pid) ? settleWindows(res.state, pid, w) : res.state;
+        /* A window it can read is settled and scored as settled. A window it
+           cannot read is left exactly where it is — see `canSeeResponse` for
+           why guessing "they decline" is the worse error — but the score now
+           takes the *worse* of leaving it and of the attack simply landing.
+           Leaving it alone reads as nothing having happened, which is fair
+           about what the line might gain and blind about what it costs: the
+           computer swung a 1400 and then a 1200 into a 3100 Dark Magician,
+           took 1700 and then 1900, and killed itself, because with a Set card
+           across the table neither blow was ever resolved in the search. The
+           minimum keeps the caution about unseen traps — a kill it might not
+           get is still not counted — while making a move that is bad even if
+           the opponent does nothing score as bad. */
+        const unread = !!res.state.pending && !canSeeResponse(res.state, pid);
+        const after = unread ? res.state : settleWindows(res.state, pid, w);
+        const score = unread
+          ? Math.min(evaluate(after, pid, w), evaluate(settleWindows(res.state, pid, w), pid, w))
+          : evaluate(after, pid, w);
         const ends = action.type === 'endTurn' || after.active !== pid || !!after.winner;
         next.push({
           state: after,
           actions: [...line.actions, action],
-          score: evaluate(after, pid, w),
+          score,
           done: ends || !!after.pending,
         });
       }
@@ -684,7 +700,20 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
   const all = finished.filter((l) => l.actions.length);
   if (!all.length) return [{ type: 'endTurn' }];
 
-  for (const line of all) line.score = evaluate(line.state, pid, w);
+  /* Do NOT re-score from `line.state` here.
+   *
+   * This used to read `line.score = evaluate(line.state, pid, w)`, which threw
+   * away everything the expansion loop had worked out and re-derived each line
+   * from its board alone. For a line ending on a response window the AI cannot
+   * read, that board is the one with the attack still hanging in the air —
+   * neither landed nor answered — so the cost of the blow was discarded one
+   * line after being carefully accounted for. Against a 3100 Dark Magician
+   * with a Set card across the table the numbers were: the attack unresolved
+   * −3375, the attack actually landing −29930, ending the turn −4495. The
+   * search computed −29930 and then replaced it with −3375, and swung.
+   *
+   * Every line already carries the score it was pushed with, so there is
+   * nothing to recompute. */
   all.sort((a, b) => b.score - a.score);
 
   // Deeper plies: for the most promising lines, actually play the turns that

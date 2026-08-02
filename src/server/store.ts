@@ -68,6 +68,12 @@ interface RoomDoc {
   _id: string;
   value: string;
   expiresAt: Date;
+  /**
+   * The room's own `revision` at the time of writing, used for compare-and-set.
+   * Absent on documents written before this existed, which the guard treats as
+   * "matches anything" so a duel in flight is not stranded by a deploy.
+   */
+  rev?: number;
 }
 
 /* The client is cached on globalThis so warm serverless invocations reuse one
@@ -183,6 +189,7 @@ async function command<T>(cmd: (string | number)[]): Promise<T> {
 interface MemEntry {
   value: string;
   expiresAt: number;
+  rev?: number;
 }
 const g = globalThis as unknown as { __duelMem?: Map<string, MemEntry> };
 const mem: Map<string, MemEntry> = (g.__duelMem ??= new Map());
@@ -207,6 +214,59 @@ export async function readRaw(key: string): Promise<string | null> {
   if (usingRedis) return (await command<string | null>(['GET', key])) ?? null;
   memSweep();
   return mem.get(key)?.value ?? null;
+}
+
+/**
+ * Writes only if the stored revision is still the one we read.
+ *
+ * Every mutation here is load -> change -> save, which without this is a plain
+ * lost update: two requests read the same room, both write, and the second
+ * silently erases the first. It was not a theoretical race — the poll endpoint
+ * wrote the whole room back on a timer, so a summon could be undone by a
+ * *read* that had started before it, and the board rewound in front of the
+ * player.
+ *
+ * Returns false when the room moved underneath, so the caller can reload and
+ * try again rather than clobber. `expected < 0` means "this room is new".
+ */
+export async function writeRawIf(
+  key: string,
+  value: string,
+  expected: number,
+  next: number,
+  ttlSeconds = ROOM_TTL_SECONDS
+): Promise<boolean> {
+  const expiresAt = Date.now() + ttlSeconds * 1000;
+  if (usingMongo) {
+    const col = await collection();
+    if (expected < 0) {
+      await col.updateOne(
+        { _id: key },
+        { $set: { value, rev: next, expiresAt: new Date(expiresAt) } },
+        { upsert: true }
+      );
+      return true;
+    }
+    const res = await col.updateOne(
+      // `rev` missing means the document predates this guard: let it through
+      // once, and it carries a revision from then on.
+      { _id: key, $or: [{ rev: expected }, { rev: { $exists: false } }] },
+      { $set: { value, rev: next, expiresAt: new Date(expiresAt) } }
+    );
+    return res.matchedCount === 1;
+  }
+  if (usingRedis) {
+    /* Upstash's REST API has no compare-and-set without a Lua round trip, and
+       Redis is only ever the fallback when MongoDB is not configured — never
+       production here. Documented rather than silently unguarded. */
+    await command(['SET', key, value, 'EX', ttlSeconds]);
+    return true;
+  }
+  memSweep();
+  const cur = mem.get(key);
+  if (expected >= 0 && cur && cur.rev !== undefined && cur.rev !== expected) return false;
+  mem.set(key, { value, expiresAt, rev: next });
+  return true;
 }
 
 export async function writeRaw(key: string, value: string, ttlSeconds = ROOM_TTL_SECONDS): Promise<void> {
@@ -280,4 +340,15 @@ export async function readJson<T>(key: string): Promise<T | null> {
 
 export async function writeJson(key: string, value: unknown, ttlSeconds = ROOM_TTL_SECONDS): Promise<void> {
   await writeRaw(key, JSON.stringify(value), ttlSeconds);
+}
+
+/** `writeJson` under the compare-and-set guard — see `writeRawIf`. */
+export async function writeJsonIf(
+  key: string,
+  value: unknown,
+  expected: number,
+  next: number,
+  ttlSeconds = ROOM_TTL_SECONDS
+): Promise<boolean> {
+  return writeRawIf(key, JSON.stringify(value), expected, next, ttlSeconds);
 }

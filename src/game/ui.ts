@@ -9,7 +9,7 @@ import type { CardDef, CardEffect, CardFilter, Op, Trigger } from './types';
 export interface TargetSpec {
   /** Whose cards may be picked. */
   side: 'own' | 'opp' | 'both';
-  zone: 'monster' | 'spellTrap' | 'grave' | 'hand' | 'deck';
+  zone: 'monster' | 'spellTrap' | 'backrow' | 'grave' | 'hand' | 'deck';
   count: number;
   prompt: string;
   /** Narrows what may be picked — a Deck search is rarely "any card". */

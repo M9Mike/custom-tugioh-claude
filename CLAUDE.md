@@ -73,6 +73,7 @@ npm run audio    http://localhost:3100               # the AudioContext waits fo
 npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 npm run rematch  http://localhost:3100               # the second duel narrates too
+npm run race                                         # two requests cannot undo each other
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -976,6 +977,101 @@ untargetable-monster hole in its probe. Every one had passed `npm run rules`,
 `npm run audit`, `npm run playable`, `npm run text`, and the whole browser
 battery. A green suite means "nothing I thought to check is broken", and after
 writing a fix you are the last person able to think of what to check.
+
+**A write on the read path undid duels.** `touch` kept a seat's presence
+timestamp fresh, and to do it wrote the *entire room* — the duel included —
+back from whatever snapshot the poll had loaded, every eight seconds, per
+player. It went through `writeJson` rather than `saveRoom`, so it did not even
+bump `revision`: the room went backwards while its version number stood still.
+A summon landing between a poll's read and its write was simply erased.
+Reported three separate ways, and it is one bug:
+
+- *"I summoned harpie lady and destroyed the ai's negate attack and it returned
+  my harpie to the hand and re set their negate attack"* — the write landing on
+  top of the summon.
+- *"I click the atk button from curse of dragon and when I select the enemy
+  monster I see a banner you must be in the battle phase (obviously I am in
+  it)"* — the same write rolling the phase back to Main, while the client, which
+  correctly refuses a view older than the one on screen, carried on showing the
+  Battle Phase. The board and the server had genuinely diverged.
+- *"the more rematches the more bugs happen"* — it is a rate, not an event, so
+  the longer a room lives the more of them you see. Nothing to do with rematches
+  as such, and worse in a two-player duel than against the computer, because two
+  players polling is twice the traffic.
+
+`connected` is derived from `lastSeen` and **no screen displays it**, so the
+write bought nothing at all. `touch` updates the timestamp in memory now and
+never persists. Every real write goes through `saveRoom`, which is
+compare-and-set on `revision`: a save from a copy that has gone stale throws
+`StaleRoom`, and the route reloads and replays rather than clobbering. Replaying
+is safe because the decision is re-made from the reloaded room — a move that is
+no longer legal comes back as an ordinary refusal.
+
+`npm run race` covers it, and note what it took to make that check honest: the
+old `touch` only wrote once the timestamp was eight seconds stale, so a
+snapshot taken moments earlier never triggered it and the first version of the
+check passed happily on the broken code. It ages the snapshot deliberately, and
+compares a fingerprint of the whole board rather than a version number — two
+different writes both land on version N+1.
+
+**Two duels shared one set of bookkeeping.** The computer's turn plan was keyed
+`${turn}:${pid}`, and a rematch starts a fresh duel back at turn 1 — so the new
+duel's turn 3 *was* the old duel's turn 3. `aiPlan` happened to be cleared on
+the way through `maybeStart`; `aiActions` was not, so the action count for a
+given turn kept accumulating across duels until it crossed the 60-action
+ceiling, at which point the computer began abandoning that turn the moment it
+reached it. `DuelState` carries a `duelId` now and the key includes it, so a
+collision is impossible by construction rather than by remembering to clear.
+
+**The search threw away its own scores one line before using them.** This is
+the whole of *"why did Mai Valentine attack my dark magician with weaker
+monsters and lost on purpose, she killed her self?"* — and the answer is not
+the evaluation. Declaring an attack opens a response window, and a window the
+AI cannot read is deliberately left where it is (see `canSeeResponse`: assuming
+"they decline" walks into every Set trap, and measured six points worse). But
+the line is then scored on a board with the blow still in the air — no damage,
+no loss, nothing having happened. Fair about what the attack might *gain*,
+blind to what it *costs*.
+
+Scoring now takes the worse of leaving the window alone and of the attack
+simply landing, which keeps the caution and removes the blindness. That looked
+like it barely worked — 6 of 10 deck orders — until the real culprit turned up
+forty lines later:
+
+```ts
+for (const line of all) line.score = evaluate(line.state, pid, w);   // gone
+```
+
+Every score the search had computed was discarded and re-derived from the board
+alone. On the reported position the numbers are: the attack unresolved −3375,
+the attack actually landing −29930, ending the turn −4495. The search worked out
+−29930, replaced it with −3375, and swung. Every line already carries the score
+it was pushed with; there was never anything to recompute.
+
+Measured at 52.3% ±4.9 over 400 games against the previous AI — no strength
+change worth the name, which is the right result for a correctness fix. The
+paired control matters as much as the case: an AI that had simply stopped
+attacking would pass "does not swing into a 3100" perfectly, so it is paired
+with "swings when the same unread Set card sits behind a monster it beats".
+
+**Toon World was untouchable twice over.** Reported as "Toon World as a field
+spell should be destroyable (for example de spell, harpie lady summon effect,
+etc..)". First, every card that says "destroy 1 Spell or Trap your opponent
+controls" pointed at `zone: 'spellTrap'`, which is the Spell/Trap Zone alone —
+and a Field Spell is a Spell they control. Worse, the client and the test driver
+had *both* been offering the Field Zone card for those effects all along, so the
+player could point at it and the engine would decline to touch it: three copies
+of the rule, two agreeing with each other and neither agreeing with the engine.
+There is a `backrow` zone now meaning both, and the three consumers read the
+same word.
+
+Second, and the reason it survived even a card that could reach it: Toon World's
+own aura is "your Toon monsters gain 800 ATK … and cannot be targeted", written
+as `filter: { toon: true }` with no `kind`. `isToon` matches on the name, and
+the card is called *Toon World* — so it granted itself `untargetable` and every
+targeting effect in the game skipped it. Pegasus is unchanged by the fix at
+86% ±7, because the deck was never winning on that.
+
 
 ## Shape of the thing
 

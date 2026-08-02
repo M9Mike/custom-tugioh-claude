@@ -420,6 +420,7 @@ export function createDuel(opts: {
     pending: null,
     winner: null,
     seed: opts.seed >>> 0,
+    duelId: `${opts.seed >>> 0}-${opts.firstPlayer ?? 'p1'}`,
     version: 0,
     uidSeq: 0,
     suspendedAttack: null,
@@ -647,6 +648,8 @@ function zoneCards(state: DuelState, pid: PlayerId, zone: Selector['zone']): Car
       return p.spellTrap ? [p.spellTrap] : [];
     case 'field':
       return p.field ? [p.field] : [];
+    case 'backrow':
+      return [p.spellTrap, p.field].filter((c): c is CardInstance => !!c);
     case 'hand':
       return p.hand;
     case 'grave':

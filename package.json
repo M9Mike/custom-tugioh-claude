@@ -30,7 +30,8 @@
     "layout": "node scripts/layout-check.mjs",
     "ai": "tsx scripts/ai-check.ts",
     "ai-ab": "tsx scripts/ai-ab.ts",
-    "rematch": "node scripts/rematch-check.mjs"
+    "rematch": "node scripts/rematch-check.mjs",
+    "race": "tsx scripts/race-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

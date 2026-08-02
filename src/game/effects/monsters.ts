@@ -38,7 +38,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
           { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
           { op: 'attackAllMonsters' },
           { op: 'pierce', duration: 'permanent' },
@@ -70,7 +70,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         label: 'Shatter a Spell/Trap',
         oncePerTurn: true,
         targets: 1,
-        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'spellTrap' }) }],
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
     ],
   },
@@ -140,7 +140,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         label: 'Dark Magic Attack',
         oncePerTurn: true,
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
           { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
         ],
       },
@@ -205,7 +205,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) },
           { op: 'pierce', duration: 'permanent' },
         ],
       },
@@ -428,7 +428,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'ryu-kishin-powered': {
     text: 'When this card is Normal Summoned: destroy 1 Spell or Trap your opponent controls.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] }],
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }] }],
   },
 
   /* ================================================================ */
@@ -623,7 +623,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'Sisters, take flight!',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Winged Beast' } }), atk: 200 } },
-      { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) }] },
+      { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }] },
     ],
   },
 
@@ -635,7 +635,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onSummon',
         ops: [
           { op: 'attackAllMonsters' },
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
         ],
       },
     ],
@@ -1172,7 +1172,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'untargetable', duration: 'permanent' },
           { op: 'pierce', duration: 'permanent' },
           { op: 'extraAttacks', count: 1 },
-          { op: 'destroy', target: sel('both', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('both', 'all', { zone: 'backrow' }) },
         ],
       },
     ],
@@ -1427,7 +1427,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
           { op: 'pierce', duration: 'permanent' },
           { op: 'indestructibleByBattle', duration: 'permanent' },
         ],

@@ -1390,6 +1390,56 @@ console.log('\nA trap that picks its own target asks the player nothing');
   ok(bound.players[ME].spellTrap?.equippedTo === s.players[FOE].monsters[0]!.uid, 'and the circle lands on the attacker');
 }
 
+console.log('\nA Field Spell is a Spell your opponent controls');
+{
+  /* "Toon World as a field spell should be destroyable (for example de spell,
+     harpie lady summon effect, etc..)" — and it was not: every card that says
+     "destroy 1 Spell or Trap your opponent controls" pointed at the Spell/Trap
+     Zone alone, so the one card Pegasus's entire deck is built on sat in the
+     Field Zone out of reach. The client had been offering the Field card for
+     those effects all along, which the engine then declined to touch. */
+  const s = fresh();
+  s.players[FOE].field = card(FOE, 'toon-world');
+  const despell = card(ME, 'de-spell');
+  s.players[ME].hand.push(despell);
+  ok(canActivateFromHand(s, ME, despell), 'De-Spell is offered against a lone Field Spell');
+  const gone = act(s, ME, { type: 'activateSpell', uid: despell.uid, targets: [s.players[FOE].field!.uid] });
+  ok(gone.players[FOE].field === null, 'and Toon World is destroyed');
+
+  // Harpie Lady says the same words and now means them too.
+  const h = fresh();
+  h.players[FOE].field = card(FOE, 'toon-world');
+  const lady = card(ME, 'harpie-lady');
+  h.players[ME].hand.push(lady);
+  const summoned = act(h, ME, {
+    type: 'normalSummon',
+    uid: lady.uid,
+    zone: 0,
+    position: 'atk',
+    face: 'up',
+    targets: [h.players[FOE].field!.uid],
+  });
+  ok(summoned.players[FOE].field === null, "Harpie Lady's summon reaches it as well");
+
+  // A Set Trap is still the more usual answer, and still works.
+  const t = fresh();
+  t.players[FOE].spellTrap = card(FOE, 'mirror-wall');
+  const d2 = card(ME, 'de-spell');
+  t.players[ME].hand.push(d2);
+  const cleared = act(t, ME, { type: 'activateSpell', uid: d2.uid, targets: [t.players[FOE].spellTrap!.uid] });
+  ok(cleared.players[FOE].spellTrap === null, 'CONTROL: and an ordinary Spell/Trap is still destroyed');
+
+  // "Destroy 1" is one: with both zones filled, only the named card goes.
+  const both = fresh();
+  both.players[FOE].field = card(FOE, 'toon-world');
+  both.players[FOE].spellTrap = card(FOE, 'mirror-wall');
+  const d3 = card(ME, 'de-spell');
+  both.players[ME].hand.push(d3);
+  const one = act(both, ME, { type: 'activateSpell', uid: d3.uid, targets: [both.players[FOE].field!.uid] });
+  ok(one.players[FOE].field === null, 'the card the player pointed at is the one destroyed');
+  ok(one.players[FOE].spellTrap !== null, 'and only that one — "destroy 1" is one');
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

@@ -1,4 +1,4 @@
-import { aiSeatToMove, loadRoom, seatFor, stepAI, stepTournament, tournamentPending, viewOf } from '@/server/rooms';
+import { StaleRoom, aiSeatToMove, loadRoom, seatFor, stepAI, stepTournament, tournamentPending, viewOf } from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,9 +18,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
   const { code } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as { token?: string };
 
+  /* One retry only. A lost race here just means somebody else already moved
+     the duel along, and the search is four seconds of CPU — far better to
+     report "nothing moved" and let the poll loop pick it up than to spend it
+     twice. */
+  try {
+    return await handle(code, body.token ?? '');
+  } catch (err) {
+    if (!(err instanceof StaleRoom)) throw err;
+  }
+  try {
+    return await handle(code, body.token ?? '');
+  } catch (err) {
+    if (err instanceof StaleRoom) return Response.json({ ok: true, moved: false });
+    throw err;
+  }
+}
+
+async function handle(code: string, token: string) {
   const room = await loadRoom(code);
   if (!room) return Response.json({ ok: false, error: 'Room not found.' }, { status: 404 });
-  const pid = seatFor(room, body.token ?? '');
+  const pid = seatFor(room, token);
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
 
   // The bracket takes priority: once a tournament duel is decided there is no
