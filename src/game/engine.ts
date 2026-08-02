@@ -296,6 +296,7 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (wantSide === 'own' && !sameSide) continue;
       if (wantSide === 'opp' && sameSide) continue;
       if (s.pick === 'self' && source.uid !== target.uid) continue;
+      if (s.excludeSelf && source.uid === target.uid) continue;
       if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
@@ -661,6 +662,23 @@ function zoneCards(state: DuelState, pid: PlayerId, zone: Selector['zone']): Car
   }
 }
 
+/**
+ * Every card a selector could reach, before the pick narrows it down. Shared
+ * with the activation gate, which needs to know whether an effect has anything
+ * to work on without actually resolving it.
+ */
+function targetPool(ctx: EffectCtx, s: Selector): CardInstance[] {
+  const zone = s.zone ?? 'monster';
+  const pool: CardInstance[] = [];
+  for (const pid of sideToPlayers(ctx, s.side)) {
+    for (const c of zoneCards(ctx.state, pid, zone)) {
+      if (s.excludeSelf && c.uid === ctx.source.uid) continue;
+      if (matchesFilter(c, s.filter)) pool.push(c);
+    }
+  }
+  return pool;
+}
+
 function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
   const { state } = ctx;
   const zone = s.zone ?? 'monster';
@@ -681,12 +699,7 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
       .filter((c): c is CardInstance => !!c);
   }
 
-  const pool: CardInstance[] = [];
-  for (const pid of sideToPlayers(ctx, s.side)) {
-    for (const c of zoneCards(state, pid, zone)) {
-      if (matchesFilter(c, s.filter)) pool.push(c);
-    }
-  }
+  const pool = targetPool(ctx, s);
 
   if (s.pick === 'chosen') {
     const want = s.count ?? 1;
@@ -1135,7 +1148,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'equipTo': {
         const targets = resolveTargets(ctx, { side: 'own', pick: 'chosen' });
-        const t = targets[0] ?? state.players[ctx.controller].monsters.find((m): m is CardInstance => !!m);
+        /* A selector wins over the prompt: Spellbinding Circle attaches itself
+           to the monster that declared the attack, which nobody picks. */
+        const t = op.target
+          ? resolveTargets(ctx, op.target)[0]
+          : (targets[0] ?? state.players[ctx.controller].monsters.find((m): m is CardInstance => !!m));
         if (!t) {
           log(state, 'There is no monster to equip.', 'effect', ctx.controller);
           break;
@@ -1146,7 +1163,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         // destroyed the monster goes straight back to its printed values.
         ctx.source.equippedTo = t.uid;
         t.equips.push(ctx.source.slug);
-        log(state, `${displayName(t)} is equipped with ${card(ctx.source.slug).name} (+${op.atk} ATK).`, 'effect', ctx.controller);
+        // Signed, because an equip can be a penalty: Spellbinding Circle takes
+        // 700 off, and "(+-700 ATK)" is not a sentence.
+        log(
+          state,
+          `${displayName(t)} is equipped with ${card(ctx.source.slug).name} (${op.atk < 0 ? '' : '+'}${op.atk} ATK).`,
+          'effect',
+          ctx.controller
+        );
         break;
       }
       case 'revealHand':
@@ -1353,7 +1377,7 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
   const out: CardInstance[] = [];
   const st = p.spellTrap;
   if (st && CARDS[st.slug]?.kind === 'trap') {
-    const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && e.window === window);
+    const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && windowMatches(e.window, window));
     // A face-down trap cannot be activated on the turn it was set. A face-up
     // Continuous Trap has already served that wait, and one flagged `reusable`
     // goes off every time its window opens — that ongoing threat is the whole
@@ -1362,10 +1386,24 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
     if (ready && effs.length) out.push(st);
   }
   for (const h of p.hand) {
-    const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && e.window === window) ?? [];
+    const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)) ?? [];
     if (effs.length) out.push(h);
   }
   return out;
+}
+
+/**
+ * Does a card watching `wants` fire in the window that just opened?
+ *
+ * Only one relationship is not equality: a Normal Summon is a Summon, so
+ * Torrential Tribute's "when your opponent summons a monster" catches it,
+ * while Trap Hole — which says "Normal Summons" — sits out the Fusion Summons
+ * that open the wider window. Setting a monster face-down opens neither, since
+ * a Set is not a Summon at all.
+ */
+function windowMatches(wants: TrapWindow | undefined, opened: TrapWindow): boolean {
+  if (wants === opened) return true;
+  return wants === 'opponentSummon' && opened === 'opponentNormalSummon';
 }
 
 function openTrapWindow(state: DuelState, responder: PlayerId, window: TrapWindow, reason: string, context: TriggerContext): boolean {
@@ -1723,6 +1761,89 @@ function isPassiveSpell(def: CardDef): boolean {
   return def.effects.length > 0;
 }
 
+/**
+ * Ops whose whole job is to act on a card that is already there. Playing one
+ * with nothing to act on spends the card for nothing.
+ */
+const NEEDS_A_TARGET = new Set([
+  'destroy',
+  'bounce',
+  'banish',
+  'takeControl',
+  'negateEffects',
+  'absorb',
+  'shuffleIntoDeck',
+  'halveAtk',
+  'swapAtkDef',
+  'setAtk',
+  'gainAtk',
+  'gainDef',
+  'forceDefense',
+  'forceAttackPosition',
+  'flipFaceUp',
+  'equipTo',
+]);
+
+/** Picks that read a pool of cards, as opposed to one the context supplies. */
+const POOL_PICKS = new Set(['chosen', 'all', 'strongest', 'weakest', 'random']);
+
+/**
+ * Ops that take a card without changing the board — the compensation clause
+ * bolted onto the end of a card, never the reason to play it.
+ */
+const RIDER_OPS = new Set(['draw', 'mill', 'search', 'revealHand']);
+
+/** Is there anything this selector could legally reach right now? */
+function hasLegalTarget(ctx: EffectCtx, s: Selector): boolean {
+  if (!POOL_PICKS.has(s.pick)) return true; // the context supplies it, not a pool
+  const zone = s.zone ?? 'monster';
+  return targetPool(ctx, s).some((c) => zone !== 'monster' || !isProtectedTarget(ctx.state, c, ctx.controller));
+}
+
+/**
+ * Would activating this card do nothing at all?
+ *
+ * Mai kept playing De-Spell — "Destroy 1 Spell or Trap your opponent controls,
+ * then draw 1 card" — at an empty Spell/Trap Zone, because the draw works
+ * whatever happens and nothing asked whether the destroy had anything to
+ * destroy.
+ *
+ * Judging the *leading* op alone looked like the obvious rule and refused
+ * three cards that were doing their job: Harpie's Feather Duster clears the
+ * Field Zone with its second op when the Spell/Trap Zone is empty, Swords of
+ * Revealing Light's point is the three-turn freeze behind a flip that may hit
+ * nothing, and Harpie's Hunting Ground is a Field Spell whose aura is the
+ * whole card and whose destroy is the rider. So the question is asked of the
+ * effect as a whole: dead only if every targeting op has an empty pool, every
+ * remaining op is a rider, and the card leaves nothing standing on the field.
+ *
+ * The pool is checked directly rather than through `resolveTargets`, whose
+ * `chosen` branch falls back to the strongest card in the *unfiltered* pool
+ * before dropping protected ones — so a single untargetable top-ATK monster
+ * (Blue-Eyes Toon Dragon under Toon World) hid every legal target behind it
+ * and made seven Spells unplayable for the rest of the duel.
+ */
+function activationIsDead(state: DuelState, pid: PlayerId, c: CardInstance, def: CardDef, eff: CardEffect): boolean {
+  const ctx: EffectCtx = { state, controller: pid, source: c, targets: [], cursor: 0, trig: {} };
+  let sawTargeting = false;
+  for (const op of eff.ops) {
+    if (!NEEDS_A_TARGET.has(op.op)) {
+      if (!RIDER_OPS.has(op.op)) return false; // something substantive happens regardless
+      continue;
+    }
+    /* An equip with no selector of its own attaches to one of the controller's
+       own monsters, so that is its pool. */
+    const sel: Selector =
+      'target' in op && op.target ? op.target : { side: 'own', pick: 'all' };
+    sawTargeting = true;
+    if (hasLegalTarget(ctx, sel)) return false;
+  }
+  if (!sawTargeting) return false;
+  // A card that stays on the field is never spent for nothing.
+  if (def.effects.some((e) => e.trigger === 'continuous' && e.aura)) return false;
+  return true;
+}
+
 export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
   const def = CARDS[c.slug];
@@ -1737,6 +1858,7 @@ export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInst
      and Umi sat dead in their owners' hands. */
   if (!eff && !isPassiveSpell(def)) return false;
   if (eff && !canPayCost(state, pid, eff)) return false;
+  if (eff && activationIsDead(state, pid, c, def, eff)) return false;
   const p = state.players[pid];
   if (def.subKind === 'Field') return true; // field zone is separate
   return p.spellTrap === null;
@@ -1754,7 +1876,7 @@ export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInsta
   }
   const eff = def.effects.find((e) => e.trigger === 'activate');
   if (!eff) return false;
-  return canPayCost(state, pid, eff);
+  return canPayCost(state, pid, eff) && !activationIsDead(state, pid, c, def, eff);
 }
 
 export function canChangePosition(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
@@ -1915,8 +2037,12 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         log(state, `${p.name} sets a monster.`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, player: pid });
       }
-      if (!state.winner) {
-        openTrapWindow(state, other(pid), 'opponentSummon', `${p.name} summoned ${def.name}.`, { attackerUid: c.uid });
+      /* Setting a monster face-down is not a Summon, and opened this window
+         anyway — so Trap Hole went off on a Set, and the prompt announced the
+         card by name while it was still face-down, which is the opposite of
+         what setting one is for. */
+      if (!state.winner && c.face === 'up') {
+        openTrapWindow(state, other(pid), 'opponentNormalSummon', `${p.name} summoned ${def.name}.`, { attackerUid: c.uid });
       }
       return { state };
     }
@@ -1958,6 +2084,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       // No `activate` effect is fine for a Continuous or Field Spell: it works
       // by sitting on the field, so playing it is the whole of the activation.
       if (!eff && !isPassiveSpell(def)) return { state: prev, error: 'That card cannot be activated.' };
+      /* Refused with a reason rather than spent for nothing. The interface
+         already hides the card, so this only catches a tap that raced the
+         board — but a Spell that leaves the hand having done nothing is the
+         worst way to find out. */
+      if (eff && activationIsDead(state, pid, c, def, eff)) {
+        return { state: prev, error: 'There is nothing for that card to affect.' };
+      }
       const isField = def.subKind === 'Field';
       // An Equip Spell stays face-up in the Spell/Trap Zone holding its monster,
       // exactly like a Continuous Spell — it is not spent on activation.

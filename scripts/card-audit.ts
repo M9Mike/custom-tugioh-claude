@@ -616,7 +616,10 @@ for (const def of Object.values(CARDS)) {
           continue;
         }
         audit(def, eff, stepped, (st) => run(st, ME, { type: 'respondTrap', uid: c.uid, targets: targetsFor(st, def) }));
-      } else if (eff.window === 'opponentSummon') {
+      } else if (eff.window === 'opponentSummon' || eff.window === 'opponentNormalSummon') {
+        /* Both are driven by a face-up Normal Summon: that opens the narrow
+           window, and a card watching the wider one catches it too. A Set
+           opens neither, which is the point of the split. */
         const h = s.players[FOE].hand.find((x) => CARDS[x.slug]?.kind === 'monster');
         const zone = s.players[FOE].monsters.findIndex((m) => !m);
         if (!h || zone < 0) {

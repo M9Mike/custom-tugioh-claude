@@ -49,7 +49,14 @@ function scanOps(ops: Op[]): TargetSpec | null {
         filter: op.filter,
       };
     }
+    /* An equip that names its own host asks the player nothing. Spellbinding
+       Circle attaches to the monster that just declared the attack, and
+       falling through to the prompt below pointed the picker at the
+       *responder's* own Monster Zones — so the card could not be activated at
+       all when they controlled nothing, which is precisely when they are being
+       attacked directly and want it most. */
     if (op.op === 'equipTo') {
+      if (op.target) continue;
       return { side: 'own', zone: 'monster', count: 1, prompt: 'Choose a monster to equip' };
     }
     if ('target' in op && op.target && op.target.pick === 'chosen') {

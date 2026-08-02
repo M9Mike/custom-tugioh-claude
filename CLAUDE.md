@@ -841,6 +841,142 @@ it should, and the round was recorded as failed. Frequent enough to teach you to
 ignore a red run, rare enough to look like a real intermittent. Every driver
 asks the gate now — which is what this file already claimed.
 
+**A condition that gets lifted is a condition that gets lost.** `liftPassives`
+moves permanent `onSummon` grants into a continuous aura, and it was pouring
+every one of them into a *single, unconditional* bag — so `eff.condition` was
+dropped on the way through. The Legendary Fisherman says "While *Umi* is on the
+field, this card cannot be targeted or destroyed by your opponent's effects and
+can attack directly", and had the whole sentence from the moment he arrived,
+for good, with no Umi anywhere: he attacked directly past blockers and walked
+out of a Dark Hole untouched. Reported as two separate bugs, and it is one line
+of bookkeeping — the grants are grouped by the condition they came from now.
+The card is written as a conditional aura anyway, beside 7 Colored Fish and
+Amphibian Beast, because that is the shape the sentence has.
+
+**Setting a monster is not summoning one.** The Normal Summon path opened the
+`opponentSummon` trap window whether the card went down face-up or face-down,
+so Trap Hole went off on a Set — and the prompt read "Foe summoned Man-Eater
+Bug", naming a card that was still face-down, which is the opposite of what
+setting one is for. A Set opens nothing now. While in there: Trap Hole says
+"Normal Summons" and was also firing on Fusion Summons, so a Normal Summon
+opens `opponentNormalSummon` and a Fusion opens `opponentSummon`, with
+`windowMatches` letting a card that watches the wider window catch both —
+Torrential Tribute's "when your opponent summons" still gets everything.
+
+**An ongoing effect belongs to its card, not to a clock.** Spellbinding Circle
+— "the attacking monster loses 700 ATK and cannot attack while this card
+remains face-up" — was `gainAtk -700` plus `freezeMonsters who:'opp' turns:1`,
+which is wrong three ways at once: it locked down *every* monster they
+controlled rather than the attacker, it ran on a one-turn timer rather than on
+the card being there, and the −700 was written into the monster so it survived
+the circle's destruction. It attaches itself now (`equipTo` gained an optional
+`target` so it can reach the attacker). An equip is read live as an aura, so
+all three fall out for free: the penalty and the lock last exactly as long as
+the card does, they reach only the monster it is on, and `toGrave` already
+sends an equip down with its host — which answers the other half of the report,
+what happens when the bound monster leaves the field.
+
+**"Other" is a word in the text.** Mystical Elf shields "your **other** Defense
+Position monsters" and her aura was a plain `pick: 'all'` behind a position
+filter — and she sits in Defence herself, so she was shielding herself and
+could not be destroyed in battle at all. `excludeSelf` on the selector, honoured
+in `aurasFor` and `resolveTargets` both.
+
+**A Field Spell is the weather, not a personal buff.** Umi's aura was
+`side: 'own'` while its text says "all WATER monsters", so one player's sea
+lifted their own Fish and left the other player's alone — reported from a real
+duel, from the losing side of it. Umi and Harpie's Hunting Ground read "all"
+and are two-sided now. Dark Sanctuary is the counter-example and stays as it
+is: "your opponent's monsters lose 400" is one-sided on purpose, and so is Toon
+World's "your Toon monsters". Read the sentence, not the card type. The
+Fisherman needed no change to go with it — `requiresField` has always looked at
+either Field Zone, which is what "on the field" means.
+
+**A rider is not a reason to play the card.** Mai kept activating De-Spell at an
+empty Spell/Trap Zone, because it is "Destroy 1 Spell or Trap your opponent
+controls, **then draw 1 card**" and the draw works whatever happens — so
+nothing was asking whether the destroy had anything to destroy.
+`activationIsDead` asks, and is wired into the two gates the interface and the
+AI go through *and* into the action handler, so a tap that raced the board is
+refused with a reason instead of spending the card.
+
+**Judging only the leading op is the obvious version of that, and it is wrong
+three ways.** Written that way it refused three cards that were doing their
+job, none of which the battery caught: Harpie's Feather Duster reaches the
+Field Zone with its *second* op when the Spell/Trap Zone is empty; Swords of
+Revealing Light is the three-turn freeze behind a flip that may hit nothing;
+and Harpie's Hunting Ground is a Field Spell whose aura is the whole card and
+whose destroy is the rider, listed first only because that is the order the
+engine runs them in. The card set does not put the headline first, so the
+question is asked of the effect as a whole: dead only when *every* targeting op
+has an empty pool, *every* remaining op is a rider (`draw`, `mill`, `search`,
+`revealHand` — the compensation clause, never the reason), and the card leaves
+nothing standing on the field. A Continuous or Field Spell is therefore never
+refused, which is right: putting it down is the activation.
+
+**And the probe that asks "is there a target?" must not be `resolveTargets`.**
+Its `chosen` branch deliberately falls back to the strongest card in the
+*unfiltered* pool when the player supplied nothing usable, and only then drops
+protected ones — a sensible resolution rule and a disastrous question. One
+untargetable top-ATK monster hid every legal target behind it, so with a
+Blue-Eyes Toon Dragon under Toon World seven Spells were unplayable for the
+rest of the duel, even when the client named a legal target explicitly.
+`hasLegalTarget` reads the pool directly. Both it and `resolveTargets` build
+that pool through the same `targetPool`, because two copies of a rule is how
+`summonBlocked` drifted.
+
+**A trap that picks its own target must ask the player nothing.** Giving
+Spellbinding Circle an `equipTo` op made `targetSpecFor` offer a picker — over
+the *responder's own* Monster Zones, because that is what an Equip Spell wants
+— so the human seat could not activate it at all while controlling no
+monsters, which is exactly when they are being attacked directly and want it
+most. `ui.ts` skips the prompt when the op carries its own selector. The AI
+never goes through `ui.ts`, so it played the card correctly the whole time and
+every driver in the battery reported green: a bug in `ui.ts` is invisible to
+anything that does not press the button.
+
+**And then the probe had the same blind spot as the card.** That gate turned
+twelve perfectly good cards red in `npm run playable`, which sets up a board
+for the *player* — two bodies to tribute, spares to discard — and left the
+opponent's side completely empty. Its own comment already described the fault
+one side over: "probing from an empty field reports them unplayable when they
+are merely unaffordable". The other seat gets monsters and a face-up Spell to
+point at now, with an Insect among them because Eradicating Aerosol only
+destroys those.
+
+**A regression that cannot fail is not a regression.** Written the obvious way,
+"Trap Hole sits out a Fusion Summon" passed on the *unfixed* engine too — the
+Fusion in the test was Blue-Eyes Ultimate Dragon, whose own effect destroys
+every Spell and Trap the opponent controls, so the Trap Hole was gone before
+the window could open. Gaia the Dragon Champion has no such effect and the
+check works. The whole set was then run against a stash of the old engine, and
+every one of the six reported bugs reproduces there and passes here; two others
+in the same batch were measuring the wrong thing (`canAttackWith` reads false
+for a monster that has simply already attacked, which is not the same as being
+bound). Check the assertion fails before believing it passes.
+
+**A suite that cannot report failure is worse than a check that cannot fail.**
+Those regressions were appended to the end of `rules-check.ts` — which is to
+say *after* the line that prints the count and sets `process.exitCode`. So the
+battery printed "All rules regressions pass ✅", exited 0, and had a real ❌ on
+screen four lines further down, hiding the fact that half the Trap Hole fix was
+never written: the new `opponentNormalSummon` window existed and no card used
+it. Every run since had been read as green. The summary is last now and
+`checks` is asserted against a floor, so deleting tests cannot quietly turn the
+battery green either. The tell was there and went unread — the summary line
+stopped appearing at the bottom of the output the moment the tests were
+appended.
+
+**Adversarial verification found all four of those, and the battery found
+none.** Six independent skeptics, one per fix, each told to try to break it
+rather than confirm it — they turned up the missing Trap Hole window (twice,
+independently), the `ui.ts` picker that made Spellbinding Circle unusable in
+the human seat, the three cards the activation gate over-refused, and the
+untargetable-monster hole in its probe. Every one had passed `npm run rules`,
+`npm run audit`, `npm run playable`, `npm run text`, and the whole browser
+battery. A green suite means "nothing I thought to check is broken", and after
+writing a fix you are the last person able to think of what to check.
+
 ## Shape of the thing
 
 - `src/game/` — the rules engine. Pure and deterministic, shared by client and server.

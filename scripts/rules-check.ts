@@ -8,8 +8,9 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
+import { targetSpecFor } from '../src/game/ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -17,9 +18,11 @@ const FOE: PlayerId = 'p2';
 
 let uid = 0;
 let failures = 0;
+let checks = 0;
 
 function ok(pass: boolean, label: string, detail = '') {
   console.log(`  ${pass ? '✅' : '❌'} ${label}${!pass && detail ? ` — ${detail}` : ''}`);
+  checks += 1;
   if (!pass) failures += 1;
 }
 
@@ -1033,5 +1036,372 @@ console.log('\nThe last blow only ever takes the Life Points that are there');
   ok(blow?.applied === 1200, 'and only 1200 Life Points actually moved', String(blow?.applied));
 }
 
-console.log(failures ? `\n${failures} regression(s) FAILED` : '\nAll rules regressions pass. ✅');
+
+/* ====================================================================== *
+ * Six cards reported from a real duel. Each one is here because it was
+ * wrong on a board a player was actually looking at.
+ * ====================================================================== */
+
+console.log('\nThe Legendary Fisherman only rides the waves while there are waves');
+{
+  /* Reported as two bugs — "was able to attack directly without Umi on the
+     field" and "black hole did not destroy him" — and it is one. His grants
+     are written behind `condition: { requiresField: 'umi' }`, and
+     `liftPassives` was collecting every lifted passive into a single
+     *unconditional* aura, dropping the condition on the way. So he had both
+     halves of his text permanently, from the moment he arrived. */
+  const dry = fresh('battle');
+  const fisher = card(ME, 'the-legendary-fisherman');
+  dry.players[ME].monsters[0] = fisher;
+  dry.players[FOE].monsters[0] = card(FOE, 'hitotsu-me-giant');
+  ok(!effFlags(dry, fisher, ME).directAttack, 'with no Umi he cannot attack directly');
+  ok(!effFlags(dry, fisher, ME).untargetable, 'and he is an ordinary target');
+  ok(!legalAttackTargets(dry, ME, fisher).direct, 'so a blocker really does block him');
+
+  // Dark Hole is the reported half: it should take him with everything else.
+  const hole = fresh();
+  const f2 = card(ME, 'the-legendary-fisherman');
+  hole.players[ME].monsters[0] = f2;
+  hole.players[FOE].monsters[0] = card(FOE, 'hitotsu-me-giant');
+  const dh = card(FOE, 'dark-hole');
+  hole.players[FOE].hand.push(dh);
+  hole.active = FOE;
+  const swept = act(hole, FOE, { type: 'activateSpell', uid: dh.uid });
+  ok(on(swept, ME).length === 0, 'and Dark Hole destroys him like anything else', `${on(swept, ME).length} left`);
+
+  // With Umi down — either player's Umi, which is what "on the field" means —
+  // he gets the whole sentence back.
+  const sea = fresh('battle');
+  const f3 = card(ME, 'the-legendary-fisherman');
+  sea.players[ME].monsters[0] = f3;
+  sea.players[FOE].monsters[0] = card(FOE, 'hitotsu-me-giant');
+  sea.players[ME].field = card(ME, 'umi');
+  ok(!!effFlags(sea, f3, ME).directAttack, 'with Umi on the field he can attack directly');
+  ok(!!effFlags(sea, f3, ME).untargetable, 'and cannot be touched by their effects');
+  ok(legalAttackTargets(sea, ME, f3).direct, 'so he swims straight past the blocker');
+
+  const theirs = fresh('battle');
+  const f4 = card(ME, 'the-legendary-fisherman');
+  theirs.players[ME].monsters[0] = f4;
+  theirs.players[FOE].field = card(FOE, 'umi');
+  ok(!!effFlags(theirs, f4, ME).directAttack, 'and it is their Umi just as much as yours');
+}
+
+console.log('\nSetting a monster is not summoning one');
+{
+  /* "Trap hole worked on setting a monster (not just on normal summon)."
+     Worse than a mis-trigger: the prompt read "Foe summoned Man-Eater Bug",
+     naming a card that was face-down. */
+  const s = fresh();
+  const hole = card(FOE, 'trap-hole');
+  hole.face = 'down';
+  hole.summonedOnTurn = s.turn - 1;
+  s.players[FOE].spellTrap = hole;
+  const bug = card(ME, 'man-eater-bug');
+  s.players[ME].hand.push(bug);
+  const set = act(s, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'def', face: 'down' });
+  ok(!set.pending, 'a Set opens no trap window at all', set.pending ? set.pending.reason : '');
+  ok(set.players[ME].monsters[0]?.face === 'down', 'and the monster is still face-down');
+
+  // The same card, summoned face-up, still walks into it.
+  const b = fresh();
+  const hole2 = card(FOE, 'trap-hole');
+  hole2.face = 'down';
+  hole2.summonedOnTurn = b.turn - 1;
+  b.players[FOE].spellTrap = hole2;
+  const bug2 = card(ME, 'man-eater-bug');
+  b.players[ME].hand.push(bug2);
+  const up = act(b, ME, { type: 'normalSummon', uid: bug2.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(up.pending?.kind === 'trap', 'CONTROL: a face-up Normal Summon still opens it');
+}
+
+console.log('\nTrap Hole says "Normal Summons", so a Fusion Summon is not its business');
+{
+  /* Gaia the Dragon Champion, not the Blue-Eyes Ultimate Dragon. Written with
+     the Ultimate Dragon first, this assertion passed on the *unfixed* engine
+     too — its Fusion effect destroys every Spell and Trap the opponent
+     controls, so the Trap Hole was gone before the window could open and the
+     check could not fail. Exactly the trap the control below fell into. */
+  const s = fresh();
+  const hole = card(FOE, 'trap-hole');
+  hole.face = 'down';
+  hole.summonedOnTurn = s.turn - 1;
+  s.players[FOE].spellTrap = hole;
+  const a = card(ME, 'gaia-the-fierce-knight');
+  const b = card(ME, 'curse-of-dragon');
+  s.players[ME].monsters = [a, b, null];
+  const poly = card(ME, 'polymerization');
+  s.players[ME].hand.push(poly);
+  const ex = card(ME, 'gaia-the-dragon-champion');
+  s.players[ME].extra.push(ex);
+  const fused = act(s, ME, {
+    type: 'fusionSummon',
+    extraUid: ex.uid,
+    materials: [a.uid, b.uid],
+    zone: 0,
+    position: 'atk',
+  });
+  ok(!fused.pending, 'Trap Hole sits out a Fusion Summon', fused.pending ? fused.pending.reason : '');
+
+  /* Torrential Tribute says "when your opponent summons", and means it.
+     Gaia the Dragon Champion rather than the Ultimate Dragon, because the
+     Ultimate Dragon's own Fusion effect destroys every Spell and Trap the
+     opponent controls — it blew the Torrential Tribute off the field before
+     the window could open, and the control read as a failure. */
+  const t = fresh();
+  const tor = card(FOE, 'torrential-tribute');
+  tor.face = 'down';
+  tor.summonedOnTurn = t.turn - 1;
+  t.players[FOE].spellTrap = tor;
+  const d = card(ME, 'gaia-the-fierce-knight');
+  const e = card(ME, 'curse-of-dragon');
+  t.players[ME].monsters = [d, e, null];
+  t.players[ME].hand.push(card(ME, 'polymerization'));
+  const ex2 = card(ME, 'gaia-the-dragon-champion');
+  t.players[ME].extra.push(ex2);
+  const swept = act(t, ME, {
+    type: 'fusionSummon',
+    extraUid: ex2.uid,
+    materials: [d.uid, e.uid],
+    zone: 0,
+    position: 'atk',
+  });
+  ok(swept.pending?.kind === 'trap', 'CONTROL: Torrential Tribute still catches one');
+
+  // And neither of them wakes up for a Set.
+  const q = fresh();
+  const tor2 = card(FOE, 'torrential-tribute');
+  tor2.face = 'down';
+  tor2.summonedOnTurn = q.turn - 1;
+  q.players[FOE].spellTrap = tor2;
+  const kur = card(ME, 'kuriboh');
+  q.players[ME].hand.push(kur);
+  const setq = act(q, ME, { type: 'normalSummon', uid: kur.uid, zone: 0, position: 'def', face: 'down' });
+  ok(!setq.pending, 'and Torrential Tribute sits out a Set too');
+}
+
+console.log('\nSpellbinding Circle binds one monster, for as long as it is there');
+{
+  /* Three things at once, all reported: it froze *every* monster the opponent
+     controlled rather than the attacker, it ran on a one-turn timer instead of
+     on the card staying face-up, and the −700 was written into the monster so
+     it survived the circle's destruction. */
+  const s = fresh('battle');
+  const attacker = card(FOE, 'summoned-skull'); // 2500
+  const bystander = card(FOE, 'hitotsu-me-giant');
+  s.players[FOE].monsters = [attacker, bystander, null];
+  const circle = card(ME, 'spellbinding-circle');
+  circle.face = 'down';
+  circle.summonedOnTurn = s.turn - 1;
+  s.players[ME].spellTrap = circle;
+  s.active = FOE;
+
+  const declared = applyAction(s, FOE, { type: 'attack', uid: attacker.uid, targetUid: null }).state;
+  ok(declared.pending?.kind === 'trap', 'the circle is offered when they attack');
+  const bound = act(declared, ME, { type: 'respondTrap', uid: circle.uid });
+
+  const held = bound.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
+  const free = bound.players[FOE].monsters.find((m) => m?.uid === bystander.uid)!;
+  ok(bound.players[ME].lp === 4000, 'the attack is negated', `LP ${bound.players[ME].lp}`);
+  ok(effAtk(bound, held, FOE) === 2500 - 700, 'the bound monster loses 700 ATK', String(effAtk(bound, held, FOE)));
+  /* The flag rather than `canAttackWith`, which is also false because the
+     monster spent its attack declaring the one that was negated — it would
+     have read as bound even with the lock removed. The next turn is the
+     question a player is actually asking, so it is asked here too. */
+  ok(!!effFlags(bound, held, FOE).cannotAttack, 'and is the one that cannot attack');
+  ok(!effFlags(bound, free, FOE).cannotAttack, 'while the monster beside it is untouched');
+  ok(canAttackWith(bound, FOE, free), 'and can still swing');
+
+  const nextTurn = structuredClone(bound);
+  for (const m of nextTurn.players[FOE].monsters) if (m) m.attacksUsed = 0;
+  const stillHeld = nextTurn.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
+  ok(!canAttackWith(nextTurn, FOE, stillHeld), 'it is still bound on a later turn');
+  ok(bound.players[ME].spellTrap?.uid === circle.uid, 'the circle stays face-up holding it', String(bound.players[ME].spellTrap?.slug));
+  ok(bound.players[ME].spellTrap?.face === 'up', 'and is face-up');
+
+  // Destroy the circle and the monster is whole again — the penalty was an
+  // aura, never written into the card.
+  const freed = structuredClone(nextTurn);
+  freed.players[ME].spellTrap = null;
+  const loose = freed.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
+  ok(effAtk(freed, loose, FOE) === 2500, 'destroy the circle and the ATK comes back', String(effAtk(freed, loose, FOE)));
+  ok(canAttackWith(freed, FOE, loose), 'and it can attack again');
+
+  /* The other half of the reported question: the circle follows its monster
+     down. Taken off the board by battle rather than by Dark Hole, because the
+     circle is sitting in my one Spell/Trap Zone and I cannot play a Spell
+     while it is there — which is the point of the card. */
+  const gone = structuredClone(bound);
+  gone.active = ME;
+  gone.phase = 'battle';
+  const dragon = card(ME, 'blue-eyes-white-dragon'); // 3000 over its bound 1800
+  gone.players[ME].monsters[0] = dragon;
+  const killed = act(gone, ME, { type: 'attack', uid: dragon.uid, targetUid: attacker.uid });
+  ok(!killed.players[FOE].monsters.some((m) => m?.uid === attacker.uid), 'the bound monster is destroyed');
+  ok(killed.players[ME].spellTrap === null, 'and the circle leaves the field with it');
+  ok(killed.players[ME].grave.some((c) => c.slug === 'spellbinding-circle'), 'landing in the Graveyard, not nowhere');
+}
+
+console.log('\nMystical Elf shields the monsters beside her, not herself');
+{
+  /* "Check if mystical elf can be destroyed when in defense." She could not:
+     her aura is `all` with a Defense Position filter and she is normally in
+     Defence, so she was shielding herself. Her own text says "your **other**
+     Defense Position monsters". */
+  const s = fresh('battle');
+  const elf = card(FOE, 'mystical-elf'); // 800/2000
+  elf.position = 'def';
+  const friend = card(FOE, 'kuriboh');
+  friend.position = 'def';
+  s.players[FOE].monsters = [elf, friend, null];
+  ok(!effFlags(s, elf, FOE).indestructibleByBattle, 'the Elf does not shield herself');
+  ok(!!effFlags(s, friend, FOE).indestructibleByBattle, 'but does shield the monster beside her');
+
+  const bigger = card(ME, 'blue-eyes-white-dragon'); // 3000 beats her 2000 DEF
+  s.players[ME].monsters[0] = bigger;
+  const after = act(s, ME, { type: 'attack', uid: bigger.uid, targetUid: elf.uid });
+  ok(!after.players[FOE].monsters.some((m) => m?.uid === elf.uid), 'so a big enough attacker destroys her in Defence');
+}
+
+console.log('\nA Field Spell is the weather, not a personal buff');
+{
+  /* "My Umi buffed the other player's water monsters but not the legendary
+     fisherman / their Umi buffed their legendary fisherman and their other
+     water monsters." Umi's aura was `side: 'own'` while its text says "all
+     WATER monsters". */
+  const s = fresh();
+  const mine = card(ME, '7-colored-fish'); // 1800 base
+  const theirs = card(FOE, '7-colored-fish');
+  s.players[ME].monsters[0] = mine;
+  s.players[FOE].monsters[0] = theirs;
+  const plain = effAtk(s, theirs, FOE);
+
+  s.players[ME].field = card(ME, 'umi');
+  // 7 Colored Fish also gains its own 800 from Umi, on both sides of the table.
+  ok(effAtk(s, mine, ME) === 1800 + 400 + 800, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
+  ok(effAtk(s, theirs, FOE) === plain + 400 + 800, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
+
+  // Dark Sanctuary is the counter-example: "your opponent's monsters lose 400"
+  // is one-sided on purpose, and must stay that way.
+  const d = fresh();
+  const a = card(ME, 'hitotsu-me-giant');
+  const b = card(FOE, 'hitotsu-me-giant');
+  d.players[ME].monsters[0] = a;
+  d.players[FOE].monsters[0] = b;
+  const base = effAtk(d, a, ME);
+  d.players[ME].field = card(ME, 'dark-sanctuary');
+  ok(effAtk(d, a, ME) === base, 'CONTROL: a one-sided Field Spell stays one-sided', String(effAtk(d, a, ME)));
+  ok(effAtk(d, b, FOE) === base - 400, 'and still bites the other side', String(effAtk(d, b, FOE)));
+}
+
+console.log('\nA card with nothing to affect cannot be played');
+{
+  /* "Mai keeps using de spell on empty (as an ai)." De-Spell destroys a Spell
+     or Trap and *then* draws a card, and the draw always works — so nothing
+     was asking whether the destroy had anything to destroy. */
+  const s = fresh();
+  const despell = card(ME, 'de-spell');
+  s.players[ME].hand.push(despell);
+  ok(!canActivateFromHand(s, ME, despell), 'De-Spell is not offered at an empty Spell/Trap Zone');
+  const refused = applyAction(s, ME, { type: 'activateSpell', uid: despell.uid });
+  ok(!!refused.error, 'and is refused with a reason rather than spent', refused.error ?? 'no error');
+  ok(refused.state.players[ME].hand.some((h) => h.uid === despell.uid), 'the card is still in hand');
+
+  const live = fresh();
+  const d2 = card(ME, 'de-spell');
+  live.players[ME].hand.push(d2);
+  live.players[FOE].spellTrap = card(FOE, 'mirror-wall');
+  ok(canActivateFromHand(live, ME, d2), 'CONTROL: with something to destroy it is offered');
+  const done = act(live, ME, { type: 'activateSpell', uid: d2.uid });
+  ok(done.players[FOE].spellTrap === null, 'and it destroys it');
+}
+
+console.log('\nThe gate refuses a wasted card without refusing a working one');
+{
+  /* Judging only the *leading* op was the obvious rule and was wrong three
+     ways — every one of them found by driving the fix rather than reading it.
+     A card is dead only when every targeting op has an empty pool, every
+     remaining op is a rider, and nothing of it stays on the field. */
+  const empty = fresh();
+  const hg = card(ME, 'harpies-hunting-ground');
+  empty.players[ME].hand.push(hg);
+  ok(canActivateFromHand(empty, ME, hg), "Harpie's Hunting Ground goes down at an empty backrow — its aura is the card");
+
+  const fieldOnly = fresh();
+  const duster = card(ME, 'harpie-s-feather-duster');
+  fieldOnly.players[ME].hand.push(duster);
+  fieldOnly.players[FOE].field = card(FOE, 'umi');
+  ok(canActivateFromHand(fieldOnly, ME, duster), "Harpie's Feather Duster still reaches a lone Field Spell");
+  const cleared = act(fieldOnly, ME, { type: 'activateSpell', uid: duster.uid });
+  ok(cleared.players[FOE].field === null, 'and destroys it');
+
+  const noMonsters = fresh();
+  const swords = card(ME, 'swords-of-revealing-light');
+  noMonsters.players[ME].hand.push(swords);
+  ok(canActivateFromHand(noMonsters, ME, swords), 'Swords of Revealing Light is the freeze, not the flip');
+
+  /* The probe used to answer "is there a target?" through `resolveTargets`,
+     whose `chosen` branch falls back to the strongest card in the *unfiltered*
+     pool and only then drops protected ones. One untargetable top-ATK monster
+     therefore hid every legal target behind it, and against Pegasus with Toon
+     World down that was permanent. */
+  const shielded = fresh();
+  shielded.players[FOE].field = card(FOE, 'toon-world');
+  shielded.players[FOE].monsters[0] = card(FOE, 'blue-eyes-toon-dragon'); // untargetable, 3800
+  const reachable = card(FOE, 'mystical-elf');
+  shielded.players[FOE].monsters[1] = reachable;
+  const doomed = card(ME, 'tribute-to-the-doomed');
+  shielded.players[ME].hand.push(doomed, card(ME, 'kuriboh'));
+  ok(canActivateFromHand(shielded, ME, doomed), 'an untargetable monster does not hide the ones behind it');
+  const hit = act(shielded, ME, { type: 'activateSpell', uid: doomed.uid, targets: [reachable.uid] });
+  ok(!hit.players[FOE].monsters.some((m) => m?.uid === reachable.uid), 'and the legal target is destroyed');
+  ok(hit.players[FOE].monsters.some((m) => m?.slug === 'blue-eyes-toon-dragon'), 'while the protected one stands');
+
+  // An Equip Spell needs a body to go on.
+  const bare = fresh();
+  const sword = card(ME, 'legendary-sword');
+  bare.players[ME].hand.push(sword);
+  ok(!canActivateFromHand(bare, ME, sword), 'an Equip Spell is not offered with no monster to equip');
+  bare.players[ME].monsters[0] = card(ME, 'kuriboh');
+  ok(canActivateFromHand(bare, ME, sword), 'CONTROL: and is offered once there is one');
+}
+
+console.log('\nA trap that picks its own target asks the player nothing');
+{
+  /* Giving Spellbinding Circle an `equipTo` op made `targetSpecFor` offer a
+     picker over the *responder's own* Monster Zones — so the human seat could
+     not activate it while controlling nothing, which is exactly when they are
+     being attacked directly and want it most. The AI does not go through
+     `ui.ts` and played it fine, so nothing in the battery saw this. */
+  ok(targetSpecFor('spellbinding-circle', 'trap') === null, 'the circle opens no picker', JSON.stringify(targetSpecFor('spellbinding-circle', 'trap')));
+  ok(targetSpecFor('legendary-sword', 'activate') !== null, 'CONTROL: an ordinary Equip Spell still asks');
+
+  // And it really can be activated with an empty board on the defending side.
+  const s = fresh('battle');
+  s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+  const circle = card(ME, 'spellbinding-circle');
+  circle.face = 'down';
+  circle.summonedOnTurn = s.turn - 1;
+  s.players[ME].spellTrap = circle;
+  s.active = FOE;
+  const declared = applyAction(s, FOE, { type: 'attack', uid: s.players[FOE].monsters[0]!.uid, targetUid: null }).state;
+  const bound = act(declared, ME, { type: 'respondTrap', uid: circle.uid, targets: [] });
+  ok(bound.players[ME].lp === 4000, 'defending with no monsters at all, the attack is still negated', `LP ${bound.players[ME].lp}`);
+  ok(bound.players[ME].spellTrap?.equippedTo === s.players[FOE].monsters[0]!.uid, 'and the circle lands on the attacker');
+}
+
+/* The summary goes LAST, and there is nothing after it.
+ *
+ * Appending a batch of new tests below this line is the easy mistake — and it
+ * was made: 279 lines of regressions ran *after* the count was printed, so the
+ * suite reported "All rules regressions pass" and exited 0 with a real ❌ on
+ * screen, hiding a half-finished fix. A check that cannot fail is worse than
+ * no check; a suite that cannot report failure is worse still. `checks` is
+ * asserted too, so deleting tests cannot quietly turn the battery green. */
+const EXPECTED_AT_LEAST = 120;
+if (checks < EXPECTED_AT_LEAST) {
+  console.log(`\n❌ only ${checks} assertions ran, expected at least ${EXPECTED_AT_LEAST} — did something stop early?`);
+  failures += 1;
+}
+console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

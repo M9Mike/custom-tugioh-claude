@@ -69,7 +69,7 @@ function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
          selector it targets — `destroy` carries its in `target.filter`, which
          is where four cards were being reported as broken while being fine. */
       if ('filter' in op && bounded(op.filter)) return true;
-      if ('target' in op && bounded(op.target.filter)) return true;
+      if ('target' in op && bounded(op.target?.filter)) return true;
     }
     if (bounded(eff.aura?.target.filter)) return true;
   }

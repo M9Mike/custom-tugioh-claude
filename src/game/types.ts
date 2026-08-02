@@ -107,7 +107,22 @@ export type Trigger =
 /** When a Trap or hand-trap may be activated. */
 export type TrapWindow =
   | 'opponentDeclareAttack'
+  /**
+   * Any Summon the opponent performs — a Normal Summon or a Fusion Summon.
+   * Setting a monster face-down is *not* a Summon and opens no window at all:
+   * Trap Hole was firing on a Set, and the prompt naming the card ("Mihail
+   * summoned Man-Eater Bug.") gave away what had just been set into the
+   * bargain.
+   */
   | 'opponentSummon'
+  /**
+   * A Normal Summon specifically. Trap Hole says "When your opponent Normal
+   * Summons a monster" and was going off on Fusion Summons too, which are
+   * Special Summons. A card watching the wider `opponentSummon` still fires
+   * here — a Normal Summon is a Summon — so Torrential Tribute's "when your
+   * opponent summons" keeps catching both.
+   */
+  | 'opponentNormalSummon'
   | 'opponentActivateSpell'
   | 'opponentTurnStart'
   | 'monsterDestroyed'
@@ -154,6 +169,13 @@ export interface Selector {
   pick: Pick;
   count?: number;
   filter?: CardFilter;
+  /**
+   * Never the card the effect belongs to. "Your **other** Defense Position
+   * monsters cannot be destroyed by battle" was a plain `pick: 'all'` with a
+   * position filter, so Mystical Elf — herself a Defense Position monster —
+   * was shielding herself and could not be killed in battle at all.
+   */
+  excludeSelf?: boolean;
 }
 
 export type Duration = 'permanent' | 'turn' | 'opponentTurn';
@@ -197,7 +219,17 @@ export type Op =
   | { op: 'freezeMonsters'; who: Side; turns: number }
   | { op: 'negateEffects'; target: Selector }
   | { op: 'absorb'; target: Selector }
-  | { op: 'equipTo'; atk: number; def: number; grants?: EquipGrant[] }
+  /**
+   * Attaches this card to a monster. Only the attachment is stored — the stats
+   * and grants are read back out as an aura for as long as the card is on the
+   * field, so destroying it restores the monster's printed values and the
+   * monster leaving takes the equip to the Graveyard with it.
+   *
+   * `target` for the cards that choose their own host from the context rather
+   * than from a prompt: Spellbinding Circle equips itself to the monster that
+   * just declared the attack.
+   */
+  | { op: 'equipTo'; atk: number; def: number; grants?: EquipGrant[]; target?: Selector }
   | { op: 'revealHand'; who: Side }
   | { op: 'shuffleIntoDeck'; target: Selector }
   /**

@@ -63,7 +63,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'trap',
-        window: 'opponentSummon',
+        // "Normal Summons", and it means it: a Fusion Summon is a Special
+        // Summon and opens the wider `opponentSummon` window, which Torrential
+        // Tribute watches and this card does not.
+        window: 'opponentNormalSummon',
         label: 'Trap Hole — destroy the summoned monster',
         ops: [
           { op: 'destroy', target: sel('opp', 'attacker') },
@@ -181,16 +184,26 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'spellbinding-circle': {
     text: 'When your opponent declares an attack: negate it. The attacking monster loses 700 ATK and cannot attack while this card remains face-up.',
+    /* The circle binds one monster, and it binds it by staying on the field —
+       both of which the old version got wrong. `freezeMonsters` locks down
+       *every* monster its target controls, so answering one attacker stopped
+       their whole board; it ran on a one-turn timer rather than on the card
+       still being there; and the −700 was written into the monster, so it kept
+       the penalty after the circle was destroyed and the circle itself went
+       straight to the Graveyard having promised to remain face-up.
+       Attaching it is all three at once: an equip is read live as an aura, so
+       the penalty and the lock last exactly as long as the card does, they
+       reach only the monster it is on, and `toGrave` already sends an equip
+       down with its host — which is what happens when the bound monster
+       leaves the field. */
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Spellbinding Circle',
-        reusable: true,
         ops: [
           { op: 'negateAttack' },
-          { op: 'gainAtk', amount: -700, target: sel('opp', 'attacker'), duration: 'permanent' },
-          { op: 'freezeMonsters', who: 'opp', turns: 1 },
+          { op: 'equipTo', atk: -700, def: 0, grants: ['cannotAttack'], target: sel('opp', 'attacker') },
         ],
       },
     ],
@@ -401,7 +414,8 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { type: 'Winged Beast' } }), atk: 300, def: 300 },
+        // "All Winged Beast monsters" — the weather again, both sides of it.
+        aura: { target: sel('both', 'all', { filter: { type: 'Winged Beast' } }), atk: 300, def: 300 },
       },
     ],
   },
@@ -582,11 +596,17 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   umi: {
     text: 'Field Spell: all WATER monsters gain 400 ATK and 300 DEF.',
     cry: 'The sea answers my call!',
+    /* A Field Spell is the weather, not a personal buff: "all WATER monsters"
+       means both sides of the table, which is how the real card reads and how
+       it was reported from a real duel — one player's Umi lifted their own
+       Fish and left the opponent's alone. The Legendary Fisherman needs no
+       change to go with it, because `requiresField` already looks at either
+       Field Zone. */
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { attribute: 'WATER' } }), atk: 400, def: 300 },
+        aura: { target: sel('both', 'all', { filter: { attribute: 'WATER' } }), atk: 400, def: 300 },
       },
     ],
   },

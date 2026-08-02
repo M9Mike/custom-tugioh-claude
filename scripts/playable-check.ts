@@ -28,6 +28,13 @@ import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
  * it. The board matters: several cards cost a tribute or a discard, and probing
  * from an empty field reports them unplayable when they are merely unaffordable
  * — which is a fault in the probe, not the card.
+ *
+ * The *opponent's* board matters for exactly the same reason, and was empty:
+ * once a Spell whose headline op has nothing to work on stopped being
+ * activatable — De-Spell was being played at an empty Spell/Trap Zone, which
+ * is what Mai kept doing — twelve perfectly good cards read as dead. So the
+ * other seat gets monsters and a face-up Spell to point at too. A card is only
+ * unplayable if it cannot be played against a board with something on it.
  */
 function stateHolding(slug: string): { state: DuelState; card: CardInstance; me: PlayerId } {
   const state = createDuel({
@@ -47,6 +54,16 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   p.monsters = [spare(1), spare(2), null];
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];
+
+  /* Something to aim at. Two monsters rather than one because a couple of
+     cards want a choice, and an Insect among them because Weevil's Eradicating
+     Aerosol only destroys those. The face-up Spell is what De-Spell and
+     Harpie's Feather Duster are for. */
+  const o = state.players.p2;
+  const theirs = (n: number, s: string): CardInstance => ({ ...o.deck[0], uid: `theirs${n}`, slug: s, face: 'up', position: 'atk' });
+  o.monsters = [theirs(1, 'hitotsu-me-giant'), theirs(2, 'basic-insect'), null];
+  o.spellTrap = { ...theirs(3, 'de-spell'), face: 'up' };
+  o.field = null;
   return { state, card, me: 'p1' };
 }
 

@@ -93,12 +93,36 @@ const PASSIVE_OPS = new Set(['pierce', 'directAttack', 'halvedBattleDamage', 'in
 
 function liftPassives(effects: CardEffect[]): CardEffect[] {
   const out: CardEffect[] = [];
-  const grants = new Set<EquipGrant>();
+  /**
+   * Lifted grants, grouped by the condition of the effect they came from.
+   *
+   * They all used to go into one bag and come out as a single *unconditional*
+   * aura, which threw the condition away. The Legendary Fisherman says "While
+   * Umi is on the field, this card cannot be targeted or destroyed by your
+   * opponent's effects and can attack directly" — and got all of it with no
+   * Umi anywhere, for the whole duel: he attacked directly from the turn he
+   * arrived and walked out of a Dark Hole untouched. Reported from a real duel
+   * as two separate bugs; it is one line of bookkeeping.
+   *
+   * The condition is keyed by value, so two effects gated the same way still
+   * collapse into one aura.
+   */
+  const bags = new Map<string, { condition?: CardEffect['condition']; grants: Set<EquipGrant> }>();
+  const bagFor = (condition?: CardEffect['condition']) => {
+    const key = condition ? JSON.stringify(condition) : '';
+    let bag = bags.get(key);
+    if (!bag) {
+      bag = { condition, grants: new Set() };
+      bags.set(key, bag);
+    }
+    return bag.grants;
+  };
   for (const eff of effects) {
     if (eff.trigger !== 'onSummon' && eff.trigger !== 'onNormalSummon') {
       out.push(eff);
       continue;
     }
+    const grants = bagFor(eff.condition);
     const kept = eff.ops.filter((o) => {
       /* Only a *permanent* grant is a property. Sabersaurus can attack directly
          "this turn", which is tied to the moment it arrived — lifting that into
@@ -126,8 +150,14 @@ function liftPassives(effects: CardEffect[]): CardEffect[] {
     // does not ask for targets for a trigger that no longer resolves anything.
     if (kept.length) out.push({ ...eff, ops: kept });
   }
-  if (grants.size) {
-    out.push({ trigger: 'continuous', ops: [], aura: { target: { side: 'own', pick: 'self' }, grants: [...grants] } });
+  for (const { condition, grants } of bags.values()) {
+    if (!grants.size) continue;
+    out.push({
+      trigger: 'continuous',
+      ...(condition ? { condition } : {}),
+      ops: [],
+      aura: { target: { side: 'own', pick: 'self' }, grants: [...grants] },
+    });
   }
   return out;
 }

@@ -256,7 +256,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { position: 'def' } }), grants: ['indestructibleByBattle'] },
+        /* "Your **other** Defense Position monsters" — and a plain `all` with a
+           position filter includes the Elf herself, who is normally sitting in
+           Defence, so she was shielding herself and could not be killed in
+           battle at all. */
+        aura: {
+          target: sel('own', 'all', { filter: { position: 'def' }, excludeSelf: true }),
+          grants: ['indestructibleByBattle'],
+        },
       },
     ],
   },
@@ -991,14 +998,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'the-legendary-fisherman': {
     text: 'While "Umi" is on the field, this card cannot be targeted or destroyed by your opponent\'s effects and can attack directly.',
     cry: 'Ride the waves!',
+    /* Written as a conditional aura rather than a conditional `onSummon`, like
+       7 Colored Fish and Amphibian Beast beside him. It reads the same either
+       way — `liftPassives` turns permanent summon grants into an aura and now
+       carries the condition across with them — but this is the shape the
+       sentence actually has: a state of the field, asked every time, not a
+       question answered once on the way in. */
     effects: [
       {
-        trigger: 'onSummon',
+        trigger: 'continuous',
         condition: { requiresField: 'umi' },
-        ops: [
-          { op: 'untargetable', duration: 'permanent' },
-          { op: 'directAttack', duration: 'permanent' },
-        ],
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, grants: ['untargetable', 'directAttack'] },
       },
     ],
   },
