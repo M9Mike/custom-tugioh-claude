@@ -56,6 +56,12 @@ interface Job {
   /** true when the working copy sits in the p1 seat. */
   workingIsP1: boolean;
 }
+
+/* Per-side budgets, so the harness can also measure a *deployed* delta — the
+   new AI at its new thinking time against the old AI at the time it actually
+   had. Defaults keep the classic symmetric comparison. */
+const BUDGET_WORKING = Math.max(100, Number(process.env.AB_BUDGET_WORKING ?? 1200));
+const BUDGET_BASE = Math.max(100, Number(process.env.AB_BUDGET_BASE ?? 1200));
 type Res = 'working' | 'baseline' | 'draw' | 'none';
 
 async function playGame(job: Job): Promise<Res> {
@@ -71,13 +77,14 @@ async function playGame(job: Job): Promise<Res> {
   for (let step = 0; step < 3000 && !state.winner && state.turn <= 60; step++) {
     const actor: PlayerId = state.pending ? state.pending.player : state.active;
     const brain = brainFor(actor);
-    const action = brain.aiNext(state, actor, 'champion', rt[actor] as never, 1200);
+    const budget = brain === WORKING ? BUDGET_WORKING : BUDGET_BASE;
+    const action = brain.aiNext(state, actor, 'champion', rt[actor] as never, budget);
     if (!action) break;
     let res = applyAction(state, actor, action);
     if (res.error) {
       // Plan went stale against the real position — search again, as the room does.
       brain.invalidatePlan(rt[actor] as never);
-      const retry = brain.aiNext(state, actor, 'champion', rt[actor] as never, 1200);
+      const retry = brain.aiNext(state, actor, 'champion', rt[actor] as never, budget);
       if (!retry) break;
       res = applyAction(state, actor, retry);
       if (res.error) break;

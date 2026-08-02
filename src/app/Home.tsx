@@ -292,8 +292,7 @@ export default function Home() {
         </button>
 
         <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
-          Every duelist enters, single elimination. Win your way to the final and the Kingdom is yours. The computer
-          plays at full strength in every duel — there is no easy setting.
+          Every duelist enters, single elimination. Win your way to the final and the Kingdom is yours.
         </p>
 
         <div className="my-4 flex items-center gap-3">

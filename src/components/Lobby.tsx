@@ -127,10 +127,9 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
         {isAi && (
           <div className="mt-3 rounded border border-brassdim/60 bg-black/30 p-3">
             <p className="font-display text-[10px] uppercase tracking-widest text-brass">Your opponent</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-ptext/85">
-              The computer plays at full strength — widest search, three turns of lookahead, and it counts the race to
-              zero every turn. There is no easy setting.
-            </p>
+            {/* No notes about how the computer plays. A duelist across the
+                table doesn't explain their reasoning either — the only thing
+                worth saying here is whose deck it holds. */}
             <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
               It is holding{' '}
               <span className="text-parchment">{DUELISTS.find((d) => d.id === foeSeat?.duelistId)?.name ?? 'a deck'}</span>

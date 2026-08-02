@@ -60,6 +60,16 @@ export interface AiConfig {
    * Defaults to 0.5.
    */
   rolloutMix?: number;
+  /**
+   * How many sampled futures each candidate line is played out against, with
+   * the results averaged. One playout is one shuffle of the unseen decks — a
+   * single sample can land on a lucky draw order and mis-rank a line for a
+   * reason that exists in no other future. Averaging over several is the
+   * honest version of the strength the old clairvoyant lookahead had: less
+   * variance, no peeking. Defaults to 1; each extra sample splits the line's
+   * playout budget, so it only pays where the budget can feed it.
+   */
+  rolloutSamples?: number;
   /** Evaluation weights; defaults to the tuned set. */
   weights?: EvalWeights;
 }
@@ -67,7 +77,7 @@ export interface AiConfig {
 export const AI_LEVELS: Record<AiLevel, AiConfig> = {
   rookie: { beam: 1, branch: 6, slack: 0.55, depth: 0 },
   duelist: { beam: 4, branch: 14, slack: 0.12, depth: 1 },
-  champion: { beam: 10, branch: 26, slack: 0, depth: 3 },
+  champion: { beam: 10, branch: 26, slack: 0, depth: 3, rolloutSamples: 2 },
 };
 
 const WIN = 1e9;
@@ -702,8 +712,25 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, budgetMs: numb
         starved.push(line);
         continue;
       }
-      const seen = rollout(line.state, pid, cfg.depth, left / (examine.length - i), w);
-      line.score = blendRollout(line.score, seen, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX);
+      /* Several futures, averaged, rather than one believed. Each sample gets
+         an equal split of this line's slice; a sample the deadline cannot feed
+         is simply not taken, so a tight budget degrades to fewer samples
+         rather than to shallower ones. */
+      const samples = Math.max(1, cfg.rolloutSamples ?? 1);
+      const slice = left / (examine.length - i);
+      let sum = 0;
+      let taken = 0;
+      for (let k = 0; k < samples; k++) {
+        const remaining = hardDeadline - Date.now();
+        if (remaining <= 0) break;
+        sum += rollout(line.state, pid, cfg.depth, Math.min(slice / samples, remaining), w, k);
+        taken += 1;
+      }
+      if (!taken) {
+        starved.push(line);
+        continue;
+      }
+      line.score = blendRollout(line.score, sum / taken, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX);
       judged.push(line);
     }
     judged.sort((a, b) => b.score - a.score);
@@ -773,13 +800,16 @@ function blendRollout(immediate: number, seen: number, mix: number): number {
  * plans from the view a player would have, and it was not true of the
  * lookahead.
  *
- * If that strength is wanted back, the honest way is variance reduction —
- * average two or three sampled futures instead of trusting one — not letting it
- * read the deck again.
+ * That strength is bought back honestly now: `rolloutSamples` plays each line
+ * against several differently-shuffled futures and averages them — variance
+ * reduction, not peeking. The `salt` below is what keys the samples apart.
  */
-function hideTheFuture(state: DuelState): DuelState {
+function hideTheFuture(state: DuelState, salt = 0): DuelState {
   const view = structuredClone(state);
-  let s = state.seed >>> 0;
+  // The salt keys each sample to a different future. Mixed multiplicatively so
+  // consecutive salts land far apart in the generator's cycle; still seeded
+  // from the state, so a rerun repeats.
+  let s = (state.seed ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0;
   const rnd = () => {
     s = (s + 0x6d2b79f5) >>> 0;
     let t = s;
@@ -810,8 +840,8 @@ function hideTheFuture(state: DuelState): DuelState {
  * weaker than searching shallowly — the classic pathology of a strong search
  * over a poor model, and the reason this plays whole turns properly instead.
  */
-function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number, w: EvalWeights): number {
-  let cur = hideTheFuture(state);
+function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number, w: EvalWeights, salt = 0): number {
+  let cur = hideTheFuture(state, salt);
   const model: AiConfig = { ...MODEL_CFG, weights: w };
   const deadline = Date.now() + budgetMs;
   const per = Math.max(8, budgetMs / Math.max(1, turns));

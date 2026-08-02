@@ -666,6 +666,15 @@ depth 0" against "baseline at depth 3" and read the gap as evidence about the
 fix, when it was only ever a measurement of depth. Both arms have to differ in
 exactly one thing.
 
+**A sampling change measures as nothing at a starved budget.** `rolloutSamples`
+averages several blind futures per line instead of trusting one; screened at the
+harness's symmetric 1200ms it read 50.0% ±5.7, dead level, because each sample
+was getting ~30ms of future. The honest number is the *deployed* delta —
+`AB_BUDGET_WORKING=4000 AB_BUDGET_BASE=2500 npm run ai-ab` plays the new AI at
+the thinking time it will really have against the old one at the time it really
+had. Live duels think for 4000ms per turn (`rooms.ts`; the route allows 30s);
+tournament side matches keep their quick 900ms because nobody is watching them.
+
 **A probe that forces a value can measure a page that cannot happen.** Chasing
 an intermittent `npm run pacing` failure I found `.declare` running 1000ms while
 a spoken beat is held for `MIN_SPOKEN_MS` = 1100, concluded every declaration

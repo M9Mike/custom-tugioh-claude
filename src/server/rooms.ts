@@ -280,7 +280,11 @@ export async function stepAI(room: Room): Promise<boolean> {
   } else {
     const key = `${s.turn}:${pid}`;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
-      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 2500) };
+      /* Four seconds to plan the whole turn, once per turn. The board narrates
+         every beat for over a second anyway, so the think overlaps the tail of
+         the previous action far more often than it is felt — and the function
+         has a 30s ceiling, so there is no platform pressure to hurry. */
+      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 4000) };
     }
     action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
   }
@@ -290,7 +294,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // The plan went stale against the real position. Search again from here.
     room.aiPlan = undefined;
     const rt = createAiRuntime();
-    const retry = aiNext(s, pid, GAME_AI, rt, 2500);
+    const retry = aiNext(s, pid, GAME_AI, rt, 4000);
     res = retry ? applyAction(s, pid, retry) : res;
   }
   if (res.error) {
