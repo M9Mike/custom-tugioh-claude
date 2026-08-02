@@ -7,7 +7,7 @@ import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
 import type { CardInstance } from '@/game/types';
-import { joinRoomWithRetry, loadName, saveName } from '@/lib/useDuelRoom';
+import { joinRoomWithRetry, loadIdentity, loadName, saveIdentity, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
 export default function Home() {
@@ -76,7 +76,7 @@ export default function Home() {
         setBusy(null);
         return;
       }
-      window.localStorage.setItem(`duel-identity:${data.code}`, JSON.stringify({ code: data.code, token: data.token }));
+      saveIdentity({ code: data.code, token: data.token });
       router.push(`/duel/${data.code}`);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -102,13 +102,20 @@ export default function Home() {
     primeAudio();
     sfx.click();
     saveName(name);
-    const res = await joinRoomWithRetry(c, name, undefined);
+    /* Hand back the token for this code if we already hold a seat in it.
+       Passing `undefined` asked the server to seat us afresh every time — so
+       swiping the app away and typing your own room code back in was refused
+       with "this duel already has two players", one of which was you. Only
+       reopening the /duel/CODE link worked, because that path loads the
+       identity; the home page did not. */
+    const stored = loadIdentity(c);
+    const res = await joinRoomWithRetry(c, name, stored?.token);
     if (!res.ok) {
       setError(res.reason);
       setBusy(null);
       return;
     }
-    window.localStorage.setItem(`duel-identity:${res.code}`, JSON.stringify({ code: res.code, token: res.token }));
+    saveIdentity({ code: res.code, token: res.token });
     router.push(`/duel/${res.code}`);
   };
 

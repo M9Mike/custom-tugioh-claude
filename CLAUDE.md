@@ -74,6 +74,7 @@ npm run deck-bench pegasus 100                       # a deck's real win rate, �
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 npm run rematch  http://localhost:3100               # the second duel narrates too
 npm run race                                         # two requests cannot undo each other
+npm run rejoin   http://localhost:3100               # you can walk back into your own duel
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -1086,6 +1087,49 @@ and the card goes to the Graveyard. Stronger than the printed card on purpose
 — the revival is unconditional and the zone is free — and it is how the card
 reads in the anime, which is what this game is for. Anything else printed
 Continuous whose whole text is a one-shot wants the same treatment.
+
+
+**Rooms are cleaned up by a TTL and by nothing else.** No leave endpoint, no
+disconnect handling, no explicit delete — `deleteKey` exists and is only used
+by the health probe. `ROOM_TTL_SECONDS` is 90 minutes, stamped onto
+`expiresAt` by every write, and enforced twice: a Mongo TTL index removes the
+document (its sweeper runs about once a minute) and `readRaw` refuses anything
+past the deadline itself, so a room is logically gone the instant it expires.
+`claim()` will reuse an expired code, so codes recycle. Storage cannot grow
+without bound — an abandoned room is a document for at most 90 idle minutes.
+
+Since `touch` stopped persisting, the clock is refreshed by real writes only —
+joining, choosing a duelist, every action, every AI step, rematch, tournament
+progress — so a room expires 90 minutes after the last *move* rather than the
+last *poll*. Identical for a duel in progress; the difference only shows on an
+idle room with a tab left open, which used to live forever.
+
+**A seat is never given up, so the way back in has to work.** Reported as "same
+code when I try to re enter it says two players are already in, I just swiped
+up the game and tried to enter it again I couldn't so we would both create a
+new room". Nothing frees a seat when a player closes the app — by design, so a
+refresh keeps your place — which makes reclaiming it the only route back. The
+home page's Join passed `undefined` for the token, so the server had no way to
+know it was you and tried to seat you afresh, into a room whose two seats were
+already taken, one of them yours. Reopening the `/duel/CODE` link worked the
+whole time, because `connect()` loads the stored identity; typing the code did
+not.
+
+The shape of that bug is the one this file keeps recording: the read half
+(`loadIdentity`) was private to `useDuelRoom`, and `Home.tsx` carried *two*
+hand-rolled copies of the write half. Three copies of one rule, and the one
+that mattered was missing. Both are exported and used in one place each now.
+
+`npm run rejoin` covers it, and it has to be a browser check: both seats are
+filled over HTTP, so an API-level driver reproduces nothing — the bug was never
+in the endpoint, it was in which argument the page handed it. Two notes on
+making it honest. It closes and reopens the page rather than navigating, which
+is the truer model of a swipe *and* avoids WebKit killing its own renderer when
+a live duel page is navigated out from under its poll loop; that crash happens
+in this container often enough that the read of the duel page is guarded and
+reports "this proves nothing" rather than a failure. And it waits for *either*
+the room or the refusal, whichever lands first, so a refusal reads as a refusal
+instead of a timeout naming a selector.
 
 
 ## Shape of the thing

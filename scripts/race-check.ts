@@ -106,7 +106,12 @@ console.log('Room concurrency\n');
   const code = await startedRoom();
   const stale = await loadRoom(code);
   const fresh = await loadRoom(code);
-  await performAction(fresh!, 'p1', { type: 'setSpellTrap', uid: fresh!.state!.players.p1.hand.find((c) => c.slug !== undefined)!.uid });
+  /* A legal move, asserted as accepted. Written as "Set the first card in
+     hand" this was refused whenever that card was a monster — no save, so the
+     revision never moved, so the stale copy below was still current and both
+     assertions failed for a reason that had nothing to do with the guard. */
+  const winnerErr = await performAction(fresh!, 'p1', aMove(fresh!.state!, 'p1'));
+  ok(!winnerErr, 'the winner of the race moves first', winnerErr ?? '');
   const winner = await loadRoom(code);
   const boardAfterMove = boardOf(winner!.state!);
 

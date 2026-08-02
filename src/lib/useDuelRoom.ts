@@ -13,7 +13,15 @@ interface Identity {
 
 const STORE_KEY = 'duel-identity';
 
-function loadIdentity(code: string): Identity | null {
+/**
+ * Your seat in a room, remembered per code.
+ *
+ * Exported because the home page needs it too: typing a code you are already
+ * sitting in has to hand the stored token back, or the server has no way to
+ * know it is you and tries to seat you afresh — into a room whose two seats
+ * are already taken, including yours.
+ */
+export function loadIdentity(code: string): Identity | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(`${STORE_KEY}:${code.toUpperCase()}`);
@@ -23,7 +31,7 @@ function loadIdentity(code: string): Identity | null {
   }
 }
 
-function saveIdentity(id: Identity) {
+export function saveIdentity(id: Identity) {
   try {
     window.localStorage.setItem(`${STORE_KEY}:${id.code.toUpperCase()}`, JSON.stringify(id));
   } catch {
