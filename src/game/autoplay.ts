@@ -56,7 +56,7 @@ export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number)
            intermittent bug. */
         if (summonBlocked(state, pid, h.slug)) continue;
         const need = tributesRequired(h.slug, state, pid);
-        const bodies = ownMonsters.filter((m) => !m.isToken);
+        const bodies = ownMonsters;
         if (need === 0 && freeZone >= 0) {
           const targets = targetsFor(state, pid, h.slug, 'onSummon', rnd);
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', targets });

@@ -417,7 +417,8 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
 
       for (const h of summonable) {
         const need = tributesRequired(h.slug, state, pid);
-        const fodder = ownMonsters.filter((m) => !m.isToken).sort(byAtkDesc(state, pid)).reverse();
+        // Weakest first, which naturally spends tokens before real monsters.
+        const fodder = ownMonsters.slice().sort(byAtkDesc(state, pid)).reverse();
         if (need === 0 && freeZone >= 0) {
           for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
             acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', targets: t });

@@ -978,6 +978,44 @@ console.log('\nSky Scout pays for going round the blockers');
   ok(hit.players[FOE].lp === 4000 - 1700, 'CONTROL: an ordinary attacker is untouched', `LP ${hit.players[FOE].lp}`);
 }
 
+console.log('\nA token is a body, and a body can be tributed');
+{
+  /* From a real duel, with the screenshot to prove it: three Kuriboh Tokens
+     filling every zone, Curse of Dragon in hand, and both summon buttons dead
+     with "needs 1 tribute(s)". The engine accepted token tributes all along —
+     the UI, the AI and the test driver each carried their own exclusion. */
+  const s = fresh();
+  for (let i = 0; i < 3; i++) {
+    const t = card(ME, 'kuriboh');
+    t.isToken = true;
+    t.tokenName = 'Kuriboh Token';
+    s.players[ME].monsters[i] = t;
+  }
+  const curse = card(ME, 'curse-of-dragon');
+  s.players[ME].hand.push(curse);
+  const graveBefore = s.players[ME].grave.length;
+
+  const tribute = s.players[ME].monsters[0]!.uid;
+  const after = act(s, ME, { type: 'normalSummon', uid: curse.uid, zone: 0, position: 'atk', face: 'up', tributes: [tribute] });
+  ok(after.players[ME].monsters[0]?.slug === 'curse-of-dragon', 'a token pays for a Tribute Summon on a full board', after.players[ME].monsters[0]?.slug);
+  ok(after.players[ME].grave.length === graveBefore, 'and the tribute vanishes rather than entering the Graveyard', `grave ${after.players[ME].grave.length}`);
+  ok(on(after, ME).length === 3, 'the other two tokens stand where they were', `${on(after, ME).length} monsters`);
+
+  // Two tributes off the same wall for a Level 7.
+  const b = fresh();
+  for (let i = 0; i < 3; i++) {
+    const t = card(ME, 'kuriboh');
+    t.isToken = true;
+    t.tokenName = 'Kuriboh Token';
+    b.players[ME].monsters[i] = t;
+  }
+  const skull = card(ME, 'red-eyes-black-dragon');
+  b.players[ME].hand.push(skull);
+  const pair = [b.players[ME].monsters[0]!.uid, b.players[ME].monsters[1]!.uid];
+  const big = act(b, ME, { type: 'normalSummon', uid: skull.uid, zone: 0, position: 'atk', face: 'up', tributes: pair });
+  ok(big.players[ME].monsters[0]?.slug === 'red-eyes-black-dragon', 'and two tokens pay for a Level 7', big.players[ME].monsters[0]?.slug);
+}
+
 console.log('\nThe last blow only ever takes the Life Points that are there');
 {
   /* The board adds queued damage back to work out the total it has not yet

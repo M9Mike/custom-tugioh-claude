@@ -997,7 +997,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     }
     if (mode.kind === 'tributes') {
       return new Set(
-        mine.monsters.filter((m): m is CardInstance => !!m && !m.isToken && !mode.picked.includes(m.uid)).map((m) => m.uid)
+        /* Tokens are legal tribute fodder — that is half of what a wall of
+           Kuriboh Tokens is *for*. They were excluded here, and a player whose
+           three zones were full of tokens stood in front of a Tribute Summon
+           they could see and could not pay. Nothing in any card's text says a
+           token cannot be tributed, and the engine has always accepted it. */
+        mine.monsters.filter((m): m is CardInstance => !!m && !mode.picked.includes(m.uid)).map((m) => m.uid)
       );
     }
     return new Set<string>();
@@ -1178,7 +1183,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const freeZone = mine.monsters.findIndex((m) => !m) >= 0;
     if (handDef.kind === 'monster') {
       const need = tributesRequired(handCard.slug, state, me);
-      const bodies = mine.monsters.filter((m): m is CardInstance => !!m && !m.isToken).length;
+      const bodies = mine.monsters.filter((m): m is CardInstance => !!m).length;
       /* A Tribute Summon *makes* its own room — the tributes leave the field
          before the new monster arrives, and `finishSummon` already resolves the
          destination after they are paid. Demanding a free zone up front meant a
