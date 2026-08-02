@@ -253,7 +253,8 @@ function auraCount(
 ): number {
   const pools: CardInstance[][] = [];
   const onField = (pid: PlayerId) => state.players[pid].monsters.filter((m): m is CardInstance => !!m);
-  if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
+  if (per.zone === 'ownHand') pools.push(state.players[controller].hand);
+  else if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
   else if (per.zone === 'eitherGrave') pools.push(state.players.p1.grave, state.players.p2.grave);
   else if (per.zone === 'ownField') pools.push(onField(controller));
   else pools.push(onField('p1'), onField('p2'));
@@ -1176,6 +1177,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         );
         break;
       }
+      case 'drawTo':
+        for (const who of sideToPlayers(ctx, op.who)) {
+          for (let i = state.players[who].hand.length; i < op.count; i++) drawCard(state, who);
+        }
+        break;
       case 'revealHand':
         break;
       case 'shuffleIntoDeck':
@@ -1270,6 +1276,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               fireTriggers(state, t, ctrl, 'onFlip', {});
             }
           }
+        }
+        break;
+      case 'destroyIfNoAtk':
+        /* The drain above has already landed, so this reads the *effective*
+           stat. A filter would not do: `matchesFilter` is deliberately blind to
+           auras to avoid recursing through the stat calculation, so `maxAtk: 0`
+           would consult the printed number and finish the wrong monsters. */
+        for (const t of resolveTargets(ctx, op.target)) {
+          if (effAtk(state, t) <= 0) destroyCard(state, t, false, ctx);
         }
         break;
       case 'flipFaceUp':
@@ -1407,6 +1422,27 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
 function windowMatches(wants: TrapWindow | undefined, opened: TrapWindow): boolean {
   if (wants === opened) return true;
   return wants === 'opponentSummon' && opened === 'opponentNormalSummon';
+}
+
+
+/**
+ * "The opponent summoned something" — told to every face-up monster the other
+ * player controls, with the new arrival in the trigger context so a selector
+ * can reach it with `pick: 'attacker'`, exactly as a summon trap window does.
+ *
+ * A Set summons nothing and fires nothing, which is the same rule the trap
+ * windows follow: iterated over a copy, because an effect here can destroy the
+ * very monster that just arrived — or the one reacting to it.
+ */
+function fireOpponentSummon(state: DuelState, summoner: PlayerId, summonedUid: string) {
+  const watcher = other(summoner);
+  const watching = state.players[watcher].monsters.filter((m): m is CardInstance => !!m && m.face === 'up');
+  for (const m of watching) {
+    if (state.winner) return;
+    // It may have left the field while an earlier watcher was resolving.
+    if (!findOnField(state, m.uid)) continue;
+    fireTriggers(state, m, watcher, 'onOpponentSummon', { attackerUid: summonedUid });
+  }
 }
 
 function openTrapWindow(state: DuelState, responder: PlayerId, window: TrapWindow, reason: string, context: TriggerContext): boolean {
@@ -1698,6 +1734,11 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
   const def = CARDS[slug];
   const level = def?.level ?? 0;
   let need = level >= 7 ? 2 : level >= 5 ? 1 : 0;
+  /* A God is three bodies, whatever its Level says. Written against the type
+     rather than a per-card override so Obelisk and Ra cost the same the day
+     they arrive, without anybody having to remember. Tokens count as bodies —
+     Kuriboh's Multiply is how this deck gets there. */
+  if (def?.type === 'Divine-Beast') need = 3;
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
   // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World
@@ -2045,6 +2086,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          card by name while it was still face-down, which is the opposite of
          what setting one is for. */
       if (!state.winner && c.face === 'up') {
+        fireOpponentSummon(state, pid, c.uid);
         openTrapWindow(state, other(pid), 'opponentNormalSummon', `${p.name} summoned ${def.name}.`, { attackerUid: c.uid });
       }
       return { state };
@@ -2279,6 +2321,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         text: CARDS[ex.slug].cry ?? 'Fusion Summon!',
       });
       fireTriggers(state, ex, pid, 'onSummon', {}, action.targets ?? []);
+      if (!state.winner) fireOpponentSummon(state, pid, ex.uid);
       if (!state.winner) openTrapWindow(state, other(pid), 'opponentSummon', `${p.name} Fusion Summoned.`, { attackerUid: ex.uid });
       return { state };
     }

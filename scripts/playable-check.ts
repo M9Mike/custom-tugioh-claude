@@ -21,6 +21,7 @@ import {
   tributesRequired,
 } from '../src/game/engine';
 import { CARDS, DUELISTS } from '../src/game/cards';
+import { MONSTER_ZONES } from '../src/game/types';
 import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
 
 /**
@@ -129,8 +130,16 @@ for (const [slug, owners] of inDecks) {
       }
       continue;
     }
+    /* A Tribute Summon makes its own room: the tributes are paid first and the
+       monster takes one of the zones they just left, so three tributes on a
+       three-zone board is payable — you simply have to commit the whole field
+       to it, which is exactly what a God is supposed to cost. Written as
+       `need > 2` back when two was the ceiling, this called Slifer unplayable
+       while the engine summoned him perfectly well. */
     const need = tributesRequired(slug, state, 'p1');
-    if (need > 2) dead.push(`${slug} needs ${need} tributes — more than a 3-zone board can pay`);
+    if (need > MONSTER_ZONES) {
+      dead.push(`${slug} needs ${need} tributes — more than ${MONSTER_ZONES} Monster Zones can ever field`);
+    }
     continue;
   }
 

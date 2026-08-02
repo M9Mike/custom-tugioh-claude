@@ -20,6 +20,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* Universal staples                                                 */
   /* ---------------------------------------------------------------- */
 
+  'card-of-sanctity': {
+    /* The card that makes Slifer terrifying, and the reason he is not simply
+       unbeatable: it fills the opponent's hand just as generously, and a full
+       hand is what everybody else spends on answers. */
+    text: 'Each player draws until they hold 6 cards.',
+    cry: 'Draw, both of us!',
+    effects: [{ trigger: 'activate', ops: [{ op: 'drawTo', count: 6, who: 'both' }] }],
+  },
+
   'monster-reborn': {
     text: 'Special Summon 1 monster from either Graveyard to your field in Attack Position.',
     cry: 'Rise again!',

@@ -1132,6 +1132,75 @@ the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
 
+## Adding a duelist
+
+`data/decklists.json` is the authoring source and names cards in English;
+`node scripts/fetch-cards.mjs` resolves them against YGOPRODeck, writes
+`src/game/generated/{cards,decklists}.json` and downloads the artwork (which is
+git-ignored and re-fetched by the `prebuild`). Effects go in
+`src/game/effects/`. Nothing else has to change: the AI enumerates through the
+same engine gates the interface uses and scores with one generic `evaluate`, so
+a new deck is played competently from the first duel without a line of AI work.
+
+**A God costs three bodies.** `tributesRequired` gives any `Divine-Beast` three
+tributes, written against the type rather than a per-card override so Obelisk
+and Ra cost the same the day they arrive. Tokens are bodies, so Kuriboh and
+Multiply are how Yami Yugi actually gets there, and a Tribute Summon makes its
+own room — three tributes on a three-zone board is payable, you simply commit
+the whole field. `npm run playable` said otherwise: its ceiling was written
+`need > 2` back when two was the maximum, so it called Slifer unplayable while
+the engine summoned him perfectly well.
+
+**Slifer is only ever as strong as the hand behind it.** ATK and DEF are 1000
+per card in your hand, read live through `aura.per` (which gained an `ownHand`
+zone for it), so every card you spend developing the board takes 1000 off the
+thing you spent three monsters to summon. That tension is the whole card, and
+it is also what keeps a God fair: `npm run deck-bench yami` is 55% ±10, mid-field
+against Pegasus at 86%. It is `untargetable`, which in this engine means no
+opposing effect can reach it at all — including Dark Hole and Mirror Force, both
+of which filter protected monsters — so the only honest answer is a bigger body
+while the hand is thin.
+
+**The second mouth needed a trigger that did not exist.** Nothing let a monster
+sitting on the field react to the opponent summoning; only traps could.
+`onOpponentSummon` fires on every face-up monster the other player controls,
+with the new arrival in the trigger context so `pick: 'attacker'` reaches it —
+the same context a summon trap window already builds. A Set fires nothing,
+matching the rule the trap windows follow. `npm run text` had to learn that the
+clause "when your opponent summons" is now satisfied by a monster as well as a
+trap; that is the check being taught, not loosened.
+
+**`destroyIfNoAtk` reads the effective stat, deliberately.** The drain lands
+first and then finishes whatever it emptied — two halves of one sentence, in
+order. A `maxAtk: 0` filter would not do it: `matchesFilter` is deliberately
+blind to auras to avoid recursing through the stat calculation, so it would
+consult the printed number and destroy the wrong monsters.
+
+**An eleventh duelist broke the simulator's pairing, silently.** `npm run sim`
+pairs `i % n` against `(7i + 3) % n` and skipped the game when both drew the
+same duelist. At ten that never happened — `6i` is even and `7` is odd, so they
+cannot be congruent mod 10 — and at eleven they collide every eleventh game: 36
+of 400 games were dropped, and Bakura, whose index only ever came up in exactly
+those games, stopped being simulated at all while the run still printed "No rule
+errors". A skipped game is a deck that went unchecked. The second seat steps to
+the next duelist along now, so nothing is skipped at any roster size.
+
+**Audit gaps are not card bugs, but they are still gaps.** Both things the audit
+reported on Slifer were its own: it could not stock a hand to measure a
+hand-scaling aura, and it had no driver for the new trigger — which it said out
+loud, under "effects not driven", which is exactly what that line is for. Its
+driver then had to summon a monster *big enough to survive* the drain, because a
+small one is destroyed by the second half of the sentence and the drop in ATK
+becomes invisible: the op reads as "did nothing" when it did precisely what it
+says. The destroy half is pinned by name in `npm run rules`, where both outcomes
+can be set up separately.
+
+**Prove the card can fail before believing it passes.** Slifer's regressions
+were run against a deliberately broken Slifer — drain set to 0, scaling set to 0
+— and six of them went red. A God that shipped green on a broken engine would
+have been worse than no test at all.
+
+
 ## Shape of the thing
 
 - `src/game/` — the rules engine. Pure and deterministic, shared by client and server.

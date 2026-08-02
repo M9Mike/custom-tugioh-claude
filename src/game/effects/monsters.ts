@@ -1125,6 +1125,239 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   /* ================================================================ */
+  /* Yami Yugi — the Pharaoh's swarm, and the God it calls down       */
+  /* ================================================================ */
+
+  'slifer-the-sky-dragon': {
+    /* The printed card has "?" for both stats, which the card database gives
+       as -1. Zero is the honest floor here: Slifer is worth exactly what your
+       hand is worth, and an empty hand leaves a God that anything can run
+       over. That is the whole tension of playing him — every card you spend
+       developing the board takes 1000 ATK off the thing you spent three
+       monsters to summon. */
+    atkOverride: 0,
+    defOverride: 0,
+    text:
+      'Requires 3 Tributes. Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
+      "When your opponent Summons a monster: it loses 2000 ATK, and if that leaves it with nothing, destroy it. " +
+      "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage.",
+    cry: 'The Sky Dragon answers!',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          per: { zone: 'ownHand', atk: 1000, def: 1000 },
+          grants: ['untargetable', 'pierce'],
+        },
+      },
+      {
+        /* The second mouth. Fires on every face-up monster the other player
+           summons — a Set is not a Summon and wakes nothing, the same rule the
+           trap windows follow. The drain lands first and the destroy reads the
+           effective stat afterwards, so the two halves of the sentence resolve
+           in the order it is written. */
+        trigger: 'onOpponentSummon',
+        ops: [
+          { op: 'gainAtk', amount: -2000, target: sel('opp', 'attacker'), duration: 'permanent' },
+          { op: 'destroyIfNoAtk', target: sel('opp', 'attacker') },
+        ],
+      },
+    ],
+  },
+
+  'alpha-the-magnet-warrior': {
+    text: "When this card is Normal Summoned: add 1 Magnet Warrior from your Deck to your hand.",
+    cry: 'Magnet Warriors, assemble!',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'search', filter: { nameIncludes: 'Magnet Warrior' } }],
+      },
+    ],
+  },
+
+  'beta-the-magnet-warrior': {
+    text: 'While you control another Rock monster, this card cannot be destroyed by battle.',
+    effects: [
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Rock' },
+        ops: [],
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+      },
+    ],
+  },
+
+  'gamma-the-magnet-warrior': {
+    text: 'When this card is Normal Summoned: Special Summon 1 Magnet Warrior from your hand.',
+    cry: 'Three become one!',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'hand',
+            filter: { nameIncludes: 'Magnet Warrior' },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'valkyrion-the-magna-warrior': {
+    /* The printed card is Special Summoned by tributing the three Magnet
+       Warriors. Here that is a Fusion, because tributing three specific bodies
+       for one is exactly what a Fusion already is in this engine — and it puts
+       Valkyrion in direct competition with Slifer for the same three monsters,
+       which is the most interesting decision in the deck. */
+    text: 'Fusion: Alpha + Beta + Gamma the Magnet Warrior. When Fusion Summoned: destroy 1 monster your opponent controls. This card inflicts piercing battle damage.',
+    cry: 'The Magna Warrior stands whole!',
+    fusionMaterials: ['alpha-the-magnet-warrior', 'beta-the-magnet-warrior', 'gamma-the-magnet-warrior'],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'destroy', target: sel('opp', 'chosen', { count: 1 }) },
+          { op: 'pierce', duration: 'permanent' },
+        ],
+      },
+    ],
+  },
+
+  'queen-s-knight': {
+    text: "When this card is Normal Summoned: add King's Knight from your Deck to your hand.",
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'search', filter: { slugs: ['king-s-knight'] } }],
+      },
+    ],
+  },
+
+  'king-s-knight': {
+    text: "When this card is Normal Summoned while you control another Warrior: Special Summon Jack's Knight from your Deck.",
+    cry: 'The court assembles!',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        condition: { controlsOtherOfType: 'Warrior' },
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'deck',
+            filter: { slugs: ['jack-s-knight'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'jack-s-knight': {
+    text: 'All Warrior monsters you control gain 300 ATK.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Warrior' } }), atk: 300 },
+      },
+    ],
+  },
+
+  'gazelle-the-king-of-mythical-beasts': {
+    text: 'When this card is Normal Summoned: add Berfomet from your Deck to your hand.',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'search', filter: { slugs: ['berfomet'] } }],
+      },
+    ],
+  },
+
+  berfomet: {
+    text: 'When this card is Summoned: Special Summon Gazelle the King of Mythical Beasts from your Deck.',
+    cry: 'Come, my other half!',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'deck',
+            filter: { slugs: ['gazelle-the-king-of-mythical-beasts'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'chimera-the-flying-mythical-beast': {
+    text: 'Fusion: Gazelle the King of Mythical Beasts + Berfomet. When Fusion Summoned: destroy 1 monster your opponent controls. When this card is destroyed: Special Summon Gazelle the King of Mythical Beasts from your Graveyard.',
+    cry: 'Two beasts, one beast!',
+    fusionMaterials: ['gazelle-the-king-of-mythical-beasts', 'berfomet'],
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { count: 1 }) }] },
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'grave',
+            filter: { slugs: ['gazelle-the-king-of-mythical-beasts'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'big-shield-gardna': {
+    text: 'This card cannot be destroyed by battle.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+      },
+    ],
+  },
+
+  'buster-blader': {
+    text: 'This card gains 500 ATK for each Dragon on the field.',
+    cry: 'Dragons fall before me!',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'field', filter: { type: 'Dragon' }, atk: 500 } },
+      },
+    ],
+  },
+
+  'catapult-turtle': {
+    text: 'Once per turn: Tribute 1 monster you control to inflict 1000 damage to your opponent.',
+    cry: 'Launch!',
+    effects: [
+      {
+        trigger: 'ignition',
+        label: 'Catapult — launch a monster',
+        oncePerTurn: true,
+        cost: { tribute: 1 },
+        ops: [{ op: 'damage', amount: 1000, to: 'opp' }],
+      },
+    ],
+  },
+
+  /* ================================================================ */
   /* Weevil                                                            */
   /* ================================================================ */
 

@@ -1074,6 +1074,122 @@
         ]
       ],
       "extra": []
+    },
+    {
+      "id": "yami",
+      "name": "Yami Yugi",
+      "epithet": "The Nameless Pharaoh",
+      "quote": "The Sky Dragon answers only to its master.",
+      "accent": "#c9a227",
+      "accent2": "#7b2d8e",
+      "emblem": "Slifer the Sky Dragon",
+      "strategy": "Swarm the field with knights and magnets, then call the Sky Dragon down on it.",
+      "deck": [
+        [
+          "Slifer the Sky Dragon",
+          1
+        ],
+        [
+          "Alpha the Magnet Warrior",
+          1
+        ],
+        [
+          "Beta the Magnet Warrior",
+          1
+        ],
+        [
+          "Gamma the Magnet Warrior",
+          1
+        ],
+        [
+          "Queen's Knight",
+          1
+        ],
+        [
+          "King's Knight",
+          1
+        ],
+        [
+          "Jack's Knight",
+          1
+        ],
+        [
+          "Kuriboh",
+          1
+        ],
+        [
+          "Gazelle the King of Mythical Beasts",
+          1
+        ],
+        [
+          "Berfomet",
+          1
+        ],
+        [
+          "Big Shield Gardna",
+          1
+        ],
+        [
+          "Dark Magician",
+          1
+        ],
+        [
+          "Buster Blader",
+          1
+        ],
+        [
+          "Sangan",
+          1
+        ],
+        [
+          "Catapult Turtle",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Swords of Revealing Light",
+          1
+        ],
+        [
+          "Polymerization",
+          1
+        ],
+        [
+          "Multiply",
+          1
+        ],
+        [
+          "Card of Sanctity",
+          1
+        ],
+        [
+          "Brain Control",
+          1
+        ],
+        [
+          "Mirror Force",
+          1
+        ],
+        [
+          "Magical Hats",
+          1
+        ],
+        [
+          "Spellbinding Circle",
+          1
+        ]
+      ],
+      "extra": [
+        "Valkyrion the Magna Warrior",
+        "Chimera the Flying Mythical Beast"
+      ]
     }
   ]
 }

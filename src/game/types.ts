@@ -81,6 +81,18 @@ export type Trigger =
   | 'onNormalSummon'
   /** Monster was flipped face-up (from a face-down defence position). */
   | 'onFlip'
+  /**
+   * The *opponent* summoned a monster, face-up. Fires on every face-up monster
+   * the other player controls, with the summoned card in the trigger context —
+   * so `pick: 'attacker'` resolves to what just arrived, exactly as it does in
+   * a summon trap window.
+   *
+   * Slifer's second mouth is the reason this exists: "if a monster is Summoned
+   * to your opponent's field, it loses 2000 ATK, and if that leaves it with
+   * nothing, destroy it." A Set opens no window and fires nothing, the same
+   * rule the trap windows follow.
+   */
+  | 'onOpponentSummon'
   /** This monster was destroyed in battle. */
   | 'onDestroyedByBattle'
   /** This card was sent from the field to the Graveyard for any reason. */
@@ -201,6 +213,12 @@ export type Op =
   | { op: 'bounce'; target: Selector }
   | { op: 'takeControl'; target: Selector; duration: Duration }
   | { op: 'draw'; count: number; who: Side }
+  /**
+   * Draws up to a hand size rather than a fixed number — "each player draws
+   * until they hold 6". Card of Sanctity, which is the card that makes Slifer
+   * terrifying, and it refills the opponent just as generously.
+   */
+  | { op: 'drawTo'; count: number; who: Side }
   | { op: 'discard'; count: number; who: Side }
   | { op: 'mill'; count: number; who: Side }
   | { op: 'search'; filter: CardFilter; count?: number }
@@ -255,6 +273,15 @@ export type Op =
   | { op: 'forceDefense'; target: Selector }
   | { op: 'forceAttackPosition'; target: Selector }
   | { op: 'flipFaceUp'; target: Selector }
+  /**
+   * Destroys any target left with no ATK at all. Slifer's second mouth drains
+   * 2000 and then finishes whatever that emptied — the two halves of one
+   * sentence, and the drain has to land first, so this reads the *effective*
+   * stat rather than a filter (`matchesFilter` is deliberately blind to auras
+   * to avoid recursion, so `maxAtk: 0` would look at the printed number and
+   * destroy the wrong things).
+   */
+  | { op: 'destroyIfNoAtk'; target: Selector }
   | { op: 'win' };
 
 export type EquipGrant =
@@ -306,8 +333,12 @@ export interface CardEffect {
      * evaluating it from inside the stat calculation cannot recurse.
      */
     per?: {
-      /** Where to count: one side's Graveyard or both, one side's field or both. */
-      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'field';
+      /**
+       * Where to count: one side's Graveyard or both, one side's field or both,
+       * or the controller's hand — which is Slifer, whose ATK is "1000 for each
+       * card in your hand" and therefore falls the moment you spend one.
+       */
+      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'field' | 'ownHand';
       /** Only count cards matching this. Omit to count everything there. */
       filter?: CardFilter;
       atk?: number;

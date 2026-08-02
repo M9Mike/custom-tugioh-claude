@@ -36,8 +36,11 @@ const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
   { phrase: /when (this card|it) is (normal )?summoned|when summoned/i,
     needs: ['onSummon', 'onNormalSummon'], label: 'when summoned' },
   { phrase: /once per turn:/i, needs: ['ignition'], label: 'once per turn:' },
+  /* A Trap is the usual way to answer the opponent, and was the only way until
+     Slifer: a monster sitting on the field can watch them summon too. Both
+     satisfy the clause; nothing else does. */
   { phrase: /when your opponent (declares an attack|normal summons|summons)/i,
-    needs: ['trap'], label: "when your opponent's …" },
+    needs: ['trap', 'onOpponentSummon'], label: "when your opponent's …" },
 ];
 
 /** Wording that promises the effect only applies sometimes. */

@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import { targetSpecFor } from '../src/game/ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
@@ -1481,6 +1481,108 @@ console.log('\nCall of the Haunted brings it back and lets go');
   });
   ok(tributed.players[ME].monsters.some((m) => m?.slug === 'curse-of-dragon'), 'the revived monster can be tributed');
   ok(tributed.players[ME].spellTrap === null, 'and nothing is stranded in the Spell/Trap Zone');
+}
+
+console.log('\nA God costs three bodies, and tokens are bodies');
+{
+  const s = fresh();
+  const slifer = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].hand.push(slifer);
+  ok(tributesRequired('slifer-the-sky-dragon') === 3, 'Slifer asks for three tributes', String(tributesRequired('slifer-the-sky-dragon')));
+
+  // Two bodies is not enough.
+  s.players[ME].monsters[0] = card(ME, 'kuriboh');
+  s.players[ME].monsters[1] = card(ME, 'kuriboh');
+  const short = applyAction(s, ME, {
+    type: 'normalSummon', uid: slifer.uid, zone: 2, position: 'atk', face: 'up',
+    tributes: [s.players[ME].monsters[0]!.uid, s.players[ME].monsters[1]!.uid],
+  });
+  ok(!!short.error, 'two bodies will not do it', short.error ?? 'accepted');
+
+  /* Three tokens on a full board is the summon a full board is *for*: the
+     tributes are paid first and the God takes a zone they just left. */
+  const t = fresh();
+  for (let i = 0; i < 3; i++) {
+    const tok = card(ME, 'kuriboh');
+    tok.isToken = true;
+    tok.tokenName = 'Kuriboh Token';
+    t.players[ME].monsters[i] = tok;
+  }
+  const god = card(ME, 'slifer-the-sky-dragon');
+  t.players[ME].hand.push(god, card(ME, 'kuriboh'), card(ME, 'dark-hole'));
+  const down = act(t, ME, {
+    type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: t.players[ME].monsters.map((m) => m!.uid),
+  });
+  const on = down.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon');
+  ok(!!on, 'three Kuriboh Tokens pay for a God on a full board');
+  ok(on ? effAtk(down, on, ME) === 1000 * down.players[ME].hand.length : false,
+    'and it is worth 1000 for every card left in hand',
+    on ? `${effAtk(down, on, ME)} ATK, ${down.players[ME].hand.length} in hand` : '');
+}
+
+console.log('\nSlifer is only ever as strong as the hand behind it');
+{
+  const s = fresh();
+  const slifer = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].monsters[0] = slifer;
+  s.players[ME].hand = [];
+  ok(effAtk(s, slifer, ME) === 0, 'an empty hand leaves a God with nothing', String(effAtk(s, slifer, ME)));
+  s.players[ME].hand.push(card(ME, 'kuriboh'));
+  ok(effAtk(s, slifer, ME) === 1000, 'one card is 1000', String(effAtk(s, slifer, ME)));
+  s.players[ME].hand.push(card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh'));
+  ok(effAtk(s, slifer, ME) === 4000, 'four cards is 4000', String(effAtk(s, slifer, ME)));
+  ok(effDef(s, slifer, ME) === 4000, 'and the DEF climbs with it', String(effDef(s, slifer, ME)));
+  ok(!!effFlags(s, slifer, ME).untargetable, "and their effects cannot touch it");
+  ok(!!effFlags(s, slifer, ME).pierce, 'and it pierces');
+}
+
+console.log('\nThe second mouth answers a Summon, not a Set');
+{
+  /* Both halves of one sentence, and they have to resolve in that order: the
+     drain lands, then whatever it emptied is destroyed. */
+  const big = fresh();
+  big.active = FOE;
+  big.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  big.players[ME].hand.push(card(ME, 'kuriboh'));
+  big.players[FOE].monsters[1] = card(FOE, 'kuriboh');
+  big.players[FOE].monsters[2] = card(FOE, 'kuriboh'); // Blue-Eyes is Level 8: two tributes
+  const dragon = card(FOE, 'blue-eyes-white-dragon'); // 3000
+  big.players[FOE].hand.push(dragon);
+  const drained = act(big, FOE, {
+    type: 'normalSummon', uid: dragon.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [big.players[FOE].monsters[1]!.uid, big.players[FOE].monsters[2]!.uid],
+  });
+  const bewd = drained.players[FOE].monsters.find((m) => m?.slug === 'blue-eyes-white-dragon');
+  ok(!!bewd, 'a big monster survives the second mouth');
+  ok(bewd ? effAtk(drained, bewd, FOE) === 1000 : false, 'but arrives 2000 weaker', bewd ? String(effAtk(drained, bewd, FOE)) : '');
+
+  const small = fresh();
+  small.active = FOE;
+  small.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const lady = card(FOE, 'harpie-lady'); // 1300
+  small.players[FOE].hand.push(lady);
+  const gone = act(small, FOE, { type: 'normalSummon', uid: lady.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(!gone.players[FOE].monsters.some((m) => m?.slug === 'harpie-lady'), 'and anything under 2000 is destroyed outright');
+
+  // A Set is not a Summon — the same rule the trap windows follow.
+  const hidden = fresh();
+  hidden.active = FOE;
+  hidden.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const sneak = card(FOE, 'harpie-lady');
+  hidden.players[FOE].hand.push(sneak);
+  const set = act(hidden, FOE, { type: 'normalSummon', uid: sneak.uid, zone: 0, position: 'def', face: 'down' });
+  const survivor = set.players[FOE].monsters.find((m) => m?.slug === 'harpie-lady');
+  ok(!!survivor, 'a Set monster is not touched');
+  ok(survivor?.face === 'down', 'and stays face-down');
+
+  // It watches the opponent, never its own controller.
+  const mine = fresh();
+  mine.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const friend = card(ME, 'harpie-lady');
+  mine.players[ME].hand.push(friend);
+  const safe = act(mine, ME, { type: 'normalSummon', uid: friend.uid, zone: 1, position: 'atk', face: 'up' });
+  ok(safe.players[ME].monsters.some((m) => m?.slug === 'harpie-lady'), 'CONTROL: it never bites its own side');
 }
 
 /* The summary goes LAST, and there is nothing after it.

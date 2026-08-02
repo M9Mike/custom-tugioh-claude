@@ -179,6 +179,40 @@ const CASES: Case[] = [
     want: (plan) => did(plan, 'attack'),
   },
   {
+    /* A God costs the whole board — three bodies for one — and the search has
+       to be able to see that it is worth it. The user's requirement was exactly
+       this: "ai should play gods properly". */
+    name: 'spends three bodies on the God when its hand makes it worth it',
+    duelist: 'yami',
+    because: 'three Kuriboh are 900 ATK between them; Slifer with five cards in hand is 5000 and cannot be targeted',
+    build: (s) => {
+      for (let i = 0; i < 3; i++) s.players[ME].monsters[i] = card(ME, 'kuriboh');
+      s.players[ME].hand = [
+        card(ME, 'slifer-the-sky-dragon'),
+        card(ME, 'kuriboh'),
+        card(ME, 'big-shield-gardna'),
+        card(ME, 'mirror-force'),
+        card(ME, 'magical-hats'),
+      ];
+      s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+    },
+    want: (_plan, end) => end.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+  },
+  {
+    /* And the other half of "properly": it must not throw the board away for a
+       God that would arrive with nothing behind it. An empty hand is a 0 ATK
+       God, which is strictly worse than the three bodies it ate. */
+    name: 'CONTROL: will not trade three bodies for a God with an empty hand',
+    duelist: 'yami',
+    because: 'Slifer is 1000 per card in hand — summoned off the last card in hand it is a 0 ATK body that cost three monsters',
+    build: (s) => {
+      for (let i = 0; i < 3; i++) s.players[ME].monsters[i] = card(ME, 'beta-the-magnet-warrior');
+      s.players[ME].hand = [card(ME, 'slifer-the-sky-dragon')];
+      s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+    },
+    want: (_plan, end) => !end.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+  },
+  {
     name: 'CONTROL: attacks the same board with no wall on it',
     because: 'without this, an AI that had simply forgotten how to attack would pass the two above',
     build: (s) => {

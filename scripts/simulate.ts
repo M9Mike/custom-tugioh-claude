@@ -176,9 +176,20 @@ let stalled = 0;
 for (const d of DUELISTS) wins[d.id] = { w: 0, l: 0, d: 0 };
 
 for (let i = 0; i < GAMES; i++) {
-  const a = DUELISTS[i % DUELISTS.length].id;
-  const b = DUELISTS[(i * 7 + 3) % DUELISTS.length].id;
-  if (a === b) continue;
+  /* The pairing has to work for *any* roster size.
+     Written as "skip the game when both seats draw the same duelist", it was
+     silently fine at ten — `i` and `7i+3` never collide mod 10, because 6i is
+     even and 7 is odd — and broke the moment an eleventh arrived: mod 11 they
+     collide every eleventh game, so 36 of 400 games were dropped, and the one
+     duelist whose index only ever came up in those games (Bakura) stopped
+     being simulated at all while the run still reported "No rule errors". A
+     skipped game is a deck that went unchecked, so nothing is skipped now —
+     the second seat simply steps to the next duelist along. */
+  const n = DUELISTS.length;
+  const ai = i % n;
+  const bi = (i * 7 + 3) % n;
+  const a = DUELISTS[ai].id;
+  const b = DUELISTS[bi === ai ? (bi + 1) % n : bi].id;
   const r = playGame(1000 + i * 17, a, b);
   if (r.error) {
     errors[r.error] = (errors[r.error] ?? 0) + 1;

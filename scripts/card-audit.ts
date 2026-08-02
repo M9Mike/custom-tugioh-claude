@@ -761,6 +761,41 @@ for (const def of Object.values(CARDS)) {
       continue;
     }
 
+    /* ---- Watching the opponent summon (Slifer's second mouth) ---- */
+    if (eff.trigger === 'onOpponentSummon') {
+      /* Driven through a real Normal Summon by the other player, because that
+         is the only thing that fires it — the effect is not something its
+         controller can ever choose to use. Slifer is put down face-up with a
+         hand behind him so his own ATK is real, and the opponent is left one
+         empty zone and one monster in hand to walk into it. */
+      const s = stocked();
+      const c = place(s, ME, 2, def.slug);
+      c.summonedOnTurn = 0;
+      s.players[FOE].monsters[1] = null; // room for the summon
+      s.players[FOE].normalSummonUsed = false;
+      /* Big enough to survive the drain, so the drop in ATK is readable. A
+         small victim is wiped out by its own second half and the drain becomes
+         invisible — the op then reads as "did nothing" when it did exactly what
+         it says. The destroy half is pinned by name in `npm run rules`, where
+         both outcomes can be set up separately. */
+      const fodder = s.players[FOE].monsters[0]!;
+      const victim = mint(s, FOE, 'summoned-skull'); // 2500, one tribute
+      s.players[FOE].hand = [victim];
+      s.active = FOE;
+      satisfy(s, eff, c);
+      audit(def, eff, s, (st) =>
+        run(st, FOE, {
+          type: 'normalSummon',
+          uid: victim.uid,
+          zone: 1,
+          position: 'atk',
+          face: 'up',
+          tributes: [fodder.uid],
+        })
+      );
+      continue;
+    }
+
     /* ---- Ignition effects fired from the field ---- */
     if (eff.trigger === 'ignition') {
       const s = stocked();
@@ -852,11 +887,12 @@ for (const def of Object.values(CARDS)) {
          insists the number moves by exactly the promised step. */
       if (aura?.per && selfCard) {
         const per = aura.per;
-        const feed = matchCard(per.filter, per.zone.endsWith('Grave') ? 'any' : 'monster');
+        const feed = matchCard(per.filter, per.zone.endsWith('Grave') || per.zone === 'ownHand' ? 'any' : 'monster');
         const step = (per.atk ?? 0) || (per.def ?? 0);
         const read = () => (per.atk ? effAtk(s, selfCard!, ME) : effDef(s, selfCard!, ME));
         const emptyPool = () => {
-          if (per.zone === 'ownGrave') s.players[ME].grave = [];
+          if (per.zone === 'ownHand') s.players[ME].hand = [];
+          else if (per.zone === 'ownGrave') s.players[ME].grave = [];
           else if (per.zone === 'eitherGrave') { s.players[ME].grave = []; s.players[FOE].grave = []; }
         };
         if (!feed || !step) {
@@ -866,7 +902,8 @@ for (const def of Object.values(CARDS)) {
           const before = read();
           // Deliberately fed on the *far* side where the wording allows it, so a
           // card that only ever looks at its own is caught rather than flattered.
-          if (per.zone === 'ownGrave') s.players[ME].grave.push(mint(s, ME, feed.slug));
+          if (per.zone === 'ownHand') s.players[ME].hand.push(mint(s, ME, feed.slug));
+          else if (per.zone === 'ownGrave') s.players[ME].grave.push(mint(s, ME, feed.slug));
           else if (per.zone === 'eitherGrave') s.players[FOE].grave.push(mint(s, FOE, feed.slug));
           else {
             const side = per.zone === 'ownField' ? ME : FOE;
