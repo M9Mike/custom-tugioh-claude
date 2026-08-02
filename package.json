@@ -29,7 +29,8 @@
     "pacing": "node scripts/pacing-check.mjs",
     "layout": "node scripts/layout-check.mjs",
     "ai": "tsx scripts/ai-check.ts",
-    "ai-ab": "tsx scripts/ai-ab.ts"
+    "ai-ab": "tsx scripts/ai-ab.ts",
+    "rematch": "node scripts/rematch-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

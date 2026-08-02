@@ -72,6 +72,7 @@ npm run anim     http://localhost:3100               # the flourish moves, the L
 npm run audio    http://localhost:3100               # the AudioContext waits for a tap
 npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
+npm run rematch  http://localhost:3100               # the second duel narrates too
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -703,6 +704,58 @@ still on screen at the end already was. Both ends of the run are bounded by a
 beat replacing another; only those are measured. The tell that this was the
 probe and not the game: a genuinely rushed queue does not politely rush exactly
 one beat and then behave for the next nine.
+
+**Two siblings with one React key, and every probe went blind.** The
+declaration band was `key={fx.id}` and the damage vignette `key={hit.id}` — and
+on a damage beat those are the *same string* in the same children list, which is
+undefined behaviour in React's reconciler. What it actually did was orphan the
+loser: every damage beat left a frozen copy of the declaration in the DOM at
+opacity 0, in pairs, forever. A player never saw them — but `querySelector`
+returns the *first* match, so every probe that read the declaration was reading
+a fossil within a minute of play. That is where "declarations shown: 3", "the
+board never announced anything", and the silent-rematch report all came from:
+the game was narrating correctly the whole time. Every keyed overlay now
+carries its own prefix (`fuse-`, `sig-`, `say-`, `vign-`), and the diagnosis
+came from counting `[data-testid=declaration]` nodes over a minute of play —
+1 on the fixed build, accumulating on the old one.
+
+**A rematch is a new duel on the same mounted board.** Nothing remounts, so
+every piece of animation bookkeeping survived into the next duel: the new
+duel's beat ids restart at `a1_0` and collided with the old duel's in
+`seenAnims`/`playedAnims` (opening beats silently skipped), `forceWin` stayed
+true so the next win screen and fanfare fired instantly over the killing blow,
+and `sungFor` kept the old winner so a repeat winner got no fanfare at all.
+The duel's own `version` only climbs while a duel is alive, so version going
+*backwards* means a different duel is on the board: everything resets, and
+`primedAnims` drops so the new duel's tail is swallowed as history exactly like
+walking in fresh. `npm run rematch` plays two duels in a browser and insists
+both narrate; against the old code it fails (3 then 1 declarations), against
+the fix it passes (13 and 14).
+
+**Three producers race for the view.** The poll loop, action responses and the
+AI nudge each apply whatever lands, and a poll that left the server before an
+action resolved can arrive after it — rewinding the board a frame and making
+`state.version` dip, which would also have broken the rematch detection.
+`applyView` now refuses anything older than what is on screen, by the room's
+`revision` (which survives a rematch, unlike the duel's version); `connect()`
+alone may force, because a re-join is authoritative.
+
+**Unlocking a stalled drain is not the same as ending it.** The four-second
+watchdog used to only set `stalled` — the dead drain kept `drainingRef` true,
+so every later beat queued behind a chain that would never run (the board fell
+silent for the rest of the duel), and `setAnimating(true)` was never taken
+back, so the vs-computer nudge held forever and the AI stopped playing. A
+stall now dismantles the drain the way a finished queue does, and marks the
+stranded beats played so their Life-Point holds let go.
+
+**Probes: sample from outside, and never trust the first match.** Two in-page
+samplers lied here — a 50ms `setInterval` starved while Playwright's
+accessibility queries held the main thread, and a MutationObserver read the
+same fossil node the interval did. The rematch check reads the DOM from the
+Node side on each pass instead; coarser, but every sighting is real. And its
+duel-over test once matched `/draw/i`, which also matches "draws a card" — the
+probe called the duel over the first time anybody drew. Match the modal
+heading exactly.
 
 **A guard that compares with `<` needs to know it has a number.** Found while
 probing the above: `normalSummon` with no `zone` sailed through

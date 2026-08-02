@@ -105,7 +105,24 @@ export function useDuelRoom(code: string | null) {
     setAnimatingState(busy);
   }, []);
 
-  const applyView = useCallback((v: RoomView) => {
+  /**
+   * Applies a server view — unless a newer one has already landed.
+   *
+   * Three producers race for this call: the poll loop, action responses and the
+   * AI nudge, each a separate HTTP request with its own latency. A poll that
+   * left the server *before* an action resolved can arrive *after* the action's
+   * own response, and applying it blindly rewound the board a frame — your
+   * summon un-happened for a beat and then happened again on the next poll,
+   * and the animation queue saw the same events arrive twice around a dip in
+   * `state.version`. The room's `revision` only ever moves forward (it survives
+   * a rematch, where the duel's own version resets), so it is the clock:
+   * anything older than what is already on screen is news that has expired.
+   *
+   * `force` is for `connect()` alone — a re-join is authoritative, and must be
+   * able to recover even if a stale ref says otherwise.
+   */
+  const applyView = useCallback((v: RoomView, force = false) => {
+    if (!force && viewRef.current && v.revision < revisionRef.current) return;
     revisionRef.current = v.revision;
     viewRef.current = v;
     setView(v);
@@ -179,7 +196,7 @@ export function useDuelRoom(code: string | null) {
       missStreak = 0;
       tokenRef.current = res.token;
       saveIdentity({ code: res.code, token: res.token });
-      applyView(res.view);
+      applyView(res.view, true);
       setStatus('live');
     };
 

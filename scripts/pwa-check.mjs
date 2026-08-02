@@ -188,6 +188,26 @@ const main = async () => {
 
   /* Then play until someone can attack. Both seats are driven, so this does not
      depend on either deck opening well. */
+
+  /* The board now locks every control while it narrates — the fix this run
+     exists to guard — so the driver has to wait for quiet the way a player
+     does, or its taps land on a board that is still talking and open the card
+     inspector instead of the action sheet. End Turn is the tell: rendered only
+     on your turn, disabled exactly while the narration holds the board. */
+  const quiet = async (who) => {
+    const et = who.page.locator('button:has-text("End Turn")').first();
+    try {
+      await et.waitFor({ timeout: 12000 });
+    } catch {
+      return false;
+    }
+    for (let i = 0; i < 40; i += 1) {
+      if (await et.isEnabled().catch(() => false)) return true;
+      await who.page.waitForTimeout(300);
+    }
+    return false;
+  };
+
   const summonAndPass = async (who) => {
     await dismiss(who.page);
     const hand = who.page.locator('[data-testid="hand-card"]');
@@ -222,13 +242,19 @@ const main = async () => {
         continue;
       }
 
+      await quiet(who);
       await summonAndPass(who);
       await dismiss(who.page);
+      /* The summon's own beat is still being spoken; Battle stays disabled
+         until it lands. */
+      await quiet(who);
 
       const battle = who.page.locator('button:has-text("Battle")');
       if ((await battle.count()) && (await battle.first().isEnabled())) {
         await battle.first().tap();
         await who.page.waitForTimeout(500);
+        /* "…enters the Battle Phase" is itself a spoken beat. */
+        await quiet(who);
         const mine = who.page.locator('[data-testid="my-monster-zone"] .selectable');
         if (await mine.count()) {
           await mine.first().tap();

@@ -197,6 +197,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /* Two refusals in quick succession used to race: the first one's timer fired
+     mid-way through the second's stay and took it down early. Each timer may
+     only clear the toast it was set for — checked against the message itself,
+     so no ref is read anywhere render can see. */
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 2600);
+  }, []);
   /* The cry banner is gone. It printed the card's flavour line in the middle
      while the declaration named the same card just below — Crush Card Virus,
      whose cry is "Crush Card!", read as the name twice over. One line now,
@@ -244,6 +252,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const [settled, setSettled] = useState(true);
   /** True when the queue has gone quiet without finishing — see `narrating`. */
   const [stalled, setStalled] = useState(false);
+  /** Forces the win screen up when the ending stalls — see the backstop below. */
+  const [forceWin, setForceWin] = useState(false);
+  /** When the last beat landed; both watchdogs measure silence from here. */
+  const lastBeatAt = useRef(0);
+  /** Which winner the victory sting has already played for. */
+  const sungFor = useRef<string | null>(null);
   const fxQueue = useRef<AnimEvent[]>([]);
   const drainingRef = useRef(false);
   /** False until the first view has been absorbed without playing it. */
@@ -488,6 +502,18 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     return null;
   };
 
+  /**
+   * A backstop for the vignette's own `onAnimationEnd`, which is what normally
+   * retires a hit. Under `prefers-reduced-motion` the animation is `none`, so
+   * that event never fires — the first blow of the duel left the vignette on
+   * screen for good and, because the win screen waits on `!hit`, pushed every
+   * ending onto the three-second stall backstop. Guarded by id, so a fresh hit
+   * is never cleared by the timer of the one it replaced.
+   */
+  const clearHitLater = useCallback((id: string) => {
+    window.setTimeout(() => setHit((h) => (h?.id === id ? null : h)), 1600);
+  }, []);
+
   const playOne = useCallback((a: AnimEvent) => {
     switch (a.kind) {
         case 'draw':
@@ -529,6 +555,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0, kind: 'damage' });
           setShakeOn(true);
           window.setTimeout(() => setShakeOn(false), 520);
+          clearHitLater(a.id);
           break;
         case 'heal':
           sfx.heal();
@@ -536,6 +563,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           // Points was the one swing still reported by a small line of drifting
           // text, which read as an afterthought next to losing them.
           setHit({ id: a.id, who: a.player ?? me, amount: a.amount ?? 0, kind: 'heal' });
+          clearHitLater(a.id);
           break;
         case 'win':
           // Exodia arrives with a slug and gets the full flourish; an ordinary
@@ -543,12 +571,53 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           if (a.slug) sfx.bigSummon();
           break;
       }
-  }, [me]);
+  }, [me, clearHitLater]);
 
   /* Drains the queue one event at a time. `fx` is what the board is currently
      reacting to; the cards read it to decide whether they lunge, recoil, turn
      over or drop in. */
+  const lastVersionRef = useRef(-1);
   useEffect(() => {
+    /* A rematch is a brand-new duel delivered into the same mounted board.
+       Nothing remounts — the room stays on this component — so every piece of
+       animation bookkeeping kept in a ref or state survived into the next duel,
+       and all of it was wrong there:
+
+       - The new duel's version restarts, so its beat ids (`a1_0`, `a2_0`…)
+         collide with the *old* duel's earliest ids, which were still in
+         `seenAnims` and `playedAnims` — the opening beats of every second duel
+         were silently skipped as already played.
+       - `forceWin` stayed true from the previous ending, so the next duel's win
+         screen and fanfare fired the instant `state.winner` arrived, over the
+         blow that was still being announced — the exact "nothing waits" bug,
+         reintroduced by every rematch.
+       - `sungFor` kept the old winner, so if the same seat won again the
+         victory sting never played at all.
+       - A tail still draining from the old duel would have mixed its beats
+         into the new one's.
+
+       The duel's own version only ever climbs while a duel is alive, and the
+       transport now refuses stale views, so version going *backwards* means
+       exactly one thing: a different duel is on the board. Reset everything,
+       including `primedAnims` — the new duel's opening tail is history to
+       swallow, the same as walking into any duel fresh. */
+    if (state.version < lastVersionRef.current) {
+      if (fxTimer.current) window.clearTimeout(fxTimer.current);
+      fxQueue.current = [];
+      drainingRef.current = false;
+      seenAnims.current = new Set();
+      primedAnims.current = false;
+      sungFor.current = null;
+      lastBeatAt.current = performance.now();
+      setFx(null);
+      setHit(null);
+      setSettled(true);
+      setStalled(false);
+      setForceWin(false);
+      setAnimating?.(false);
+    }
+    lastVersionRef.current = state.version;
+
     /* The server now keeps a short tail of past events so a client that missed
        a version still receives them. On the *first* view that tail is history,
        not news — replaying it would open a duel by re-enacting the last dozen
@@ -644,21 +713,44 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      a losing duel was the part nobody could follow. As long as beats keep
      arriving the tail plays out in full; three seconds of silence means
      something really is stuck. */
-  const [forceWin, setForceWin] = useState(false);
-  const lastBeatAt = useRef(0);
 
   /* Input waits for the narration, so the narration must never be able to wait
      for ever. A beat that does not land inside four seconds is not a beat, it
      is a bug — and a bug that locks the player out of their own duel is far
      worse than one that lets them play over the tail of an animation. Reset
-     whenever the drain starts again, so a slow turn never trips it twice. */
+     whenever the drain starts again, so a slow turn never trips it twice.
+
+     Unlocking the input is not enough on its own. The first version of this
+     left the dead drain standing: `drainingRef` stayed true, so every beat any
+     later version delivered was queued behind a chain that would never run —
+     the board fell silent for the rest of the duel — and `setAnimating(true)`
+     was never taken back, so in a vs-computer duel the nudge held forever and
+     the AI simply stopped playing. A stall ends the drain the same way a
+     finished queue does, and the beats it strands are marked played so the
+     Life Point holds they were carrying let go rather than pinning the bar to
+     a stale total for good. */
   useEffect(() => {
     if (settled) return;
     const t = window.setInterval(() => {
-      if (performance.now() - lastBeatAt.current > 4000) setStalled(true);
+      if (performance.now() - lastBeatAt.current <= 4000) return;
+      setStalled(true);
+      if (fxTimer.current) window.clearTimeout(fxTimer.current);
+      const stranded = fxQueue.current;
+      fxQueue.current = [];
+      drainingRef.current = false;
+      if (stranded.length) {
+        setPlayedAnims((prev) => {
+          const next = new Set(prev);
+          for (const a of stranded) next.add(a.id);
+          return next;
+        });
+      }
+      setFx(null);
+      setSettled(true);
+      setAnimating?.(false);
     }, 500);
     return () => window.clearInterval(t);
-  }, [settled]);
+  }, [settled, setAnimating]);
   useEffect(() => {
     if (!state.winner) return;
     const t = window.setInterval(() => {
@@ -674,7 +766,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      commit before the queue has said a word, so the fanfare used to play over
      the attack that was still being announced: you heard you had lost, and then
      watched the blow that did it. It waits for the same moment the modal does. */
-  const sungFor = useRef<string | null>(null);
   const winScreenUp = !!state.winner && (forceWin || (settled && !hit));
   useEffect(() => {
     if (!winScreenUp || !state.winner || sungFor.current === state.winner) return;
@@ -695,11 +786,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const err = await act(a);
       if (err) {
         sfx.error();
-        setToast(err);
-        setTimeout(() => setToast(null), 2600);
+        showToast(err);
       }
     },
-    [act]
+    [act, showToast]
   );
 
   useEffect(() => {
@@ -858,8 +948,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        the only sensible answer. */
     if (options.length === 0) {
       sfx.error();
-      setToast('There is nothing this card can target.');
-      setTimeout(() => setToast(null), 2600);
+      showToast('There is nothing this card can target.');
       setMode({ kind: 'idle' });
       return;
     }
@@ -975,8 +1064,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           }
           // Your own monsters open an action sheet — attack, switch position, or
           // fire an ignition effect. Everything else just inspects. Not while a
-          // question is on screen: answer it or cancel it first.
-          if (isMine && myTurn && !choosing && (attackable || selectable)) {
+          // question is on screen or the board is still narrating: `busy` is
+          // the same gate every other way in already goes through, and this
+          // click was the one that skipped it.
+          if (isMine && myTurn && !busy && (attackable || selectable)) {
             sfx.click();
             setMode({ kind: 'monster', uid: c.uid });
             return;
@@ -1034,7 +1125,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const c = p.spellTrap;
     const isMine = owner === me;
     const targetable = c ? targetableSet.has(c.uid) : false;
-    const activatable = isMine && !!c && myTurn && canActivateSetCard(state, me, c);
+    // `!busy` for the same reason as the monster sheet: a set card could be
+    // flipped up mid-narration, and its prompt then raced the queue.
+    const activatable = isMine && !!c && myTurn && !busy && canActivateSetCard(state, me, c);
     return (
       <div
         className={`zone ${SIDE_CARD} aspect-[59/86] ${targetable ? 'zone-target' : ''}`}
@@ -1367,6 +1460,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             {fusions.length > 0 && (
               <button
                 className="btn btn-primary rounded px-2 py-1.5 text-[10px]"
+                /* The one action button that carried no gate at all: a Fusion
+                   could be summoned over the narration, or with a target
+                   prompt still open. */
+                disabled={busy}
                 onClick={() => {
                   const f = fusions[0];
                   const zone = mine.monsters.findIndex((m) => !m);
@@ -1475,8 +1572,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         const said = fx ? spoken(fx) : null;
         if (!said) return null;
         return (
+          /* `say-` because a damage beat renders TWO keyed siblings from the
+             same event: this declaration and the hit vignette below, which
+             used `hit.id` — the same string. Two siblings with one key is
+             undefined behaviour in React's reconciler, and what it actually
+             did was orphan the loser: every damage beat left a frozen copy of
+             this band in the DOM at opacity 0, in pairs, forever. Invisible to
+             a player, but every probe that read the *first* declaration node
+             found a fossil — which is where "the board went silent" kept
+             coming from. Every keyed overlay in this layer carries its own
+             prefix (`fuse-`, `sig-`, `say-`, `vign-`) for exactly this
+             reason. */
           <div
-            key={fx!.id}
+            key={`say-${fx!.id}`}
             className="pointer-events-none absolute inset-x-0 top-1/2 z-[55] flex -translate-y-1/2 justify-center px-3"
           >
             <div
@@ -1524,7 +1632,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           so a hit reads as landing on someone rather than on the screen. */}
       {hit && (
         <div
-          key={hit.id}
+          key={`vign-${hit.id}`}
           className="hit-vignette"
           style={{
             background: (() => {
