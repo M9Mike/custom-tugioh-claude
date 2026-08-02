@@ -560,6 +560,20 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'call-of-the-haunted': {
+    /* Printed as a Continuous Trap, played here as a one-shot.
+     *
+     * The real card equips itself to what it revived: the monster dies when
+     * the trap goes, the trap goes when the monster does. None of that
+     * machinery was here — nothing linked the two — so it simply sat face-up
+     * in the one Spell/Trap Zone for the rest of the duel, and tributing the
+     * revived monster left it stranded there doing nothing at all.
+     *
+     * Rather than build the link, the card is a Normal Trap: it brings the
+     * monster back, hands over the 400 ATK, and goes to the Graveyard. The
+     * revival is unconditional and the zone is free again — stronger than the
+     * printed card, and the way it reads in the anime, which is the point.
+     */
+    subKindOverride: 'Normal',
     text: 'Special Summon 1 monster from your Graveyard in Attack Position. It gains 400 ATK.',
     effects: [
       {

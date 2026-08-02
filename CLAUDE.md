@@ -1073,6 +1073,21 @@ targeting effect in the game skipped it. Pegasus is unchanged by the fix at
 86% ±7, because the deck was never winning on that.
 
 
+**A card printed Continuous is not automatically continuous here.**
+`activateTrapCard` leaves a Trap face-up when `def.subKind === 'Continuous'`,
+straight off the printed card data — and Call of the Haunted is printed
+Continuous because the real card equips itself to what it revived, each
+destroying the other when it leaves. None of that link existed here, so the
+trap simply sat in the one Spell/Trap Zone for the rest of the duel with no
+window to fire and no aura to grant; tributing the revived monster left it
+stranded there, which is how it was reported. `subKindOverride: 'Normal'`
+makes it a one-shot: the monster comes back for good, the 400 ATK goes to it,
+and the card goes to the Graveyard. Stronger than the printed card on purpose
+— the revival is unconditional and the zone is free — and it is how the card
+reads in the anime, which is what this game is for. Anything else printed
+Continuous whose whole text is a one-shot wants the same treatment.
+
+
 ## Shape of the thing
 
 - `src/game/` — the rules engine. Pure and deterministic, shared by client and server.

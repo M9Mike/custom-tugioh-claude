@@ -1440,6 +1440,49 @@ console.log('\nA Field Spell is a Spell your opponent controls');
   ok(one.players[FOE].spellTrap !== null, 'and only that one — "destroy 1" is one');
 }
 
+console.log('\nCall of the Haunted brings it back and lets go');
+{
+  /* Reported as "call of the haunted remained on the field when I tributed the
+     monster". The real card equips itself to what it revived, and none of that
+     machinery was here — nothing linked the two — so it simply sat face-up in
+     the one Spell/Trap Zone for the rest of the duel. Played as a one-shot
+     instead: the monster comes back for good and the zone is free again. */
+  const s = fresh();
+  // `canActivateSetCard` is the flip-it-by-hand path, which is your own Main
+  // Phase — the window it also watches is a different route to the same ops.
+  const dead = card(ME, 'summoned-skull');
+  s.players[ME].grave.push(dead);
+  const trap = card(ME, 'call-of-the-haunted');
+  trap.face = 'down';
+  trap.summonedOnTurn = s.turn - 1;
+  s.players[ME].spellTrap = trap;
+
+  ok(canActivateSetCard(s, ME, trap), 'the set trap can be flipped');
+  const back = act(s, ME, { type: 'activateSetCard', uid: trap.uid });
+  const revived = back.players[ME].monsters.find((m) => m?.slug === 'summoned-skull');
+  ok(!!revived, 'the monster comes back');
+  ok(effAtk(back, revived!, ME) === 2500 + 400, 'and it is the revived one that gains the 400', String(revived && effAtk(back, revived, ME)));
+  ok(back.players[ME].spellTrap === null, 'the trap does not stay on the field');
+  ok(back.players[ME].grave.some((c) => c.slug === 'call-of-the-haunted'), 'it is in the Graveyard');
+
+  // And the revival really is unconditional — tributing it leaves nothing behind.
+  const t = structuredClone(back);
+  t.active = ME;
+  t.phase = 'main';
+  const big = card(ME, 'curse-of-dragon'); // Level 5, one tribute
+  t.players[ME].hand.push(big);
+  const tributed = act(t, ME, {
+    type: 'normalSummon',
+    uid: big.uid,
+    zone: 0,
+    position: 'atk',
+    face: 'up',
+    tributes: [revived!.uid],
+  });
+  ok(tributed.players[ME].monsters.some((m) => m?.slug === 'curse-of-dragon'), 'the revived monster can be tributed');
+  ok(tributed.players[ME].spellTrap === null, 'and nothing is stranded in the Spell/Trap Zone');
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it
