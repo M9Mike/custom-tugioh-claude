@@ -2489,3 +2489,24 @@ export function viewFor(state: DuelState, viewer: PlayerId): DuelState {
   if (opp.spellTrap && opp.spellTrap.face === 'down') opp.spellTrap = { ...opp.spellTrap, slug: 'facedown' };
   return s;
 }
+
+/**
+ * The front-row seat: what a spectator of an exhibition duel is shown.
+ *
+ * Both hands are open — watching two computers play is only interesting if you
+ * can see what each is holding, which is how a televised duel is shot. Set
+ * cards stay face-down on both sides, deliberately: whether the attacker is
+ * about to walk into a Mirror Force is the whole drama of a turn, and neither
+ * computer can see them either, so the spectator watches the same game the
+ * players are playing. Decks stay hidden for the same reason.
+ */
+export function viewForSpectator(state: DuelState): DuelState {
+  const s: DuelState = structuredClone(state);
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const p = s.players[pid];
+    p.deck = p.deck.map((c) => ({ ...c, slug: 'facedown' }));
+    p.monsters = p.monsters.map((m) => (m && m.face === 'down' ? { ...m, slug: 'facedown' } : m));
+    if (p.spellTrap && p.spellTrap.face === 'down') p.spellTrap = { ...p.spellTrap, slug: 'facedown' };
+  }
+  return s;
+}

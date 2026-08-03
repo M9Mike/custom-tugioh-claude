@@ -105,6 +105,9 @@ interface Props {
   /** Tells the room whether the board is still narrating, so the computer's
       next action waits for the current one to finish being announced. */
   setAnimating?: (busy: boolean) => void;
+  /** The spectator's pause — see useDuelRoom, where not-nudging is the pause. */
+  paused?: boolean;
+  setPaused?: (p: boolean) => void;
 }
 
 /* The board is sized from the space actually left after the fixed chrome, so
@@ -187,12 +190,16 @@ function PlayerBar({
   );
 }
 
-export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating }: Props) {
+export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating, paused, setPaused }: Props) {
   const state = view.state!;
   const me = view.you;
   const foe = other(me);
   const mine = state.players[me];
   const theirs = state.players[foe];
+  /* Watching an exhibition. `me` is still p1 — the board needs an orientation —
+     but it is nobody's seat: every way of acting is closed off below by the two
+     flags everything else already asks, and a tap on any card only inspects. */
+  const spectator = !!view.spectate;
 
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [inspect, setInspect] = useState<CardInstance | null>(null);
@@ -340,8 +347,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     };
   }, []);
 
-  const myTurn = state.active === me && !state.winner;
-  const respondingToTrap = state.pending?.player === me;
+  /* Both gates carry `!spectator`: `me` is an AI seat in an exhibition, so
+     without it the audience was offered that seat's whole turn — phase
+     buttons, the hand's action sheets, and its trap windows as full-screen
+     prompts the computer was already about to answer itself. */
+  const myTurn = !spectator && state.active === me && !state.winner;
+  const respondingToTrap = !spectator && state.pending?.player === me;
   /**
    * Everything except the thing being asked for is out of bounds.
    *
@@ -770,7 +781,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   useEffect(() => {
     if (!winScreenUp || !state.winner || sungFor.current === state.winner) return;
     sungFor.current = state.winner;
-    if (state.winner === me) sfx.win();
+    // Neither duelist is the spectator's side, so a decided duel is always
+    // an occasion rather than a defeat.
+    if (state.winner === me || (spectator && state.winner !== 'draw')) sfx.win();
     else if (state.winner !== 'draw') sfx.lose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [winScreenUp, state.winner]);
@@ -1335,6 +1348,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 🏆
               </button>
             )}
+            {/* The spectator's pause. It shares the bottom row the way the
+                bracket button does — this column being three rows tall is what
+                sets the height of the whole strip, and a fourth row once moved
+                the entire board. An exhibition never has a bracket, so the row
+                never holds more than two. */}
+            {spectator && setPaused && (
+              <button
+                className={`btn rounded px-2 py-1 text-[10px] ${paused ? 'btn-primary' : ''}`}
+                data-testid="pause-toggle"
+                onClick={() => {
+                  sfx.click();
+                  setPaused(!paused);
+                }}
+                title={paused ? 'Resume the duel' : 'Pause the duel'}
+              >
+                {paused ? '▶' : '⏸'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1346,8 +1377,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           be counted twice to be trusted. */}
       <div data-testid="foe-hand" className="flex shrink-0 justify-center gap-[3px] px-2 pb-1.5 pt-0">
         {theirs.hand.slice(0, 12).map((c) => (
-          <div key={c.uid} className="w-[clamp(20px,3.4vw,34px)]">
-            <GameCard card={c} faceDown compact />
+          /* The audience sees both hands open — that is what makes two
+             computers worth watching — and a tap reads the card, since at this
+             width the art is a hint rather than a name. Same wrapper either
+             way, so the strip cannot sit differently in an exhibition. */
+          <div key={c.uid} className="w-[clamp(20px,3.4vw,34px)]" onClick={spectator ? () => setInspect(c) : undefined}>
+            <GameCard card={c} faceDown={!spectator} compact />
           </div>
         ))}
       </div>
@@ -1442,6 +1477,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                     usable ? 'selectable rounded' : 'opacity-80'
                   }`}
                   onClick={() => {
+                    // The audience reads cards; only a player plays them.
+                    if (spectator) return setInspect(c);
                     if (mode.kind === 'target' && targetableSet.has(c.uid)) return onPickTarget(c.uid);
                     if (!busy && !state.winner) {
                       sfx.click();
@@ -1511,10 +1548,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             )}
             {!myTurn && !state.winner && (
               <span className="flex items-center justify-center gap-1.5 rounded border border-stoneline px-2 py-1.5 text-center font-display text-[10px] text-ptextdim">
-                {view.aiToMove && (
+                {view.aiToMove && !(spectator && paused) && (
                   <span className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-brass/40 border-t-brass" />
                 )}
-                {state.pending ? 'Responding…' : view.aiToMove ? 'Thinking…' : 'Their turn'}
+                {spectator && paused
+                  ? 'Paused'
+                  : state.pending
+                    ? 'Responding…'
+                    : view.aiToMove
+                      ? 'Thinking…'
+                      : 'Their turn'}
               </span>
             )}
           </div>
@@ -2074,8 +2117,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {winScreenUp && (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
           <div className="panel grain w-full max-w-md rounded p-6 text-center">
-            <p className="font-display text-3xl tracking-wide" style={{ color: state.winner === me ? '#e6c980' : '#c98a8a' }}>
-              {state.winner === 'draw' ? 'Draw' : state.winner === me ? 'Victory' : 'Defeat'}
+            <p className="font-display text-3xl tracking-wide" style={{ color: spectator || state.winner === me ? '#e6c980' : '#c98a8a' }}>
+              {state.winner === 'draw'
+                ? 'Draw'
+                : spectator
+                  ? /* The audience has no side, so the screen names the duelist
+                       rather than calling somebody's loss yours. */
+                    `${state.players[state.winner === 'p1' ? 'p1' : 'p2'].name} wins`
+                  : state.winner === me
+                    ? 'Victory'
+                    : 'Defeat'}
             </p>
             <p className="mt-2 text-sm text-ptext/85">{state.winReason}</p>
             <div className="brass-rule my-4" />
@@ -2096,6 +2147,18 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={onBracket}>
                   To the bracket
                 </button>
+              ) : spectator ? (
+                /* Both duelists are the computer, so one tap runs it back —
+                   and the lobby is a seated player's screen, so the way out
+                   is home rather than "choose new duelists". */
+                <>
+                  <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={rematch}>
+                    Run it back
+                  </button>
+                  <Link className="btn rounded px-4 py-2 text-xs" href="/">
+                    Back to the arena
+                  </Link>
+                </>
               ) : (
                 <>
                   <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={rematch}>

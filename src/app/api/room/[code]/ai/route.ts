@@ -38,6 +38,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
 async function handle(code: string, token: string) {
   const room = await loadRoom(code);
   if (!room) return Response.json({ ok: false, error: 'Room not found.' }, { status: 404 });
+  /* An exhibition is nudged by its audience, who hold no seat. The nudge is
+     as harmless as ever — the only thing it can cause is the computer's own
+     next move — and viewers see the spectator view, both hands open. */
+  if (room.spectate) {
+    const moved = await stepAI(room);
+    return Response.json({ ok: true, moved, view: viewOf(room, 'p1', true) });
+  }
   const pid = seatFor(room, token);
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
 

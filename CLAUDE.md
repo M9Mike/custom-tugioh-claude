@@ -75,6 +75,7 @@ npm run pacing   http://localhost:3100               # the computer's turn reads
 npm run rematch  http://localhost:3100               # the second duel narrates too
 npm run race                                         # two requests cannot undo each other
 npm run rejoin   http://localhost:3100               # you can walk back into your own duel
+npm run spectate http://localhost:3100               # the exhibition plays, pauses, resumes
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -1131,6 +1132,35 @@ reports "this proves nothing" rather than a failure. And it waits for *either*
 the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
+
+**An exhibition is a room with no players in it.** "Watch the computers duel"
+seats the AI on both sides (`room.spectate`), starts the duel at creation, and
+whoever opened it holds no seat at all — the token is the literal string
+`spectator` and the routes ignore it, because a spectate room has nothing to
+protect: both hands are shown to the audience by design (set cards stay hidden
+— neither computer can see those either, and whether the attack walks into a
+Mirror Force is the drama). Anyone with the code may watch and nudge, which is
+what lets a second phone watch the same duel.
+
+**Pause is not asking.** Nothing on a serverless room moves unless a client
+requests it, so the pause button simply stops the nudge loop and the duel
+freezes mid-swing, indefinitely; resume re-runs the nudge effect and it picks
+straight back up. Per-viewer by construction — a second watcher keeps nudging.
+The probe proves the freeze by watching the page's whole text hold still for
+eight seconds *after a nine-second settle*, because a think already in flight
+lands after the tap; checked against a build with the pause disconnected, it
+goes red.
+
+**`view.you` is an AI's seat in an exhibition.** The board needs an
+orientation, so the spectator watches from p1's side — which means every
+"is it my turn / my window" gate would light up for a seat the computer is
+already playing. `myTurn` and `respondingToTrap` both carry `!spectator`, and
+everything else already asks those two. The trap-response prompt showing to a
+spectator is the tell that gate broke; `npm run spectate` watches a whole duel
+and fails if it ever appears, alongside "no End Turn button ever existed".
+The pause button shares the control column's bottom row the way the bracket
+button does — that column being three rows is what sets the top strip's
+height, and the layout check now measures the spectate board as a fourth mode.
 
 ## Adding a duelist
 

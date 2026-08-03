@@ -113,6 +113,15 @@ export function useDuelRoom(code: string | null) {
     setAnimatingState(busy);
   }, []);
 
+  /* The spectator's pause. On a serverless room nothing moves unless a client
+     asks it to, so pausing really is just not asking: the nudge loop stops and
+     the duel freezes exactly where it stands, for as long as you like. State
+     (not a ref) so flipping it re-runs the nudge effect, which is what makes
+     resume pick the duel straight back up rather than waiting on a poll.
+     Local to this viewer — a second phone watching the same exhibition keeps
+     its own finger on its own button. */
+  const [paused, setPaused] = useState(false);
+
   /**
    * Applies a server view — unless a newer one has already landed.
    *
@@ -260,7 +269,7 @@ export function useDuelRoom(code: string | null) {
    * checks whose move it is — so a duplicate in flight is harmless.
    */
   useEffect(() => {
-    if (!code || !(view?.aiToMove || view?.bracketBusy)) return;
+    if (!code || paused || !(view?.aiToMove || view?.bracketBusy)) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       /* Hold while the board is still narrating. The computer used to be asked
@@ -295,8 +304,9 @@ export function useDuelRoom(code: string | null) {
       clearTimeout(timer);
     };
     /* `animating` is in the deps so the turn resumes the moment the board goes
-       quiet, rather than waiting for the next poll to nudge it along. */
-  }, [code, view, applyView, animating]);
+       quiet, rather than waiting for the next poll to nudge it along —
+       `paused` for the same reason in the other direction. */
+  }, [code, view, applyView, animating, paused]);
 
   const act = useCallback((action: DuelAction) => send({ kind: 'duel', action }), [send]);
   const chooseDuelist = useCallback((duelistId: string) => send({ kind: 'chooseDuelist', duelistId }), [send]);
@@ -320,6 +330,8 @@ export function useDuelRoom(code: string | null) {
     toLobby,
     configureAi,
     setAnimating,
+    paused,
+    setPaused,
     clearError: () => setError(null),
   };
 }

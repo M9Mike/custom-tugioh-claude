@@ -114,6 +114,17 @@ const rows = [];
   await ctx.close();
 }
 
+/* Watching an exhibition. The control column gains a pause button in its
+   bottom row — the same row the bracket button borrows — so this leg exists
+   to catch anyone giving it a row of its own, which is the exact mistake the
+   tournament leg was written for. */
+{
+  const r = await post('/api/room', { spectate: true, duelistA: 'yugi', duelistB: 'kaiba' });
+  const ctx = await browser.newContext({ ...devices['iPhone 11'] });
+  rows.push(await measure(ctx, r.code, 'spectator', 'spectate'));
+  await ctx.close();
+}
+
 await browser.close();
 
 const keys = ['foeHand', 'foeZone', 'myZone', 'hand'];
@@ -140,6 +151,6 @@ if (missing.length) {
     for (const line of off) console.log(`     ${line}`);
     process.exitCode = 1;
   } else {
-    console.log('\n✅ the board is in the same place in all three modes.');
+    console.log('\n✅ the board is in the same place in all four modes.');
   }
 }

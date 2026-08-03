@@ -6,7 +6,7 @@
  * poll for changes rather than holding a stream open, which keeps the whole
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
-import { applyAction, createDuel, other, viewFor } from '@/game/engine';
+import { applyAction, createDuel, other, viewFor, viewForSpectator } from '@/game/engine';
 import { aiNext, chooseTrapResponse, createAiRuntime, planTurn } from '@/game/ai';
 import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
@@ -51,6 +51,13 @@ export interface Room {
   aiActions?: { key: string; count: number };
   /** Set on a tournament room: the bracket this series of duels belongs to. */
   tournament?: Tournament;
+  /**
+   * An exhibition: both seats are the computer and whoever opened the room is
+   * only watching. There is no seat to protect and nothing secret — both hands
+   * are shown to the audience by design — so anyone holding the code may view
+   * and nudge it, which is also what lets two phones watch the same duel.
+   */
+  spectate?: boolean;
 }
 
 export interface RoomView {
@@ -68,6 +75,8 @@ export interface RoomView {
   tournament?: Tournament;
   /** True while side matches are still being played out for this round. */
   bracketBusy?: boolean;
+  /** This viewer is watching an exhibition, not sitting in it. */
+  spectate?: boolean;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
@@ -162,6 +171,38 @@ export async function createSoloRoom(
   };
   await saveRoom(room);
   return { room, token, pid };
+}
+
+/**
+ * An exhibition room: both seats are the computer, chosen up front, and the
+ * duel starts the moment the room exists. The creator holds no seat — they
+ * are the audience — so the duel only ever advances when a watcher nudges it,
+ * which is also what makes pausing free: stop nudging and the board freezes
+ * exactly where it is, because on a serverless room nothing moves by itself.
+ */
+export async function createExhibitionRoom(a: string, b: string): Promise<{ room: Room }> {
+  const { room } = await createRoom('');
+  const pick = (id: string) => (DUELIST_BY_ID[id] ? id : DUELISTS[Math.floor(Math.random() * DUELISTS.length)].id);
+  const first = pick(a);
+  const second = pick(b);
+  room.spectate = true;
+  room.seats.p1 = {
+    token: randomToken(),
+    name: DUELIST_BY_ID[first]?.name ?? 'Duelist',
+    duelistId: first,
+    lastSeen: Date.now(),
+    ai: true,
+  };
+  room.seats.p2 = {
+    token: randomToken(),
+    name: DUELIST_BY_ID[second]?.name ?? 'Duelist',
+    duelistId: second,
+    lastSeen: Date.now(),
+    ai: true,
+  };
+  maybeStart(room);
+  await saveRoom(room);
+  return { room };
 }
 
 /**
@@ -376,14 +417,15 @@ export function seatFor(room: Room, token: string): PlayerId | null {
   return null;
 }
 
-export function viewOf(room: Room, pid: PlayerId): RoomView {
+export function viewOf(room: Room, pid: PlayerId, spectator = false): RoomView {
   const seatView = (id: PlayerId) => {
     const s = room.seats[id];
     if (!s) return null;
     // The computer is always "connected" — there is nothing to disconnect.
     return { name: s.name, duelistId: s.duelistId, connected: s.ai ? true : Date.now() - s.lastSeen < 20_000, ai: s.ai };
   };
-  let state = room.state ? viewFor(room.state, pid) : null;
+  /* The audience is shown both hands; a seated player only ever their own. */
+  let state = room.state ? (spectator ? viewForSpectator(room.state) : viewFor(room.state, pid)) : null;
   if (state && state.log.length > 80) state = { ...state, log: state.log.slice(-80) };
   return {
     type: 'sync',
@@ -397,6 +439,7 @@ export function viewOf(room: Room, pid: PlayerId): RoomView {
     aiToMove: aiSeatToMove(room) !== null,
     tournament: room.tournament,
     bracketBusy: tournamentPending(room),
+    spectate: spectator || undefined,
   };
 }
 

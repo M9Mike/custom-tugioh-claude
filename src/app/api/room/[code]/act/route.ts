@@ -53,6 +53,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
 async function handle(code: string, body: Body) {
   const room = await loadRoom(code);
   if (!room) return Response.json({ ok: false, error: 'Room not found.' }, { status: 404 });
+  /* The audience of an exhibition holds no seat, and the one thing it may ask
+     for is running the duel back. Both seats are the computer's, so a rematch
+     request self-completes; every other kind of action stays seat-gated. */
+  if (room.spectate) {
+    if (body.kind !== 'rematch') {
+      return Response.json({ ok: false, error: 'You are watching this duel, not playing it.' }, { status: 403 });
+    }
+    await requestRematch(room, 'p1');
+    return Response.json({ ok: true, view: viewOf(room, 'p1', true) });
+  }
   const pid = seatFor(room, body.token);
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
 

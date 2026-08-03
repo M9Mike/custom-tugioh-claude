@@ -14,7 +14,7 @@ export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | 'spectate' | null>(null);
   /**
    * Whether the page is listening yet.
    *
@@ -27,8 +27,12 @@ export default function Home() {
    */
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
+  /* One picker screen, three reasons to be on it: entering the tournament, or
+     choosing each seat of an exhibition to watch. */
+  const [picking, setPicking] = useState<null | 'tournament' | 'watchA' | 'watchB'>(null);
   const [pickedId, setPickedId] = useState<string | null>(null);
+  /** The first seat of an exhibition, locked in while the second is chosen. */
+  const [watchA, setWatchA] = useState<string | null>(null);
   const [deckOpen, setDeckOpen] = useState<string | null>(null);
   const [deckInspect, setDeckInspect] = useState<CardInstance | null>(null);
   const setPicked = (id: string) => { setPickedId(id); setDeckInspect(null); };
@@ -57,7 +61,7 @@ export default function Home() {
     setReady(true);
   }, []);
 
-  const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament') => {
+  const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament' | 'spectate') => {
     setError(null);
     setBusy(kind);
     primeAudio();
@@ -88,8 +92,17 @@ export default function Home() {
   const soloDuel = () => openRoom({ vsAi: true }, 'solo');
   // A bracket has to be drawn around the player's own duelist, so it is chosen
   // before the room exists rather than in the lobby afterwards.
-  const tournament = () => setPicking(true);
+  const tournament = () => setPicking('tournament');
   const enterTournament = (duelistId: string) => openRoom({ tournament: true, duelistId }, 'tournament');
+  // An exhibition: both seats are chosen here, the duel starts on arrival, and
+  // the only controls the watcher gets are a pause button and a rematch.
+  const watch = () => {
+    setPickedId(null);
+    setDeckInspect(null);
+    setWatchA(null);
+    setPicking('watchA');
+  };
+  const beginExhibition = (a: string, b: string) => openRoom({ spectate: true, duelistA: a, duelistB: b }, 'spectate');
 
   const join = async () => {
     const c = code.trim().toUpperCase();
@@ -149,16 +162,28 @@ export default function Home() {
     );
 
   if (picking) {
+    const watchAName = DUELISTS.find((d) => d.id === watchA)?.name ?? '';
     return (
       <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col justify-center gap-4 p-5">
         <div className="text-center">
           <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
-          <h1 className="mt-2 font-display text-3xl tracking-wide text-brassbright">Choose your duelist</h1>
+          <h1 className="mt-2 font-display text-3xl tracking-wide text-brassbright">
+            {picking === 'tournament'
+              ? 'Choose your duelist'
+              : picking === 'watchA'
+                ? 'Choose the first duelist'
+                : 'Choose the challenger'}
+          </h1>
           <div className="brass-rule mx-auto my-3 w-48" />
-          <p className="mx-auto max-w-md text-xs leading-relaxed text-ptext/85">
-            Every duelist enters. You are drawn against them in a single-elimination bracket — lose once and the run
-            is over.
-          </p>
+          {picking === 'tournament' && (
+            <p className="mx-auto max-w-md text-xs leading-relaxed text-ptext/85">
+              Every duelist enters. You are drawn against them in a single-elimination bracket — lose once and the run
+              is over.
+            </p>
+          )}
+          {picking === 'watchB' && (
+            <p className="mx-auto max-w-md text-xs leading-relaxed text-ptext/85">{watchAName} awaits an opponent.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
@@ -223,10 +248,27 @@ export default function Home() {
                 disabled={busy !== null}
                 onClick={() => {
                   sfx.click();
-                  void enterTournament(chosen.id);
+                  if (picking === 'tournament') return void enterTournament(chosen.id);
+                  if (picking === 'watchA') {
+                    // Lock the first seat and pick again for the second.
+                    setWatchA(chosen.id);
+                    setPickedId(null);
+                    setDeckInspect(null);
+                    setPicking('watchB');
+                    return;
+                  }
+                  void beginExhibition(watchA ?? chosen.id, chosen.id);
                 }}
               >
-                {busy === 'tournament' ? 'Drawing the bracket…' : `Enter as ${chosen.name.split(' ')[0]}`}
+                {picking === 'tournament'
+                  ? busy === 'tournament'
+                    ? 'Drawing the bracket…'
+                    : `Enter as ${chosen.name.split(' ')[0]}`
+                  : picking === 'watchA'
+                    ? `${chosen.name.split(' ')[0]} takes the field`
+                    : busy === 'spectate'
+                      ? 'Taking your seat…'
+                      : `Watch ${watchAName.split(' ')[0]} vs ${chosen.name.split(' ')[0]}`}
               </button>
             </div>
           </div>
@@ -236,7 +278,21 @@ export default function Home() {
           <p className="rounded border border-oxblood bg-[#2a1216]/70 px-3 py-2 text-xs text-[#f0c9cc]">{error}</p>
         )}
 
-        <button className="btn mx-auto rounded px-4 py-2 text-xs" onClick={() => setPicking(false)} disabled={busy !== null}>
+        <button
+          className="btn mx-auto rounded px-4 py-2 text-xs"
+          onClick={() => {
+            // From the second seat, back means re-choosing the first — not
+            // abandoning the whole idea of watching.
+            if (picking === 'watchB') {
+              setPickedId(watchA);
+              setWatchA(null);
+              setPicking('watchA');
+              return;
+            }
+            setPicking(null);
+          }}
+          disabled={busy !== null}
+        >
           Back
         </button>
 
@@ -284,6 +340,10 @@ export default function Home() {
 
         <button className="btn mt-1 w-full rounded px-4 py-3 text-sm" onClick={soloDuel} disabled={busy !== null || !ready}>
           {busy === 'solo' ? 'Shuffling…' : 'Duel the computer'}
+        </button>
+
+        <button className="btn mt-2 w-full rounded px-4 py-3 text-sm" onClick={watch} disabled={busy !== null || !ready}>
+          {busy === 'spectate' ? 'Taking your seat…' : '📺 Watch the computers duel'}
         </button>
 
         <button

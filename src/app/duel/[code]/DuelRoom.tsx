@@ -8,7 +8,7 @@ import Bracket from '@/components/Bracket';
 import { useDuelRoom } from '@/lib/useDuelRoom';
 
 export default function DuelRoom({ code }: { code: string }) {
-  const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, configureAi, setAnimating } =
+  const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, configureAi, setAnimating, paused, setPaused } =
     useDuelRoom(code);
   const [shareUrl, setShareUrl] = useState('');
   /* The bracket round whose duel the player has walked into. Holding the round
@@ -93,6 +93,8 @@ export default function DuelRoom({ code }: { code: string }) {
         connection={status}
         onBracket={t ? () => setEnteredRound(null) : undefined}
         setAnimating={setAnimating}
+        paused={paused}
+        setPaused={setPaused}
       />
     );
   }
