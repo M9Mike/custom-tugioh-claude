@@ -1133,6 +1133,21 @@ the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
 
+**Never `tail -2` a probe.** Every check here prints its failures *above* the
+summary line, so piping a run through `tail -2` keeps the verdict and throws
+away the only thing that explains it. Done exactly that on a production
+`npm run pwa`: it printed "1 problem(s)", the reason scrolled past unread, and
+seven clean re-runs on the same deployment afterwards could establish it was
+intermittent but never what it *was*. Capture the whole output, or grep for
+`❌|⚠️` and print the run in full when it is not green — which is what the
+diagnosis actually needs, and costs nothing on a passing run.
+
+That flake is real and unexplained, at roughly one run in eight against
+production and none locally. It is not worth guessing at: the probe's own
+documented failure mode is "did not reach the attack prompt", which real Paris
+latency would plausibly cause, but chasing a fix without a captured failure is
+how a check that cannot fail gets written.
+
 **A God that did not pay for itself does not stay.** Three tributes is the
 price of a Divine-Beast and nothing charged it on a *Special* Summon — so the
 first time Slifer died it became a one-card play for anybody, Monster Reborn
