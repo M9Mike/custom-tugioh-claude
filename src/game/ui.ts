@@ -4,7 +4,7 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
-import type { CardDef, CardEffect, CardFilter, Op, Trigger } from './types';
+import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
 export interface TargetSpec {
   /** Whose cards may be picked. */
@@ -104,6 +104,74 @@ export function targetSpecFor(slug: string, trigger: Trigger): TargetSpec | null
   const eff = def.effects.find((e) => e.trigger === trigger);
   if (!eff) return null;
   return specFromEffect(eff);
+}
+
+/**
+ * Every card a target spec can legally reach, from the picking player's side.
+ *
+ * Lives here rather than inside the board so it can be asked a question
+ * directly. It was a closure in `Duel.tsx`, which meant the only way to check
+ * it was to re-implement it — and a test that re-implements the rule agrees
+ * with the bug. This one honoured the filter for a Deck search and ignored it
+ * for the Graveyard and the hand, so Valkyrion coming apart offered the
+ * *entire* Graveyard for an effect that names exactly which three cards it
+ * takes. That is also what opened the prompt at all: the interface only asks
+ * when more cards qualify than the effect will take.
+ */
+export function targetCandidates(
+  state: DuelState,
+  viewer: PlayerId,
+  spec: TargetSpec,
+  isUntargetable: (c: CardInstance, owner: PlayerId) => boolean = () => false
+): CardInstance[] {
+  const foe: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+  const sides: PlayerId[] = spec.side === 'own' ? [viewer] : spec.side === 'opp' ? [foe] : [viewer, foe];
+  const out: CardInstance[] = [];
+  const keep = (c: CardInstance) => matchesSpec(c, spec.filter);
+  for (const pid of sides) {
+    const p = state.players[pid];
+    if (spec.zone === 'monster') {
+      out.push(
+        ...p.monsters
+          .filter((m): m is CardInstance => !!m && keep(m))
+          /* What the engine will actually accept. Celtic Guardian cannot be
+             targeted by the opponent's effects and was still offered — Ring of
+             Destruction pointed at it destroyed nothing. */
+          .filter((m) => pid === viewer || !isUntargetable(m, pid))
+      );
+    } else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
+      if (p.spellTrap) out.push(p.spellTrap);
+      /* Only `backrow` reaches the Field Zone. `spellTrap` offering it was the
+         client and the engine disagreeing about what the words meant, with the
+         player pointing at a card nothing would destroy. */
+      if (spec.zone === 'backrow' && p.field) out.push(p.field);
+    } else if (spec.zone === 'grave') {
+      out.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster' && keep(c)));
+    } else if (spec.zone === 'deck' && pid === viewer) {
+      out.push(...p.deck.filter(keep));
+    } else if (spec.zone === 'hand' && pid === viewer) {
+      out.push(...p.hand.filter(keep));
+    }
+  }
+  return out;
+}
+
+/** The subset of the engine's card filter these pickers actually use. */
+function matchesSpec(c: CardInstance, f?: CardFilter): boolean {
+  if (!f) return true;
+  const def = CARDS[c.slug];
+  if (!def) return false;
+  if (f.kind && def.kind !== f.kind) return false;
+  if (f.type && def.type !== f.type) return false;
+  if (f.excludeType && def.type === f.excludeType) return false;
+  if (f.attribute && def.attribute !== f.attribute) return false;
+  if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
+  if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
+  if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
+  if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
+  if (f.slugs && !f.slugs.includes(c.slug)) return false;
+  if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) return false;
+  return true;
 }
 
 export function effectLabel(slug: string, trigger: Trigger): string {

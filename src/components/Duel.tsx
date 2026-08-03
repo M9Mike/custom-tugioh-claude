@@ -23,7 +23,7 @@ import {
   summonBlocked,
   tributesRequired,
 } from '@/game/engine';
-import { effectLabel, summonTargetSpec, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
@@ -888,59 +888,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     void run({ type: 'normalSummon', uid, zone, position, face, tributes, targets });
   };
 
-  /** The subset of the engine's card filter a Deck search actually uses. */
-  const matchesSpecFilter = (c: CardInstance, f?: TargetSpec['filter']): boolean => {
-    if (!f) return true;
-    const def = CARDS[c.slug];
-    if (!def) return false;
-    if (f.kind && def.kind !== f.kind) return false;
-    if (f.type && def.type !== f.type) return false;
-    if (f.attribute && def.attribute !== f.attribute) return false;
-    if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
-    if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
-    if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
-    if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
-    if (f.slugs && !f.slugs.includes(c.slug)) return false;
-    if (f.nameIncludes && !def.name.includes(f.nameIncludes)) return false;
-    return true;
-  };
-
+  /* One pool builder, in `ui.ts`, asked by the board and by the regressions
+     alike. It was a closure in here, so the only way to test it was to
+     re-implement it — and a test that re-implements the rule agrees with the
+     bug it is meant to catch. */
   const pickableUids = useCallback(
-    (spec: TargetSpec): string[] => {
-      const sides: PlayerId[] = spec.side === 'own' ? [me] : spec.side === 'opp' ? [foe] : [me, foe];
-      const out: string[] = [];
-      for (const pid of sides) {
-        const p = state.players[pid];
-        if (spec.zone === 'monster')
-          out.push(
-            ...p.monsters
-              .filter((m): m is CardInstance => !!m)
-              /* What the engine will actually accept. Celtic Guardian cannot be
-                 targeted by the opponent's effects, and it was still offered:
-                 Ring of Destruction pointed at it destroyed nothing, and with
-                 Celtic Guardian the only monster on the board there was nothing
-                 else to point at — so the card was spent on a prompt that could
-                 not be answered. */
-              .filter((m) => pid === me || !effFlags(state, m, pid).untargetable)
-              .map((m) => m.uid)
-          );
-        else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
-          if (p.spellTrap) out.push(p.spellTrap.uid);
-          // Only `backrow` reaches the Field Zone. This used to offer the Field
-          // Spell for a plain `spellTrap` spec, which the engine would then
-          // refuse to touch — the client and the engine disagreeing about what
-          // the words meant, with the player left pointing at a card nothing
-          // would destroy.
-          if (spec.zone === 'backrow' && p.field) out.push(p.field.uid);
-        } else if (spec.zone === 'grave') {
-          out.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster').map((c) => c.uid));
-        } else if (spec.zone === 'deck' && pid === me) {
-          out.push(...p.deck.filter((c) => matchesSpecFilter(c, spec.filter)).map((c) => c.uid));
-        } else if (spec.zone === 'hand' && pid === me) out.push(...p.hand.map((c) => c.uid));
-      }
-      return out;
-    },
-    [state, me, foe]
+    (spec: TargetSpec): string[] =>
+      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true).map(
+        (c) => c.uid
+      ),
+    [state, me]
   );
 
   const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, targets: string[]) => {
@@ -1912,9 +1869,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               </button>
             </div>
             <div className="brass-rule my-2" />
+            {/* Exactly what the picker counts as legal, so the modal can never
+                show a card the pick would then refuse. */}
             <div className="flex flex-wrap gap-2">
               {mine.deck
-                .filter((c) => matchesSpecFilter(c, mode.spec.filter))
+                .filter((c) => targetableSet.has(c.uid))
                 .map((c) => (
                   <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
                     <GameCard card={c} />
@@ -1922,7 +1881,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   </button>
                 ))}
             </div>
-            {!mine.deck.some((c) => matchesSpecFilter(c, mode.spec.filter)) && (
+            {!mine.deck.some((c) => targetableSet.has(c.uid)) && (
               <p className="py-4 text-center text-xs text-ptextdim">Nothing in your Deck matches.</p>
             )}
           </div>
@@ -1934,10 +1893,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setMode({ kind: 'idle' })}>
           <div className="panel grain max-h-[70vh] w-full max-w-2xl overflow-y-auto thin-scroll rounded p-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-sm text-parchment">{mode.spec.prompt}</h3>
+            {/* The filter, which this list did not apply either — so an effect
+                naming exactly which cards it takes laid out the whole
+                Graveyard and asked you to find them. */}
             <div className="mt-3 flex flex-wrap gap-2">
               {(mode.spec.side === 'both' ? [me, foe] : [me]).flatMap((pid) =>
                 state.players[pid].grave
-                  .filter((c) => CARDS[c.slug]?.kind === 'monster')
+                  .filter((c) => targetableSet.has(c.uid))
                   .map((c) => (
                     <div key={c.uid} className="w-[72px] cursor-pointer selectable rounded" onClick={() => onPickTarget(c.uid)}>
                       <GameCard card={c} />

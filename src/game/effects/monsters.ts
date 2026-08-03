@@ -1266,13 +1266,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Valkyrion in direct competition with Slifer for the same three monsters,
        which is the most interesting decision in the deck.
 
-       There is no Fusion card when Yugi calls them, so `fusionFree`: the three
-       bodies are the whole cost. And he comes apart again, which is the other
-       half of the printed card and the thing that resolves the competition
-       with Slifer — assemble, swing, then split into exactly the three
-       tributes a God costs. */
+       There is no Fusion card when Yugi calls them, so `fusionFree` — but only
+       from the field: three bodies already standing is a real commitment,
+       where three cards falling out of a hand is not, and it keeps
+       Polymerization worth its slot as the thing that buys the shortcut.
+       And he comes apart again, which is the other half of the printed card
+       and the thing that resolves the competition with Slifer — assemble,
+       swing, then split into exactly the three tributes a God costs. */
     text:
-      'Fusion: Alpha + Beta + Gamma the Magnet Warrior — no Polymerization required. ' +
+      'Fusion: Alpha + Beta + Gamma the Magnet Warrior. ' +
+      'Control all three and they combine with no Polymerization; with Polymerization, ' +
+      'a Magnet Warrior may come from your hand. ' +
       'When Fusion Summoned: destroy 1 monster your opponent controls. ' +
       'Once per turn: Tribute this card to Special Summon Alpha, Beta and Gamma the Magnet Warrior from your Graveyard. ' +
       'This card inflicts piercing battle damage.',

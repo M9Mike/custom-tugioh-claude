@@ -10,7 +10,7 @@
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
-import { targetSpecFor } from '../src/game/ui';
+import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -1714,6 +1714,40 @@ console.log('\nAlpha! Beta! Gamma! — no Fusion card required');
     valk ? `${back.length} came back${split?.error ? ` (${split.error})` : ''}` : 'never assembled');
   ok(!!valk && !apart.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'), 'and Valkyrion itself is gone');
 
+  /* Free means *from the field*. Three bodies already standing is a real
+     commitment; three cards falling out of a hand is not, and Polymerization
+     has to keep a job in the deck that carries it. */
+  const short = fresh();
+  const a2 = card(ME, 'alpha-the-magnet-warrior');
+  const b2 = card(ME, 'beta-the-magnet-warrior');
+  const g2 = card(ME, 'gamma-the-magnet-warrior');
+  short.players[ME].monsters = [a2, b2, null];
+  short.players[ME].hand = [g2];
+  const v2 = card(ME, 'valkyrion-the-magna-warrior');
+  short.players[ME].extra = [v2];
+  const refused = applyAction(short, ME, {
+    type: 'fusionSummon', extraUid: v2.uid, materials: [a2.uid, b2.uid, g2.uid], zone: 2, position: 'atk',
+  });
+  ok(!!refused.error, 'two on the field and one in hand will not combine for free', refused.error ?? 'accepted');
+  ok(!refused.state.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'), 'and Valkyrion stays in the Extra Deck');
+
+  // The same board, with Polymerization: that is what reaches into the hand.
+  const paid = fresh();
+  const a3 = card(ME, 'alpha-the-magnet-warrior');
+  const b3 = card(ME, 'beta-the-magnet-warrior');
+  const g3 = card(ME, 'gamma-the-magnet-warrior');
+  paid.players[ME].monsters = [a3, b3, null];
+  const poly = card(ME, 'polymerization');
+  paid.players[ME].hand = [g3, poly];
+  const v3 = card(ME, 'valkyrion-the-magna-warrior');
+  paid.players[ME].extra = [v3];
+  const bought = applyAction(paid, ME, {
+    type: 'fusionSummon', extraUid: v3.uid, materials: [a3.uid, b3.uid, g3.uid], zone: 2, position: 'atk',
+  });
+  ok(bought.state.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'),
+    'Polymerization brings the third one out of the hand', bought.error ?? '');
+  ok(bought.state.players[ME].grave.some((c) => c.slug === 'polymerization'), 'and the Polymerization is spent for it');
+
   // CONTROL: every other Fusion still pays for the card.
   const c = fresh();
   const gaia = card(ME, 'gaia-the-fierce-knight');
@@ -1795,6 +1829,47 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   ok(effAtk(bb, blader, ME) === 2600 + 800, 'a Dragon in their Graveyard is 800 more', String(effAtk(bb, blader, ME)));
   bb.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
   ok(effAtk(bb, blader, ME) === 2600 + 1600, 'and one on the field is 800 more again', String(effAtk(bb, blader, ME)));
+}
+
+console.log('\nAn effect that names its own cards asks the player nothing');
+{
+  /* Reported as "when dismantling it, it asks to special summon monsters from
+     the graveyard, in a modal that shows the entire graveyard — not needed".
+     Both halves of that were one bug: `pickableUids` honoured the filter for a
+     Deck search and ignored it for the Graveyard, so the picker offered every
+     monster down there — which is also what made "more qualify than the effect
+     will take" true, and that is the test that opens the prompt at all.
+
+     A prompt is only worth opening when there is something to decide. This
+     asserts the rule the interface actually applies: how many cards the spec
+     can legally reach, against how many the effect takes. */
+  const s = fresh();
+  const valk = card(ME, 'valkyrion-the-magna-warrior');
+  s.players[ME].monsters[0] = valk;
+  // A Graveyard with plenty in it, only three of which the effect names.
+  s.players[ME].grave.push(
+    card(ME, 'alpha-the-magnet-warrior'),
+    card(ME, 'beta-the-magnet-warrior'),
+    card(ME, 'gamma-the-magnet-warrior'),
+    card(ME, 'kuriboh'),
+    card(ME, 'summoned-skull'),
+    card(ME, 'dark-magician')
+  );
+  const spec = targetSpecFor('valkyrion-the-magna-warrior', 'ignition');
+  ok(!!spec, 'the split does name a Graveyard spec');
+  if (spec) {
+    /* `targetCandidates` is the interface's own pool builder, not a copy of it
+       — asking anything else here would agree with the bug. */
+    const legal = targetCandidates(s, ME, spec);
+    ok(legal.length === 3, 'the picker offers exactly the three Magnet Warriors',
+      `${legal.length} of ${s.players[ME].grave.length} in the Graveyard: ${legal.map((c) => c.slug).join(', ')}`);
+    ok(!(legal.length > (spec.count ?? 1)), 'so there are never more candidates than it takes — no prompt opens',
+      `${legal.length} candidates, takes ${spec.count}`);
+  }
+  // And it really does bring all three back, unprompted.
+  const apart = applyAction(s, ME, { type: 'ignition', uid: valk.uid });
+  const back = apart.state.players[ME].monsters.filter((m) => m && CARDS[m.slug].name.includes('Magnet Warrior'));
+  ok(back.length === 3, 'sending no targets at all still returns all three', `${back.length} came back`);
 }
 
 console.log('\nChimera comes apart into both halves');

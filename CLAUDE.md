@@ -1133,6 +1133,33 @@ the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
 
+**A free Fusion assembles from the field.** Valkyrion combines with no
+Polymerization, but only from three bodies already *standing* — three cards
+falling out of a hand is not the same commitment, and letting it reach the
+hand left Polymerization with no job in the deck that carries it. Spending the
+card is what buys the shortcut. `fusionRoute` is the one place that decides,
+prefers the free route because it costs nothing, and is asked by the Fusion
+button, the AI and the action alike; `matchRecipe` replaced two copies of the
+material matching that were already drifting apart.
+
+**A picker that ignores the filter turns a decision into a chore.** Valkyrion
+coming apart is "Special Summon Alpha, Beta and Gamma" — three named cards,
+three taken, nothing to decide — and it opened a modal showing the *entire*
+Graveyard. Two separate copies of the same omission: `pickableUids` honoured
+the filter for a Deck search and not for the Graveyard or the hand, and the
+grave modal's own JSX filtered on nothing but `kind === 'monster'`. The first
+is also what opened the prompt at all, since the interface only asks when more
+cards qualify than the effect will take. Both modals now render exactly what
+the picker counts as legal, so a modal can never offer a card the pick would
+refuse.
+
+That pool builder is `targetCandidates` in `ui.ts` now, not a closure in
+`Duel.tsx`. It had to move to be testable: a regression written against a
+closure it cannot import has to re-implement the rule, and a test that
+re-implements the rule agrees with the bug. The first version of this check
+did exactly that and passed on the broken code — it only earned its keep once
+it called the real function.
+
 **An exhibition is a room with no players in it.** "Watch the computers duel"
 seats the AI on both sides (`room.spectate`), starts the duel at creation, and
 whoever opened it holds no seat at all — the token is the literal string

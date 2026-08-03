@@ -1986,30 +1986,74 @@ export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boo
   return c.effectUsedOnTurn !== state.turn;
 }
 
-export function fusionOptions(state: DuelState, pid: PlayerId): { extraUid: string; materials: string[] }[] {
+/**
+ * Which cards a Fusion may be built from, and what it costs to reach them.
+ *
+ * Polymerization is what reaches into the hand. A free Fusion — the Magnet
+ * Warriors, who combine with no card spent because there is no Fusion card in
+ * the anime when Yugi calls them — assembles from the *field alone*: three
+ * bodies already standing, which is a real board commitment rather than three
+ * cards falling out of a hand. Spending the Polymerization is what buys the
+ * shortcut, so the card still has a job in the deck that owns it.
+ */
+function fusionSources(state: DuelState, pid: PlayerId) {
   const p = state.players[pid];
-  const hasPoly = p.hand.some((h) => h.slug === 'polymerization');
-  const available = [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand];
+  return {
+    field: p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'),
+    withHand: [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand],
+    polyIndex: p.hand.findIndex((h) => h.slug === 'polymerization'),
+  };
+}
+
+/**
+ * Matches a recipe against a pool, preferring the cards the player named.
+ *
+ * One function because both the enumeration the button and the AI read and the
+ * action that really performs the summon need the same answer — and they were
+ * two copies of it, which is exactly how `summonBlocked` came to drift.
+ */
+function matchRecipe(recipe: string[], pool: CardInstance[], prefer: string[] = []): CardInstance[] | null {
+  const remaining = [...pool];
+  const chosen: CardInstance[] = [];
+  for (const need of recipe) {
+    const wanted = remaining.findIndex((c) => c.slug === need && prefer.includes(c.uid));
+    const any = wanted >= 0 ? wanted : remaining.findIndex((c) => c.slug === need);
+    if (any < 0) return null;
+    chosen.push(remaining[any]);
+    remaining.splice(any, 1);
+  }
+  return chosen;
+}
+
+/**
+ * How a Fusion can be summoned right now: from the field for free, or from the
+ * field and hand by spending a Polymerization. The free route is preferred
+ * whenever it is available, because it costs nothing.
+ */
+export function fusionRoute(
+  state: DuelState,
+  pid: PlayerId,
+  slug: string,
+  prefer: string[] = []
+): { materials: CardInstance[]; spendPoly: number } | null {
+  const def = CARDS[slug];
+  const recipe = def?.fusionMaterials;
+  if (!recipe?.length) return null;
+  const { field, withHand, polyIndex } = fusionSources(state, pid);
+  if (def.fusionFree) {
+    const onField = matchRecipe(recipe, field, prefer);
+    if (onField) return { materials: onField, spendPoly: -1 };
+  }
+  if (polyIndex < 0) return null;
+  const anywhere = matchRecipe(recipe, withHand, prefer);
+  return anywhere ? { materials: anywhere, spendPoly: polyIndex } : null;
+}
+
+export function fusionOptions(state: DuelState, pid: PlayerId): { extraUid: string; materials: string[] }[] {
   const out: { extraUid: string; materials: string[] }[] = [];
-  for (const ex of p.extra) {
-    const recipe = CARDS[ex.slug]?.fusionMaterials;
-    if (!recipe) continue;
-    // "Alpha! Beta! Gamma!" is not a Fusion card in the anime — the Magnet
-    // Warriors combine, and the three bodies are the whole cost.
-    if (!hasPoly && !CARDS[ex.slug]?.fusionFree) continue;
-    const pool = [...available];
-    const used: string[] = [];
-    let ok = true;
-    for (const need of recipe) {
-      const i = pool.findIndex((c) => c.slug === need);
-      if (i < 0) {
-        ok = false;
-        break;
-      }
-      used.push(pool[i].uid);
-      pool.splice(i, 1);
-    }
-    if (ok) out.push({ extraUid: ex.uid, materials: used });
+  for (const ex of state.players[pid].extra) {
+    const route = fusionRoute(state, pid, ex.slug);
+    if (route) out.push({ extraUid: ex.uid, materials: route.materials.map((c) => c.uid) });
   }
   return out;
 }
@@ -2340,31 +2384,36 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const ex = p.extra.find((e) => e.uid === action.extraUid);
       if (!ex) return { state: prev, error: 'Fusion monster not found.' };
-      const poly = p.hand.findIndex((h) => h.slug === 'polymerization');
-      const free = !!CARDS[ex.slug]?.fusionFree;
-      if (poly < 0 && !free) return { state: prev, error: 'You need Polymerization.' };
-      const recipe = CARDS[ex.slug]?.fusionMaterials ?? [];
-      const pool = [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand];
-      const chosen: CardInstance[] = [];
-      const remaining = [...pool];
-      for (const need of recipe) {
-        const i = remaining.findIndex((c) => c.slug === need && (action.materials.includes(c.uid) || action.materials.length === 0));
-        const j = i >= 0 ? i : remaining.findIndex((c) => c.slug === need);
-        if (j < 0) return { state: prev, error: 'You do not have the Fusion Materials.' };
-        chosen.push(remaining[j]);
-        remaining.splice(j, 1);
+      /* One question, asked once: what can this Fusion actually be built from
+         right now? The free route reads the field alone, the Polymerization
+         route reaches the hand as well, and `fusionRoute` prefers the free one
+         because it costs nothing. The button, the AI and this all ask it. */
+      const route = fusionRoute(state, pid, ex.slug, action.materials ?? []);
+      if (!route) {
+        const free = !!CARDS[ex.slug]?.fusionFree;
+        const noPoly = p.hand.every((h) => h.slug !== 'polymerization');
+        return {
+          state: prev,
+          error:
+            free && noPoly
+              ? 'All three must be on the field, or use Polymerization to bring one from your hand.'
+              : noPoly
+                ? 'You need Polymerization.'
+                : 'You do not have the Fusion Materials.',
+        };
       }
+      const chosen = route.materials;
       // Same reason as the Normal Summon above: a missing zone must be refused
       // before anything is spent, not indexed with.
       if (!Number.isInteger(action.zone) || action.zone < 0 || action.zone >= MONSTER_ZONES) {
         return { state: prev, error: 'Invalid zone.' };
       }
 
-      /* `poly` is -1 for a free Fusion, and `splice(-1, 1)` removes the *last*
-         card in hand — so an unguarded spend would quietly eat a random card
-         every time Valkyrion assembled. A free Fusion also never spends a
-         Polymerization the player happens to be holding. */
-      if (!free && poly >= 0) p.grave.push(p.hand.splice(poly, 1)[0]);
+      /* `spendPoly` is -1 on the free route, and `splice(-1, 1)` removes the
+         *last* card in hand — so an unguarded spend would quietly eat a random
+         card every time Valkyrion assembled. A free assembly also never spends
+         a Polymerization the player happens to be holding. */
+      if (route.spendPoly >= 0) p.grave.push(p.hand.splice(route.spendPoly, 1)[0]);
       for (const m of chosen) {
         const onField = !!findOnField(state, m.uid);
         if (onField) toGrave(state, m.uid, true);
