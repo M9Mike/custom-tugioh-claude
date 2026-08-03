@@ -1273,10 +1273,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        And he comes apart again, which is the other half of the printed card
        and the thing that resolves the competition with Slifer — assemble,
        swing, then split into exactly the three tributes a God costs. */
+    /* The text says none of this on purpose. Standing all three on the field
+       and watching them combine with no Fusion card is a thing to *find*, and
+       a sentence explaining it in advance is a worse card than a secret. The
+       rule is in `fusionRoute` and pinned by `npm run rules`; the player gets
+       the moment. */
     text:
       'Fusion: Alpha + Beta + Gamma the Magnet Warrior. ' +
-      'Control all three and they combine with no Polymerization; with Polymerization, ' +
-      'a Magnet Warrior may come from your hand. ' +
       'When Fusion Summoned: destroy 1 monster your opponent controls. ' +
       'Once per turn: Tribute this card to Special Summon Alpha, Beta and Gamma the Magnet Warrior from your Graveyard. ' +
       'This card inflicts piercing battle damage.',

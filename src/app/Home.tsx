@@ -343,7 +343,7 @@ export default function Home() {
         </button>
 
         <button className="btn mt-2 w-full rounded px-4 py-3 text-sm" onClick={watch} disabled={busy !== null || !ready}>
-          {busy === 'spectate' ? 'Taking your seat…' : '📺 Watch the computers duel'}
+          {busy === 'spectate' ? 'Taking your seat…' : 'Watch the computers duel'}
         </button>
 
         <button
