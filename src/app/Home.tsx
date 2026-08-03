@@ -253,10 +253,6 @@ export default function Home() {
           Shadow Duel
         </h1>
         <div className="brass-rule mx-auto my-4 w-56" />
-        <p className="mx-auto max-w-xl text-sm leading-relaxed text-ptext/85">
-          A two-player duel between the original season&nbsp;1 duelists. Ten hand-built 25-card decks, real card art,
-          and every single card rewritten with an overpowered anime effect.
-        </p>
       </div>
 
       <div className="panel grain w-full max-w-lg rounded p-5">
