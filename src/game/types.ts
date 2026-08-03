@@ -460,6 +460,16 @@ export interface CardInstance {
   /** Flags that expire at end of turn. */
   turnFlags: CardFlags;
   summonedOnTurn: number;
+  /**
+   * The turn this monster arrived by *Special* Summon, if it did.
+   *
+   * `summonedOnTurn` records when a monster arrived; this records that it did
+   * not pay for it. A God is worth three bodies, and Monster Reborn reads
+   * either Graveyard — so without this, Slifer dying once turned it into a
+   * one-card play for any of the eleven decks, including handing your own God
+   * to the other side of the field permanently.
+   */
+  specialSummonedOnTurn?: number;
   attacksUsed: number;
   /**
    * Monsters this card has declared an attack on this turn, for "attacks every

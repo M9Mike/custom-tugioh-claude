@@ -1133,6 +1133,32 @@ the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
 
+**A God that did not pay for itself does not stay.** Three tributes is the
+price of a Divine-Beast and nothing charged it on a *Special* Summon — so the
+first time Slifer died it became a one-card play for anybody, Monster Reborn
+being in all eleven decks and reading **either** Graveyard. The worst version
+was theft: revive it from its owner's Graveyard onto your own field, where its
+second mouth then drains every monster *they* summon, permanently. The printed
+rule closes exactly that, so `returnBorrowedGods` sweeps at the End Phase and
+a revival is a rental for the turn — which is still a real play and a good
+anime beat. Both fields are swept, because a trap window can Special Summon
+during the *opponent's* turn, so "the End Phase of the turn it was Summoned"
+is not always its controller's own. `toGrave` already sends a card to its
+**owner's** Graveyard, so a stolen God goes home rather than into the thief's.
+
+`specialSummonedOnTurn` is what records that it arrived without paying;
+`resetInstance` clears it and the Normal Summon path clears it too, or a card
+bounced to the hand and then properly Tribute Summoned would inherit a stale
+marker and vanish. Keyed off the type like `tributesRequired`, so Obelisk and
+Ra inherit it. And the rule is on the card's text, unlike the Magnet Warriors'
+secret: a bonus is worth finding, a restriction that makes your God disappear
+with nothing explaining why is the bad kind of surprise.
+
+Both directions are pinned. Disabling the sweep turns four assertions red and
+leaves all three CONTROLs green; *widening* it — dropping the Divine-Beast
+filter so it eats every Special Summon — turns exactly the "an ordinary
+revived monster is unaffected" control red and nothing else.
+
 **A free Fusion assembles from the field.** Valkyrion combines with no
 Polymerization, but only from three bodies already *standing* — three cards
 falling out of a hand is not the same commitment, and letting it reach the

@@ -1143,7 +1143,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'Requires 3 Tributes. When this card is Summoned: draw 1 card. ' +
       'Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
       "When your opponent Summons a monster: it loses 2000 ATK, and if that leaves it with nothing, destroy it. " +
-      "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage.",
+      "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage. " +
+      /* Said out loud on the card, unlike the Magnet Warriors' secret. That
+         one is a bonus to find; this is a restriction, and a God vanishing
+         with nothing having explained why is the bad kind of surprise. */
+      'If this card is Special Summoned, it returns to the Graveyard at the end of that turn.',
     cry: 'The Sky Dragon answers!',
     effects: [
       {

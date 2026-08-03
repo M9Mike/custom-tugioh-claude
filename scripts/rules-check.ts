@@ -1831,6 +1831,69 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   ok(effAtk(bb, blader, ME) === 2600 + 1600, 'and one on the field is 800 more again', String(effAtk(bb, blader, ME)));
 }
 
+console.log('\nA God that did not pay for itself does not stay');
+{
+  /* Three tributes is the price of a Divine-Beast, and nothing charged it on a
+     Special Summon. Monster Reborn reads *either* Graveyard and is in all
+     eleven decks, so the first time Slifer died it became a one-card play for
+     anybody — including a way to take somebody's God off them for good. */
+  const s = fresh();
+  const dead = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].grave.push(dead);
+  const reborn = card(ME, 'monster-reborn');
+  s.players[ME].hand = [reborn, card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const up = act(s, ME, { type: 'activateSpell', uid: reborn.uid, targets: [dead.uid] });
+  const god = up.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon');
+  ok(!!god, 'a God can still be revived');
+  ok(!!god && effAtk(up, god, ME) > 0, 'and it is a real monster while it is there', god ? String(effAtk(up, god, ME)) : '');
+  const after = act(up, ME, { type: 'endTurn' });
+  ok(!after.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'but it goes back at the end of that turn');
+  ok(after.players[ME].grave.some((c) => c.slug === 'slifer-the-sky-dragon'), 'to the Graveyard, not nowhere');
+
+  /* The theft, which is the case that actually mattered: revived from *their*
+     Graveyard onto your field, its second mouth would have drained every
+     monster its own owner summoned, permanently. */
+  const theft = fresh();
+  const theirs = card(FOE, 'slifer-the-sky-dragon');
+  theft.players[FOE].grave.push(theirs);
+  const steal = card(ME, 'monster-reborn');
+  theft.players[ME].hand = [steal, card(ME, 'kuriboh')];
+  const stolen = act(theft, ME, { type: 'activateSpell', uid: steal.uid, targets: [theirs.uid] });
+  ok(stolen.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    "you can borrow the other player's God");
+  const back = act(stolen, ME, { type: 'endTurn' });
+  ok(!back.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'), 'for exactly one turn');
+  ok(back.players[FOE].grave.some((c) => c.slug === 'slifer-the-sky-dragon'),
+    'and it goes home to its owner, not into your Graveyard');
+
+  /* CONTROL: paying the three bodies is what buys the God permanently. It must
+     survive its own End Phase, or the card is unplayable rather than balanced. */
+  const paid = fresh();
+  for (let i = 0; i < 3; i++) paid.players[ME].monsters[i] = card(ME, 'kuriboh');
+  const summoned = card(ME, 'slifer-the-sky-dragon');
+  paid.players[ME].hand = [summoned, card(ME, 'kuriboh')];
+  paid.players[ME].deck = [card(ME, 'kuriboh')];
+  const down = act(paid, ME, {
+    type: 'normalSummon', uid: summoned.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: paid.players[ME].monsters.map((m) => m!.uid),
+  });
+  ok(down.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'), 'CONTROL: three bodies still summon it');
+  const kept = act(down, ME, { type: 'endTurn' });
+  ok(kept.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'CONTROL: and a God that paid its Tributes stays');
+
+  // CONTROL: the rule is for Gods, not for everything Special Summoned.
+  const ordinary = fresh();
+  const body = card(ME, 'summoned-skull');
+  ordinary.players[ME].grave.push(body);
+  const rb = card(ME, 'monster-reborn');
+  ordinary.players[ME].hand = [rb, card(ME, 'kuriboh')];
+  const alive = act(act(ordinary, ME, { type: 'activateSpell', uid: rb.uid, targets: [body.uid] }), ME, { type: 'endTurn' });
+  ok(alive.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'CONTROL: an ordinary revived monster is unaffected');
+}
+
 console.log('\nAn effect that names its own cards asks the player nothing');
 {
   /* Reported as "when dismantling it, it asks to special summon monsters from

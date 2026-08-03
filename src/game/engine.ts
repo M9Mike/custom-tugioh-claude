@@ -513,6 +513,10 @@ function resetInstance(c: CardInstance) {
   c.effectUsedOnTurn = -1;
   c.positionChangedOnTurn = undefined;
   c.equippedTo = undefined;
+  /* Cleared here and set again by the Special Summon itself, so a card that
+     was bounced back to the hand and then properly Tribute Summoned cannot
+     inherit a stale "did not pay for itself" from a previous life. */
+  c.specialSummonedOnTurn = undefined;
 }
 
 /** Sends a card from the field to its owner's Graveyard, firing onSentToGrave. */
@@ -1032,6 +1036,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           picked.position = op.position ?? 'atk';
           picked.face = op.face ?? 'up';
           picked.summonedOnTurn = state.turn;
+          // It arrived without paying for itself — see `returnBorrowedGods`.
+          picked.specialSummonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = picked;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
           log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(picked)}!`, 'summon', ctx.controller);
@@ -1709,12 +1715,46 @@ function startTurn(state: DuelState) {
   state.phase = 'main';
 }
 
+/**
+ * A God that did not pay for itself goes back at the End Phase.
+ *
+ * Three tributes is the whole board, and it is the price of a Divine-Beast.
+ * Nothing charged that price on a *Special* Summon — and Monster Reborn reads
+ * **either** Graveyard and is in all eleven decks, so the first time Slifer
+ * died it became a one-card play for anybody at the table. Worst of all it
+ * was a way to take someone's God: revive it from *their* Graveyard onto your
+ * field, where its second mouth then drains every monster its owner summons,
+ * permanently. That is the exact hole the printed rule closes.
+ *
+ * So reviving one is a rental for the turn, which is still a real play and a
+ * good anime beat — the God comes down, swings once, and is gone.
+ *
+ * Both fields, because a Special Summon can happen on either player's turn: a
+ * trap window fires during the opponent's turn, so "the End Phase of the turn
+ * it was Summoned" is not always its controller's own. Keyed off the type, as
+ * `tributesRequired` is, so Obelisk and Ra inherit it the day they arrive.
+ */
+function returnBorrowedGods(state: DuelState) {
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    for (const m of [...state.players[pid].monsters]) {
+      if (!m || m.specialSummonedOnTurn !== state.turn) continue;
+      if (CARDS[m.slug]?.type !== 'Divine-Beast') continue;
+      log(state, `${displayName(m)} cannot be borrowed — it returns to the Graveyard.`, 'effect', pid);
+      anim(state, { kind: 'destroy', uid: m.uid, slug: m.slug, player: pid });
+      toGrave(state, m.uid, true);
+    }
+  }
+}
+
 function endTurn(state: DuelState) {
   const pid = state.active;
   state.phase = 'end';
   const p = state.players[pid];
   for (const m of p.monsters) if (m) fireTriggers(state, m, pid, 'onOwnTurnEnd', {});
   if (p.field) fireTriggers(state, p.field, pid, 'onOwnTurnEnd', {});
+  if (state.winner) return;
+
+  returnBorrowedGods(state);
   if (state.winner) return;
 
   endOfTurnCleanup(state, pid);
@@ -2160,6 +2200,8 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       c.position = action.face === 'down' ? 'def' : action.position;
       c.face = action.face;
       c.summonedOnTurn = state.turn;
+      // This one paid its Tributes. A God summoned properly stays.
+      c.specialSummonedOnTurn = undefined;
       c.attacksUsed = 0;
       c.attacked = [];
       p.monsters[action.zone] = c;
