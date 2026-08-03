@@ -174,6 +174,7 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
         cry: custom.cry,
         effects: liftPassives(custom.effects),
         fusionMaterials: custom.fusionMaterials,
+        fusionFree: custom.fusionFree,
         atkOverride: custom.atkOverride,
         defOverride: custom.defOverride,
         summonRequires: custom.summonRequires,

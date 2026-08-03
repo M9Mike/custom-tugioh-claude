@@ -196,6 +196,7 @@ function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (c.isToken) {
     // Tokens only satisfy the loosest filters.
     if (f.type || f.attribute || f.slugs || f.nameIncludes || f.minLevel) return false;
+    // A Token has no printed type, so it is never the excluded one.
     if (f.kind && f.kind !== 'monster') return false;
     if (f.position && c.position !== f.position) return false;
     if (f.face && c.face !== f.face) return false;
@@ -205,6 +206,7 @@ function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (!def) return false;
   if (f.kind && def.kind !== f.kind) return false;
   if (f.type && def.type !== f.type) return false;
+  if (f.excludeType && def.type === f.excludeType) return false;
   if (f.attribute && def.attribute !== f.attribute) return false;
   if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
   if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
@@ -629,6 +631,8 @@ interface EffectCtx {
   trig: TriggerContext;
   /** Monsters this effect has Special Summoned, for `pick: 'summoned'`. */
   summoned?: string[];
+  /** ATK of whatever this effect's own cost tributed, read before it left. */
+  tributedAtk?: number[];
   /** Set by negateAttack so battle resolution can be cancelled. */
   attackNegated?: boolean;
   battlePhaseEnded?: boolean;
@@ -828,6 +832,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           amount = op.scale === 'halfTargetAtk' ? Math.floor(v / 2) : v;
         } else if (op.scale === 'selfAtk') {
           amount = effAtk(state, ctx.source, ctx.controller);
+        } else if (op.scale === 'tributedAtk') {
+          amount = (ctx.tributedAtk ?? []).reduce((a, b) => a + b, 0);
         } else if (op.scale === 'perOppMonster') {
           const n = state.players[other(ctx.controller)].monsters.filter(Boolean).length;
           amount = (op.amount ?? 0) * n;
@@ -1031,6 +1037,16 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(picked)}!`, 'summon', ctx.controller);
           anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
           if (picked.face === 'up') fireTriggers(state, picked, ctx.controller, 'onSummon', {});
+          /* A Special Summon is a Summon, and Slifer's second mouth was only
+             ever told about Normal and Fusion Summons — so a Monster Reborn'd
+             Blue-Eyes, a revived anything, a searched-out Magnet Warrior, all
+             walked past the God untouched. That is most of the summons in this
+             game, and the card's signature quietly did nothing about them.
+
+             Only the *monster* trigger fires here, never a trap window: making
+             Special Summons open `opponentSummon` would hand Torrential Tribute
+             to the whole roster, which is a different change than this one. */
+          if (!state.winner && picked.face === 'up') fireOpponentSummon(state, ctx.controller, picked.uid);
         }
         break;
       }
@@ -1052,6 +1068,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              body appeared with the first one's line and nothing said what it
              was. */
           anim(state, { kind: 'summon', uid: t.uid, slug: t.slug, as: op.name, player: ctx.controller });
+          // A Token is a monster being Summoned, so the second mouth sees it
+          // too. Anything else would be a carve-out the card's text does not
+          // have, and three 300 ATK bodies are exactly what a God is for.
+          if (!state.winner) fireOpponentSummon(state, ctx.controller, t.uid);
         }
         log(
           state,
@@ -1354,6 +1374,13 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
       p.spellTrap?.slug === cond.requiresOnField ||
       p.field?.slug === cond.requiresOnField;
     if (!has) return false;
+  }
+  if (cond.requiresOnFieldAll) {
+    const onField = (slug: string) =>
+      p.monsters.some((m) => m?.slug === slug && m.face === 'up') ||
+      p.spellTrap?.slug === slug ||
+      p.field?.slug === slug;
+    if (!cond.requiresOnFieldAll.every(onField)) return false;
   }
   if (cond.controlsOtherOfType) {
     const has = p.monsters.some(
@@ -1781,13 +1808,32 @@ export function legalAttackTargets(state: DuelState, pid: PlayerId, c: CardInsta
   return { uids: monsters.map((m) => m.uid), direct: false };
 }
 
+/**
+ * The monsters an effect's tribute cost may legally be paid with.
+ *
+ * One list, asked by the affordability check, the activation itself and the
+ * picker the player sees — the same reason `summonBlocked` is one function.
+ * Two of the three used to be a copy of the rule and they had already drifted.
+ */
+export function tributeFodder(state: DuelState, pid: PlayerId, eff: CardEffect, self?: string): CardInstance[] {
+  const p = state.players[pid];
+  if (eff.cost?.tributeSelf) {
+    const c = p.monsters.find((m) => m?.uid === self);
+    return c ? [c] : [];
+  }
+  return p.monsters.filter(
+    (m): m is CardInstance => !!m && m.uid !== self && matchesFilter(m, eff.cost?.tributeFilter)
+  );
+}
+
 /** True when the controller can pay an effect's activation cost right now. */
 function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: string): boolean {
   const p = state.players[pid];
   if (eff.cost?.lp != null && p.lp <= eff.cost.lp) return false;
-  if (eff.cost?.tribute != null) {
-    const fodder = p.monsters.filter((m): m is CardInstance => !!m && m.uid !== exclude);
-    if (fodder.length < eff.cost.tribute) return false;
+  if (eff.cost?.tributeSelf) {
+    // The card pays with itself, so there is nothing beside it to check.
+  } else if (eff.cost?.tribute != null) {
+    if (tributeFodder(state, pid, eff, exclude).length < eff.cost.tribute) return false;
   }
   if (eff.cost?.discard != null && p.hand.length - 1 < eff.cost.discard) return false;
   return true;
@@ -1942,12 +1988,15 @@ export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boo
 
 export function fusionOptions(state: DuelState, pid: PlayerId): { extraUid: string; materials: string[] }[] {
   const p = state.players[pid];
-  if (!p.hand.some((h) => h.slug === 'polymerization')) return [];
+  const hasPoly = p.hand.some((h) => h.slug === 'polymerization');
   const available = [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand];
   const out: { extraUid: string; materials: string[] }[] = [];
   for (const ex of p.extra) {
     const recipe = CARDS[ex.slug]?.fusionMaterials;
     if (!recipe) continue;
+    // "Alpha! Beta! Gamma!" is not a Fusion card in the anime — the Magnet
+    // Warriors combine, and the three bodies are the whole cost.
+    if (!hasPoly && !CARDS[ex.slug]?.fusionFree) continue;
     const pool = [...available];
     const used: string[] = [];
     let ok = true;
@@ -2256,25 +2305,44 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
            that is exactly what made damage look like it landed early. */
         anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
       }
-      if (eff.cost?.tribute) {
-        const fodder = p.monsters.filter((m): m is CardInstance => !!m && m.uid !== c.uid);
-        if (fodder.length < eff.cost.tribute) return { state: prev, error: 'Not enough monsters to tribute.' };
-        for (let i = 0; i < eff.cost.tribute; i++) toGrave(state, fodder[i].uid, true);
+      /* What the cost ate, kept so an op can be worth what it cost — Catapult
+         Turtle throws a monster and it lands for that monster's ATK. Read
+         *before* the tribute, because a card in the Graveyard has no
+         effective stats to read. */
+      const tributedAtk: number[] = [];
+      if (eff.cost?.tribute || eff.cost?.tributeSelf) {
+        const fodder = tributeFodder(state, pid, eff, c.uid);
+        const need = eff.cost.tributeSelf ? 1 : (eff.cost.tribute ?? 0);
+        if (fodder.length < need) return { state: prev, error: 'Not enough monsters to tribute.' };
+        /* Whichever ones the player pointed at, and only then whatever is
+           left. It always took the first monster in the row before, so
+           Catapult Turtle launched whoever happened to be standing in zone 0
+           rather than the one you chose — invisible while the damage was a
+           flat 1000, and the whole card once it is worth what it throws. */
+        const chosen = (action.targets ?? [])
+          .map((uid) => fodder.find((m) => m.uid === uid))
+          .filter((m): m is CardInstance => !!m);
+        const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, need);
+        for (const m of paying) {
+          tributedAtk.push(effAtk(state, m, pid));
+          toGrave(state, m.uid, true);
+        }
       }
       c.effectUsedOnTurn = state.turn;
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? eff.label });
-      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
+      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk };
       runOps(ctx, eff.ops);
       return { state };
     }
 
     case 'fusionSummon': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
-      const poly = p.hand.findIndex((h) => h.slug === 'polymerization');
-      if (poly < 0) return { state: prev, error: 'You need Polymerization.' };
       const ex = p.extra.find((e) => e.uid === action.extraUid);
       if (!ex) return { state: prev, error: 'Fusion monster not found.' };
+      const poly = p.hand.findIndex((h) => h.slug === 'polymerization');
+      const free = !!CARDS[ex.slug]?.fusionFree;
+      if (poly < 0 && !free) return { state: prev, error: 'You need Polymerization.' };
       const recipe = CARDS[ex.slug]?.fusionMaterials ?? [];
       const pool = [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand];
       const chosen: CardInstance[] = [];
@@ -2292,7 +2360,11 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         return { state: prev, error: 'Invalid zone.' };
       }
 
-      p.grave.push(p.hand.splice(poly, 1)[0]);
+      /* `poly` is -1 for a free Fusion, and `splice(-1, 1)` removes the *last*
+         card in hand — so an unguarded spend would quietly eat a random card
+         every time Valkyrion assembled. A free Fusion also never spends a
+         Polymerization the player happens to be holding. */
+      if (!free && poly >= 0) p.grave.push(p.hand.splice(poly, 1)[0]);
       for (const m of chosen) {
         const onField = !!findOnField(state, m.uid);
         if (onField) toGrave(state, m.uid, true);

@@ -50,6 +50,13 @@ export interface CardDef extends GeneratedCard {
   effects: CardEffect[];
   /** Fusion recipe (slugs) for Extra Deck monsters. */
   fusionMaterials?: string[];
+  /**
+   * Assembles without Polymerization. There is no Fusion card in the anime
+   * when Yugi calls "Alpha! Beta! Gamma!" — the three Magnet Warriors simply
+   * combine, and the tribute of three specific bodies is the whole cost.
+   * Every other Fusion still pays for the card.
+   */
+  fusionFree?: boolean;
   /** Stat overrides so our custom versions can differ from the printed card. */
   atkOverride?: number;
   defOverride?: number;
@@ -159,6 +166,13 @@ export type Pick =
 
 export interface CardFilter {
   type?: string; // monster type (Dragon, Insect, ...)
+  /**
+   * Everything *except* this type. Catapult Turtle launches a monster you
+   * control, and a God is not ammunition — Slifer with a full hand is worth
+   * more damage than a duel has Life Points, and firing the thing you paid
+   * three bodies for is not a play anybody would call anime-accurate.
+   */
+  excludeType?: string;
   attribute?: string;
   kind?: CardKind;
   minLevel?: number;
@@ -201,7 +215,9 @@ export type Duration = 'permanent' | 'turn' | 'opponentTurn';
 
 /** A single atomic action an effect can perform. */
 export type Op =
-  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster'; to: Side }
+  /** `tributedAtk` is the ATK of what this effect's own cost just tributed —
+   *  Catapult Turtle throws a monster and it lands for what it was worth. */
+  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk'; to: Side }
   | { op: 'heal'; amount: number; to: Side }
   | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField'; target: Selector; duration: Duration }
   | { op: 'gainDef'; amount: number; target: Selector; duration: Duration }
@@ -356,8 +372,15 @@ export interface CardEffect {
   reusable?: boolean;
   /** Condition gate. */
   condition?: EffectCondition;
-  /** Cost paid before resolution. */
-  cost?: { discard?: number; tribute?: number; lp?: number };
+  /**
+   * Cost paid before resolution.
+   *
+   * `tributeSelf` pays with the card itself rather than with something beside
+   * it — Valkyrion comes apart back into the three Magnet Warriors, which is
+   * the one thing the printed card does that this engine had no way to say.
+   * `tributeFilter` narrows what may be paid with.
+   */
+  cost?: { discard?: number; tribute?: number; lp?: number; tributeSelf?: boolean; tributeFilter?: CardFilter };
   /** How many targets the activating player must pick before sending the action. */
   targets?: number;
   /** Hand-trap: this effect may be activated straight from the hand, discarding the card. */
@@ -371,6 +394,12 @@ export interface EffectCondition {
   graveAtLeast?: number;
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
+  /**
+   * Requires *all* of these slugs on own field at once — "while you control
+   * Queen's Knight and King's Knight". The royal court assembled is a state
+   * the cards can ask about; one slug was never enough to express it.
+   */
+  requiresOnFieldAll?: string[];
   /** Requires this many counters on the card. */
   countersAtLeast?: number;
   /** Requires opponent controls at least one monster. */

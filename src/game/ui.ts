@@ -79,8 +79,22 @@ function scanOps(ops: Op[]): TargetSpec | null {
 
 function specFromEffect(eff: CardEffect): TargetSpec | null {
   const spec = scanOps(eff.ops);
-  if (!spec) return null;
-  return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
+  if (spec) return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
+  /* A cost is a choice too. Catapult Turtle says "Tribute 1 monster you
+     control" and asked for nothing, so the engine paid with whatever happened
+     to be standing in the first zone — invisible while the damage was a flat
+     1000, and the whole card once it is worth what it throws. `tributeSelf`
+     pays with the card itself and has nothing to ask. */
+  if (eff.cost?.tribute && !eff.cost.tributeSelf) {
+    return {
+      side: 'own',
+      zone: 'monster',
+      count: eff.cost.tribute,
+      prompt: 'Choose a monster to Tribute',
+      filter: eff.cost.tributeFilter,
+    };
+  }
+  return null;
 }
 
 /** What the player must pick before this card's effect can be sent. */

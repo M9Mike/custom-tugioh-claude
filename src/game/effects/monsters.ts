@@ -11,6 +11,8 @@ export interface EffectDef {
   cry?: string;
   effects: CardEffect[];
   fusionMaterials?: string[];
+  /** Assembles with no Polymerization — see `CardDef.fusionFree`. */
+  fusionFree?: boolean;
   atkOverride?: number;
   defOverride?: number;
   /** Must be face-up on your side before this monster can be Summoned. */
@@ -1138,11 +1140,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     atkOverride: 0,
     defOverride: 0,
     text:
-      'Requires 3 Tributes. Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
+      'Requires 3 Tributes. When this card is Summoned: draw 1 card. ' +
+      'Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
       "When your opponent Summons a monster: it loses 2000 ATK, and if that leaves it with nothing, destroy it. " +
       "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage.",
     cry: 'The Sky Dragon answers!',
     effects: [
+      {
+        /* The draw is the floor. Three Tributes is the whole board, so the
+           hand that pays for a God is usually the hand that was about to be
+           spent — and Slifer with nothing left is a 0/0 that a Kuriboh runs
+           over. One card off the top is worth exactly 1000 ATK to this
+           monster and nothing to any other, which is the neatest way a God
+           could possibly arrive with a body. */
+        trigger: 'onSummon',
+        ops: [{ op: 'draw', count: 1, who: 'own' }],
+      },
       {
         trigger: 'continuous',
         ops: [],
@@ -1153,11 +1166,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         },
       },
       {
-        /* The second mouth. Fires on every face-up monster the other player
-           summons — a Set is not a Summon and wakes nothing, the same rule the
-           trap windows follow. The drain lands first and the destroy reads the
-           effective stat afterwards, so the two halves of the sentence resolve
-           in the order it is written. */
+        /* The second mouth, on every Summon the other player makes — Normal,
+           Fusion, Special, Token. It used to hear only the first two, which in
+           this game is a minority of them: a Monster Reborn'd Blue-Eyes, a
+           Magnet Warrior pulled out by Gamma, a revived anything, all walked
+           past the God untouched.
+
+           A Set still wakes nothing, deliberately. It is not a Summon, it is
+           the rule every trap window here follows, and it leaves the player a
+           real answer to a God — lay them face-down and Slifer cannot reach
+           them until they turn over. A card with no counterplay is not a card.
+
+           The drain lands first and the destroy reads the effective stat
+           afterwards, so the two halves of the sentence resolve in the order
+           it is written. */
         trigger: 'onOpponentSummon',
         ops: [
           { op: 'gainAtk', amount: -2000, target: sel('opp', 'attacker'), duration: 'permanent' },
@@ -1168,38 +1190,66 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'alpha-the-magnet-warrior': {
-    text: "When this card is Normal Summoned: add 1 Magnet Warrior from your Deck to your hand.",
+    /* One search was never the magnetism. Alpha finds the whole set — and the
+       two cards it puts in hand are also 2000 ATK on a Slifer, which is the
+       quiet reason this deck wants its hand full. */
+    text: 'When this card is Normal Summoned: add 2 Magnet Warriors from your Deck to your hand.',
     cry: 'Magnet Warriors, assemble!',
     effects: [
       {
         trigger: 'onNormalSummon',
-        ops: [{ op: 'search', filter: { nameIncludes: 'Magnet Warrior' } }],
+        ops: [{ op: 'search', filter: { nameIncludes: 'Magnet Warrior' }, count: 2 }],
       },
     ],
   },
 
   'beta-the-magnet-warrior': {
-    text: 'While you control another Rock monster, this card cannot be destroyed by battle.',
-    effects: [
-      {
-        trigger: 'continuous',
-        condition: { controlsOtherOfType: 'Rock' },
-        ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle'] },
-      },
-    ],
-  },
-
-  'gamma-the-magnet-warrior': {
-    text: 'When this card is Normal Summoned: Special Summon 1 Magnet Warrior from your hand.',
-    cry: 'Three become one!',
+    /* The immovable one. Blow the trio apart and Beta drags a piece back out
+       of the Graveyard — magnets do not stay separated. */
+    text:
+      'When this card is Normal Summoned: Special Summon 1 Magnet Warrior from your Graveyard. ' +
+      'While you control another Rock monster, this card gains 800 ATK and cannot be destroyed by battle or by card effects.',
+    cry: 'Steel holds!',
     effects: [
       {
         trigger: 'onNormalSummon',
         ops: [
           {
             op: 'specialSummon',
-            from: 'hand',
+            from: 'grave',
+            filter: { nameIncludes: 'Magnet Warrior' },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Rock' },
+        ops: [],
+        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle', 'indestructibleByEffect'] },
+      },
+    ],
+  },
+
+  'gamma-the-magnet-warrior': {
+    /* Reaching only the hand meant the line took two turns: Alpha searches,
+       and Gamma cannot use what it found until you draw into a summon for it.
+       From the Deck, one Normal Summon is two magnets standing — and two
+       magnets plus Alpha's search is Valkyrion on the spot.
+
+       `onSummon` rather than `onNormalSummon` so it works however Gamma
+       arrives, including out of Valkyrion coming apart. It cannot loop: every
+       Magnet Warrior it could reach is already on the field by then. */
+    text: 'When this card is Summoned: Special Summon 1 Magnet Warrior from your hand, Deck or Graveyard.',
+    cry: 'Three become one!',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['hand', 'deck', 'grave'],
             filter: { nameIncludes: 'Magnet Warrior' },
             count: 1,
             position: 'atk',
@@ -1214,10 +1264,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Warriors. Here that is a Fusion, because tributing three specific bodies
        for one is exactly what a Fusion already is in this engine — and it puts
        Valkyrion in direct competition with Slifer for the same three monsters,
-       which is the most interesting decision in the deck. */
-    text: 'Fusion: Alpha + Beta + Gamma the Magnet Warrior. When Fusion Summoned: destroy 1 monster your opponent controls. This card inflicts piercing battle damage.',
+       which is the most interesting decision in the deck.
+
+       There is no Fusion card when Yugi calls them, so `fusionFree`: the three
+       bodies are the whole cost. And he comes apart again, which is the other
+       half of the printed card and the thing that resolves the competition
+       with Slifer — assemble, swing, then split into exactly the three
+       tributes a God costs. */
+    text:
+      'Fusion: Alpha + Beta + Gamma the Magnet Warrior — no Polymerization required. ' +
+      'When Fusion Summoned: destroy 1 monster your opponent controls. ' +
+      'Once per turn: Tribute this card to Special Summon Alpha, Beta and Gamma the Magnet Warrior from your Graveyard. ' +
+      'This card inflicts piercing battle damage.',
     cry: 'The Magna Warrior stands whole!',
     fusionMaterials: ['alpha-the-magnet-warrior', 'beta-the-magnet-warrior', 'gamma-the-magnet-warrior'],
+    fusionFree: true,
     effects: [
       {
         trigger: 'onSummon',
@@ -1226,30 +1287,63 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'pierce', duration: 'permanent' },
         ],
       },
+      {
+        trigger: 'ignition',
+        label: 'Magna Warrior — come apart',
+        oncePerTurn: true,
+        cost: { tributeSelf: true },
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'grave',
+            filter: {
+              slugs: ['alpha-the-magnet-warrior', 'beta-the-magnet-warrior', 'gamma-the-magnet-warrior'],
+            },
+            count: 3,
+            position: 'atk',
+          },
+        ],
+      },
     ],
   },
 
   'queen-s-knight': {
-    text: "When this card is Normal Summoned: add King's Knight from your Deck to your hand.",
+    /* She summons him rather than searching him — which fires his effect,
+       which fetches Jack's. One Normal Summon stands the whole court up: three
+       bodies, which is three Tributes, which is a God on the same turn. That
+       chain is the deck. */
+    text: "When this card is Normal Summoned: Special Summon King's Knight from your Deck.",
+    cry: 'My King, to me!',
     effects: [
       {
         trigger: 'onNormalSummon',
-        ops: [{ op: 'search', filter: { slugs: ['king-s-knight'] } }],
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['deck', 'grave'],
+            filter: { slugs: ['king-s-knight'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
       },
     ],
   },
 
   'king-s-knight': {
-    text: "When this card is Normal Summoned while you control another Warrior: Special Summon Jack's Knight from your Deck.",
+    /* `onSummon`, so the chain still runs when the Queen brings him out — as
+       `onNormalSummon` he arrived by her hand and then did nothing at all,
+       which is the one case that matters. */
+    text: "When this card is Summoned while you control another Warrior: Special Summon Jack's Knight from your Deck or Graveyard.",
     cry: 'The court assembles!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         condition: { controlsOtherOfType: 'Warrior' },
         ops: [
           {
             op: 'specialSummon',
-            from: 'deck',
+            from: ['deck', 'grave'],
             filter: { slugs: ['jack-s-knight'] },
             count: 1,
             position: 'atk',
@@ -1260,28 +1354,59 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'jack-s-knight': {
-    text: 'All Warrior monsters you control gain 300 ATK.',
+    text:
+      'All Warrior monsters you control gain 500 ATK. ' +
+      "While you control Queen's Knight and King's Knight, this card can attack your opponent directly.",
+    cry: 'For the crown!',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { type: 'Warrior' } }), atk: 300 },
+        aura: { target: sel('own', 'all', { filter: { type: 'Warrior' } }), atk: 500 },
+      },
+      {
+        /* The court complete, and only then. Written as a conditional aura
+           rather than an on-summon grant so it lapses the moment one of them
+           is destroyed — the same shape as The Legendary Fisherman, whose
+           permanent version of this was a reported bug. */
+        trigger: 'continuous',
+        condition: { requiresOnFieldAll: ['queen-s-knight', 'king-s-knight'] },
+        ops: [],
+        aura: { target: SELF, grants: ['directAttack'] },
       },
     ],
   },
 
   'gazelle-the-king-of-mythical-beasts': {
-    text: 'When this card is Normal Summoned: add Berfomet from your Deck to your hand.',
+    /* Deliberately a search and not a Summon, unlike the Queen: Berfomet is a
+       Tribute monster and staying one is the point. Gazelle finds him and then
+       Gazelle *is* what you pay — and Berfomet puts him straight back. The two
+       of them keep swapping in for each other, which is exactly how they read
+       on the page. */
+    text:
+      'When this card is Normal Summoned: add Berfomet from your Deck to your hand. ' +
+      'While you control Berfomet, this card gains 800 ATK.',
     effects: [
       {
         trigger: 'onNormalSummon',
         ops: [{ op: 'search', filter: { slugs: ['berfomet'] } }],
       },
+      {
+        trigger: 'continuous',
+        condition: { requiresOnField: 'berfomet' },
+        ops: [],
+        aura: { target: SELF, atk: 800 },
+      },
     ],
   },
 
   berfomet: {
-    text: 'When this card is Summoned: Special Summon Gazelle the King of Mythical Beasts from your Deck.',
+    /* He costs a Tribute, so he brings the Tribute back. Pay Gazelle, and
+       Berfomet returns Gazelle from the Graveyard — one body in, two bodies
+       out, and both of them 800 bigger for standing together. */
+    text:
+      'When this card is Summoned: Special Summon Gazelle the King of Mythical Beasts from your Deck or Graveyard. ' +
+      'While you control Gazelle the King of Mythical Beasts, this card and all Beast monsters you control gain 800 ATK.',
     cry: 'Come, my other half!',
     effects: [
       {
@@ -1289,30 +1414,59 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           {
             op: 'specialSummon',
-            from: 'deck',
+            from: ['deck', 'grave'],
             filter: { slugs: ['gazelle-the-king-of-mythical-beasts'] },
             count: 1,
             position: 'atk',
           },
         ],
       },
+      {
+        /* Two auras rather than one because Berfomet is a Fiend and the
+           sentence covers him as well as the Beasts beside him. */
+        trigger: 'continuous',
+        condition: { requiresOnField: 'gazelle-the-king-of-mythical-beasts' },
+        ops: [],
+        aura: { target: SELF, atk: 800 },
+      },
+      {
+        trigger: 'continuous',
+        condition: { requiresOnField: 'gazelle-the-king-of-mythical-beasts' },
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Beast' } }), atk: 800 },
+      },
     ],
   },
 
   'chimera-the-flying-mythical-beast': {
-    text: 'Fusion: Gazelle the King of Mythical Beasts + Berfomet. When Fusion Summoned: destroy 1 monster your opponent controls. When this card is destroyed: Special Summon Gazelle the King of Mythical Beasts from your Graveyard.',
+    /* Two heads, two attacks — and when it dies it comes apart into both
+       halves, the same idea as Valkyrion. Two bodies back on an empty board is
+       two thirds of a God, and the Fusion is live again the moment they land. */
+    text:
+      'Fusion: Gazelle the King of Mythical Beasts + Berfomet. ' +
+      'When Fusion Summoned: destroy 1 monster your opponent controls. ' +
+      'This card can attack twice each Battle Phase. ' +
+      'When this card is destroyed: Special Summon Gazelle the King of Mythical Beasts and Berfomet from your Graveyard.',
     cry: 'Two beasts, one beast!',
     fusionMaterials: ['gazelle-the-king-of-mythical-beasts', 'berfomet'],
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { count: 1 }) }] },
+      {
+        /* A permanent extra attack is a property, not a summon bonus — written
+           as an `extraAttacks` op it was lost the moment the card was revived
+           and stacked when it was not. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['doubleAttack'] },
+      },
       {
         trigger: 'onSentToGrave',
         ops: [
           {
             op: 'specialSummon',
             from: 'grave',
-            filter: { slugs: ['gazelle-the-king-of-mythical-beasts'] },
-            count: 1,
+            filter: { slugs: ['gazelle-the-king-of-mythical-beasts', 'berfomet'] },
+            count: 2,
             position: 'atk',
           },
         ],
@@ -1321,38 +1475,60 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'big-shield-gardna': {
-    text: 'This card cannot be destroyed by battle.',
+    /* A wall, and only a wall. It survives the Dark Hole and the Mirror Force
+       that clear everything else, which is what buys the turn this deck needs
+       to stand three bodies up — and it is still a 100 ATK monster, so it
+       never threatens anything on its own. */
+    text: "This card cannot be destroyed by battle or by your opponent's card effects.",
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+        aura: { target: SELF, grants: ['indestructibleByBattle', 'indestructibleByEffect'] },
       },
     ],
   },
 
   'buster-blader': {
-    text: 'This card gains 500 ATK for each Dragon on the field.',
+    /* Two auras because the count spans two pools and `per` reads one. Against
+       seven of the eleven decks he was a vanilla 2600 — the Graveyard is where
+       the dragons he has already beaten are, and counting them is what makes
+       him the reason Kaiba loses rather than a large Warrior. */
+    text: 'This card gains 800 ATK for each Dragon on the field and in either Graveyard.',
     cry: 'Dragons fall before me!',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, per: { zone: 'field', filter: { type: 'Dragon' }, atk: 500 } },
+        aura: { target: SELF, per: { zone: 'field', filter: { type: 'Dragon' }, atk: 800 } },
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'eitherGrave', filter: { type: 'Dragon' }, atk: 800 } },
       },
     ],
   },
 
   'catapult-turtle': {
-    text: 'Once per turn: Tribute 1 monster you control to inflict 1000 damage to your opponent.',
+    /* A flat 1000 was the one card in this deck that ignored everything else
+       in it. Worth what it throws, it is the finish: stand the court up, buff
+       them, and fire one across the field.
+
+       A God is not ammunition. Slifer with a full hand is worth more damage
+       than a duel has Life Points, and firing the thing three bodies paid for
+       is not a play anybody would call anime-accurate. */
+    text:
+      'Once per turn: Tribute 1 monster you control, except a Divine-Beast, ' +
+      "to inflict damage equal to that monster's ATK to your opponent.",
     cry: 'Launch!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Catapult — launch a monster',
         oncePerTurn: true,
-        cost: { tribute: 1 },
-        ops: [{ op: 'damage', amount: 1000, to: 'opp' }],
+        cost: { tribute: 1, tributeFilter: { excludeType: 'Divine-Beast' } },
+        ops: [{ op: 'damage', scale: 'tributedAtk', to: 'opp' }],
       },
     ],
   },

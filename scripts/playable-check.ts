@@ -215,14 +215,21 @@ for (const du of DUELISTS) {
       );
       continue;
     }
-    if (!owned['polymerization']) {
+    /* A free Fusion is its own enabler — the three Magnet Warriors combine
+       with no card spent, so Valkyrion is reachable in a deck holding no
+       Polymerization at all. Asking for one anyway would refuse a deck that
+       works, which is the same fault as the tribute ceiling below. */
+    if (!owned['polymerization'] && !def.fusionFree) {
       dead.push(`${def.name} (${slug}) is in ${du.name}'s Extra Deck but the deck has no Polymerization`);
       continue;
     }
     summonable.push(slug);
   }
 
-  if (owned['polymerization'] && !summonable.length) {
+  /* A Polymerization is only earning its slot if some Fusion in the same Extra
+     Deck *needs* it — one that assembles for free does not, so it cannot be
+     the reason the card is in the deck. */
+  if (owned['polymerization'] && !summonable.some((s) => !CARDS[s].fusionFree)) {
     dead.push(`Polymerization is in ${du.name}'s deck with no Fusion monster it can ever summon`);
   }
 }

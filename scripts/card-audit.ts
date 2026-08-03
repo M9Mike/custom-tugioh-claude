@@ -357,12 +357,13 @@ function matchesLoosely(slug: string, filter: CardFilter | undefined) {
   return true;
 }
 
-function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'monster') {
+function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'monster', exclude: string[] = []) {
   return Object.values(CARDS).find(
     (x) =>
       (kind === 'any' || x.kind === 'monster') &&
       x.slug !== 'facedown' &&
       x.slug !== 'polymerization' &&
+      !exclude.includes(x.slug) &&
       (!filter?.kind || x.kind === filter.kind) &&
       (!filter?.type || x.type === filter.type) &&
       (!filter?.attribute || x.attribute === filter.attribute) &&
@@ -813,18 +814,6 @@ for (const def of Object.values(CARDS)) {
     /* ---- Continuous auras: assert the buff is actually applied ---- */
     if (eff.trigger === 'continuous') {
       const s = stocked();
-      // An aura that only buffs Fish needs a Fish on the board, or nothing it
-      // does can be seen and the card looks broken when it is not.
-      const want = eff.aura?.target.filter;
-      if (want) {
-        const match = matchCard(want);
-        const z = s.players[ME].monsters.findIndex((m) => !m);
-        if (match && z >= 0) place(s, ME, z, match.slug);
-        if (match) {
-          const fz = s.players[FOE].monsters.findIndex((m) => !m);
-          if (fz >= 0) place(s, FOE, fz, match.slug);
-        }
-      }
       /* An aura can be conditional — "while you control no other monsters",
          "while you control Time Wizard" — and probing it on a board that fails
          the condition reports the card broken for a reason that is entirely
@@ -837,6 +826,55 @@ for (const def of Object.values(CARDS)) {
       else if (zone === 'field') s.players[ME].field = selfCard = mint(s, ME, def.slug);
       else s.players[ME].spellTrap = selfCard = mint(s, ME, def.slug);
       satisfy(s, eff, selfCard);
+
+      /* An aura that only buffs Fish needs a Fish on the board, or nothing it
+         does can be seen and the card looks broken when it is not.
+
+         *After* `satisfy`, because there are three Monster Zones and these two
+         both want one. Filling in fodder first took the zone the condition
+         needed, so "while you control Gazelle: all Beast monsters gain 800"
+         was set up with no Gazelle — the condition read false, the aura did
+         nothing, and the harness reported the card broken. The condition is
+         what makes the effect legal at all, so it gets the scarce zone. */
+      const want = eff.aura?.target.filter;
+      /* A subject the aura is *only* connected to through the aura itself:
+         never the card being tested, and never a card the condition named —
+         Gazelle satisfies "while you control Gazelle" and also grants itself
+         800 while Berfomet is out, so lifting Berfomet moves Gazelle by 1600
+         and the delta says nothing about the aura under test. A plain
+         unrelated Beast moves by exactly what was promised, or the aura is
+         broken. */
+      const entangled = [selfCard?.slug, eff.condition?.requiresOnField, ...(eff.condition?.requiresOnFieldAll ?? [])]
+        .filter((x): x is string => !!x);
+      let fodder: CardInstance | undefined;
+      if (want) {
+        const auraSide: PlayerId = eff.aura?.target.side === 'opp' ? FOE : ME;
+        const match = matchCard(want, 'monster', entangled);
+        if (match) {
+          const free = (pid: PlayerId) => {
+            const z = s.players[pid].monsters.findIndex((m) => !m);
+            if (z >= 0) return z;
+            /* Three Monster Zones, and by now the card under test and whatever
+               its condition required are standing in them — so there was no
+               room left and the subject was simply never placed, which is how
+               this whole measurement came to be skipped in silence. Evict
+               something that could not have been the subject anyway. */
+            return s.players[pid].monsters.findIndex(
+              (m) => m && m.uid !== selfCard?.uid && !matchesLoosely(m.slug, want) && !entangled.includes(m.slug)
+            );
+          };
+          const z = free(ME);
+          if (z >= 0) {
+            const near = place(s, ME, z, match.slug);
+            if (auraSide === ME) fodder = near;
+          }
+          const fz = free(FOE);
+          if (fz >= 0) {
+            const far = place(s, FOE, fz, match.slug);
+            if (auraSide === FOE) fodder = far;
+          }
+        }
+      }
 
       /* Snapshotted with the card lifted out and then put back, so the
          comparison is "with it" against "without it" on the very same board —
@@ -877,6 +915,35 @@ for (const def of Object.values(CARDS)) {
             `${aura.grants?.length ? ' +' + aura.grants.join(',') : ''})`,
           ok: moved && !(onlySelf && !aura.grants?.length && !aura.def && !aura.per),
         });
+
+        /* And then the same measurement taken where it cannot be flattered.
+           The reading above is a board total, so *any* live aura on the same
+           card satisfies "something moved" — Berfomet grants himself 800 and
+           the Beasts beside him 800, and with the second one set to zero the
+           first one alone still moved the total and the check went green.
+           A card with one aura is measured honestly by accident; a card with
+           two is not measured at all.
+
+           So when the aura names who it is for, read that card's own stat with
+           the source lifted and with it restored, and insist the number moves
+           by exactly what was promised. Nothing else on the board can supply
+           that delta. Verified by zeroing the aura and watching this fail. */
+        const wantAtk = aura.atk ?? 0;
+        const wantDef = aura.def ?? 0;
+        if (fodder && !aura.per && (wantAtk || wantDef)) {
+          const readOne = () => ({
+            atk: effAtk(s, fodder!, fodder!.owner),
+            def: effDef(s, fodder!, fodder!.owner),
+          });
+          lift();
+          const off = readOne();
+          restore();
+          const on = readOne();
+          checks.push({
+            what: `aura reaches ${CARDS[fodder.slug].name} for exactly ${wantAtk}/${wantDef}`,
+            ok: on.atk - off.atk === wantAtk && on.def - off.def === wantDef,
+          });
+        }
       }
 
       /* A scaling aura gets its own measurement, because the generic one above

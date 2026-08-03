@@ -1585,6 +1585,234 @@ console.log('\nThe second mouth answers a Summon, not a Set');
   ok(safe.players[ME].monsters.some((m) => m?.slug === 'harpie-lady'), 'CONTROL: it never bites its own side');
 }
 
+console.log('\nThe second mouth hears a Special Summon too');
+{
+  /* It was told about Normal and Fusion Summons only, which in this game is a
+     minority of them — a revived monster, a searched-out one, a Token, all
+     walked past the God untouched. */
+  const s = fresh();
+  s.active = FOE;
+  s.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const dead = card(FOE, 'summoned-skull'); // 2500
+  s.players[FOE].grave.push(dead);
+  const reborn = card(FOE, 'monster-reborn');
+  s.players[FOE].hand.push(reborn);
+  const back = act(s, FOE, { type: 'activateSpell', uid: reborn.uid, targets: [dead.uid] });
+  const risen = back.players[FOE].monsters.find((m) => m?.slug === 'summoned-skull');
+  ok(!!risen, 'a revived monster arrives');
+  ok(risen ? effAtk(back, risen, FOE) === 500 : false,
+    'and the second mouth takes 2000 off it',
+    risen ? String(effAtk(back, risen, FOE)) : 'gone');
+
+  // Small enough, and the revival dies on arrival.
+  const t = fresh();
+  t.active = FOE;
+  t.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const small = card(FOE, 'harpie-lady'); // 1300
+  t.players[FOE].grave.push(small);
+  const rb = card(FOE, 'monster-reborn');
+  t.players[FOE].hand.push(rb);
+  const gone = act(t, FOE, { type: 'activateSpell', uid: rb.uid, targets: [small.uid] });
+  ok(!gone.players[FOE].monsters.some((m) => m?.slug === 'harpie-lady'), 'anything under 2000 does not survive the revival');
+
+  // A Token is a monster being Summoned.
+  const k = fresh();
+  k.active = FOE;
+  k.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const mult = card(FOE, 'multiply');
+  k.players[FOE].hand.push(mult);
+  const tokens = act(k, FOE, { type: 'activateSpell', uid: mult.uid, targets: [] });
+  ok(tokens.players[FOE].monsters.every((m) => !m?.isToken), 'and three 300 ATK Tokens do not survive it either');
+
+  // Still never its own side, however the monster arrives.
+  const mine = fresh();
+  mine.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const friend = card(ME, 'harpie-lady');
+  mine.players[ME].grave.push(friend);
+  const own = card(ME, 'monster-reborn');
+  mine.players[ME].hand.push(own);
+  const safe = act(mine, ME, { type: 'activateSpell', uid: own.uid, targets: [friend.uid] });
+  ok(safe.players[ME].monsters.some((m) => m?.slug === 'harpie-lady'), 'CONTROL: it never bites its own Special Summons');
+}
+
+console.log('\nA God arrives with a card in hand');
+{
+  /* Three Tributes is the whole board, and the hand that pays for it is
+     usually the hand that was about to be spent — so Slifer landed as a 0/0
+     that anything could run over. The draw is the floor. */
+  const s = fresh();
+  for (let i = 0; i < 3; i++) s.players[ME].monsters[i] = card(ME, 'kuriboh');
+  const god = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].hand = [god];
+  s.players[ME].deck = [card(ME, 'kuriboh')];
+  const down = act(s, ME, {
+    type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: s.players[ME].monsters.map((m) => m!.uid),
+  });
+  const on = down.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon');
+  ok(down.players[ME].hand.length === 1, 'summoning it draws a card', `${down.players[ME].hand.length} in hand`);
+  ok(on ? effAtk(down, on, ME) === 1000 : false,
+    'so the God is never a 0/0 on the turn it lands',
+    on ? String(effAtk(down, on, ME)) : 'not on the field');
+}
+
+console.log('\nThe Catapult is worth what it throws, and a God is not ammunition');
+{
+  const s = fresh();
+  const turtle = card(ME, 'catapult-turtle');
+  s.players[ME].monsters[0] = turtle;
+  s.players[ME].monsters[1] = card(ME, 'kuriboh');            // 300
+  s.players[ME].monsters[2] = card(ME, 'summoned-skull');     // 2500
+  /* Named explicitly, because it used to pay with whatever stood in the first
+     zone — invisible while the damage was a flat 1000, and the whole card once
+     it is worth what it throws. */
+  const fired = act(s, ME, { type: 'ignition', uid: turtle.uid, targets: [s.players[ME].monsters[2]!.uid] });
+  ok(fired.players[FOE].lp === 4000 - 2500, 'it launches the monster you picked, for that monster’s ATK', String(fired.players[FOE].lp));
+  ok(fired.players[ME].monsters.some((m) => m?.slug === 'kuriboh'), 'and leaves the one you did not pick alone');
+
+  // A God cannot be fired out of a catapult.
+  const g = fresh();
+  const t2 = card(ME, 'catapult-turtle');
+  g.players[ME].monsters[0] = t2;
+  g.players[ME].monsters[1] = card(ME, 'slifer-the-sky-dragon');
+  g.players[ME].hand = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const refused = applyAction(g, ME, { type: 'ignition', uid: t2.uid, targets: [g.players[ME].monsters[1]!.uid] });
+  ok(!!refused.error, 'a Divine-Beast is refused as ammunition', refused.error ?? 'accepted');
+  ok(refused.state.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'), 'and the God is still standing');
+}
+
+console.log('\nAlpha! Beta! Gamma! — no Fusion card required');
+{
+  const s = fresh();
+  const a = card(ME, 'alpha-the-magnet-warrior');
+  const b = card(ME, 'beta-the-magnet-warrior');
+  const g = card(ME, 'gamma-the-magnet-warrior');
+  s.players[ME].monsters = [a, b, g];
+  const val = card(ME, 'valkyrion-the-magna-warrior');
+  s.players[ME].extra = [val];
+  s.players[ME].hand = [card(ME, 'dark-hole'), card(ME, 'kuriboh')];
+  const held = s.players[ME].hand.length;
+  /* `applyAction` rather than `act`, which throws on a refusal — and a throw
+     here takes the whole suite down with it, hiding every block below. The one
+     thing this file must always be able to do is report. */
+  const fuse = applyAction(s, ME, {
+    type: 'fusionSummon', extraUid: val.uid, materials: [a.uid, b.uid, g.uid], zone: 0, position: 'atk',
+  });
+  const made = fuse.state;
+  ok(made.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'),
+    'the three magnets combine with no Polymerization in hand', fuse.error ?? '');
+  /* `poly` is -1 without the card, and `splice(-1, 1)` takes the *last* card
+     in hand — an unguarded spend would quietly eat one every assembly. */
+  ok(made.players[ME].hand.length === held, 'and it does not eat a card from the hand', `${made.players[ME].hand.length} of ${held}`);
+
+  // And comes apart again, into exactly the three tributes a God costs.
+  const valk = made.players[ME].monsters.find((m) => m?.slug === 'valkyrion-the-magna-warrior');
+  const split = valk ? applyAction(made, ME, { type: 'ignition', uid: valk.uid }) : null;
+  const apart = split?.state ?? made;
+  const back = apart.players[ME].monsters.filter((m) => m && CARDS[m.slug].name.includes('Magnet Warrior'));
+  ok(!!valk && back.length === 3, 'tributing it returns all three Magnet Warriors',
+    valk ? `${back.length} came back${split?.error ? ` (${split.error})` : ''}` : 'never assembled');
+  ok(!!valk && !apart.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'), 'and Valkyrion itself is gone');
+
+  // CONTROL: every other Fusion still pays for the card.
+  const c = fresh();
+  const gaia = card(ME, 'gaia-the-fierce-knight');
+  const drag = card(ME, 'curse-of-dragon');
+  c.players[ME].monsters = [gaia, drag, null];
+  const champ = card(ME, 'gaia-the-dragon-champion');
+  c.players[ME].extra = [champ];
+  c.players[ME].hand = [];
+  const noPoly = applyAction(c, ME, {
+    type: 'fusionSummon', extraUid: champ.uid, materials: [gaia.uid, drag.uid], zone: 2, position: 'atk',
+  });
+  ok(!!noPoly.error, 'CONTROL: a normal Fusion still needs Polymerization', noPoly.error ?? 'accepted');
+}
+
+console.log('\nOne Normal Summon stands the whole court up');
+{
+  const s = fresh();
+  const queen = card(ME, 'queen-s-knight');
+  s.players[ME].hand = [queen];
+  s.players[ME].deck = [card(ME, 'king-s-knight'), card(ME, 'jack-s-knight'), card(ME, 'kuriboh')];
+  const court = act(s, ME, { type: 'normalSummon', uid: queen.uid, zone: 0, position: 'atk', face: 'up' });
+  const names = court.players[ME].monsters.filter(Boolean).map((m) => m!.slug).sort();
+  ok(names.length === 3, 'the Queen brings the King, who brings the Jack', names.join(', '));
+  ok(names.includes('king-s-knight') && names.includes('jack-s-knight'), 'and all three are Knights', names.join(', '));
+
+  /* Jack's aura, and the direct attack that only the assembled court allows.
+     No `!` on the lookup: he is exactly what the chain above is being asked to
+     produce, so on a build where the chain is broken he is not there — and a
+     non-null assertion turns that into a crash that takes the rest of the
+     suite with it rather than a failure it can report. */
+  const jack = court.players[ME].monsters.find((m) => m?.slug === 'jack-s-knight');
+  ok(!!jack && effAtk(court, jack, ME) === 1900 + 500, 'every Warrior is 500 stronger for him',
+    jack ? String(effAtk(court, jack, ME)) : 'never arrived');
+  ok(!!jack && !!effFlags(court, jack, ME).directAttack, 'and with the court complete he can swing past blockers');
+
+  const alone = fresh();
+  const lone = card(ME, 'jack-s-knight');
+  alone.players[ME].monsters[0] = lone;
+  ok(!effFlags(alone, lone, ME).directAttack, 'CONTROL: alone, he cannot');
+}
+
+console.log('\nThe magnets hold, the beasts trade places, the shield does not break');
+{
+  // Beta, while another Rock stands beside it.
+  const s = fresh();
+  const beta = card(ME, 'beta-the-magnet-warrior');
+  s.players[ME].monsters = [beta, card(ME, 'alpha-the-magnet-warrior'), null];
+  ok(effAtk(s, beta, ME) === 1700 + 800, 'Beta is 800 stronger with a Rock beside it', String(effAtk(s, beta, ME)));
+  ok(!!effFlags(s, beta, ME).indestructibleByEffect, 'and effects cannot destroy it either');
+  const solo = fresh();
+  const lonely = card(ME, 'beta-the-magnet-warrior');
+  solo.players[ME].monsters[0] = lonely;
+  ok(!effFlags(solo, lonely, ME).indestructibleByEffect, 'CONTROL: alone it is an ordinary monster');
+
+  // Gazelle and Berfomet each make the other bigger.
+  const b = fresh();
+  const gaz = card(ME, 'gazelle-the-king-of-mythical-beasts');
+  const ber = card(ME, 'berfomet');
+  b.players[ME].monsters = [gaz, ber, null];
+  ok(effAtk(b, gaz, ME) === 1500 + 800 + 800, 'Gazelle takes his own 800 and Berfomet’s', String(effAtk(b, gaz, ME)));
+  ok(effAtk(b, ber, ME) === 1400 + 800, 'and Berfomet takes his own', String(effAtk(b, ber, ME)));
+
+  // Big Shield Gardna walks out of a Dark Hole.
+  const d = fresh();
+  d.players[ME].monsters[0] = card(ME, 'big-shield-gardna');
+  d.players[FOE].monsters[0] = card(FOE, 'harpie-lady');
+  const dh = card(ME, 'dark-hole');
+  d.players[ME].hand.push(dh);
+  const after = act(d, ME, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  ok(after.players[ME].monsters.some((m) => m?.slug === 'big-shield-gardna'), 'the shield survives a Dark Hole');
+  ok(!after.players[FOE].monsters.some(Boolean), 'and everything else does not');
+
+  // Buster Blader counts the dragons already dead.
+  const bb = fresh();
+  const blader = card(ME, 'buster-blader');
+  bb.players[ME].monsters[0] = blader;
+  ok(effAtk(bb, blader, ME) === 2600, 'Buster Blader alone is 2600', String(effAtk(bb, blader, ME)));
+  bb.players[FOE].grave.push(card(FOE, 'blue-eyes-white-dragon'));
+  ok(effAtk(bb, blader, ME) === 2600 + 800, 'a Dragon in their Graveyard is 800 more', String(effAtk(bb, blader, ME)));
+  bb.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
+  ok(effAtk(bb, blader, ME) === 2600 + 1600, 'and one on the field is 800 more again', String(effAtk(bb, blader, ME)));
+}
+
+console.log('\nChimera comes apart into both halves');
+{
+  const s = fresh();
+  const chim = card(ME, 'chimera-the-flying-mythical-beast');
+  s.players[ME].monsters[0] = chim;
+  s.players[ME].grave.push(card(ME, 'gazelle-the-king-of-mythical-beasts'), card(ME, 'berfomet'));
+  ok(!!effFlags(s, chim, ME).attackAll || !!effFlags(s, chim, ME).extraAttacks, 'it carries a second attack');
+  s.players[FOE].monsters[0] = card(FOE, 'harpie-lady');
+  const dh = card(ME, 'dark-hole');
+  s.players[ME].hand.push(dh);
+  const after = act(s, ME, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  const halves = after.players[ME].monsters.filter(Boolean).map((m) => m!.slug).sort();
+  ok(halves.includes('gazelle-the-king-of-mythical-beasts') && halves.includes('berfomet'),
+    'destroying it returns Gazelle and Berfomet both', halves.join(', ') || 'nothing came back');
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it
