@@ -364,7 +364,11 @@ export default function Home() {
           <input
             ref={codeRef}
             value={code}
-            maxLength={4}
+            /* Five, not four. `createRoom` falls back to a five-character code
+               once eight four-character draws have all been taken — and this
+               field physically could not accept one, so that room was
+               reachable by its link and by nothing else. */
+            maxLength={5}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void join();
@@ -382,7 +386,9 @@ export default function Home() {
         )}
 
         <p className="mt-4 text-center text-[11px] leading-relaxed text-ptextdim">
-          Start a duel, then send the link or the 4-letter code to your opponent — the game begins once you have both
+          {/* Not "4-letter": a code is drawn from letters *and* digits, and
+              runs to five characters if the first eight draws are taken. */}
+          Start a duel, then send the link or the room code to your opponent — the game begins once you have both
           picked a duelist. Or take on the computer straight away, no second player needed.
         </p>
       </div>
@@ -390,7 +396,9 @@ export default function Home() {
       {/* duelist strip */}
       <div className="w-full">
         <p className="mb-2 text-center font-display text-[10px] uppercase tracking-[0.3em] text-ptextdim">
-          Ten duelists · ten decks
+          {/* Counted, and therefore wrong: it said ten while the roster was
+              eleven, and it would go stale again with the next duelist. */}
+          The duelists · their decks
         </p>
         <div className="thin-scroll flex justify-start gap-2 overflow-x-auto pb-2 sm:justify-center">
           {/* Tapping a duelist opens their deck. The strip looked like a menu

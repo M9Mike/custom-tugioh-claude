@@ -131,9 +131,14 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                 table doesn't explain their reasoning either — the only thing
                 worth saying here is whose deck it holds. */}
             <p className="mt-2 text-[10px] leading-relaxed text-ptextdim">
+              {/* Not "the panel on the right". It only sits there on a wide
+                  screen; on the phones this game is actually played on the
+                  panel stacks underneath, so the one instruction on this
+                  screen pointed off the edge of the display. Naming the
+                  button instead is true at every width. */}
               It is holding{' '}
               <span className="text-parchment">{DUELISTS.find((d) => d.id === foeSeat?.duelistId)?.name ?? 'a deck'}</span>
-              &rsquo;s deck — pick a different one for it from the panel on the right, then choose your own duelist to
+              &rsquo;s deck — tap any duelist and use &ldquo;Face … instead&rdquo; to change it, then choose your own to
               begin.
             </p>
           </div>

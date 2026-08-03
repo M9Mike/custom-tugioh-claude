@@ -30,8 +30,15 @@ export default function DuelRoom({ code }: { code: string }) {
           <p className="mt-2 text-sm text-ptext/85">{error ?? 'This duel is no longer running.'}</p>
           {errorKind !== 'full' && (
             <p className="mt-2 text-xs text-ptextdim">
-              Duels live in memory while both players are connected. If everyone left, the room is gone — but starting a
-              fresh one takes two seconds.
+              {/* This used to say duels live in memory while both players are
+                  connected, and that leaving ends them. Both halves were
+                  wrong: a room is a document with a 90-minute clock that every
+                  move resets, and nothing frees a seat when you close the app
+                  — which is the whole reason typing your own code puts you
+                  back in. Telling a player their duel was gone when it was
+                  waiting for them is the worst thing this screen could say. */}
+              A duel is kept for 90 minutes after the last move, and closing the app does not end it — your seat is
+              held. So either that code has a typo, or the room sat untouched for an hour and a half.
             </p>
           )}
           <Link href="/" className="btn btn-primary mt-5 inline-block rounded px-5 py-2 text-xs">
