@@ -368,11 +368,6 @@ export default function Home() {
         </div>
       </div>
 
-      <footer className="pb-2 text-center text-[10px] leading-relaxed text-ptextdim/70">
-        A private, non-commercial fan project. Yu-Gi-Oh! and all card artwork are the property of Kazuki Takahashi and
-        Konami. Card effects here are original and do not match the official game.
-      </footer>
-
       {deckViewer()}
     </main>
   );
