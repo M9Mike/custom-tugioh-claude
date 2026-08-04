@@ -9,7 +9,7 @@
  *   npx tsx scripts/rules-check.ts
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, tributesRequired } from '../src/game/engine';
-import { CARDS } from '../src/game/cards';
+import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -1762,6 +1762,104 @@ console.log('\nAlpha! Beta! Gamma! — no Fusion card required');
   ok(!!noPoly.error, 'CONTROL: a normal Fusion still needs Polymerization', noPoly.error ?? 'accepted');
 }
 
+console.log('\nA tribute is not a destruction');
+{
+  /* Reported as "sometimes I get the monster zone is occupied — I had 3
+     monsters and tried summoning Slifer". Chimera says "when this card is
+     destroyed", and it was written as `onSentToGrave`, which fires on any
+     departure from the field — so tributing Chimera towards a God put Gazelle
+     and Berfomet straight back onto the board in the middle of paying for the
+     summon, and the summon then had nowhere to land. */
+  const board = () => {
+    const s = fresh();
+    const chim = card(ME, 'chimera-the-flying-mythical-beast');
+    const a = card(ME, 'kuriboh');
+    const b = card(ME, 'feral-imp');
+    s.players[ME].monsters = [chim, a, b];
+    // Both halves waiting in the Graveyard, so a revival would be visible.
+    s.players[ME].grave = [card(ME, 'gazelle-the-king-of-mythical-beasts'), card(ME, 'berfomet')];
+    return { s, chim, a, b };
+  };
+  const halvesOn = (st: DuelState) =>
+    st.players[ME].monsters.filter(
+      (m) => m?.slug === 'gazelle-the-king-of-mythical-beasts' || m?.slug === 'berfomet'
+    ).length;
+
+  const { s, chim, a, b } = board();
+  const slifer = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].hand = [slifer];
+  const summoned = applyAction(s, ME, {
+    type: 'normalSummon', uid: slifer.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [chim.uid, a.uid, b.uid],
+  });
+  ok(summoned.state.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'three monsters tribute for a God with Chimera among them', summoned.error ?? '');
+  ok(halvesOn(summoned.state) === 0,
+    'and tributing Chimera does not put its halves back', `${halvesOn(summoned.state)} came back`);
+  ok(summoned.state.players[ME].grave.some((c) => c.slug === 'chimera-the-flying-mythical-beast'),
+    'and Chimera itself is in the Graveyard');
+
+  /* CONTROL: destroyed really is destroyed. Without this the fix would pass
+     just as well with the effect deleted outright. */
+  const { s: s2, chim: chim2 } = board();
+  s2.players[ME].monsters = [chim2, null, null];
+  const dh = card(ME, 'dark-hole');
+  s2.players[ME].hand = [dh];
+  const wiped = applyAction(s2, ME, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  ok(halvesOn(wiped.state) === 2,
+    'CONTROL: destroying Chimera still returns Gazelle and Berfomet', `${halvesOn(wiped.state)} came back`);
+
+  /* CONTROL: the wider trigger still fires on a tribute for the cards whose
+     text really says "sent to the Graveyard". Sangan searches either way. */
+  const s3 = fresh();
+  const sangan = card(ME, 'sangan');
+  const spare = card(ME, 'kuriboh');
+  s3.players[ME].monsters = [sangan, spare, null];
+  s3.players[ME].deck = [card(ME, 'feral-imp')];
+  const summonSkull = card(ME, 'summoned-skull');
+  s3.players[ME].hand = [summonSkull];
+  const paid = applyAction(s3, ME, {
+    type: 'normalSummon', uid: summonSkull.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [sangan.uid, spare.uid],
+  });
+  ok(paid.state.players[ME].hand.some((h) => h.slug === 'feral-imp'),
+    'CONTROL: "sent to the Graveyard" still fires on a tribute', paid.error ?? '');
+}
+
+console.log('\nGazelle and Berfomet are a pair, not a stack');
+{
+  /* Reported as "both buff atk and we get a monster stronger than blue eyes".
+     They were: Gazelle collected his own conditional +800 *and* Berfomet's
+     "all Beast monsters you control" +800, because Gazelle is a Beast —
+     1500 + 1600 = 3100 off a level 4 and a level 5. The pride buff sits on
+     Gazelle now and says "other", so the pair bonus is paid once. */
+  const s = fresh();
+  const g = card(ME, 'gazelle-the-king-of-mythical-beasts');
+  const b = card(ME, 'berfomet');
+  s.players[ME].monsters = [g, b, null];
+  const blueEyes = baseAtkOf('blue-eyes-white-dragon');
+  ok(effAtk(s, g, ME) === 2300, 'Gazelle beside Berfomet is 2300', `${effAtk(s, g, ME)}`);
+  ok(effAtk(s, b, ME) === 2200, 'Berfomet beside Gazelle is 2200', `${effAtk(s, b, ME)}`);
+  ok(effAtk(s, g, ME) < blueEyes && effAtk(s, b, ME) < blueEyes,
+    'and neither of them outgrows Blue-Eyes', `${effAtk(s, g, ME)} / ${effAtk(s, b, ME)} vs ${blueEyes}`);
+
+  // The bonus is conditional both ways, so alone they are printed size.
+  const solo = fresh();
+  const g2 = card(ME, 'gazelle-the-king-of-mythical-beasts');
+  solo.players[ME].monsters = [g2, null, null];
+  ok(effAtk(solo, g2, ME) === 1500, 'Gazelle alone is his printed 1500', `${effAtk(solo, g2, ME)}`);
+
+  /* The pride buff is real, not just removed: another Beast beside them still
+     takes it. Without this the whole thing would pass with the aura deleted. */
+  const pride = fresh();
+  const g3 = card(ME, 'gazelle-the-king-of-mythical-beasts');
+  const b3 = card(ME, 'berfomet');
+  const chim = card(ME, 'chimera-the-flying-mythical-beast');
+  pride.players[ME].monsters = [g3, b3, chim];
+  ok(effAtk(pride, chim, ME) === baseAtkOf('chimera-the-flying-mythical-beast') + 800,
+    'another Beast beside them still gains the 800', `${effAtk(pride, chim, ME)}`);
+}
+
 console.log('\nPolymerization needs somewhere to be activated');
 {
   /* Reported from a real duel: a Fusion went through with the Spell/Trap Zone
@@ -1875,12 +1973,16 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   solo.players[ME].monsters[0] = lonely;
   ok(!effFlags(solo, lonely, ME).indestructibleByBattle, 'CONTROL: alone it is an ordinary monster');
 
-  // Gazelle and Berfomet each make the other bigger.
+  /* Gazelle and Berfomet each make the other bigger — once.
+     This used to assert the double-dip as if it were the intent: Gazelle took
+     his own conditional 800 *and* Berfomet's "all Beast monsters" 800, and
+     the check pinned 3100. It is 2300 now, and the arithmetic is spelled out
+     in full under "Gazelle and Berfomet are a pair, not a stack". */
   const b = fresh();
   const gaz = card(ME, 'gazelle-the-king-of-mythical-beasts');
   const ber = card(ME, 'berfomet');
   b.players[ME].monsters = [gaz, ber, null];
-  ok(effAtk(b, gaz, ME) === 1500 + 800 + 800, 'Gazelle takes his own 800 and Berfomet’s', String(effAtk(b, gaz, ME)));
+  ok(effAtk(b, gaz, ME) === 1500 + 800, 'Gazelle takes the pair bonus once', String(effAtk(b, gaz, ME)));
   ok(effAtk(b, ber, ME) === 1400 + 800, 'and Berfomet takes his own', String(effAtk(b, ber, ME)));
 
   /* Big Shield Gardna stops attacks and nothing else. It used to walk out of

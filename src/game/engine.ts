@@ -520,8 +520,18 @@ function resetInstance(c: CardInstance) {
   c.specialSummonedOnTurn = undefined;
 }
 
-/** Sends a card from the field to its owner's Graveyard, firing onSentToGrave. */
-function toGrave(state: DuelState, uid: string, fromField: boolean) {
+/**
+ * Sends a card from the field to its owner's Graveyard, firing onSentToGrave.
+ *
+ * `destroyed` additionally fires `onDestroyed`, and only the one genuine
+ * destruction site passes it. Everything else that routes through here — a
+ * tribute, a Fusion material, a cost, an equip following its monster down, a
+ * Field Spell being replaced, a borrowed God going home — is a card leaving
+ * the field, not a card being destroyed. Defaulting to `false` is deliberate:
+ * a missed site means a destruction effect does not fire, which is far less
+ * damaging than one firing while you are paying a Tribute Summon.
+ */
+function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false) {
   const found = fromField ? findOnField(state, uid) : null;
   const controller = found?.controller;
   const c = removeFromAnywhere(state, uid);
@@ -557,6 +567,7 @@ function toGrave(state: DuelState, uid: string, fromField: boolean) {
   state.players[c.owner].grave.push(c);
 
   if (wasOnField) {
+    if (destroyed) fireTriggers(state, c, controller, 'onDestroyed', {});
     fireTriggers(state, c, controller, 'onSentToGrave', {});
   }
 }
@@ -793,7 +804,8 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
   // Anthrosaurus's — "when destroyed by battle, Special Summon a Dinosaur" —
   // finds the board full and quietly does nothing, even though the space it
   // just gave up is exactly where the replacement should go.
-  toGrave(state, c.uid, true);
+  // The one site in the game that is genuinely a destruction.
+  toGrave(state, c.uid, true, true);
   if (byBattle && found.zone === 'monster') {
     fireTriggers(state, c, found.controller, 'onDestroyedByBattle', ctx?.trig ?? {});
   }
@@ -2223,7 +2235,14 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         log(state, `${p.name} tributes ${displayName(p.monsters.find((m) => m?.uid === tu)!)}.`, 'summon', pid);
         toGrave(state, tu, true);
       }
-      if (p.monsters[action.zone]) return { state: prev, error: 'That Monster Zone is occupied.' };
+      /* Paying the tributes can put something back on the board — a Chimera
+         coming apart, a trap answering the departure — and the zone chosen
+         before the payment may no longer be the free one. Refusing there is
+         the worst outcome: the tributes are already gone and the summon they
+         bought is denied. Any free zone will do, exactly as the Fusion path
+         has always done it, and only a genuinely full board is refused. */
+      const dest = p.monsters[action.zone] ? p.monsters.findIndex((m) => !m) : action.zone;
+      if (dest < 0) return { state: prev, error: 'That Monster Zone is occupied.' };
 
       p.hand.splice(hi, 1);
       c.position = action.face === 'down' ? 'def' : action.position;
@@ -2233,7 +2252,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       c.specialSummonedOnTurn = undefined;
       c.attacksUsed = 0;
       c.attacked = [];
-      p.monsters[action.zone] = c;
+      p.monsters[dest] = c;
       p.normalSummonUsed = true;
 
       if (c.face === 'up') {

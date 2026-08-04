@@ -1408,7 +1408,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        on the page. */
     text:
       'When this card is Normal Summoned: add Berfomet from your Deck to your hand. ' +
-      'While you control Berfomet, this card gains 800 ATK.',
+      'While you control Berfomet, this card and your other Beast monsters gain 800 ATK.',
     effects: [
       {
         trigger: 'onNormalSummon',
@@ -1420,6 +1420,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: SELF, atk: 800 },
       },
+      {
+        /* The pride buff sits on Gazelle, not on Berfomet, and it is the King
+           of Mythical Beasts who carries it — a Fiend lifting every Beast on
+           the field was always the odd way round.
+
+           It also has to be *other* Beasts. Berfomet used to hold this aura
+           with a plain `all`, and Gazelle is a Beast, so Gazelle collected the
+           pair bonus twice: 1500 + 800 + 800 = 3100, stronger than Blue-Eyes
+           off two level-4-and-5 bodies. Reported for exactly that. `excludeSelf`
+           is the same word the text uses, and Berfomet is a Fiend so he is
+           untouched by it and keeps his own clause. */
+        trigger: 'continuous',
+        condition: { requiresOnField: 'berfomet' },
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Beast' }, excludeSelf: true }), atk: 800 },
+      },
     ],
   },
 
@@ -1429,7 +1445,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        out, and both of them 800 bigger for standing together. */
     text:
       'When this card is Summoned: Special Summon Gazelle the King of Mythical Beasts from your Deck or Graveyard. ' +
-      'While you control Gazelle the King of Mythical Beasts, this card and all Beast monsters you control gain 800 ATK.',
+      'While you control Gazelle the King of Mythical Beasts, this card gains 800 ATK.',
     cry: 'Come, my other half!',
     effects: [
       {
@@ -1445,18 +1461,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ],
       },
       {
-        /* Two auras rather than one because Berfomet is a Fiend and the
-           sentence covers him as well as the Beasts beside him. */
+        /* One aura, and only on himself. The "all Beast monsters" half moved
+           to Gazelle, who is the one the sentence is about — and who can say
+           "other" and mean it, which is what stopped the pair bonus being
+           paid to him twice. */
         trigger: 'continuous',
         condition: { requiresOnField: 'gazelle-the-king-of-mythical-beasts' },
         ops: [],
         aura: { target: SELF, atk: 800 },
-      },
-      {
-        trigger: 'continuous',
-        condition: { requiresOnField: 'gazelle-the-king-of-mythical-beasts' },
-        ops: [],
-        aura: { target: sel('own', 'all', { filter: { type: 'Beast' } }), atk: 800 },
       },
     ],
   },
@@ -1483,7 +1495,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         aura: { target: SELF, grants: ['doubleAttack'] },
       },
       {
-        trigger: 'onSentToGrave',
+        /* `onDestroyed`, not `onSentToGrave`. The card says "destroyed", and
+           on the wider trigger it also fired when Chimera was *tributed* — so
+           tributing it towards a God put Gazelle and Berfomet back on the
+           board while the summon was still being paid for, and the summon
+           then landed on a zone that had just refilled. */
+        trigger: 'onDestroyed',
         ops: [
           {
             op: 'specialSummon',

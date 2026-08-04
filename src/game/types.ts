@@ -102,6 +102,24 @@ export type Trigger =
   | 'onOpponentSummon'
   /** This monster was destroyed in battle. */
   | 'onDestroyedByBattle'
+  /**
+   * This card was *destroyed* — by battle or by an effect — as opposed to
+   * having merely left the field.
+   *
+   * A tribute is not a destruction, and neither is being spent as a Fusion
+   * material, paid as a cost, or replaced in the Field Zone. Chimera says
+   * "when this card is destroyed: Special Summon Gazelle and Berfomet", and
+   * it was written as `onSentToGrave`, which fires on every one of those —
+   * so tributing Chimera for a God put two bodies back on the board in the
+   * middle of paying for it, filling the zone the summon was headed for.
+   * Reported as "sometimes I get the monster zone is occupied".
+   *
+   * `onSentToGrave` stays exactly as it is and still fires for everything:
+   * the five cards using it all say "when this card is sent to the
+   * Graveyard", which a tribute genuinely is. Only "destroyed" needed its
+   * own word.
+   */
+  | 'onDestroyed'
   /** This card was sent from the field to the Graveyard for any reason. */
   | 'onSentToGrave'
   /** This monster declared an attack (resolves before damage). */

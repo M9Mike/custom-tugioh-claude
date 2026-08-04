@@ -1030,7 +1030,11 @@ for (const def of Object.values(CARDS)) {
       audit(def, eff, s, (st) => run(st, ME, { type: 'endTurn' }));
       continue;
     }
-    if (eff.trigger === 'onSentToGrave') {
+    /* Dark Hole destroys, so it satisfies both: `onSentToGrave` fires for any
+       departure and `onDestroyed` only for a destruction, and a board wipe is
+       a destruction. Driving them the same way keeps the new trigger covered
+       rather than quietly landing in "effects not driven". */
+    if (eff.trigger === 'onSentToGrave' || eff.trigger === 'onDestroyed') {
       const s = stocked();
       const zone = s.players[ME].monsters.findIndex((m) => !m);
       const c = place(s, ME, zone < 0 ? 2 : zone, def.slug);

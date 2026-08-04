@@ -33,6 +33,13 @@ const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
     needs: ['onBattleDestroy'], label: 'when it destroys a monster in battle' },
   { phrase: /when (this card|it) is destroyed by battle/i,
     needs: ['onDestroyedByBattle', 'onSentToGrave'], label: 'when destroyed by battle' },
+  /* "Destroyed" with no qualifier. The lookahead keeps the stricter
+     by-battle clause above owning its own case rather than both matching.
+     Nothing checked this before, which is how Chimera's "when this card is
+     destroyed" shipped as `onSentToGrave` — a trigger that also fires on a
+     tribute, so it revived two monsters in the middle of paying for a God. */
+  { phrase: /when (this card|it) is destroyed(?! by battle)/i,
+    needs: ['onDestroyed', 'onDestroyedByBattle', 'onSentToGrave'], label: 'when destroyed' },
   { phrase: /when (this card|it) is (normal )?summoned|when summoned/i,
     needs: ['onSummon', 'onNormalSummon'], label: 'when summoned' },
   { phrase: /once per turn:/i, needs: ['ignition'], label: 'once per turn:' },

@@ -350,6 +350,57 @@ full board is *for* — exactly backwards. The engine was always fine, and
 only the gate was wrong. A summon costing nothing needs a spare zone, a Tribute
 Summon needs bodies.
 
+**And a tribute is not a destruction.** Reported as "sometimes I get the
+monster zone is occupied — I had 3 monsters and tried summoning Slifer". It
+was Chimera, exactly as guessed. Its text says "when this card is
+**destroyed**: Special Summon Gazelle and Berfomet", and it was written as
+`onSentToGrave` — which fires on *every* departure from the field. So
+tributing Chimera towards a God put its two halves straight back onto the
+board in the middle of paying for the summon, and the summon then landed on a
+zone that had just refilled: "That Monster Zone is occupied", reproduced
+verbatim on the unfixed engine.
+
+`onDestroyed` is its own trigger now, fired only by the one genuine
+destruction site. `toGrave` takes a `destroyed` flag defaulting to **false**,
+which is the safe direction: a site missed means a destruction effect does not
+fire, far better than one firing while you are paying a Tribute Summon. All
+the other eight callers — tributes, Fusion materials, costs, an equip
+following its monster down, a Field Spell being replaced, a borrowed God going
+home — are cards leaving the field, not cards being destroyed. `onSentToGrave`
+is untouched and still fires for all of them, because the five cards using it
+all say "when this card is sent to the Graveyard", which a tribute genuinely
+is; Sangan searching off a tribute is pinned as a control.
+
+Nothing was checking the sentence, either: `npm run text` knew "when destroyed
+by battle" and not the bare "when destroyed", which is how this shipped. It
+knows both now, with a lookahead so the stricter by-battle clause keeps its
+own case, and it was proved to bite by removing the trigger.
+
+The summon also stopped insisting on the *exact* zone it asked for. Paying the
+tributes can put something back on the board, and refusing at that point is
+the worst outcome available — the tributes are gone and the summon they bought
+is denied. Any free zone will do, which is what the Fusion path had always
+done. With Chimera fixed nothing reaches that fallback today, so it is a guard
+rather than a tested path, and it is written down as one.
+
+**Gazelle and Berfomet are a pair, not a stack.** Reported as "both buff atk
+and we get a monster stronger than blue eyes". They did: Gazelle took his own
+conditional +800 *and* Berfomet's "all Beast monsters you control" +800,
+because Gazelle is a Beast — 1500 + 1600 = **3100**, off a level four and a
+level five, past Blue-Eyes' 3000. In Yami's deck Gazelle is the only Beast, so
+that second aura's entire function was doubling the first.
+
+The pride buff moved onto Gazelle, who is *the King of Mythical Beasts* and
+was always the one the sentence should belong to — a Fiend lifting every Beast
+was the odd way round — and it says "your **other** Beast monsters", so
+`excludeSelf` pays the pair bonus once. Gazelle 2300, Berfomet 2200, and a
+Chimera standing beside them 2900. Yami benches 70% ±9 against the 71% on
+record, unchanged within the interval.
+
+Watch for the old intent hiding in the suite: a regression already asserted
+`1500 + 800 + 800` by name, so the double-dip was pinned as correct and the
+fix turned it red. A test can encode a bug as thoroughly as the code does.
+
 **The bye rode to the final.** `matchesForRound` walks the survivors in pairs, so
 an odd count always leaves the *last* name over — and a bye winner stayed last,
 having been last when they got the bye. The same duelist could go from the
