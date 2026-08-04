@@ -484,8 +484,10 @@ a Special Summon now takes a list of zones, and `npm run playable` checks that a
 monster it refuses to summon has something in the same deck that brings it out.
 
 **The Toon idea, in full.** Toon World is the engine: while it is face-up your
-Toons need no Tribute, gain 800 ATK, pierce, cannot be targeted, and attack
-directly — at 500 Life Points a swing, and never on the turn they arrived.
+Toons need no Tribute, gain 800 ATK, pierce, cannot be *destroyed* by card
+effects (they can be targeted — a bind or a debuff lands, removal does not),
+and attack directly — at 500 Life Points a swing, and never on the turn they
+arrived. Opening the book costs its printed 1000.
 Blue-Eyes Toon Dragon, Toon Summoned Skull, Toon Mermaid, Manga Ryu-Ran and Dark
 Rabbit cannot be Summoned without it. Toon Alligator is the way in — it is never
 gated, and Normal Summoning it fetches Toon World from the Deck. Ryu-Ran,
@@ -1488,10 +1490,24 @@ The measurement discipline:
 - **The band:** everyone 45–57; Pegasus and the God deck 58–65 by design;
   nobody under 40, nobody over 70. The pre-pass ladder was pegasus 85, yami
   70, mai 66, kaiba 55, then seven decks between 33 and 42 — four decks were
-  carrying the game. After three iterations the measured ladder (100 games
-  each, ±9-10) is: **yami 68 · pegasus 66 · mai 64 · kaiba 54 · rex 53 ·
-  weevil 42 · mako 40 · yugi 37 · joey 34 · bakura 32 · keith 31** — the
-  spread closed from 52 points to 37 with the decreed top three.
+  carrying the game. After three iterations at 4000 LP the ladder closed
+  from a 52-point spread to 37 with the decreed top three (yami 68 ·
+  pegasus 66 · mai 64).
+- **The pool is part of the price.** Moving to 8000 Life Points re-priced
+  the whole format overnight: every LP cost halved in real terms, burn
+  halved, and the two untouchable-attacker decks broke out (yami 68 → 80,
+  pegasus 66 → 75) while the floor barely moved and rex's tempo edge
+  blunted (53 → 44). Three printed-faithful corrections brought them home —
+  Multiply requires a face-up Kuriboh to multiply, Toon World's activation
+  costs its printed 1000, and Toons are *effect-indestructible* rather than
+  engine-untargetable, so Mirror Wall can halve one and Skull Dice can
+  shrink one even though nothing may destroy it. The measured 8000-LP
+  ladder (100 games, ±9-10): **yami 71 · pegasus 70 · mai 58 · kaiba 50 ·
+  weevil 45 · rex 44 · bakura 43 · yugi 39 · mako 37 · joey 34 · keith
+  30** — the top two statistically level, the next block twelve points
+  back, and bakura's attrition posting its best number ever because the
+  longer pool is exactly his game. When the pool changes, re-measure
+  everything: prices are only ever relative to it.
 - **The attrition quartet benches low on purpose, and card buffs are the
   wrong fix.** Yugi, Joey, Bakura and Keith stalled in the low-to-mid 30s
   through three rounds of real buffs (searches, tribe auras, effect shields,

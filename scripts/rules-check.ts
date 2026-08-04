@@ -572,7 +572,10 @@ console.log('\nToon World sits in the Field Zone and still powers the Toons');
   const toon = withToon.players[ME].monsters[0]!;
   const flags = effFlags(withToon, toon, ME);
   ok(effAtk(withToon, toon, ME) === 1400 + 800, 'and gains 800 ATK', `ATK ${effAtk(withToon, toon, ME)}`);
-  ok(flags.directAttack === true && flags.untargetable === true && flags.pierce === true, 'with direct attack, untargetable and piercing');
+  /* Effect-indestructible since the 8000-LP pass, not untargetable: nothing
+     may DESTROY a Toon while the book is open, but binds and debuffs land. */
+  ok(flags.directAttack === true && flags.indestructibleByEffect === true && flags.pierce === true, 'with direct attack, effect-indestructibility and piercing');
+  ok(!flags.untargetable, 'and it can be targeted — Mirror Wall may halve it, Skull Dice may shrink it');
 }
 
 console.log('\n"Gains N ATK for each …" keeps counting, rather than freezing at summon');
@@ -1599,10 +1602,12 @@ console.log('\nThe second mouth hears a Special Summon too');
   const gone = act(t, FOE, { type: 'activateSpell', uid: rb.uid, targets: [small.uid] });
   ok(!gone.players[FOE].monsters.some((m) => m?.slug === 'harpie-lady'), 'anything under 2000 does not survive the revival');
 
-  // A Token is a monster being Summoned.
+  // A Token is a monster being Summoned. Multiply needs its Kuriboh down
+  // since the balance pass, so one stands ready before the horde is called.
   const k = fresh();
   k.active = FOE;
   k.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  k.players[FOE].monsters[0] = card(FOE, 'kuriboh');
   const mult = card(FOE, 'multiply');
   k.players[FOE].hand.push(mult);
   const tokens = act(k, FOE, { type: 'activateSpell', uid: mult.uid, targets: [] });
@@ -1857,7 +1862,7 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   ok(open.players[ME].field?.slug === 'toon-world', 'Toon World opens in the Field Zone');
   ok(open.players[ME].hand.some((h) => h.slug === 'toon-mermaid'), 'and fetches a Toon');
   ok(open.players[ME].deck.length === deckBefore - 1, 'and draws nothing beyond the search', `deck ${open.players[ME].deck.length}`);
-  ok(open.players[ME].lp === 4000 - 500, 'and costs 500 Life Points', `LP ${open.players[ME].lp}`);
+  ok(open.players[ME].lp === 4000 - 1000, 'and costs its printed 1000 Life Points', `LP ${open.players[ME].lp}`);
 
   /* And the book closing takes the Toons with it — the printed rule, and the
      whole counterplay story for the deck that benched 85%. */

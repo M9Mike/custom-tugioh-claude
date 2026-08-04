@@ -2,7 +2,7 @@
  * Core type definitions for the duel engine.
  *
  * House rules for this game (deliberately different from the real TCG):
- *  - 4000 Life Points, 25-card decks, 5-card opening hand.
+ *  - 8000 Life Points, 25-card decks, 5-card opening hand.
  *  - 3 Monster Zones, 1 Spell/Trap Zone, 1 separate Field Zone.
  *  - One Main Phase per turn: Draw -> Main -> Battle -> End.
  *  - Every card has a custom, anime-flavoured "overpowered" effect.
@@ -15,7 +15,7 @@ export type Face = 'up' | 'down';
 export type CardKind = 'monster' | 'spell' | 'trap';
 
 export const MONSTER_ZONES = 3;
-export const STARTING_LP = 4000;
+export const STARTING_LP = 8000;
 export const DECK_SIZE = 25;
 export const OPENING_HAND = 5;
 

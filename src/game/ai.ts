@@ -190,8 +190,8 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
 /**
  * How many turns `att` needs to finish `def` off from the current board.
  *
- * This is the number that actually decides duels here: 4000 Life Points and
- * 3000 ATK bodies mean a game is over in two or three connected attacks, so a
+ * This is the number that actually decides duels here: 8000 Life Points and
+ * 3000 ATK bodies mean a game is over in a handful of connected attacks, so a
  * player who is one turn faster wins almost regardless of card count. Scoring
  * the race directly is far more informative than adding up ATK.
  */

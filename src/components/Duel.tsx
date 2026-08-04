@@ -25,6 +25,7 @@ import {
 } from '@/game/engine';
 import { effectLabel, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
+import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
 
@@ -142,7 +143,7 @@ function PlayerBar({
   shownLp: number;
   onGrave: () => void;
 }) {
-  const lpPct = Math.max(0, Math.min(100, (shownLp / 4000) * 100));
+  const lpPct = Math.max(0, Math.min(100, (shownLp / STARTING_LP) * 100));
   return (
     <div className={`panel grain relative flex items-center gap-2 rounded px-2 py-1.5 ${isActive ? 'ring-1 ring-brass' : ''}`}>
       <div

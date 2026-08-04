@@ -188,10 +188,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'brain-control': {
-    /* 600, not the printed 800: four thousand Life Points is a two-attack game
-       and 800 is a fifth of the duel. But free was too far the other way — a
+    /* Priced when the game started at 4000 Life Points and kept at 8000: a
        stolen monster converts straight into tribute fodder or a lethal swing,
-       so the borrowing has to cost something the race can feel. */
+       so the borrowing has to cost something the race can feel — and 600 is
+       still a real bite without being the printed 800's tenth of the duel. */
     text: 'Pay 600 Life Points: take control of 1 monster your opponent controls until the end of the turn.',
     cry: 'Your mind is mine!',
     effects: [
@@ -246,10 +246,18 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   multiply: {
-    text: 'Special Summon 3 Kuriboh Tokens (300/200) to your field.',
+    /* The printed card multiplies a Kuriboh you control — it is not three
+       bodies from nothing. Unconditional, it was the fastest God line in the
+       game (one Quick-Play into three Slifer tributes), and at 8000 Life
+       Points there was always time to draw it: yami benched 80. The gate is
+       one turn of setup — summon the fluffball, then the horde — and a
+       Kuriboh Token counts, because a token of Kuriboh is a Kuriboh. */
+    text: 'Requires a face-up "Kuriboh" on your field: Special Summon 3 Kuriboh Tokens (300/200).',
+    cry: 'Multiply!',
     effects: [
       {
         trigger: 'activate',
+        condition: { requiresOnField: 'kuriboh' },
         ops: [{ op: 'summonToken', name: 'Kuriboh Token', atk: 300, def: 200, count: 3, artSlug: 'kuriboh' }],
       },
     ],
@@ -465,12 +473,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'mirror-wall': {
-    /* The wall bills its keeper now — the printed card's upkeep, priced for
-       4000 LP. Free and healing on top, it was a standing "no" to every
-       attack for the rest of the duel; at 500 a reflection the fourth "no"
-       has cost half the game, which is a real decision each time. The trap
-       path pays `cost.lp` and `activatableTraps` stops offering it when the
-       Life Points are not there. */
+    /* The wall bills its keeper now — the printed card's own upkeep. Free
+       and healing on top, it was a standing "no" to every attack for the
+       rest of the duel; at 500 a reflection every "no" spends a real slice
+       of the Life Points it is protecting. The trap path pays `cost.lp` and
+       `activatableTraps` stops offering it when the Life Points are not
+       there. */
     text: 'Stays face-up. Each time your opponent declares an attack, pay 500 Life Points: negate it, and the attacking monster loses half its ATK permanently.',
     cry: 'Your own strength, turned against you!',
     effects: [
@@ -522,16 +530,18 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a Trap, and the deck that most needs its enabler was the deck least able
        to afford it. The Field Zone is separate, so it costs him nothing now. */
     subKindOverride: 'Field',
-    text: 'Field Spell: pay 500 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, cannot be targeted by your opponent\'s effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
+    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
         trigger: 'activate',
-        cost: { lp: 500 },
-        /* The search alone. It used to also draw 2 — a Pot of Greed stapled to
-           the enabler, which meant the deck's engine card was ALSO its best
-           card-advantage card and the 500 Life Points bought three cards.
-           Finding the Toon is the whole job; the deck stands on the aura. */
+        /* The printed cost, finally chargeable: 1000 was absurd against a
+           4000 pool and is exactly right against 8000 — at the old 500 the
+           8000-point format let Pegasus open the book for pocket change and
+           he benched 75. The search alone; the draw-2 rider died earlier,
+           because a deck's engine card must not also be its best
+           card-advantage card. */
+        cost: { lp: 1000 },
         ops: [{ op: 'search', filter: { kind: 'monster', toon: true } }],
       },
       {
@@ -556,10 +566,17 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              Reported as "Toon World as a field spell should be destroyable". */
           target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
           atk: 800,
-          // The toll rides with the mischief: every direct attack a Toon
-          // declares costs Pegasus 500 Life Points, which is the printed rule
-          // and the self-balancing half of "cannot be touched".
-          grants: ['directAttack', 'directAttackTax', 'untargetable', 'pierce', 'summonSick'],
+          /* The toll rides with the mischief: every direct attack a Toon
+             declares costs Pegasus 500 Life Points — the printed rule.
+             Effect-indestructible, NOT untargetable, since the 8000 pool:
+             this engine's `untargetable` skips every opposing effect, so
+             Mirror Wall could not halve a Toon and Skull Dice could not
+             shrink one, and at 8000 Life Points an attacker no card may
+             even touch simply grinds the duel out (pegasus benched 74).
+             Nothing can DESTROY a Toon while the book is open — that is
+             the cartoon promise — but binds, debuffs and borrowings land,
+             and half the roster carries one. */
+          grants: ['directAttack', 'directAttackTax', 'indestructibleByEffect', 'pierce', 'summonSick'],
         },
       },
     ],
@@ -679,9 +696,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'dark-sanctuary': {
     /* The ghost took a coin from Barrel Dragon: the flat 300 tick was too
-       small to ever matter and too flat to feel haunted. Heads is a real bite
-       of a 4000 LP pool; tails is still the old tick. Same expected burn
-       roughly doubled, and the End Phase becomes a beat worth watching. */
+       small to ever matter and too flat to feel haunted. Heads is a real
+       bite; tails is still the old tick. Same expected burn roughly doubled,
+       and the End Phase becomes a beat worth watching. */
     text: 'Field Spell: all monsters your opponent controls lose 400 ATK and your Fiend monsters gain 300 ATK. At the end of each of your turns, flip a coin: Heads — inflict 800 damage to your opponent. Tails — inflict 300.',
     cry: 'Welcome to the Shadow Realm.',
     effects: [
