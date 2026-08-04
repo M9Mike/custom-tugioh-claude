@@ -1133,6 +1133,28 @@ the room or the refusal, whichever lands first, so a refusal reads as a refusal
 instead of a timeout naming a selector.
 
 
+**Only a God is proof against both battle and card effects.** A monster that
+cannot be removed on either axis is not a wall, it is a stalemate — the only
+honest answer to it is having no answer — and that is a Divine-Beast's
+privilege. Reported as "big shield gardna can't be not affected by card
+effects (he's not a god)", and it was true of *four* cards, two of which this
+session had just introduced. Each kept the half that makes it distinctive:
+Big Shield Gardna, Beta and Relinquished keep battle immunity and lose the
+effect half; Deepsea Warrior goes the other way, because being untouchable by
+Spells and Traps is the whole of its name, so a bigger monster is its answer.
+
+The rule is asserted over the whole card set in `npm run rules` rather than
+fixed four times and forgotten — I broke it twice in one pass, so it belongs
+in the battery, not in anybody's memory. Toons are exempt by construction
+rather than by exception: their protection is Toon World's aura, not their
+own, and Toon World is a Field Spell that can be destroyed, which is exactly
+the counterplay the rule is about.
+
+Watch the paired assertion, too: "the shield survives an attack" was first
+written with a 2500 ATK attacker against 2600 DEF, which it survives on the
+arithmetic alone — the check passed with the flag deleted. It swings a 3000
+now. yami 73→71%, pegasus 86→84%, mako 39→39%, all inside their intervals.
+
 **Never `tail -2` a probe.** Every check here prints its failures *above* the
 summary line, so piping a run through `tail -2` keeps the verdict and throws
 away the only thing that explains it. Done exactly that on a production

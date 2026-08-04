@@ -1796,11 +1796,11 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   const beta = card(ME, 'beta-the-magnet-warrior');
   s.players[ME].monsters = [beta, card(ME, 'alpha-the-magnet-warrior'), null];
   ok(effAtk(s, beta, ME) === 1700 + 800, 'Beta is 800 stronger with a Rock beside it', String(effAtk(s, beta, ME)));
-  ok(!!effFlags(s, beta, ME).indestructibleByEffect, 'and effects cannot destroy it either');
+  ok(!!effFlags(s, beta, ME).indestructibleByBattle, 'and battle cannot destroy it either');
   const solo = fresh();
   const lonely = card(ME, 'beta-the-magnet-warrior');
   solo.players[ME].monsters[0] = lonely;
-  ok(!effFlags(solo, lonely, ME).indestructibleByEffect, 'CONTROL: alone it is an ordinary monster');
+  ok(!effFlags(solo, lonely, ME).indestructibleByBattle, 'CONTROL: alone it is an ordinary monster');
 
   // Gazelle and Berfomet each make the other bigger.
   const b = fresh();
@@ -1810,15 +1810,30 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   ok(effAtk(b, gaz, ME) === 1500 + 800 + 800, 'Gazelle takes his own 800 and Berfomet’s', String(effAtk(b, gaz, ME)));
   ok(effAtk(b, ber, ME) === 1400 + 800, 'and Berfomet takes his own', String(effAtk(b, ber, ME)));
 
-  // Big Shield Gardna walks out of a Dark Hole.
-  const d = fresh();
-  d.players[ME].monsters[0] = card(ME, 'big-shield-gardna');
-  d.players[FOE].monsters[0] = card(FOE, 'harpie-lady');
+  /* Big Shield Gardna stops attacks and nothing else. It used to walk out of
+     a Dark Hole too, which made it unanswerable — a wall proof on both axes
+     is a stalemate, and that is a God's privilege. */
+  const d = fresh('battle');
+  d.active = FOE;
+  const shield = card(ME, 'big-shield-gardna');
+  shield.position = 'def';
+  d.players[ME].monsters[0] = shield;
+  /* 3000 ATK against 2600 DEF, so the shield is only standing afterwards
+     because of the flag. A 2500 attacker would have bounced off the DEF on
+     its own and the assertion would have passed with the flag deleted. */
+  const hitter = card(FOE, 'blue-eyes-white-dragon');
+  d.players[FOE].monsters[0] = hitter;
+  const swung = act(d, FOE, { type: 'attack', uid: hitter.uid, targetUid: shield.uid });
+  ok(swung.players[ME].monsters.some((m) => m?.slug === 'big-shield-gardna'), 'the shield survives a 3000 ATK attack');
+
+  const hole = fresh();
+  hole.players[ME].monsters[0] = card(ME, 'big-shield-gardna');
+  hole.players[FOE].monsters[0] = card(FOE, 'harpie-lady');
   const dh = card(ME, 'dark-hole');
-  d.players[ME].hand.push(dh);
-  const after = act(d, ME, { type: 'activateSpell', uid: dh.uid, targets: [] });
-  ok(after.players[ME].monsters.some((m) => m?.slug === 'big-shield-gardna'), 'the shield survives a Dark Hole');
-  ok(!after.players[FOE].monsters.some(Boolean), 'and everything else does not');
+  hole.players[ME].hand.push(dh);
+  const after = act(hole, ME, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  ok(!after.players[ME].monsters.some((m) => m?.slug === 'big-shield-gardna'), 'but a Dark Hole takes it now');
+  ok(!after.players[FOE].monsters.some(Boolean), 'along with everything else');
 
   // Buster Blader counts the dragons already dead.
   const bb = fresh();
@@ -1829,6 +1844,61 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   ok(effAtk(bb, blader, ME) === 2600 + 800, 'a Dragon in their Graveyard is 800 more', String(effAtk(bb, blader, ME)));
   bb.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
   ok(effAtk(bb, blader, ME) === 2600 + 1600, 'and one on the field is 800 more again', String(effAtk(bb, blader, ME)));
+}
+
+console.log('\nOnly a God is proof against both battle and card effects');
+{
+  /* A monster that cannot be removed on either axis is not a wall, it is a
+     stalemate — the only honest answer to it is having no answer. That is a
+     Divine-Beast's privilege and nothing else's.
+     Reported as "big shield gardna can't be not affected by card effects
+     (he's not a god)", and it was true of four cards, two of which this
+     session had just introduced. So the rule is asserted over the whole card
+     set rather than fixed four times and forgotten.
+     Toons are exempt by construction, not by exception: their protection is
+     Toon World's aura, not their own, and Toon World is a Field Spell that
+     can be destroyed — which is the counterplay this rule is really about. */
+  const offenders: string[] = [];
+  for (const def of Object.values(CARDS)) {
+    if (def.kind !== 'monster' || def.type === 'Divine-Beast') continue;
+    const granted = new Set<string>();
+    for (const eff of def.effects) {
+      for (const g of eff.aura?.grants ?? []) granted.add(g);
+      for (const op of eff.ops) {
+        if (op.op === 'indestructibleByBattle' || op.op === 'indestructibleByEffect' || op.op === 'untargetable') {
+          granted.add(op.op);
+        }
+        for (const g of ('grants' in op ? op.grants ?? [] : [])) granted.add(g);
+      }
+    }
+    const battleProof = granted.has('indestructibleByBattle');
+    const effectProof = granted.has('indestructibleByEffect') || granted.has('untargetable');
+    if (battleProof && effectProof) offenders.push(`${def.name} {${[...granted].join(', ')}}`);
+  }
+  ok(offenders.length === 0, 'no monster below a God is immune to both', offenders.join(' · '));
+
+  // And the four that were, one by one, so a rename cannot quietly drop them.
+  const flags = (slug: string) => {
+    const s = fresh();
+    const c = card(ME, slug);
+    s.players[ME].monsters[0] = c;
+    // Some grant on summon rather than continuously; drive that first.
+    const f = effFlags(s, c, ME);
+    return f;
+  };
+  for (const slug of ['big-shield-gardna', 'beta-the-magnet-warrior']) {
+    const f = flags(slug);
+    ok(!f.indestructibleByEffect && !f.untargetable, `${CARDS[slug].name} is not immune to effects`);
+  }
+  ok(!!flags('big-shield-gardna').indestructibleByBattle, 'CONTROL: Big Shield Gardna is still a wall against battle');
+
+  // A God still is, which is the whole point of the exemption.
+  {
+    const s = fresh();
+    const god = card(ME, 'slifer-the-sky-dragon');
+    s.players[ME].monsters[0] = god;
+    ok(!!effFlags(s, god, ME).untargetable, 'CONTROL: a God is still untouchable');
+  }
 }
 
 console.log('\nA God that did not pay for itself does not stay');

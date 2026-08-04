@@ -725,10 +725,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   relinquished: {
+    /* Battle only. This one was the worst of the four: it takes your best
+       monster, becomes it, pierces, and could then be removed by nothing on
+       either axis — the Ritual Spell it costs buys a body, not an answer to
+       the whole game. Wearing someone's Blue-Eyes is quite enough. */
     text:
       'When this card is summoned: absorb 1 monster your opponent controls — this card gains its ATK and DEF, ' +
-      'and the monster is banished. This card cannot be destroyed by battle or by card effects, and its battle ' +
-      'damage pierces defence.',
+      'and the monster is banished. This card cannot be destroyed by battle, and its battle damage pierces defence.',
     cry: 'Your monster is mine now, Yugi-boy.',
     effects: [
       {
@@ -741,7 +744,6 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'absorb', target: OPP_PICK },
           { op: 'indestructibleByBattle', duration: 'permanent' },
-          { op: 'indestructibleByEffect', duration: 'permanent' },
           { op: 'pierce', duration: 'permanent' },
         ],
       },
@@ -1066,14 +1068,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'deepsea-warrior': {
-    text: 'This card cannot be targeted by Spell or Trap effects and cannot be destroyed by battle.',
+    /* The other way round from the three above: this one keeps the effect
+       half, because being untouchable by Spells and Traps is the whole of its
+       name, and gives up battle immunity — so the answer is simply a bigger
+       monster. The text also said "Spell or Trap effects" while the grant is
+       `untargetable`, which in this engine no opposing effect gets past at
+       all; it now says what it does rather than the narrower thing. */
+    text: "This card cannot be targeted or destroyed by your opponent's card effects.",
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'untargetable', duration: 'permanent' },
-          { op: 'indestructibleByBattle', duration: 'permanent' },
-        ],
+        ops: [{ op: 'untargetable', duration: 'permanent' }],
       },
     ],
   },
@@ -1210,9 +1215,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'beta-the-magnet-warrior': {
     /* The immovable one. Blow the trio apart and Beta drags a piece back out
        of the Graveyard — magnets do not stay separated. */
+    /* Battle only, for the same reason as Big Shield Gardna. The condition
+       made it feel earned, but while it held Beta could not be removed by
+       anything at all — and a conditional stalemate is still a stalemate. */
     text:
       'When this card is Normal Summoned: Special Summon 1 Magnet Warrior from your Graveyard. ' +
-      'While you control another Rock monster, this card gains 800 ATK and cannot be destroyed by battle or by card effects.',
+      'While you control another Rock monster, this card gains 800 ATK and cannot be destroyed by battle.',
     cry: 'Steel holds!',
     effects: [
       {
@@ -1231,7 +1239,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         condition: { controlsOtherOfType: 'Rock' },
         ops: [],
-        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle', 'indestructibleByEffect'] },
+        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle'] },
       },
     ],
   },
@@ -1486,16 +1494,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'big-shield-gardna': {
-    /* A wall, and only a wall. It survives the Dark Hole and the Mirror Force
-       that clear everything else, which is what buys the turn this deck needs
-       to stand three bodies up — and it is still a 100 ATK monster, so it
-       never threatens anything on its own. */
-    text: "This card cannot be destroyed by battle or by your opponent's card effects.",
+    /* A wall, and only a wall — proof against battle and nothing else.
+       Immunity to *both* battle and card effects is a God's privilege: a
+       monster nothing on either axis can remove is not a wall, it is a
+       stalemate, and the only honest answer to it would be having no answer.
+       A Dark Hole or a Mirror Force takes it now, which is the counterplay
+       that makes 2600 DEF fair rather than final. */
+    text: 'This card cannot be destroyed by battle.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle', 'indestructibleByEffect'] },
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
       },
     ],
   },
