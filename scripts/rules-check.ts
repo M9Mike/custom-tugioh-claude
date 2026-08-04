@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, legalAttackTargets, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
@@ -1760,6 +1760,79 @@ console.log('\nAlpha! Beta! Gamma! — no Fusion card required');
     type: 'fusionSummon', extraUid: champ.uid, materials: [gaia.uid, drag.uid], zone: 2, position: 'atk',
   });
   ok(!!noPoly.error, 'CONTROL: a normal Fusion still needs Polymerization', noPoly.error ?? 'accepted');
+}
+
+console.log('\nPolymerization needs somewhere to be activated');
+{
+  /* Reported from a real duel: a Fusion went through with the Spell/Trap Zone
+     full. Spending the Polymerization *is* activating a Normal Spell, and
+     every other Spell in the game asks `p.spellTrap === null` — the Fusion
+     route asked nothing at all, so it was the one way to play a Spell out of
+     a zone you did not have. */
+  const blocked = () => {
+    const s = fresh();
+    s.players[ME].monsters = [card(ME, 'gaia-the-fierce-knight'), card(ME, 'curse-of-dragon'), null];
+    s.players[ME].extra = [card(ME, 'gaia-the-dragon-champion')];
+    s.players[ME].hand = [card(ME, 'polymerization')];
+    return s;
+  };
+
+  const full = blocked();
+  // A Continuous Spell sitting face-up: the zone is genuinely taken.
+  full.players[ME].spellTrap = { ...card(ME, 'the-dark-door'), face: 'up' as const };
+  const mats = full.players[ME].monsters.filter(Boolean).map((m) => m!.uid);
+  const champ = full.players[ME].extra[0];
+  const denied = applyAction(full, ME, {
+    type: 'fusionSummon', extraUid: champ.uid, materials: mats, zone: 2, position: 'atk',
+  });
+  ok(!!denied.error, 'a full Spell/Trap Zone refuses the Fusion', denied.error ?? 'accepted');
+  ok(/spell\/trap zone/i.test(denied.error ?? ''), 'and says so, rather than blaming the materials', denied.error ?? '');
+  ok(!denied.state.players[ME].monsters.some((m) => m?.slug === 'gaia-the-dragon-champion'),
+    'and the Fusion stays in the Extra Deck');
+  ok(denied.state.players[ME].hand.some((h) => h.slug === 'polymerization'),
+    'and the Polymerization is not spent');
+  // The button and the AI read the same answer, so neither may offer it.
+  ok(!fusionOptions(full, ME).length, 'and it is not offered as an option at all');
+
+  /* A *face-down* Set card takes the zone just the same — that is the version
+     a player actually hits, because a Set trap is the normal state of that
+     zone and it is easy to forget it is there. */
+  const set = blocked();
+  set.players[ME].spellTrap = { ...card(ME, 'mirror-force'), face: 'down' as const };
+  const setMats = set.players[ME].monsters.filter(Boolean).map((m) => m!.uid);
+  const deniedSet = applyAction(set, ME, {
+    type: 'fusionSummon', extraUid: set.players[ME].extra[0].uid, materials: setMats, zone: 2, position: 'atk',
+  });
+  ok(!!deniedSet.error, 'a face-down Set card blocks it too', deniedSet.error ?? 'accepted');
+
+  // CONTROL: the same board with the zone free is the summon working normally.
+  const free = blocked();
+  const freeMats = free.players[ME].monsters.filter(Boolean).map((m) => m!.uid);
+  const allowed = applyAction(free, ME, {
+    type: 'fusionSummon', extraUid: free.players[ME].extra[0].uid, materials: freeMats, zone: 2, position: 'atk',
+  });
+  ok(allowed.state.players[ME].monsters.some((m) => m?.slug === 'gaia-the-dragon-champion'),
+    'CONTROL: with the zone free it fuses exactly as before', allowed.error ?? '');
+
+  /* CONTROL: a free assembly spends no card, so it wants no zone. Valkyrion
+     coming together with the Spell/Trap Zone full is correct and must stay
+     that way — the rule is about activating a Spell, not about fusing. */
+  const magnets = fresh();
+  const ma = card(ME, 'alpha-the-magnet-warrior');
+  const mb = card(ME, 'beta-the-magnet-warrior');
+  const mg = card(ME, 'gamma-the-magnet-warrior');
+  magnets.players[ME].monsters = [ma, mb, mg];
+  magnets.players[ME].extra = [card(ME, 'valkyrion-the-magna-warrior')];
+  magnets.players[ME].spellTrap = { ...card(ME, 'the-dark-door'), face: 'up' as const };
+  const assembled = applyAction(magnets, ME, {
+    type: 'fusionSummon',
+    extraUid: magnets.players[ME].extra[0].uid,
+    materials: [ma.uid, mb.uid, mg.uid],
+    zone: 0,
+    position: 'atk',
+  });
+  ok(assembled.state.players[ME].monsters.some((m) => m?.slug === 'valkyrion-the-magna-warrior'),
+    'CONTROL: a free assembly still combines with the zone full', assembled.error ?? '');
 }
 
 console.log('\nOne Normal Summon stands the whole court up');

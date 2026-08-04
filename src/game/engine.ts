@@ -2064,6 +2064,13 @@ function fusionSources(state: DuelState, pid: PlayerId) {
     field: p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'),
     withHand: [...p.monsters.filter((m): m is CardInstance => !!m && m.face === 'up'), ...p.hand],
     polyIndex: p.hand.findIndex((h) => h.slug === 'polymerization'),
+    /* Spending the Polymerization *is* activating a Normal Spell, so it needs
+       somewhere to be activated. Every other Spell in the game asks
+       `p.spellTrap === null` and this route asked nothing at all — so with a
+       Continuous Spell, an Equip or even a face-down Set already sitting in
+       the one zone, a Fusion still went through. Reported from a real duel.
+       A free assembly is unaffected: no card is spent, so no zone is wanted. */
+    stFree: p.spellTrap === null,
   };
 }
 
@@ -2101,12 +2108,12 @@ export function fusionRoute(
   const def = CARDS[slug];
   const recipe = def?.fusionMaterials;
   if (!recipe?.length) return null;
-  const { field, withHand, polyIndex } = fusionSources(state, pid);
+  const { field, withHand, polyIndex, stFree } = fusionSources(state, pid);
   if (def.fusionFree) {
     const onField = matchRecipe(recipe, field, prefer);
     if (onField) return { materials: onField, spendPoly: -1 };
   }
-  if (polyIndex < 0) return null;
+  if (polyIndex < 0 || !stFree) return null;
   const anywhere = matchRecipe(recipe, withHand, prefer);
   return anywhere ? { materials: anywhere, spendPoly: polyIndex } : null;
 }
@@ -2456,6 +2463,11 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!route) {
         const free = !!CARDS[ex.slug]?.fusionFree;
         const noPoly = p.hand.every((h) => h.slug !== 'polymerization');
+        /* Name the reason it really failed. A full Spell/Trap Zone used to
+           come back as "You do not have the Fusion Materials", which is a lie
+           about the cards in your hand and sends you looking in the wrong
+           place. Order matters: the zone is only the answer once a
+           Polymerization is actually being spent. */
         return {
           state: prev,
           error:
@@ -2463,7 +2475,9 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
               ? 'All three must be on the field, or use Polymerization to bring one from your hand.'
               : noPoly
                 ? 'You need Polymerization.'
-                : 'You do not have the Fusion Materials.',
+                : p.spellTrap
+                  ? 'Your Spell/Trap Zone is occupied — Polymerization has nowhere to be activated.'
+                  : 'You do not have the Fusion Materials.',
         };
       }
       const chosen = route.materials;

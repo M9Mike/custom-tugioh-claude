@@ -1204,11 +1204,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         acts.push({
           label: 'Activate',
           disabled: !canAct,
+          /* The zone is asked about first, including for Polymerization.
+             Spending it is activating a Normal Spell, so a full zone refuses
+             the Fusion and the button disappears with it — and the old hint
+             said "Use the Fusion button" regardless, pointing at something
+             that is no longer on screen. */
           hint: !canAct
-            ? handDef.slug === 'polymerization'
-              ? 'Use the Fusion button'
-              : mine.spellTrap
-                ? 'Spell/Trap Zone is full'
+            ? mine.spellTrap
+              ? 'Spell/Trap Zone is full'
+              : handDef.slug === 'polymerization'
+                ? 'Use the Fusion button'
                 : 'Not available now'
             : undefined,
           run: () => beginTargeting('spell', handCard.uid, handCard.slug, 'activate'),

@@ -1301,6 +1301,29 @@ prefers the free route because it costs nothing, and is asked by the Fusion
 button, the AI and the action alike; `matchRecipe` replaced two copies of the
 material matching that were already drifting apart.
 
+**And spending the Polymerization is activating a Spell.** So it needs
+somewhere to be activated — and the Fusion route was the one path in the game
+that never asked. Every other Spell goes through `p.spellTrap === null`;
+this one checked only that a Polymerization was in hand, so with a Continuous
+Spell, an Equip, or even a face-down Set already in the single zone, the
+Fusion went through anyway. Reported from a real duel. The gate is one line
+in `fusionRoute`, which is why the button, the AI and the action all got it at
+once — and why the button simply stops offering the Fusion rather than
+offering it and then refusing.
+
+A free assembly is deliberately exempt: no card is spent, so no zone is
+wanted, and Valkyrion still combines with the zone full. Both directions are
+pinned, and the refusal names the zone rather than blaming the materials —
+"You do not have the Fusion Materials" is a lie about your hand that sends you
+looking in the wrong place. The hand sheet's hint was wrong the same way: it
+said "Use the Fusion button" for Polymerization whatever the board looked
+like, so with the zone full it pointed at a button that was no longer on
+screen. It asks about the zone first now.
+
+Measured before believing it: six assertions go red with the gate disabled and
+both CONTROLs stay green. No balance change — pegasus 85% ±7, and kaiba
+measured 55% ±10 on both sides of the fix.
+
 **A picker that ignores the filter turns a decision into a chore.** Valkyrion
 coming apart is "Special Summon Alpha, Beta and Gamma" — three named cards,
 three taken, nothing to decide — and it opened a modal showing the *entire*
