@@ -1155,6 +1155,23 @@ written with a 2500 ATK attacker against 2600 DEF, which it survives on the
 arithmetic alone — the check passed with the flag deleted. It swings a 3000
 now. yami 73→71%, pegasus 86→84%, mako 39→39%, all inside their intervals.
 
+**Take a card's identity away and you owe it one back.** Relinquished lost
+immunity to card effects to the rule above and was left with nothing in its
+place, which is a nerf rather than a redesign. The printed card's most famous
+clause came in instead: *any battle damage you take from a battle involving
+this card is dealt to your opponent as well.* Blanket immunity is the absence
+of an answer; the mirror is a reason not to attack that the other player gets
+to weigh, and it is the whole flavour of the card — the monster it swallowed
+is the shield, and what gets through goes back across the table.
+
+`reflectBattleDamage` only ever *adds*: it never spares its own controller,
+or it would be a third kind of immunity and straight back into the rule it
+was written to escape. That is pinned by name — "CONTROL: the mirror adds
+damage, it does not absorb it". All four battle-damage sites route through
+one `battleHit`, which asks the *hurt* player's own monster in that battle,
+so a direct attack (no monster on that side) reflects nothing by
+construction. Pegasus is 84% ±7, unchanged by the swap.
+
 **A dead renderer is not a failed assertion.** `npm run rejoin` failed against
 production with "typing your own code puts you back in your seat — neither",
 which reads as the feature being broken. It was not: WebKit had dropped its

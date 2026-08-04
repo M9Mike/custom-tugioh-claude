@@ -725,13 +725,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   relinquished: {
-    /* Battle only. This one was the worst of the four: it takes your best
-       monster, becomes it, pierces, and could then be removed by nothing on
-       either axis — the Ritual Spell it costs buys a body, not an answer to
-       the whole game. Wearing someone's Blue-Eyes is quite enough. */
+    /* Immunity to card effects went back to the Gods, and the mirror came in
+       its place — which is the printed card's most famous clause and a far
+       better one. Blanket immunity is the absence of an answer; this is a
+       reason not to attack, which the other player gets to weigh. The
+       monster it swallowed is the shield, and what still gets through goes
+       straight back across the table. */
     text:
       'When this card is summoned: absorb 1 monster your opponent controls — this card gains its ATK and DEF, ' +
-      'and the monster is banished. This card cannot be destroyed by battle, and its battle damage pierces defence.',
+      'and the monster is banished. This card cannot be destroyed by battle, and its battle damage pierces defence. ' +
+      'Any battle damage you take from a battle involving this card is dealt to your opponent as well.',
     cry: 'Your monster is mine now, Yugi-boy.',
     effects: [
       {
@@ -745,6 +748,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'absorb', target: OPP_PICK },
           { op: 'indestructibleByBattle', duration: 'permanent' },
           { op: 'pierce', duration: 'permanent' },
+          { op: 'reflectBattleDamage', duration: 'permanent' },
         ],
       },
     ],

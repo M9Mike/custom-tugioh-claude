@@ -250,6 +250,7 @@ export type Op =
   | { op: 'attackAllMonsters' }
   | { op: 'directAttack'; duration: Duration }
   | { op: 'halvedBattleDamage'; duration: Duration }
+  | { op: 'reflectBattleDamage'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
   | { op: 'preventBattleDamage'; who: Side; duration: Duration }
   | { op: 'indestructibleByBattle'; duration: Duration }
@@ -320,7 +321,17 @@ export type EquipGrant =
    * unblockable 1800 every turn — comfortably the best body in the game for
    * what it costs.
    */
-  | 'halvedBattleDamage';
+  | 'halvedBattleDamage'
+  /**
+   * Battle damage this monster's controller takes, in a battle this monster is
+   * in, is dealt to the other player as well.
+   *
+   * Relinquished's mirror: the monster it swallowed is the shield, and what
+   * gets through to you goes straight back across the table. It only ever
+   * *adds* damage — it never spares its own controller — so it is a deterrent
+   * against engaging, not another form of immunity.
+   */
+  | 'reflectBattleDamage';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -429,6 +440,8 @@ export interface CardFlags {
   attackAll?: boolean;
   /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
   halvedBattleDamage?: boolean;
+  /** See the `reflectBattleDamage` grant. */
+  reflectBattleDamage?: boolean;
   noBattleDamage?: boolean;
   /** Pinned down by a card on the field, not by a timed lock. */
   cannotAttack?: boolean;

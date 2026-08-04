@@ -342,6 +342,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
+  if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
   return merged;
 }
 
@@ -1129,6 +1130,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'directAttack':
         applyFlag(ctx.source, 'directAttack', true, op.duration);
         break;
+      case 'reflectBattleDamage':
+        applyFlag(ctx.source, 'reflectBattleDamage', true, op.duration);
+        break;
       case 'halvedBattleDamage':
         applyFlag(ctx.source, 'halvedBattleDamage', true, op.duration);
         break;
@@ -1621,17 +1625,35 @@ function resolveBattle(state: DuelState) {
   const atk = effAtk(state, attacker, controller);
   const flags = effFlags(state, attacker, controller);
 
+  /**
+   * Battle damage, mirrored back if the hurt player's own monster in this
+   * battle says so.
+   *
+   * Relinquished swallowed a monster and uses it as a shield: what still gets
+   * through to its controller is dealt to the other player as well. It only
+   * ever *adds* — the controller is never spared — so it is a reason not to
+   * engage rather than another kind of immunity, which is the whole point
+   * after a God's privilege was taken back off it.
+   */
+  const battleHit = (who: PlayerId, amount: number, theirMonster: CardInstance) => {
+    dealDamage(state, who, amount, true);
+    if (state.winner || amount <= 0) return;
+    if (!effFlags(state, theirMonster, who).reflectBattleDamage) return;
+    log(state, `${displayName(theirMonster)} throws the blow back.`, 'effect', who);
+    dealDamage(state, other(who), amount, true);
+  };
+
   if (target.position === 'atk') {
     const tAtk = effAtk(state, target, defender);
     if (atk > tAtk) {
-      dealDamage(state, defender, battleDamageFrom(state, attacker, controller, atk - tAtk), true);
+      battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) {
         fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
         fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
       }
     } else if (atk < tAtk) {
-      dealDamage(state, controller, tAtk - atk, true);
+      battleHit(controller, tAtk - atk, attacker);
       destroyCard(state, attacker, true, { state, controller: defender, source: target, targets: [], cursor: 0, trig: { attackerUid: target.uid } });
     } else {
       log(state, 'Both monsters are destroyed!', 'attack');
@@ -1641,11 +1663,11 @@ function resolveBattle(state: DuelState) {
   } else {
     const tDef = effDef(state, target, defender);
     if (atk > tDef) {
-      if (flags.pierce) dealDamage(state, defender, battleDamageFrom(state, attacker, controller, atk - tDef), true);
+      if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
     } else if (atk < tDef) {
-      dealDamage(state, controller, tDef - atk, true);
+      battleHit(controller, tDef - atk, attacker);
       log(state, `${displayName(target)} holds firm.`, 'attack', defender);
     } else {
       log(state, `${displayName(target)} holds firm.`, 'attack', defender);

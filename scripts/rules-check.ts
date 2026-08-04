@@ -1846,6 +1846,47 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   ok(effAtk(bb, blader, ME) === 2600 + 1600, 'and one on the field is 800 more again', String(effAtk(bb, blader, ME)));
 }
 
+console.log('\nRelinquished throws the blow back');
+{
+  /* It lost immunity to card effects with the rule below, and this came in its
+     place — the printed card's most famous clause, and a far better one:
+     blanket immunity is the absence of an answer, this is a reason not to
+     attack that the other player gets to weigh. */
+  const s = fresh('battle');
+  s.active = FOE;
+  const rel = card(ME, 'relinquished');
+  rel.atkMod = 1000; // as though it had swallowed something; base is 0/0
+  s.players[ME].monsters[0] = rel;
+  const beater = card(FOE, 'blue-eyes-white-dragon'); // 3000
+  s.players[FOE].monsters[0] = beater;
+  const before = { me: s.players[ME].lp, foe: s.players[FOE].lp };
+  const hit = act(s, FOE, { type: 'attack', uid: beater.uid, targetUid: rel.uid });
+  const mine = before.me - hit.players[ME].lp;
+  const theirs = before.foe - hit.players[FOE].lp;
+  ok(mine === 2000, 'its controller still takes the blow', `${mine}`);
+  ok(theirs === 2000, 'and the attacker takes exactly the same', `${theirs}`);
+  ok(hit.players[ME].monsters.some((m) => m?.slug === 'relinquished'), 'and Relinquished is still standing');
+
+  /* The mirror only ever *adds*. Sparing its own controller would be a third
+     kind of immunity, which is the thing the rule below just took away. */
+  ok(mine > 0, 'CONTROL: the mirror adds damage, it does not absorb it');
+
+  // CONTROL: an ordinary monster in the same position reflects nothing.
+  const plain = fresh('battle');
+  plain.active = FOE;
+  const wall = card(ME, 'big-shield-gardna');
+  plain.players[ME].monsters[0] = wall;
+  plain.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+  const b2 = plain.players[FOE].lp;
+  const plainHit = act(plain, FOE, {
+    type: 'attack',
+    uid: plain.players[FOE].monsters[0]!.uid,
+    targetUid: wall.uid,
+  });
+  ok(plainHit.players[FOE].lp === b2, 'CONTROL: an ordinary monster throws nothing back',
+    `${b2 - plainHit.players[FOE].lp} came back`);
+}
+
 console.log('\nOnly a God is proof against both battle and card effects');
 {
   /* A monster that cannot be removed on either axis is not a wall, it is a
