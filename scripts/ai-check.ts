@@ -130,14 +130,18 @@ const CASES: Case[] = [
     want: (plan) => !did(plan, 'attack'),
   },
   {
-    name: 'will not attack into a face-up Shadow Spell',
-    because: 'same shape as Mirror Wall — negated, and the attacker loses 800 ATK for good',
+    /* Shadow Spell became a one-shot in the balance pass, so a face-up copy
+       is a SPENT one — `activatableTraps` only offers a face-up trap that is
+       `reusable`. The meaningful pin flipped direction with it: an empty
+       threat must not scare the AI off a clean kill. */
+    name: 'attacks past a spent face-up Shadow Spell',
+    because: 'a face-up one-shot trap cannot fire again; refusing the kill would be fearing a ghost',
     build: (s) => {
       s.players[ME].monsters[0] = card(ME, 'megazowler');
-      s.players[FOE].monsters[0] = card(FOE, 'aqua-madoor');
+      s.players[FOE].monsters[0] = card(FOE, 'hitotsu-me-giant');
       s.players[FOE].spellTrap = card(FOE, 'shadow-spell');
     },
-    want: (plan) => !did(plan, 'attack'),
+    want: (plan) => did(plan, 'attack'),
   },
   {
     /* Straight off a duel log the owner sent: Mai at 2350 Life Points swung a
@@ -255,11 +259,11 @@ const CASES: Case[] = [
   {
     name: 'reads the effective stat, not the printed one',
     duelist: 'rex',
-    because: 'Two-Headed King Rex prints 1600 and is 2200 with three Dinosaurs in the Graveyard',
+    because: 'Two-Headed King Rex prints 1600 and is 2500 with three Dinosaurs in the Graveyard',
     build: (s) => {
       s.players[ME].monsters[0] = card(ME, 'two-headed-king-rex');
       for (const slug of ['uraby', 'trakodon', 'megazowler']) s.players[ME].grave.push(card(ME, slug));
-      s.players[FOE].monsters[0] = card(FOE, 'la-jinn-the-mystical-genie-of-the-lamp');
+      s.players[FOE].monsters[0] = card(FOE, 'garoozis');
     },
     want: (plan) => did(plan, 'attack'),
   },

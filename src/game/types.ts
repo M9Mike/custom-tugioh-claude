@@ -302,7 +302,7 @@ export type Op =
    * opponent's Spell and made getting your own Monster Reborn back impossible
    * while they had anything at all.
    */
-  | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' }
+  | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' | 'own' }
   | { op: 'coinFlip'; heads: Op[]; tails: Op[] }
   | { op: 'diceRoll'; perPip: Op[] }
   | { op: 'forceDefense'; target: Selector }
@@ -340,6 +340,20 @@ export type EquipGrant =
    * what it costs.
    */
   | 'halvedBattleDamage'
+  /**
+   * Attacking directly costs this monster's controller 500 Life Points per
+   * attack — the Toon toll. Toon World grants it beside `directAttack`, so
+   * the cartoon mischief is paid for out of Pegasus's own Life Points, which
+   * is both the printed rule and what keeps a board of direct attackers from
+   * simply ending the game for free.
+   */
+  | 'directAttackTax'
+  /**
+   * Cannot attack the turn it was Summoned — the other printed Toon rule.
+   * A Toon arrives for free under Toon World; the pause before it may swing
+   * is the turn the opponent is given to answer it.
+   */
+  | 'summonSick'
   /**
    * Battle damage this monster's controller takes, in a battle this monster is
    * in, is dealt to the other player as well.
@@ -458,6 +472,10 @@ export interface CardFlags {
   attackAll?: boolean;
   /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
   halvedBattleDamage?: boolean;
+  /** Attacking directly costs the controller 500 LP — see `EquipGrant`. */
+  directAttackTax?: boolean;
+  /** Cannot attack the turn it was Summoned — see `EquipGrant`. */
+  summonSick?: boolean;
   /** See the `reflectBattleDamage` grant. */
   reflectBattleDamage?: boolean;
   noBattleDamage?: boolean;

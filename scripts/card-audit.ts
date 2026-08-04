@@ -418,9 +418,24 @@ function stockGraveFor(s: DuelState, eff: CardEffect) {
   }
 }
 
+/**
+ * And the hand, for `specialSummon from hand`. The deck and the Graveyard were
+ * stocked and the hand never was — invisible while every hand-summoner also
+ * read the deck, and exposed the day Machine Conversion Factory shipped small
+ * Machines out of the hand alone.
+ */
+function stockHandFor(s: DuelState, eff: CardEffect) {
+  for (const op of eff.ops) {
+    if (op.op !== 'specialSummon' || !summonsFrom(op, 'hand')) continue;
+    const match = matchCard(op.filter);
+    if (match) s.players[ME].hand.push(mint(s, ME, match.slug));
+  }
+}
+
 function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   stockDeckFor(s, eff);
   stockGraveFor(s, eff);
+  stockHandFor(s, eff);
   // Effects that reach across the field need a legal victim over there, and a
   // free zone over here to put it in.
   for (const op of eff.ops) {

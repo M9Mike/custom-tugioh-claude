@@ -50,9 +50,13 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   const p = state.players.p1;
   p.spellTrap = null;
   p.field = null;
-  const spare = (n: number): CardInstance => ({ ...p.deck[0], uid: `spare${n}`, slug: 'kuriboh', face: 'up' });
-  // Two bodies to tribute, and spare cards to discard.
-  p.monsters = [spare(1), spare(2), null];
+  const spare = (n: number, s = 'kuriboh'): CardInstance => ({ ...p.deck[0], uid: `spare${n}`, slug: s, face: 'up' });
+  /* Two bodies to tribute, and spare cards to discard. One of the bodies is a
+     Winged Beast: a card may be gated on controlling a type — Phoenix
+     Formation wants a Harpie flying it — and a probe that owns only Kuriboh
+     reports such a card unplayable when it is merely alone. The same fault
+     as probing from an empty field, one clause over. */
+  p.monsters = [spare(1), spare(2, 'harpie-lady'), null];
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];
 

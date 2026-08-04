@@ -93,7 +93,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'alligator-s-sword-dragon': {
-    text: "Fusion: Alligator's Sword + Baby Dragon. When Fusion Summoned: destroy 1 monster your opponent controls and gain Life Points equal to half its ATK.",
+    /* The underdog's fusion earns its two cards now: it arrives clearing a
+       path, pumped, and goes straight for the face the turn it lands — the
+       anime play, where the dragon leaps OVER the blockers. The rider stays
+       a rider; the arrival is the payoff. */
+    text: "Fusion: Alligator's Sword + Baby Dragon. When Fusion Summoned: destroy 1 monster your opponent controls, gain 700 Life Points, and this card gains 400 ATK and can attack directly this turn.",
+    cry: 'Over their heads!',
     fusionMaterials: ["alligator-s-sword", 'baby-dragon'],
     effects: [
       {
@@ -102,6 +107,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'heal', amount: 700, to: 'own' },
           { op: 'destroy', target: OPP_PICK },
+          { op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' },
+          { op: 'directAttack', duration: 'turn' },
         ],
       },
     ],
@@ -130,27 +137,47 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'dark-magician': {
-    text: 'The ultimate wizard in terms of attack and defense. When Summoned: it gains 200 ATK for each card in your Graveyard. Once per turn: destroy every Spell and Trap your opponent controls.',
+    /* The full wipe fires once, on arrival — the anime beat is Dark Magic
+       Attack blasting the backrow the moment he appears. As a free ignition it
+       repeated every turn forever, and in a one-Spell/Trap-Zone format that
+       meant the opponent could never keep a Set card or a Field Spell again:
+       whole archetypes (Toon World, Mirror Wall, Tornado Wall) stopped
+       existing the moment he resolved, in both decks that run him. The
+       ignition keeps him the best backrow answer in the game — one chosen
+       card, every turn — but the opponent gets to rebuild, and timing his
+       summon becomes the skill. */
+    text: 'The ultimate wizard in terms of attack and defense. When Summoned: it gains 200 ATK for each card in your Graveyard, and destroys every Spell, Trap and Field card your opponent controls. While you control "Dark Magician Girl", this card cannot be targeted by your opponent\'s effects. Once per turn: destroy 1 Spell or Trap your opponent controls.',
     cry: 'Dark Magic Attack!',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' }],
+        ops: [
+          { op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
+        ],
+      },
+      {
+        /* The pair protect each other — the reciprocal of her aura. Master
+           and apprentice standing together is the formation the deck plays
+           for, and it holds exactly while both do. */
+        trigger: 'continuous',
+        condition: { requiresOnField: 'dark-magician-girl' },
+        ops: [],
+        aura: { target: SELF, grants: ['untargetable'] },
       },
       {
         trigger: 'ignition',
         label: 'Dark Magic Attack',
         oncePerTurn: true,
-        ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
-        ],
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
     ],
   },
 
   'dark-magician-girl': {
-    text: 'Gains 400 ATK for each "Dark Magician" in either Graveyard. When this card destroys a monster in battle: draw 1 card.',
+    text: 'Gains 400 ATK for each "Dark Magician" in either Graveyard. While you control "Dark Magician", this card gains 600 ATK and cannot be targeted by your opponent\'s effects. When this card destroys a monster in battle: draw 1 card.',
     cry: 'Never underestimate an apprentice!',
     effects: [
       /* "for each Dark Magician in either Graveyard" — a number that keeps
@@ -165,6 +192,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           target: { side: 'own', pick: 'self' },
           per: { zone: 'eitherGrave', filter: { slugs: ['dark-magician'] }, atk: 400 },
         },
+      },
+      /* Her master standing beside her — which is also literally the Dark
+         Paladin material board — used to be worth nothing until he DIED.
+         Now the pair together is the formation the deck is trying to reach,
+         rewarded before the fusion as well as after it. */
+      {
+        trigger: 'continuous',
+        condition: { requiresOnField: 'dark-magician' },
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, atk: 800, grants: ['untargetable'] },
       },
       { trigger: 'onBattleDestroy', ops: [{ op: 'draw', count: 1, who: 'own' }] },
     ],
@@ -251,10 +288,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The protection sentence had nothing behind it. Expressed as what the
        engine can actually do — she shields the monsters beside her rather than
        nothing at all. */
-    text: 'While this card is face-up, your other Defense Position monsters cannot be destroyed by battle. When summoned: gain 800 Life Points.',
+    text: 'While this card is face-up, your other Defense Position monsters cannot be destroyed by battle and your other Spellcasters gain 300 ATK. When summoned: gain 800 Life Points.',
     cry: 'A gentle light shields us.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'heal', amount: 800, to: 'own' }] },
+      {
+        /* Her chant is support magic — in the anime it feeds power to the
+           monsters fighting in front of her. A tribe aura beside her shield
+           gives Yugi's magician line the push its bodies were missing. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Spellcaster' }, excludeSelf: true }), atk: 300 },
+      },
       {
         trigger: 'continuous',
         ops: [],
@@ -271,8 +316,32 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'feral-imp': {
-    text: 'When this card is summoned: your opponent discards 1 random card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'discard', count: 1, who: 'opp' }] }],
+    /* The Exodia engine the deck never had. The limbs' own draw-a-card
+       consolation actively removes a piece from the hand the win condition
+       counts; the Imp finds a piece without spending one, and a 1300 body
+       plus a card of advantage already looks good to the generic evaluate —
+       so the AI takes the step without being told there is a combo. */
+    text: 'When this card is summoned: add 1 piece of the Forbidden One from your Deck to your hand.',
+    cry: 'The pieces gather…',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          {
+            op: 'search',
+            filter: {
+              slugs: [
+                'exodia-the-forbidden-one',
+                'left-arm-of-the-forbidden-one',
+                'right-arm-of-the-forbidden-one',
+                'left-leg-of-the-forbidden-one',
+                'right-leg-of-the-forbidden-one',
+              ],
+            },
+          },
+        ],
+      },
+    ],
   },
 
   kuriboh: {
@@ -364,9 +433,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'lord-of-d': {
-    text: 'While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects.',
+    /* He also brings the Flute now. A 1200 body spending one of three Monster
+       Zones was only worth playing once dragons already stood — exactly
+       backwards for the card whose art is holding the instrument that calls
+       them. Summon him, fetch the Flute, and next turn the shield arrives
+       with the dragons it shields. */
+    text: 'When this card is Normal Summoned: add "The Flute of Summoning Dragon" from your Deck to your hand. While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects.',
     cry: 'Dragons, heed my call!',
     effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'search', filter: { slugs: ['the-flute-of-summoning-dragon'] } }],
+      },
       {
         trigger: 'continuous',
         ops: [],
@@ -438,16 +516,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'red-eyes-black-dragon': {
-    text: 'Once per turn: inflict 700 damage to your opponent. Each time this card destroys a monster in battle it gains 300 ATK permanently.',
+    text: 'Once per turn: inflict 800 damage to your opponent. Each time this card destroys a monster in battle it gains 400 ATK permanently.',
     cry: 'Inferno Fire Blast!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Inferno Fire Blast',
         oncePerTurn: true,
-        ops: [{ op: 'damage', amount: 700, to: 'opp' }],
+        ops: [{ op: 'damage', amount: 800, to: 'opp' }],
       },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 300, target: SELF, duration: 'permanent' }] },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' }] },
     ],
   },
 
@@ -466,10 +544,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'baby-dragon': {
-    text: 'While you control "Time Wizard", this card gains 1200 ATK. When summoned: draw 1 card.',
+    /* The search, not a blind draw: Baby Dragon is one half of both of Joey's
+       combos (Time Wizard beside it, Alligator's Sword above it), and a draw
+       found the other half a fifth of the time. The enabler now enables. */
+    text: 'When summoned: add "Time Wizard" or "Alligator\'s Sword" from your Deck to your hand. While you control "Time Wizard", this card gains 1200 ATK.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
-      // The pair-up was written in the text and nowhere else.
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'search', filter: { slugs: ['time-wizard', 'alligator-s-sword'] } }],
+      },
       {
         trigger: 'continuous',
         condition: { requiresOnField: 'time-wizard' },
@@ -502,6 +585,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'panther-warrior': {
+    /* Unconditional again, measured rather than principled: the balance pass
+       tried gating the second attack on "another Warrior" and Joey — already
+       last — fell further; the underdog cannot afford a nerf to his one
+       no-setup muscle card. The audit's flag was right that this card wins
+       duels outside the theme; the bench says the deck needs exactly that. */
     text: 'This card inflicts piercing battle damage and can attack twice each Battle Phase.',
     effects: [
       {
@@ -549,12 +637,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   garoozis: {
-    text: 'When this card destroys a monster in battle: inflict 400 damage to your opponent and draw 1 card.',
+    /* The flat 400 became a die — Joey's whole deck runs on the bet, and a
+       kill that rolls between 200 and 1200 (average 700) is both stronger
+       and more him than a fixed ping. */
+    text: 'When this card destroys a monster in battle: roll a die and inflict 200 damage to your opponent for each pip, then draw 1 card.',
+    cry: 'Lady luck, smile on me!',
     effects: [
       {
         trigger: 'onBattleDestroy',
         ops: [
-          { op: 'damage', amount: 400, to: 'opp' },
+          { op: 'diceRoll', perPip: [{ op: 'damage', amount: 200, to: 'opp' }] },
           { op: 'draw', count: 1, who: 'own' },
         ],
       },
@@ -577,23 +669,29 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'tiger-axe': {
-    text: 'When this card is Normal Summoned: force 1 monster your opponent controls into face-up Defense Position.',
-    effects: [{ trigger: 'onNormalSummon', targets: 1, ops: [{ op: 'forceDefense', target: OPP_PICK }] }],
+    /* Every monster, not one: a 1300 body bending a single blocker was the
+       weakest tempo play in the deck. The whole board flinching sets up the
+       deck's piercers — Flame Swordsman, Axe Raider, Salamandra — which is
+       the synergy the card was always supposed to be. */
+    text: 'When this card is Normal Summoned: force every monster your opponent controls into face-up Defense Position.',
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'forceDefense', target: sel('opp', 'all') }] }],
   },
 
   'masaki-the-legendary-swordsman': {
     /* "While you control another Warrior" — granted permanently on summon, it
        held whether or not he had anyone beside him, which is the opposite of
        what the card says. A conditional aura is read live instead, so the
-       moment his last comrade falls he is mortal again. */
-    text: 'This card cannot be destroyed by battle while you control another Warrior.',
+       moment his last comrade falls he is mortal again. The 800 came later:
+       an 1100 body that merely refuses to die is a wall, not a legend — with
+       his comrades he swings at 1900 and holds the line both ways. */
+    text: 'While you control another Warrior, this card gains 800 ATK and cannot be destroyed by battle.',
     cry: 'I do not stand alone!',
     effects: [
       {
         trigger: 'continuous',
         condition: { controlsOtherOfType: 'Warrior' },
         ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle'] },
       },
     ],
   },
@@ -926,26 +1024,47 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'white-magical-hat': {
-    text: 'When this card inflicts battle damage to your opponent: they discard 1 random card.',
-    effects: [{ trigger: 'onDealBattleDamage', ops: [{ op: 'discard', count: 1, who: 'opp' }] }],
+    /* A thief needs to reach the victim. His discard only fires on battle
+       damage, and a 1000 body never lands any through a blocker — so the
+       whole card sat dead behind the first monster the opponent played.
+       Attacking directly is what the hat does in the anime: slip past, lift
+       a card on the way. */
+    text: 'This card can attack your opponent directly. When it inflicts battle damage to your opponent: they discard 1 random card.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
+      { trigger: 'onDealBattleDamage', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
+    ],
   },
 
   'lady-of-faith': {
-    text: 'When this card is Normal Summoned: gain 600 Life Points and draw 1 card.',
+    /* The draw became a séance: she reaches into the Graveyard the deck spends
+       the whole duel filling and hands a Fiend back. On-theme card advantage
+       — the horror returns to the hand to be Set again. */
+    text: 'When this card is Normal Summoned: gain 600 Life Points and add 1 Fiend monster from your Graveyard to your hand.',
     effects: [
       {
         trigger: 'onNormalSummon',
         ops: [
           { op: 'heal', amount: 600, to: 'own' },
-          { op: 'draw', count: 1, who: 'own' },
+          { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', type: 'Fiend' } },
         ],
       },
     ],
   },
 
   'souls-of-the-forgotten': {
-    text: 'At the end of your turn: inflict 300 damage to your opponent.',
-    effects: [{ trigger: 'onOwnTurnEnd', ops: [{ op: 'damage', amount: 300, to: 'opp' }] }],
+    /* The forgotten grow as the Graveyard fills — a live aura over the pile of
+       Fiends this deck feeds all duel. Late it is a real body wearing every
+       horror that came before it, and the burn keeps ticking. */
+    text: 'Gains 300 ATK for each Fiend monster in your Graveyard. At the end of your turn: inflict 300 damage to your opponent.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Fiend' }, atk: 300 } },
+      },
+      { trigger: 'onOwnTurnEnd', ops: [{ op: 'damage', amount: 300, to: 'opp' }] },
+    ],
   },
 
   'the-gross-ghost-of-fled-dreams': {
@@ -954,9 +1073,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-necrofear': {
-    text: 'When this card is summoned: take control of 1 monster your opponent controls permanently.',
+    /* She is built from the Fiends that came before her, so she wears them:
+       100/100 for every Fiend in either Graveyard, read live. In a deck whose
+       whole game plan is filling graves with horrors she grows past her
+       printed 2200 by mid-duel — and against the mirror she reads the other
+       side's dead too. */
+    text: 'Gains 100 ATK and DEF for each Fiend monster in either Graveyard. When this card is summoned: take control of 1 monster your opponent controls permanently.',
     cry: 'The darkness claims your soul.',
-    effects: [{ trigger: 'onSummon', targets: 1, ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }] }],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: { side: 'own', pick: 'self' },
+          per: { zone: 'eitherGrave', filter: { kind: 'monster', type: 'Fiend' }, atk: 100, def: 100 },
+        },
+      },
+      { trigger: 'onSummon', targets: 1, ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }] },
+    ],
   },
 
   sangan: {
@@ -1037,8 +1171,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'great-white': {
-    text: 'When this card destroys a monster in battle: inflict 400 damage to your opponent.',
-    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 400, to: 'opp' }] }],
+    /* A shark in open water bites through the shield: pierce under Umi turns
+       the deck's two 1600 vanillas into real tide payoffs (2000 piercing with
+       the weather up). */
+    text: 'While "Umi" is on the field, this card inflicts piercing battle damage. When this card destroys a monster in battle: inflict 400 damage to your opponent.',
+    effects: [
+      {
+        trigger: 'continuous',
+        condition: { requiresField: 'umi' },
+        ops: [],
+        aura: { target: SELF, grants: ['pierce'] },
+      },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 400, to: 'opp' }] },
+    ],
   },
 
   jellyfish: {
@@ -1065,9 +1210,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'giant-red-seasnake': {
-    text: 'When this card is Normal Summoned: Special Summon 1 WATER monster with 1600 or less ATK from your Graveyard.',
+    /* 1850, not 1600: the old ceiling missed 7 Colored Fish (1800), Kairyu-Shin
+       (1800) and Great White's twin — most of the school the reviver exists to
+       revive. The deck's one recursion now reaches its own payoffs. */
+    text: 'When this card is Normal Summoned: Special Summon 1 WATER monster with 1850 or less ATK from your Graveyard.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { attribute: 'WATER', maxAtk: 1600 }, count: 1, position: 'atk' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { attribute: 'WATER', maxAtk: 1850 }, count: 1, position: 'atk' }] },
     ],
   },
 
@@ -1078,11 +1226,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        monster. The text also said "Spell or Trap effects" while the grant is
        `untargetable`, which in this engine no opposing effect gets past at
        all; it now says what it does rather than the narrower thing. */
-    text: "This card cannot be targeted or destroyed by your opponent's card effects.",
+    text: "This card cannot be targeted or destroyed by your opponent's card effects. While \"Umi\" is on the field, it gains 600 ATK.",
     effects: [
       {
         trigger: 'onSummon',
         ops: [{ op: 'untargetable', duration: 'permanent' }],
+      },
+      /* A deep-sea creature in its own water: the tribute he costs finally
+         buys a body (2200 under Umi) instead of only an immunity. */
+      {
+        trigger: 'continuous',
+        condition: { requiresField: 'umi' },
+        ops: [],
+        aura: { target: SELF, atk: 600 },
       },
     ],
   },
@@ -1099,8 +1255,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'flying-fish': {
-    text: 'This card can attack your opponent directly.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] }],
+    /* The way in — the Toon Alligator pattern. Umi is the hinge of the whole
+       deck and used to be a single copy nothing could find; the fish that
+       leaps OUT of the sea is the one that goes and gets it. */
+    text: 'This card can attack your opponent directly. When it is Normal Summoned: add "Umi" from your Deck to your hand.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['umi'] } }] },
+    ],
   },
 
   'kappa-avenger': {
@@ -1223,12 +1385,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        made it feel earned, but while it held Beta could not be removed by
        anything at all — and a conditional stalemate is still a stalemate. */
     text:
-      'When this card is Normal Summoned: Special Summon 1 Magnet Warrior from your Graveyard. ' +
+      'When this card is Summoned: Special Summon 1 Magnet Warrior from your Graveyard. ' +
       'While you control another Rock monster, this card gains 800 ATK and cannot be destroyed by battle.',
     cry: 'Steel holds!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        /* `onSummon`, not `onNormalSummon`: revived by Monster Reborn or
+           dragged out by Alpha, Beta still reaches back for the next magnet —
+           on the narrow trigger the chain broke on every Special Summon. */
+        trigger: 'onSummon',
         ops: [
           {
             op: 'specialSummon',
@@ -1580,9 +1745,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'petit-moth': {
-    text: 'Gains 1 Evolution Counter during each of your End Phases. At 2 counters it becomes Larvae Moth, at 3 Great Moth, and at 4 the Perfectly Ultimate Great Moth.',
+    /* It fetches its own shell. A 300/200 body asked to survive two End
+       Phases naked never reached rung two in real play; summoning it now
+       puts the Cocoon in hand, and the Cocoon shields it while it climbs. */
+    text: 'When this card is Normal Summoned: add "Cocoon of Evolution" from your Deck to your hand. Gains 1 Evolution Counter during each of your End Phases. At 2 counters it becomes Larvae Moth, at 3 Great Moth, and at 4 the Perfectly Ultimate Great Moth.',
     cry: 'My insect will evolve!',
     effects: [
+      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['cocoon-of-evolution'] } }] },
       { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
     ],
   },
@@ -1614,17 +1783,30 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'perfectly-ultimate-great-moth': {
-    text: 'Cannot be targeted or destroyed by Spell or Trap effects. Inflicts piercing battle damage and can attack twice each Battle Phase. When summoned: destroy every Spell and Trap on the field.',
+    /* Two trims that keep it the apex without keeping it unanswerable.
+       `untargetable` in this engine skips EVERY opposing effect — Dark Hole,
+       Mirror Force, Ring — so four End Phases of patience bought a monster
+       with no answers at all; effect-indestructibility still shrugs off
+       removal while leaving it targetable (a Shadow Spell can bind it, a
+       Brain Control can borrow it — which is comedy worth having). And the
+       second attack belongs to the swarm: alone it strikes once, over its
+       hive it strikes twice. */
+    text: 'Cannot be destroyed by card effects. Inflicts piercing battle damage, and while you control another Insect it can attack twice each Battle Phase. When summoned: destroy every Spell and Trap on the field.',
     cry: 'Behold, the ultimate insect!',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'untargetable', duration: 'permanent' },
+          { op: 'indestructibleByEffect', duration: 'permanent' },
           { op: 'pierce', duration: 'permanent' },
-          { op: 'extraAttacks', count: 1 },
           { op: 'destroy', target: sel('both', 'all', { zone: 'backrow' }) },
         ],
+      },
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Insect' },
+        ops: [],
+        aura: { target: SELF, grants: ['doubleAttack'] },
       },
     ],
   },
@@ -1632,9 +1814,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'cocoon-of-evolution': {
     /* Granted permanently on summon, so a Cocoon that had been bounced back and
        replayed, or revived, carried immunity it should have lost. It holds while
-       the card is on the field, which is what the text says. */
-    text: 'While this card is face-up, it cannot be destroyed by battle.',
-    effects: [{ trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } }],
+       the card is on the field, which is what the text says.
+       And it finally does its job: the strategy blurb has said "cocoon your
+       larva" since the first commit, and the card never touched the larva —
+       the shell now shields the moths still climbing the ladder. */
+    text: 'While this card is face-up, it and your Petit Moth and Larvae Moth cannot be destroyed by battle.',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: sel('own', 'all', { filter: { slugs: ['petit-moth', 'larvae-moth'] } }),
+          grants: ['indestructibleByBattle'],
+        },
+      },
+    ],
   },
 
   'hercules-beetle': {
@@ -1685,8 +1880,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'insect-soldiers-of-the-sky': {
-    text: 'This card gains 1000 ATK when it battles a Winged Beast monster. When summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    /* The Winged Beast clause had no effect behind it at all — a sentence
+       from the printed card that this engine cannot express per-battle. It
+       flies with the swarm instead: a real, live wording the aura system
+       backs. */
+    text: 'While you control another Insect, this card gains 300 ATK. When summoned: draw 1 card.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Insect' },
+        ops: [],
+        aura: { target: SELF, atk: 300 },
+      },
+    ],
   },
 
   leghul: {
@@ -1704,7 +1911,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'two-headed-king-rex': {
-    text: 'This card can attack twice each Battle Phase and gains 200 ATK for each Dinosaur in your Graveyard.',
+    text: 'This card can attack twice each Battle Phase and gains 300 ATK for each Dinosaur in your Graveyard.',
     cry: 'Tear them apart!',
     effects: [
       {
@@ -1713,13 +1920,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       /* "for each Dinosaur in your Graveyard" — the old scale counted every
          card there regardless of type, so Rex's signature monster was both
-         frozen at summon time and reading the wrong number. */
+         frozen at summon time and reading the wrong number. 300 a fossil now:
+         at 200 the king needed FIVE dead dinosaurs just to stand level with
+         a one-tribute Summoned Skull, in a deck whose fuel arrives at the
+         pace of its own funerals. Three fossils is a 2500 double-attacker —
+         the payoff lands inside a real duel's length. */
       {
         trigger: 'continuous',
         ops: [],
         aura: {
           target: { side: 'own', pick: 'self' },
-          per: { zone: 'ownGrave', filter: { type: 'Dinosaur' }, atk: 200 },
+          per: { zone: 'ownGrave', filter: { type: 'Dinosaur' }, atk: 300 },
         },
       },
     ],
@@ -1748,9 +1959,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'crawling-dragon': {
-    text: 'When this card is Normal Summoned: Special Summon 1 Dinosaur with 1500 or less ATK from your Graveyard.',
+    /* 1600 reaches the herd the reviver exists for — Two-Headed King Rex and
+       Uraby are both 1500-1600 printed, and both were just out of reach. In
+       Attack Position, because a revived King Rex is there to swing. */
+    text: 'When this card is Normal Summoned: Special Summon 1 Dinosaur with 1600 or less ATK from your Graveyard in Attack Position.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1500 }, count: 1, position: 'def' }] },
+      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1600 }, count: 1, position: 'atk' }] },
     ],
   },
 
@@ -1783,21 +1997,33 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   megazowler: {
-    text: 'When this card is summoned: destroy every face-down card your opponent controls.',
+    /* The stampede tramples what hides on the ground — face-down monsters.
+       It used to take the Spell/Trap Zone too, which was a one-tribute
+       Feather Duster stapled to a body: removal that won duels the fossil
+       theme never took part in. The backrow is the traps' business now. */
+    text: 'When this card is summoned: destroy every face-down monster your opponent controls.',
     effects: [
       {
         trigger: 'onNormalSummon',
-        ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
-          { op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) },
-        ],
+        ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }],
       },
     ],
   },
 
   trakodon: {
-    text: 'When this card is Normal Summoned: inflict 400 damage to your opponent.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'damage', amount: 400, to: 'opp' }] }],
+    /* The fossil pile is the deck's mana, and nothing was filling it on
+       purpose. Trakodon buries three of its own on arrival — every Dinosaur
+       among them is +300 on a standing King Rex immediately, read live. */
+    text: 'When this card is Normal Summoned: send the top 3 cards of your Deck to the Graveyard and inflict 400 damage to your opponent.',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          { op: 'mill', count: 3, who: 'own' },
+          { op: 'damage', amount: 400, to: 'opp' },
+        ],
+      },
+    ],
   },
 
   anthrosaurus: {
@@ -1887,19 +2113,48 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   zoa: {
-    text: 'When this card destroys a monster in battle: it gains that monster\'s ATK permanently.',
-    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' }] }],
+    /* The anime beat, finally in the game: Keith seals Zoa in Metalmorph and
+       it rises as Metalzoa. The old effect was a text/op mismatch — "gains
+       that monster's ATK" over a flat 400 — on a card whose whole identity
+       was always the transformation. Tribute the beast, call the metal. */
+    text: 'Once per turn: tribute this card — Special Summon "Metalzoa" from your hand or Deck.',
+    cry: 'Witness the metal rebirth!',
+    effects: [
+      {
+        trigger: 'ignition',
+        label: 'Metalmorph — become Metalzoa',
+        cost: { tributeSelf: true },
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['hand', 'deck'],
+            filter: { slugs: ['metalzoa'] },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
   },
 
   'slot-machine': {
-    text: 'Once per turn: roll a die. This card gains 300 ATK for each pip until the end of the turn.',
+    /* The reels keep what they pay. The old +300/pip lasted "until the end of
+       the turn" — rolled in your own Main Phase, it evaporated before the
+       opponent ever swung back, a stat that only existed while nobody could
+       touch it. (`duration: 'opponentTurn'` is declared in the DSL and
+       implemented by nothing — endOfTurnCleanup zeroes every turn mod for
+       both players — so the honest choices were new expiry machinery or a
+       smaller number that stays.) Permanent at 200 a pip, each spin ratchets:
+       a two-tribute body that grows every turn it stands is a machine worth
+       feeding. */
+    text: 'Once per turn: roll a die. This card permanently gains 200 ATK for each pip.',
     cry: 'Jackpot!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Spin the reels',
         oncePerTurn: true,
-        ops: [{ op: 'diceRoll', perPip: [{ op: 'gainAtk', amount: 300, target: SELF, duration: 'turn' }] }],
+        ops: [{ op: 'diceRoll', perPip: [{ op: 'gainAtk', amount: 200, target: SELF, duration: 'permanent' }] }],
       },
     ],
   },
@@ -1950,8 +2205,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'robotic-knight': {
-    text: 'All Machine monsters you control gain 300 ATK.',
-    effects: [{ trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Machine' } }), atk: 300 } }],
+    /* The commander carries Bandit Keith's whole Duelist Kingdom boast: his
+       machines shrugged off magic. While the knight stands, the *other*
+       Machines cannot be destroyed by card effects — one immunity axis, so
+       battle still breaks them and the house rule holds; and "other", so the
+       knight himself is always the answerable head of the formation. */
+    text: 'All Machine monsters you control gain 300 ATK, and your other Machines cannot be destroyed by card effects.',
+    cry: 'Metal does not break.',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Machine' } }), atk: 300 } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Machine' }, excludeSelf: true }), grants: ['indestructibleByEffect'] },
+      },
+    ],
   },
 
   mechanicalchaser: {
@@ -1965,23 +2233,32 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'steel-ogre-grotto-1': {
-    /* The threshold does not exist in the engine, so "1800 or less" read as
-       "never" — the same hole that left Sword Arm of Dragon immortal. It is a
-       wall of stone instead, which is what its 1900 DEF already says. */
-    text: 'This card gains 400 DEF permanently each time it survives a battle. When summoned: gain 600 Life Points.',
+    /* Two lies in one text, both retired: "gains 400 DEF each time it
+       survives" had no effect behind it, and the battle immunity it really
+       had was permanent from summon — held even standing alone. The armour
+       is the assembly line's now: a live conditional aura, so the wall holds
+       exactly while another Machine stands beside it. */
+    text: 'While you control another Machine, this card cannot be destroyed by battle. When summoned: gain 600 Life Points.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'indestructibleByBattle', duration: 'permanent' },
-          { op: 'heal', amount: 600, to: 'own' },
-        ],
+        ops: [{ op: 'heal', amount: 600, to: 'own' }],
+      },
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Machine' },
+        ops: [],
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
       },
     ],
   },
 
   'ground-attacker-bugroth': {
-    text: 'This card can attack your opponent directly if they control no monsters, and gains 400 ATK when it does.',
+    /* The old text promised a conditional direct attack that nothing
+       implemented — "if they control no monsters" is when EVERY monster
+       attacks directly, so the clause was vacuous twice over. It says what
+       it does now. */
+    text: 'When this card attacks: it gains 400 ATK until the end of the turn.',
     effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' }] }],
   },
 };

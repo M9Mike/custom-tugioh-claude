@@ -484,11 +484,22 @@ a Special Summon now takes a list of zones, and `npm run playable` checks that a
 monster it refuses to summon has something in the same deck that brings it out.
 
 **The Toon idea, in full.** Toon World is the engine: while it is face-up your
-Toons need no Tribute, gain 500 ATK, attack directly and cannot be targeted.
+Toons need no Tribute, gain 800 ATK, pierce, cannot be targeted, and attack
+directly — at 500 Life Points a swing, and never on the turn they arrived.
 Blue-Eyes Toon Dragon, Toon Summoned Skull, Toon Mermaid, Manga Ryu-Ran and Dark
 Rabbit cannot be Summoned without it. Toon Alligator is the way in — it is never
 gated, and Normal Summoning it fetches Toon World from the Deck. Ryu-Ran,
 Bickuribox and Parrot Dragon take the aura but do not need it.
+
+The balance pass priced all of it with the printed card's own rules, measured
+one at a time because the first two barely moved the bench: trimming the
+draw-2 rider off the activation and killing the Toons when Toon World dies
+took Pegasus 85 → 77; the 500-a-swing toll bought one more point (he ends
+duels rich in Life Points — the toll only bites in long games); the rule that
+finally landed him at **66** was summoning sickness, because his 85 was
+always *tempo* — a free 3800 that swings the turn it arrives is a two-turn
+kill, and the same monster a turn later is a threat the whole roster holds an
+answer to. Nerf the clock, not the number, when a tempo deck is too strong.
 
 **The board runs ahead of the queue, so the numbers have to be held back.**
 `Duel.tsx` drains animations one at a time while the state from the server is
@@ -1421,6 +1432,93 @@ and fails if it ever appears, alongside "no End Turn button ever existed".
 The pause button shares the control column's bottom row the way the bracket
 button does — that column being three rows is what sets the top strip's
 height, and the layout check now measures the spectate board as a fourth mode.
+
+## The theme rule
+
+The owner's standing instruction for every deck, written after the balance
+pass that rebuilt all eleven: **a deck's theme is the reason it wins.** Over
+anime OP is the register, but the power has to live inside the theme — a deck
+that reaches its board should be favored, a deck that never reaches it should
+lose to one that did, and every theme must be answerable from outside. Slight
+edges are reserved by decree: **Pegasus (the creator) and the God cards sit at
+the top**, everyone else in a band around even. When a new duelist arrives,
+build the deck to this shape and measure it into that ladder.
+
+The shape every deck follows:
+
+- **An enabler that finds itself.** A theme hinging on one card must search
+  that card, not hope to draw it: Toon Alligator fetches Toon World, Flying
+  Fish fetches Umi, Petit Moth fetches its Cocoon, Baby Dragon fetches Time
+  Wizard, Lord of D. fetches the Flute, Feral Imp fetches a piece of the
+  Forbidden One. A search is also how the *generic AI* pilots a combo it has
+  never been told about — the fetched card makes the next step visible to the
+  next turn's enumeration. This matters doubly here because the AI's evaluate
+  prices hand cards and stats, not intentions.
+- **Payoffs behind live conditions.** "While Umi is on the field", "while you
+  control another Warrior/Insect/Machine" — conditional continuous auras, read
+  live, never granted on summon. The theme assembled is visible on the board
+  as numbers; the theme dismantled takes its bonuses with it. That is both the
+  flavour and the counterplay: kill the enabler and the deck is mortal again.
+- **Counterplay most of the roster can reach.** A theme whose answer is one
+  specific card is only answerable in two matchups. Toon World dying takes
+  the Toons with it; the Dark Door falls to any backrow removal; a God is
+  answered by a bigger board while the hand is thin. If the only honest
+  answer is "have no answer", it is over the line — that is what the
+  only-a-God immunity rule already polices.
+- **The spine stays neutral and small.** Six staples (Monster Reborn, Dark
+  Hole, Pot of Greed, Trap Hole, Negate Attack, Polymerization) plus Just
+  Desserts are the shared skeleton; everything else should be unique to its
+  deck. **Monster Reborn reads your own Graveyard only** — either-grave was
+  the one card that actively eroded identity, turning every dead signature
+  bomb into the opponent's best play. Buff a deck through its unique cards,
+  never through the spine: a spine change moves all eleven at once.
+- **Dead weight is a real cost.** In 25 cards, a card serving no theme is a
+  wasted draw one game in six. The balance pass cut seven such cards from the
+  roster entirely (Beaver Warrior, Celtic Guardian, La Jinn, Battle Steer,
+  Dark Assailant, Man-Eating Treasure Chest, Giant Rat) and spent the slots
+  on second copies of enablers. Prefer that trade every time.
+
+The measurement discipline:
+
+- **`npm run deck-bench <id> 100` is the number.** ±9 at 100 games; sim plays
+  at random and lies about combo decks. The bench is round-robin against the
+  whole field, so it is zero-sum: pulling the floor up drags the top down
+  without touching a single card in the top decks. Nerf the outliers only
+  after the floor has been raised, or you overshoot.
+- **The band:** everyone 45–57; Pegasus and the God deck 58–65 by design;
+  nobody under 40, nobody over 70. The pre-pass ladder was pegasus 85, yami
+  70, mai 66, kaiba 55, then seven decks between 33 and 42 — four decks were
+  carrying the game. After three iterations the measured ladder (100 games
+  each, ±9-10) is: **yami 68 · pegasus 66 · mai 64 · kaiba 54 · rex 53 ·
+  weevil 42 · mako 40 · yugi 37 · joey 34 · bakura 32 · keith 31** — the
+  spread closed from 52 points to 37 with the decreed top three.
+- **The attrition quartet benches low on purpose, and card buffs are the
+  wrong fix.** Yugi, Joey, Bakura and Keith stalled in the low-to-mid 30s
+  through three rounds of real buffs (searches, tribe auras, effect shields,
+  a factory) while the tempo decks moved on the first try (rex +14 from one
+  round). They are the game's control/attrition decks, and the bias is in
+  the *pilot*, not the cards: evaluate() is blind to ongoing locks, frozen
+  attackers still count in the race term, and graveyard value scores zero
+  (Part-2 findings of the spine audit, recorded above). Tuning their cards
+  until the AI benches them at 50 would make them oppressive in the duels
+  the game is actually for — two humans on two phones. If those decks feel
+  weak *against people*, buff them; if only the bench says so, believe the
+  bias first. Closing the pilot gap is AI work (scoring `state.ongoing`,
+  respecting freezes in `clock()`), not card work.
+- **The AI has blind spots a theme can fall into.** evaluate() scores LP,
+  stats, hand count, the battle race — and is blind to ongoing locks, frozen
+  monsters, Graveyard stocking and Evolution Counters (their value leaks in
+  only through rollouts). A theme whose payoff is invisible to that function
+  will bench badly however strong its cards are: give such decks payoffs
+  that surface as stats or damage within a turn (a mill that feeds a live
+  per-Graveyard aura shows up instantly; a mill that feeds nothing is
+  invisible). Exodia is the exception that proves it — pieces in hand are
+  scored explicitly, quadratically.
+- **Prove the new pins can fail.** Every rule above is pinned in
+  `npm run rules` under "The balance pass"; the pins were verified by
+  reverting fixes one at a time and watching exactly the right assertions go
+  red while the controls stayed green. A regression added after a fix, green
+  against the fix, has proven nothing yet.
 
 ## Adding a duelist
 

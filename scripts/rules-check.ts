@@ -292,7 +292,7 @@ console.log('\nA set monster destroyed by an attack still flips and fires');
 
   const big = card(ME, 'summoned-skull');
   s.players[ME].monsters[0] = big;
-  const spare = card(ME, 'beaver-warrior');
+  const spare = card(ME, 'hitotsu-me-giant');
   s.players[ME].monsters[1] = spare;
 
   const after = act(s, ME, { type: 'attack', uid: big.uid, targetUid: bug.uid });
@@ -350,7 +350,7 @@ console.log('\nA Deck search takes the strongest match, not whatever is on top')
   s.players[FOE].deck = [
     card(FOE, 'kuriboh'), // 300
     card(FOE, 'summoned-skull'), // 2500 — over the cap
-    card(FOE, 'beaver-warrior'), // 1200, the strongest legal one
+    card(FOE, 'hitotsu-me-giant'), // 1200, the strongest legal one
   ];
   s.players[FOE].hand = [];
 
@@ -359,7 +359,7 @@ console.log('\nA Deck search takes the strongest match, not whatever is on top')
 
   ok(added.length === 1, 'Sangan adds exactly one card', `added ${added.join(', ') || 'nothing'}`);
   ok(
-    added[0] === 'beaver-warrior',
+    added[0] === 'hitotsu-me-giant',
     'and it is the strongest one under the cap, not the first in the deck',
     `got ${added[0] ?? 'nothing'}`
   );
@@ -478,7 +478,7 @@ console.log('\nA card does what its text says, not a convenient half of it');
   const m2 = card(FOE, 'masaki-the-legendary-swordsman');
   m2.summonedOnTurn = 0;
   guarded.players[FOE].monsters[0] = m2;
-  guarded.players[FOE].monsters[1] = card(FOE, 'celtic-guardian'); // another Warrior
+  guarded.players[FOE].monsters[1] = card(FOE, 'kojikocy'); // another Warrior
   const killer2 = card(ME, 'summoned-skull');
   killer2.summonedOnTurn = 0;
   guarded.players[ME].monsters[0] = killer2;
@@ -597,7 +597,8 @@ console.log('\n"Gains N ATK for each …" keeps counting, rather than freezing a
   // Three cards into my Graveyard, two of them Dinosaurs.
   s.players[ME].grave = [card(ME, 'uraby'), card(ME, 'trakodon'), card(ME, 'pot-of-greed')];
   ok(grow('dark-paladin') === paladinEmpty + 600, 'Dark Paladin reads the Graveyard live', `${grow('dark-paladin')}`);
-  ok(grow('two-headed-king-rex') === rexEmpty + 400, 'Two-Headed King Rex counts only the Dinosaurs', `${grow('two-headed-king-rex')}`);
+  // 300 a fossil since the balance pass — two Dinosaurs of the three cards.
+  ok(grow('two-headed-king-rex') === rexEmpty + 600, 'Two-Headed King Rex counts only the Dinosaurs', `${grow('two-headed-king-rex')}`);
 
   // A Dark Magician in the *opponent's* Graveyard still feeds her.
   s.players[FOE].grave = [card(FOE, 'dark-magician')];
@@ -632,9 +633,9 @@ console.log('\n"While Umi is on the field" follows Umi, whatever order things ha
 
   s.players[ME].field = card(ME, 'umi');
   // 1800 + 800 of its own + 400 from Umi's WATER aura.
-  ok(effAtk(s, fish, ME) === 3000, 'and 3000 once Umi is up, having been summoned first', `${effAtk(s, fish, ME)}`);
+  ok(effAtk(s, fish, ME) === 3100, 'and 3100 once Umi is up, having been summoned first', `${effAtk(s, fish, ME)}`);
   ok(effFlags(s, fish, ME).pierce === true, 'with the piercing its text promises');
-  ok(effAtk(s, beast, ME) === 2400 + 500 + 400, 'Amphibian Beast gains its 500 too', `${effAtk(s, beast, ME)}`);
+  ok(effAtk(s, beast, ME) === 2400 + 500 + 500, 'Amphibian Beast gains its 500 too', `${effAtk(s, beast, ME)}`);
   ok((effFlags(s, beast, ME).extraAttacks ?? 0) === 1, 'and can attack twice');
 
   s.players[ME].field = null;
@@ -795,7 +796,9 @@ console.log('\nRing of Destruction is one effect, not a free 1400 damage');
   ring.face = 'down';
   ring.summonedOnTurn = 1;
   s.players[ME].spellTrap = ring;
-  const elf = card(FOE, 'celtic-guardian');
+  /* Celtic Guardian left the roster in the balance pass; Deepsea Warrior
+     carries the same untargetable property and stands in for it. */
+  const elf = card(FOE, 'deepsea-warrior');
   s.players[FOE].monsters[0] = elf;
 
   const at = act(s, ME, { type: 'activateSetCard', uid: ring.uid, targets: [elf.uid] });
@@ -1180,12 +1183,15 @@ console.log('\nTrap Hole says "Normal Summons", so a Fusion Summon is not its bu
   ok(!setq.pending, 'and Torrential Tribute sits out a Set too');
 }
 
-console.log('\nSpellbinding Circle binds one monster, for as long as it is there');
+console.log('\nSpellbinding Circle spends itself, and the scar stays');
 {
-  /* Three things at once, all reported: it froze *every* monster the opponent
-     controlled rather than the attacker, it ran on a one-turn timer instead of
-     on the card staying face-up, and the −700 was written into the monster so
-     it survived the circle's destruction. */
+  /* The equip version was correct about duration and wrong about cost: the
+     circle parked face-up in its owner's ONLY Spell/Trap Zone for as long as
+     the bound monster lived, locking Yugi out of Mirror Force, Magical Hats
+     and — a Fusion needing a free zone — his own Dark Paladin. It is a
+     one-shot now: negate, the attacker permanently loses 700, the circle goes
+     to the Graveyard, the zone is free again. The permanence is the text's
+     own promise — no "while face-up" clause survives to be broken. */
   const s = fresh('battle');
   const attacker = card(FOE, 'summoned-skull'); // 2500
   const bystander = card(FOE, 'hitotsu-me-giant');
@@ -1203,43 +1209,18 @@ console.log('\nSpellbinding Circle binds one monster, for as long as it is there
   const held = bound.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
   const free = bound.players[FOE].monsters.find((m) => m?.uid === bystander.uid)!;
   ok(bound.players[ME].lp === 4000, 'the attack is negated', `LP ${bound.players[ME].lp}`);
-  ok(effAtk(bound, held, FOE) === 2500 - 700, 'the bound monster loses 700 ATK', String(effAtk(bound, held, FOE)));
-  /* The flag rather than `canAttackWith`, which is also false because the
-     monster spent its attack declaring the one that was negated — it would
-     have read as bound even with the lock removed. The next turn is the
-     question a player is actually asking, so it is asked here too. */
-  ok(!!effFlags(bound, held, FOE).cannotAttack, 'and is the one that cannot attack');
-  ok(!effFlags(bound, free, FOE).cannotAttack, 'while the monster beside it is untouched');
-  ok(canAttackWith(bound, FOE, free), 'and can still swing');
+  ok(effAtk(bound, held, FOE) === 2500 - 700, 'the attacker loses 700 ATK', String(effAtk(bound, held, FOE)));
+  ok(effAtk(bound, free, FOE) === baseAtkOf('hitotsu-me-giant'), 'the monster beside it is untouched', String(effAtk(bound, free, FOE)));
+  ok(bound.players[ME].spellTrap === null, 'the circle is spent — the zone is free again');
+  ok(bound.players[ME].grave.some((c) => c.slug === 'spellbinding-circle'), 'and it lies in the Graveyard');
 
+  // The scar is permanent by design: the circle being gone does not restore
+  // the 700 — that is the text's promise now, not a leak.
   const nextTurn = structuredClone(bound);
   for (const m of nextTurn.players[FOE].monsters) if (m) m.attacksUsed = 0;
-  const stillHeld = nextTurn.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
-  ok(!canAttackWith(nextTurn, FOE, stillHeld), 'it is still bound on a later turn');
-  ok(bound.players[ME].spellTrap?.uid === circle.uid, 'the circle stays face-up holding it', String(bound.players[ME].spellTrap?.slug));
-  ok(bound.players[ME].spellTrap?.face === 'up', 'and is face-up');
-
-  // Destroy the circle and the monster is whole again — the penalty was an
-  // aura, never written into the card.
-  const freed = structuredClone(nextTurn);
-  freed.players[ME].spellTrap = null;
-  const loose = freed.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
-  ok(effAtk(freed, loose, FOE) === 2500, 'destroy the circle and the ATK comes back', String(effAtk(freed, loose, FOE)));
-  ok(canAttackWith(freed, FOE, loose), 'and it can attack again');
-
-  /* The other half of the reported question: the circle follows its monster
-     down. Taken off the board by battle rather than by Dark Hole, because the
-     circle is sitting in my one Spell/Trap Zone and I cannot play a Spell
-     while it is there — which is the point of the card. */
-  const gone = structuredClone(bound);
-  gone.active = ME;
-  gone.phase = 'battle';
-  const dragon = card(ME, 'blue-eyes-white-dragon'); // 3000 over its bound 1800
-  gone.players[ME].monsters[0] = dragon;
-  const killed = act(gone, ME, { type: 'attack', uid: dragon.uid, targetUid: attacker.uid });
-  ok(!killed.players[FOE].monsters.some((m) => m?.uid === attacker.uid), 'the bound monster is destroyed');
-  ok(killed.players[ME].spellTrap === null, 'and the circle leaves the field with it');
-  ok(killed.players[ME].grave.some((c) => c.slug === 'spellbinding-circle'), 'landing in the Graveyard, not nowhere');
+  const scarred = nextTurn.players[FOE].monsters.find((m) => m?.uid === attacker.uid)!;
+  ok(effAtk(nextTurn, scarred, FOE) === 2500 - 700, 'the 700 stays lost on a later turn', String(effAtk(nextTurn, scarred, FOE)));
+  ok(canAttackWith(nextTurn, FOE, scarred), 'and the monster may attack again — the bind was the moment, not a lock');
 }
 
 console.log('\nMystical Elf shields the monsters beside her, not herself');
@@ -1278,8 +1259,8 @@ console.log('\nA Field Spell is the weather, not a personal buff');
 
   s.players[ME].field = card(ME, 'umi');
   // 7 Colored Fish also gains its own 800 from Umi, on both sides of the table.
-  ok(effAtk(s, mine, ME) === 1800 + 400 + 800, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
-  ok(effAtk(s, theirs, FOE) === plain + 400 + 800, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
+  ok(effAtk(s, mine, ME) === 1800 + 500 + 800, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
+  ok(effAtk(s, theirs, FOE) === plain + 500 + 800, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
 
   // Dark Sanctuary is the counter-example: "your opponent's monsters lose 400"
   // is one-sided on purpose, and must stay that way.
@@ -1387,7 +1368,10 @@ console.log('\nA trap that picks its own target asks the player nothing');
   const declared = applyAction(s, FOE, { type: 'attack', uid: s.players[FOE].monsters[0]!.uid, targetUid: null }).state;
   const bound = act(declared, ME, { type: 'respondTrap', uid: circle.uid, targets: [] });
   ok(bound.players[ME].lp === 4000, 'defending with no monsters at all, the attack is still negated', `LP ${bound.players[ME].lp}`);
-  ok(bound.players[ME].spellTrap?.equippedTo === s.players[FOE].monsters[0]!.uid, 'and the circle lands on the attacker');
+  // One-shot since the balance pass: the scar lands on the attacker and the
+  // circle itself is spent, not parked.
+  const struck = bound.players[FOE].monsters[0]!;
+  ok(effAtk(bound, struck, FOE) === 2500 - 700, 'and the 700 lands on the attacker', String(effAtk(bound, struck, FOE)));
 }
 
 console.log('\nA Field Spell is a Spell your opponent controls');
@@ -1860,6 +1844,212 @@ console.log('\nGazelle and Berfomet are a pair, not a stack');
     'another Beast beside them still gains the 800', `${effAtk(pride, chim, ME)}`);
 }
 
+console.log('\nThe balance pass: a theme is the reason a deck wins');
+{
+  /* Toon World pays for its own power now. The activation searches and does
+     NOT draw — the rider used to be a Pot of Greed stapled to the engine. */
+  const tw = fresh();
+  const world = card(ME, 'toon-world');
+  tw.players[ME].hand = [world];
+  tw.players[ME].deck = [card(ME, 'toon-mermaid'), card(ME, 'kuriboh')];
+  const deckBefore = tw.players[ME].deck.length;
+  const open = act(tw, ME, { type: 'activateSpell', uid: world.uid, targets: [] });
+  ok(open.players[ME].field?.slug === 'toon-world', 'Toon World opens in the Field Zone');
+  ok(open.players[ME].hand.some((h) => h.slug === 'toon-mermaid'), 'and fetches a Toon');
+  ok(open.players[ME].deck.length === deckBefore - 1, 'and draws nothing beyond the search', `deck ${open.players[ME].deck.length}`);
+  ok(open.players[ME].lp === 4000 - 500, 'and costs 500 Life Points', `LP ${open.players[ME].lp}`);
+
+  /* And the book closing takes the Toons with it — the printed rule, and the
+     whole counterplay story for the deck that benched 85%. */
+  const doom = fresh();
+  doom.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
+  const toon = card(FOE, 'toon-summoned-skull');
+  const plain = card(FOE, 'ryu-kishin-powered');
+  doom.players[FOE].monsters = [toon, plain, null];
+  const despell = card(ME, 'de-spell');
+  doom.players[ME].hand = [despell];
+  const popped = act(doom, ME, { type: 'activateSpell', uid: despell.uid, targets: [doom.players[FOE].field!.uid] });
+  ok(!popped.players[FOE].field, 'destroying Toon World empties the Field Zone');
+  ok(!popped.players[FOE].monsters.some((m) => m?.slug === 'toon-summoned-skull'),
+    'and the Toons die with the book', popped.players[FOE].monsters.map((m) => m?.slug).join(','));
+  ok(popped.players[FOE].monsters.some((m) => m?.slug === 'ryu-kishin-powered'),
+    'CONTROL: the monster that was never a Toon stands');
+
+  // CONTROL: a bounce closes the book without burning it.
+  const lift = fresh();
+  lift.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
+  const toon2 = card(FOE, 'toon-summoned-skull');
+  lift.players[FOE].monsters = [toon2, null, null];
+  const trunade = card(ME, 'giant-trunade');
+  lift.players[ME].hand = [trunade];
+  const lifted = act(lift, ME, { type: 'activateSpell', uid: trunade.uid, targets: [] });
+  ok(lifted.players[FOE].monsters.some((m) => m?.slug === 'toon-summoned-skull'),
+    'CONTROL: a bounced Toon World spares the Toons', lifted.players[FOE].monsters.map((m) => m?.slug).join(',') || 'empty');
+
+  /* Dark Magician: the full wipe is his arrival, the ignition takes one. */
+  const dm = fresh();
+  const mage = card(ME, 'dark-magician');
+  dm.players[ME].hand = [mage];
+  dm.players[ME].monsters = [card(ME, 'kuriboh'), card(ME, 'feral-imp'), null];
+  dm.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+  dm.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+  const arrives = act(dm, ME, {
+    type: 'normalSummon', uid: mage.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: dm.players[ME].monsters.slice(0, 2).map((m) => m!.uid),
+  });
+  ok(!arrives.players[FOE].spellTrap && !arrives.players[FOE].field,
+    "Dark Magician's arrival wipes backrow and field once");
+  const standing = arrives.players[ME].monsters.find((m) => m?.slug === 'dark-magician')!;
+  arrives.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+  arrives.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+  const zap = act(arrives, ME, { type: 'ignition', uid: standing.uid, targets: [arrives.players[FOE].spellTrap!.uid] });
+  ok(!zap.players[FOE].spellTrap, 'his ignition destroys the chosen backrow card');
+  ok(!!zap.players[FOE].field, 'and only that — the Field Spell survives the ignition');
+
+  /* Zoa gives its body for the metal one — the anime beat. */
+  const kz = fresh();
+  const beast = card(ME, 'zoa');
+  beast.summonedOnTurn = 0;
+  kz.players[ME].monsters = [beast, null, null];
+  kz.players[ME].deck = [card(ME, 'metalzoa')];
+  const reborn = act(kz, ME, { type: 'ignition', uid: beast.uid, targets: [] });
+  ok(reborn.players[ME].monsters.some((m) => m?.slug === 'metalzoa'), 'Zoa transforms into Metalzoa');
+  ok(reborn.players[ME].grave.some((c) => c.slug === 'zoa'), 'and the beast itself was the price');
+
+  /* The Dark Door admits only the small. */
+  const dd = fresh('battle');
+  dd.active = FOE;
+  dd.players[ME].spellTrap = { ...card(ME, 'the-dark-door'), face: 'up' as const };
+  const big = card(FOE, 'summoned-skull'); // 2500 printed
+  const small = card(FOE, 'battle-ox'); // 1700 printed
+  big.summonedOnTurn = 0;
+  small.summonedOnTurn = 0;
+  dd.players[FOE].monsters = [big, small, null];
+  ok(!canAttackWith(dd, FOE, big), 'a 2500 cannot pass the Dark Door');
+  ok(canAttackWith(dd, FOE, small), 'a 1700 still can');
+
+  /* The engines find their enablers: the fish fetches the sea, the imp a
+     piece of the Forbidden One, the moth its shell. */
+  const ff = fresh();
+  const fish = card(ME, 'flying-fish');
+  ff.players[ME].hand = [fish];
+  ff.players[ME].deck = [card(ME, 'umi'), card(ME, 'kuriboh')];
+  const landed = act(ff, ME, { type: 'normalSummon', uid: fish.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(landed.players[ME].hand.some((h) => h.slug === 'umi'), 'Flying Fish fetches Umi');
+
+  const fi = fresh();
+  const imp = card(ME, 'feral-imp');
+  fi.players[ME].hand = [imp];
+  fi.players[ME].deck = [card(ME, 'right-leg-of-the-forbidden-one'), card(ME, 'kuriboh')];
+  const impDown = act(fi, ME, { type: 'normalSummon', uid: imp.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(impDown.players[ME].hand.some((h) => h.slug === 'right-leg-of-the-forbidden-one'), 'Feral Imp finds a piece of the Forbidden One');
+
+  const pm = fresh();
+  const moth = card(ME, 'petit-moth');
+  pm.players[ME].hand = [moth];
+  pm.players[ME].deck = [card(ME, 'cocoon-of-evolution'), card(ME, 'kuriboh')];
+  const mothDown = act(pm, ME, { type: 'normalSummon', uid: moth.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(mothDown.players[ME].hand.some((h) => h.slug === 'cocoon-of-evolution'), 'Petit Moth fetches its Cocoon');
+
+  // And the Cocoon holds the larva: battle cannot crack the shell around it.
+  const shell = fresh();
+  const larva = card(ME, 'petit-moth');
+  const cocoon = card(ME, 'cocoon-of-evolution');
+  shell.players[ME].monsters = [larva, cocoon, null];
+  ok(!!effFlags(shell, larva, ME).indestructibleByBattle, 'the Cocoon shields the moth beside it');
+  const bare2 = fresh();
+  const alone = card(ME, 'petit-moth');
+  bare2.players[ME].monsters = [alone, null, null];
+  ok(!effFlags(bare2, alone, ME).indestructibleByBattle, 'CONTROL: an unshelled moth is soft');
+
+  /* Ring of Destruction burns both duelists now — the printed symmetry. */
+  const ring = fresh();
+  const trap = card(ME, 'ring-of-destruction');
+  trap.face = 'down';
+  trap.summonedOnTurn = 1;
+  ring.players[ME].spellTrap = trap;
+  const target = card(FOE, 'battle-ox'); // 1700
+  ring.players[FOE].monsters = [target, null, null];
+  const boom = act(ring, ME, { type: 'activateSetCard', uid: trap.uid, targets: [target.uid] });
+  ok(boom.players[FOE].lp === 4000 - 1700, 'the ring burns the opponent for the ATK', `LP ${boom.players[FOE].lp}`);
+  ok(boom.players[ME].lp === 4000 - 1700, 'and its own duelist for exactly the same', `LP ${boom.players[ME].lp}`);
+}
+
+console.log('\nThe balance pass, second turn of the wheel');
+{
+  /* The Toon toll: mischief is paid for. A Toon under Toon World declaring a
+     direct attack costs Pegasus 500 Life Points — the printed rule, and what
+     keeps an untouchable board of direct attackers from being free. */
+  const s = fresh('battle');
+  s.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const toon = card(ME, 'toon-mermaid');
+  toon.summonedOnTurn = 0;
+  s.players[ME].monsters = [toon, null, null];
+  const lpBefore = s.players[ME].lp;
+  const foeLp = s.players[FOE].lp;
+  const swung = act(s, ME, { type: 'attack', uid: toon.uid, targetUid: null });
+  ok(swung.players[ME].lp === lpBefore - 500, 'a Toon direct attack costs its duelist 500', `LP ${swung.players[ME].lp}`);
+  ok(swung.players[FOE].lp < foeLp, 'and the blow still lands', `foe LP ${swung.players[FOE].lp}`);
+
+  /* And the pause: a Toon summoned this turn waits — the other printed Toon
+     rule, and the turn the opponent is given to answer a free 3800. */
+  const sick = fresh('battle');
+  sick.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const freshToon = card(ME, 'toon-mermaid');
+  freshToon.summonedOnTurn = sick.turn;
+  sick.players[ME].monsters = [freshToon, null, null];
+  ok(!canAttackWith(sick, ME, freshToon), 'a Toon summoned this turn cannot attack yet');
+  const rested = structuredClone(sick);
+  rested.players[ME].monsters[0]!.summonedOnTurn = rested.turn - 1;
+  ok(canAttackWith(rested, ME, rested.players[ME].monsters[0]!), 'and swings freely a turn later');
+
+  // CONTROL: a direct attacker with no Toon World pays nothing.
+  const c = fresh('battle');
+  const fish = card(ME, 'flying-fish');
+  fish.summonedOnTurn = 0;
+  fish.flags.directAttack = true;
+  c.players[ME].monsters = [fish, null, null];
+  const free = act(c, ME, { type: 'attack', uid: fish.uid, targetUid: null });
+  ok(free.players[ME].lp === 4000, 'CONTROL: an ordinary direct attacker pays no toll', `LP ${free.players[ME].lp}`);
+
+  /* Mirror Wall bills its keeper: 500 a reflection, and a wall that cannot
+     be paid for is not offered at all. */
+  const mw = fresh('battle');
+  mw.active = FOE;
+  const wall = card(ME, 'mirror-wall');
+  wall.face = 'up';
+  wall.summonedOnTurn = 1;
+  mw.players[ME].spellTrap = wall;
+  const attacker = card(FOE, 'summoned-skull');
+  attacker.summonedOnTurn = 0;
+  mw.players[FOE].monsters = [attacker, null, null];
+  const declared = applyAction(mw, FOE, { type: 'attack', uid: attacker.uid, targetUid: null }).state;
+  ok(declared.pending?.kind === 'trap', 'the wall is offered while its keeper can pay');
+  const paid = act(declared, ME, { type: 'respondTrap', uid: wall.uid });
+  ok(paid.players[ME].lp === 4000 - 500, 'and firing it costs 500', `LP ${paid.players[ME].lp}`);
+  const held = paid.players[FOE].monsters[0]!;
+  ok(effAtk(paid, held, FOE) === 1250, 'the attacker is still halved', String(effAtk(paid, held, FOE)));
+
+  const broke = structuredClone(mw);
+  broke.players[ME].lp = 400;
+  const declared2 = applyAction(broke, FOE, { type: 'attack', uid: broke.players[FOE].monsters[0]!.uid, targetUid: null }).state;
+  ok(declared2.pending?.kind !== 'trap', 'CONTROL: below the price, the wall is not even offered');
+
+  /* The factory ships the line out of the hand. */
+  const kf = fresh();
+  const factory = card(ME, 'machine-conversion-factory');
+  const small1 = card(ME, 'cannon-soldier'); // 1400 Machine
+  const small2 = card(ME, 'robotic-knight'); // 1600 Machine
+  const tooBig = card(ME, 'mechanicalchaser'); // 1850 — over the line
+  kf.players[ME].hand = [factory, small1, small2, tooBig];
+  const rolled = act(kf, ME, { type: 'activateSpell', uid: factory.uid, targets: [] });
+  const out = rolled.players[ME].monsters.filter(Boolean).map((m) => m!.slug);
+  ok(out.includes('cannon-soldier') && out.includes('robotic-knight'),
+    'Machine Conversion Factory ships two small Machines from the hand', out.join(','));
+  ok(rolled.players[ME].hand.some((h) => h.slug === 'mechanicalchaser'),
+    'CONTROL: an 1850 Machine is over the factory line and stays in hand');
+}
+
 console.log('\nPolymerization needs somewhere to be activated');
 {
   /* Reported from a real duel: a Fusion went through with the Spell/Trap Zone
@@ -2137,21 +2327,34 @@ console.log('\nA God that did not pay for itself does not stay');
     'but it goes back at the end of that turn');
   ok(after.players[ME].grave.some((c) => c.slug === 'slifer-the-sky-dragon'), 'to the Graveyard, not nowhere');
 
-  /* The theft, which is the case that actually mattered: revived from *their*
-     Graveyard onto your field, its second mouth would have drained every
-     monster its own owner summoned, permanently. */
+  /* The theft door is closed one layer earlier now — Monster Reborn reads
+     your OWN Graveyard only, so the case that motivated the sweep cannot be
+     set up through it at all. Pinned first; the rental sweep is then driven
+     from the owner's own side, which is the way a God still arrives without
+     paying. */
   const theft = fresh();
   const theirs = card(FOE, 'slifer-the-sky-dragon');
   theft.players[FOE].grave.push(theirs);
   const steal = card(ME, 'monster-reborn');
   theft.players[ME].hand = [steal, card(ME, 'kuriboh')];
-  const stolen = act(theft, ME, { type: 'activateSpell', uid: steal.uid, targets: [theirs.uid] });
-  ok(stolen.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
-    "you can borrow the other player's God");
-  const back = act(stolen, ME, { type: 'endTurn' });
+  const refusedTheft = applyAction(theft, ME, { type: 'activateSpell', uid: steal.uid, targets: [theirs.uid] });
+  ok(!refusedTheft.state.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    "Monster Reborn cannot reach the other player's Graveyard at all");
+
+  /* The rental: your own God, revived without its three Tributes, leaves at
+     the End Phase — from your own field, to your own Graveyard. */
+  const rental = fresh();
+  const mine = card(ME, 'slifer-the-sky-dragon');
+  rental.players[ME].grave.push(mine);
+  const rb2 = card(ME, 'monster-reborn');
+  rental.players[ME].hand = [rb2, card(ME, 'kuriboh')];
+  const revived = act(rental, ME, { type: 'activateSpell', uid: rb2.uid, targets: [mine.uid] });
+  ok(revived.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'your own God can be revived without Tributes');
+  const back = act(revived, ME, { type: 'endTurn' });
   ok(!back.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'), 'for exactly one turn');
-  ok(back.players[FOE].grave.some((c) => c.slug === 'slifer-the-sky-dragon'),
-    'and it goes home to its owner, not into your Graveyard');
+  ok(back.players[ME].grave.some((c) => c.slug === 'slifer-the-sky-dragon'),
+    'and it returns to the Graveyard at the End Phase');
 
   /* CONTROL: paying the three bodies is what buys the God permanently. It must
      survive its own End Phase, or the card is unplayable rather than balanced. */

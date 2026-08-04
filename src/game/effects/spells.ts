@@ -30,13 +30,21 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'monster-reborn': {
-    text: 'Special Summon 1 monster from either Graveyard to your field in Attack Position.',
+    /* Your own Graveyard, deliberately. This card is in all eleven decks, and
+       reading either Graveyard made it the one deliberate anti-identity clause
+       in the game: the moment a signature bomb died — Blue-Eyes, Metalzoa,
+       Great Moth, Dark Necrofear — it became the *opponent's* best play, so
+       late duels converged on "whoever draws Reborn second wins the bomb".
+       Own-side keeps the comeback and keeps every deck's monster its own.
+       (Stealing a God was already closed separately by `returnBorrowedGods`;
+       this closes the same door for everything beneath one.) */
+    text: 'Special Summon 1 monster from your Graveyard in Attack Position.',
     cry: 'Rise again!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        ops: [{ op: 'specialSummon', from: 'grave', side: 'both', count: 1, position: 'atk' }],
+        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', count: 1, position: 'atk' }],
       },
     ],
   },
@@ -150,7 +158,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'magical-hats': {
-    text: "When your opponent declares an attack: negate the attack, end their Battle Phase, and Special Summon 1 Spellcaster from your Deck.",
+    text: "When your opponent declares an attack: negate the attack, end their Battle Phase, and Special Summon 1 Magician from your Deck face-down.",
     cry: 'Pick a hat, any hat!',
     effects: [
       {
@@ -160,22 +168,37 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'negateAttack' },
           { op: 'endBattlePhase' },
-          { op: 'specialSummon', from: 'deck', filter: { type: 'Spellcaster' }, count: 1, position: 'def', face: 'down' },
+          {
+            op: 'specialSummon',
+            from: 'deck',
+            /* Named magicians, not every Spellcaster. The wide filter's worst
+               output was pulling an Exodia piece under a hat: `checkExodia`
+               reads the hand only, so a piece summoned to the field is
+               stranded and the win it belongs to is dead. The hats hide
+               magicians; the Forbidden One stays in the Deck where the hand
+               can still assemble him. */
+            filter: { slugs: ['dark-magician', 'dark-magician-girl', 'mystical-elf', 'magician-of-faith'] },
+            count: 1,
+            position: 'def',
+            face: 'down',
+          },
         ],
       },
     ],
   },
 
   'brain-control': {
-    // No Life Point cost here, by the owner's decision. Four thousand Life
-    // Points is a two-attack game, so 800 is a fifth of the duel for one turn
-    // of borrowing — the card was priced for a format that starts at 8000.
-    text: 'Take control of 1 monster your opponent controls until the end of the turn.',
+    /* 600, not the printed 800: four thousand Life Points is a two-attack game
+       and 800 is a fifth of the duel. But free was too far the other way — a
+       stolen monster converts straight into tribute fodder or a lethal swing,
+       so the borrowing has to cost something the race can feel. */
+    text: 'Pay 600 Life Points: take control of 1 monster your opponent controls until the end of the turn.',
     cry: 'Your mind is mine!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
+        cost: { lp: 600 },
         ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
       },
     ],
@@ -198,19 +221,17 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'spellbinding-circle': {
-    text: 'When your opponent declares an attack: negate it. The attacking monster loses 700 ATK and cannot attack while this card remains face-up.',
-    /* The circle binds one monster, and it binds it by staying on the field —
-       both of which the old version got wrong. `freezeMonsters` locks down
-       *every* monster its target controls, so answering one attacker stopped
-       their whole board; it ran on a one-turn timer rather than on the card
-       still being there; and the −700 was written into the monster, so it kept
-       the penalty after the circle was destroyed and the circle itself went
-       straight to the Graveyard having promised to remain face-up.
-       Attaching it is all three at once: an equip is read live as an aura, so
-       the penalty and the lock last exactly as long as the card does, they
-       reach only the monster it is on, and `toGrave` already sends an equip
-       down with its host — which is what happens when the bound monster
-       leaves the field. */
+    /* One shot now, on purpose — and the text promises no permanence, so the
+       "an ongoing effect belongs to its card" rule is not being broken, it is
+       being priced. The equip version was correct about *duration* and wrong
+       about *cost*: the circle parked face-up in its owner's ONLY Spell/Trap
+       Zone for as long as the bound monster lived, so answering one attacker
+       locked Yugi out of Mirror Force, Magical Hats and — because a Fusion
+       needs a free zone — his own Dark Paladin. A trap that spends itself
+       leaves the zone open, and the scar it leaves is permanent because a
+       binding circle is not something a monster walks out of. */
+    subKindOverride: 'Normal',
+    text: 'When your opponent declares an attack: negate it, and the attacking monster permanently loses 700 ATK.',
     effects: [
       {
         trigger: 'trap',
@@ -218,7 +239,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Spellbinding Circle',
         ops: [
           { op: 'negateAttack' },
-          { op: 'equipTo', atk: -700, def: 0, grants: ['cannotAttack'], target: sel('opp', 'attacker') },
+          { op: 'gainAtk', amount: -700, target: sel('opp', 'attacker'), duration: 'permanent' },
         ],
       },
     ],
@@ -280,7 +301,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'ring-of-destruction': {
-    text: "Destroy 1 monster your opponent controls and inflict damage to your opponent equal to that monster's ATK.",
+    /* The burn goes both ways now, as printed — and as aired: Kaiba straps the
+       ring to a monster knowing the blast reaches him too. One-sided it was
+       free removal plus a fifth of the opponent's Life Points at no stake;
+       symmetric it is a real decision with the race on the table, and the AI
+       prices both halves through the same damage op. */
+    text: "Destroy 1 monster your opponent controls and inflict damage to BOTH players equal to that monster's ATK.",
     cry: 'Ring of Destruction!',
     effects: [
       {
@@ -290,6 +316,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         targets: 1,
         ops: [
           { op: 'damage', scale: 'targetAtk', to: 'opp' },
+          { op: 'damage', scale: 'targetAtk', to: 'own' },
           { op: 'destroy', target: OPP_PICK },
         ],
       },
@@ -390,12 +417,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'elegant-egotist': {
+    // "Deck or hand" is what the text always promised; the op only read the
+    // Deck, so a drawn Sisters made the card weaker instead of faster.
     text: 'Special Summon 1 "Harpie Lady Sisters" from your Deck or hand.',
     cry: 'Multiply, my Harpies!',
     effects: [
       {
         trigger: 'activate',
-        ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['harpie-lady-sisters', 'cyber-harpie-lady', 'harpie-lady'] }, count: 1, position: 'atk' }],
+        ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['harpie-lady-sisters', 'cyber-harpie-lady', 'harpie-lady'] }, count: 1, position: 'atk' }],
       },
     ],
   },
@@ -436,7 +465,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'mirror-wall': {
-    text: 'Stays face-up. Each time your opponent declares an attack: negate it, the attacking monster loses half its ATK permanently, and you gain 300 Life Points.',
+    /* The wall bills its keeper now — the printed card's upkeep, priced for
+       4000 LP. Free and healing on top, it was a standing "no" to every
+       attack for the rest of the duel; at 500 a reflection the fourth "no"
+       has cost half the game, which is a real decision each time. The trap
+       path pays `cost.lp` and `activatableTraps` stops offering it when the
+       Life Points are not there. */
+    text: 'Stays face-up. Each time your opponent declares an attack, pay 500 Life Points: negate it, and the attacking monster loses half its ATK permanently.',
     cry: 'Your own strength, turned against you!',
     effects: [
       {
@@ -444,10 +479,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         window: 'opponentDeclareAttack',
         label: 'Mirror Wall',
         reusable: true,
+        cost: { lp: 500 },
         ops: [
           { op: 'negateAttack' },
           { op: 'halveAtk', target: sel('opp', 'attacker') },
-          { op: 'heal', amount: 300, to: 'own' },
         ],
       },
     ],
@@ -459,12 +494,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'harpie-lady-phoenix-formation': {
-    text: 'Destroy up to 2 monsters your opponent controls, then inflict 500 damage to them.',
+    /* It is a Harpie manoeuvre, so it needs Harpies flying it. Condition-free
+       it was generic removal that won duels the flock never appeared in. */
+    text: 'If you control a Winged Beast monster: destroy up to 2 monsters your opponent controls, then inflict 500 damage to them.',
     cry: 'Phoenix Formation!',
     effects: [
       {
         trigger: 'activate',
         targets: 2,
+        condition: { controlsOtherOfType: 'Winged Beast' },
         ops: [
           { op: 'destroy', target: sel('opp', 'chosen', { count: 2 }) },
           { op: 'damage', amount: 500, to: 'opp' },
@@ -484,19 +522,28 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a Trap, and the deck that most needs its enabler was the deck least able
        to afford it. The Field Zone is separate, so it costs him nothing now. */
     subKindOverride: 'Field',
-    text: 'Field Spell: pay 500 Life Points, draw 2 cards and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, can attack your opponent directly, and cannot be targeted by your opponent\'s effects.',
+    text: 'Field Spell: pay 500 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, cannot be targeted by your opponent\'s effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
         trigger: 'activate',
         cost: { lp: 500 },
-        // Pegasus's whole deck is built on getting this down and then having a
-        // Toon to put under it, so the card that enables the deck is also the
-        // card that finds the rest of it.
-        ops: [
-          { op: 'draw', count: 2, who: 'own' },
-          { op: 'search', filter: { kind: 'monster', toon: true } },
-        ],
+        /* The search alone. It used to also draw 2 — a Pot of Greed stapled to
+           the enabler, which meant the deck's engine card was ALSO its best
+           card-advantage card and the 500 Life Points bought three cards.
+           Finding the Toon is the whole job; the deck stands on the aura. */
+        ops: [{ op: 'search', filter: { kind: 'monster', toon: true } }],
+      },
+      {
+        /* The printed rule, and the whole counterplay story: the Toons only
+           exist while the book is open. Destroying Toon World — De-Spell,
+           Feather Duster, a Hunting Ground pop, Ultimate Dragon's arrival —
+           was already the intended answer to Pegasus; now it answers the
+           board too, not just the next summon. `onSentToGrave` fires when the
+           card is destroyed or replaced; a bounce keeps the book intact, so a
+           returned Toon World spares the Toons — closed, not burned. */
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'destroy', target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }) }],
       },
       {
         trigger: 'continuous',
@@ -509,7 +556,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              Reported as "Toon World as a field spell should be destroyable". */
           target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
           atk: 800,
-          grants: ['directAttack', 'untargetable', 'pierce'],
+          // The toll rides with the mischief: every direct attack a Toon
+          // declares costs Pegasus 500 Life Points, which is the printed rule
+          // and the self-balancing half of "cannot be touched".
+          grants: ['directAttack', 'directAttackTax', 'untargetable', 'pierce', 'summonSick'],
         },
       },
     ],
@@ -529,21 +579,23 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'shadow-spell': {
-    /* Continuous, and it says so. It read like a one-shot Trap and then kept
-       being offered every time an attack was declared, which looks like a card
-       being activated twice rather than one that never left. */
-    text: 'Stays face-up. Each time your opponent declares an attack: negate it. That monster loses 800 ATK permanently and cannot attack for 1 turn.',
+    /* One shot now. Reusable, this was a standing "no, and it costs you 800"
+       to every attack for the rest of the duel, in the deck least in need of
+       the help — and its freeze locked the opponent's whole board for a
+       sentence about one monster, the exact shape the Spellbinding Circle
+       lesson is about. The chains bind the one monster they caught, hard,
+       and the card is spent. */
+    subKindOverride: 'Normal',
+    text: 'When your opponent declares an attack: negate it, and the attacking monster permanently loses 800 ATK.',
     cry: 'Bound in shadow!',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Shadow Spell',
-        reusable: true,
         ops: [
           { op: 'negateAttack' },
           { op: 'gainAtk', amount: -800, target: sel('opp', 'attacker'), duration: 'permanent' },
-          { op: 'freezeMonsters', who: 'opp', turns: 1 },
         ],
       },
     ],
@@ -562,9 +614,20 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'the-dark-door': {
-    text: 'Continuous Spell: your opponent\'s monsters lose 300 ATK and only one of their monsters may attack each turn.',
+    /* The old text promised "only one of their monsters may attack each turn"
+       and no effect backed it — a per-side attack cap does not exist in this
+       engine. The door's sentence is rewritten to what a door can honestly
+       be here: the big cannot fit through. Mid-sized attackers still walk in,
+       so it walls the bosses without stalling the duel, and destroying the
+       door (the one Spell/Trap Zone) opens it again. */
+    text: "Continuous Spell: your opponent's monsters lose 300 ATK, and their monsters with 2000 or more ATK cannot attack.",
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -300 } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('opp', 'all', { filter: { minAtk: 2000 } }), grants: ['cannotAttack'] },
+      },
     ],
   },
 
@@ -615,11 +678,27 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-sanctuary': {
-    text: 'Field Spell: all monsters your opponent controls lose 400 ATK. At the end of each of your turns, inflict 300 damage to your opponent.',
+    /* The ghost took a coin from Barrel Dragon: the flat 300 tick was too
+       small to ever matter and too flat to feel haunted. Heads is a real bite
+       of a 4000 LP pool; tails is still the old tick. Same expected burn
+       roughly doubled, and the End Phase becomes a beat worth watching. */
+    text: 'Field Spell: all monsters your opponent controls lose 400 ATK and your Fiend monsters gain 300 ATK. At the end of each of your turns, flip a coin: Heads — inflict 800 damage to your opponent. Tails — inflict 300.',
     cry: 'Welcome to the Shadow Realm.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
-      { trigger: 'onOwnTurnEnd', ops: [{ op: 'damage', amount: 300, to: 'opp' }] },
+      /* The haunted house feeds its own ghosts — a 700-point field-wide swing
+         once the sanctuary stands, which is what a Field Spell is for. */
+      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { kind: 'monster', type: 'Fiend' } }), atk: 300 } },
+      {
+        trigger: 'onOwnTurnEnd',
+        ops: [
+          {
+            op: 'coinFlip',
+            heads: [{ op: 'damage', amount: 800, to: 'opp' }],
+            tails: [{ op: 'damage', amount: 300, to: 'opp' }],
+          },
+        ],
+      },
     ],
   },
 
@@ -628,7 +707,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   umi: {
-    text: 'Field Spell: all WATER monsters gain 400 ATK and 300 DEF.',
+    text: 'Field Spell: all WATER monsters gain 500 ATK and 300 DEF.',
     cry: 'The sea answers my call!',
     /* A Field Spell is the weather, not a personal buff: "all WATER monsters"
        means both sides of the table, which is how the real card reads and how
@@ -640,7 +719,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('both', 'all', { filter: { attribute: 'WATER' } }), atk: 400, def: 300 },
+        aura: { target: sel('both', 'all', { filter: { attribute: 'WATER' } }), atk: 500, def: 300 },
       },
     ],
   },
@@ -682,12 +761,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'tornado-wall': {
-    text: 'You take no battle damage for the rest of the Duel while this card remains face-up.',
+    /* Gated on the sea. Ungated this was a permanent "battle damage no longer
+       exists" from any deck state — the strongest defensive write in the game
+       with no theme attached. The waterspouts are drawn up out of Umi, so Umi
+       is what the activation requires; the trap path already enforces
+       `condition` at fire time. The protection itself stays for the duel,
+       which is the over-anime register — the wall, once raised, holds. */
+    text: "Activate only while 'Umi' is on the field: you take no battle damage for the rest of the Duel.",
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Tornado Wall',
+        condition: { requiresField: 'umi' },
         ops: [{ op: 'preventBattleDamage', who: 'own', duration: 'permanent' }],
       },
     ],
@@ -746,8 +832,20 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'machine-conversion-factory': {
-    text: 'Equip to a monster you control: it gains 400 ATK and 400 DEF.',
-    effects: [{ trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 400, def: 400 }] }],
+    /* A factory, not a coat of paint. As an equip (+400/+400) it competed for
+       Keith's one Spell/Trap Zone against Metalmorph and his traps and lost
+       every time. His real structural problem is the curve — seven of his
+       monsters cost tributes — so the factory now fixes exactly that: it
+       ships the small machines out onto the line, and the line is what the
+       tributes are paid from. */
+    text: 'Special Summon up to 2 Machine monsters with 1600 or less ATK from your hand.',
+    cry: 'Production line, roll out!',
+    effects: [
+      {
+        trigger: 'activate',
+        ops: [{ op: 'specialSummon', from: 'hand', filter: { kind: 'monster', type: 'Machine', maxAtk: 1600 }, count: 2, position: 'atk' }],
+      },
+    ],
   },
 
   '7-completed': {
@@ -780,7 +878,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Time Machine',
         ops: [
           { op: 'specialSummon', from: 'grave', count: 1, position: 'atk' },
-          { op: 'gainAtk', amount: 300, target: sel('own', 'strongest'), duration: 'permanent' },
+          /* 'summoned', not 'strongest' — the 300 belongs to what the machine
+             just brought back, the same Call of the Haunted-class mistake as
+             "it gains 400 ATK" once buffing whatever was already biggest. */
+          { op: 'gainAtk', amount: 300, target: sel('own', 'summoned'), duration: 'permanent' },
         ],
       },
     ],
@@ -795,7 +896,6 @@ export const OWN_TARGET_CARDS = new Set([
   'malevolent-nuzzler',
   'laser-cannon-armor',
   'insect-armor-with-laser-cannon',
-  'machine-conversion-factory',
   '7-completed',
   'metalmorph',
 ]);

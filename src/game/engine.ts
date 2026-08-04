@@ -342,6 +342,8 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
+  if (grants.has('directAttackTax')) merged.directAttackTax = true;
+  if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
   return merged;
 }
@@ -501,7 +503,12 @@ function resetInstance(c: CardInstance) {
   c.defMod = 0;
   c.turnAtkMod = 0;
   c.turnDefMod = 0;
-  c.counters = 0;
+  /* A moth knows which rung it is on — on revival too. `newInstance` seeds
+     the Evolution Counters by construction, and a hard 0 here silently
+     un-evolved a revived Great Moth: it came back needing to climb to the
+     rung it was already standing on. Everything that is not a moth still
+     resets to 0. */
+  c.counters = MOTH_STAGE[c.slug] ?? 0;
   c.equips = [];
   c.flags = {};
   c.turnFlags = {};
@@ -1107,7 +1114,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         if (!found) break;
         const old = displayName(ctx.source);
         ctx.source.slug = op.slug;
-        ctx.source.counters = 0;
+        /* The new form starts on its own rung, not at zero — a Petit Moth
+           that evolved into Larvae Moth used to restart the climb from
+           nothing while a hand-summoned Larvae began at 2. */
+        ctx.source.counters = MOTH_STAGE[op.slug] ?? 0;
         log(state, `${old} evolves into ${card(op.slug).name}!`, 'summon', ctx.controller);
         anim(state, { kind: 'fusion', uid: ctx.source.uid, slug: op.slug, player: ctx.controller });
         fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {});
@@ -1250,7 +1260,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            your opponent's Graveyard" and means only that. */
         const own = state.players[ctx.controller].grave;
         const theirs = state.players[other(ctx.controller)].grave;
-        const pools = op.from === 'opp' ? [theirs] : [own, theirs];
+        const pools = op.from === 'opp' ? [theirs] : op.from === 'own' ? [own] : [own, theirs];
         let pool: CardInstance[] | null = null;
         let i2 = -1;
         for (const g of pools) {
@@ -1450,7 +1460,10 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
     // goes off every time its window opens — that ongoing threat is the whole
     // reason it is allowed to sit in the zone.
     const ready = st.face === 'down' ? st.summonedOnTurn < state.turn : effs.some((e) => e.reusable);
-    if (ready && effs.length) out.push(st);
+    // And a trap the controller cannot pay for is not an option — offering it
+    // would fire the window, skip the cost-gated effect, and waste the card.
+    const payable = effs.some((e) => canPayCost(state, pid, e));
+    if (ready && payable && effs.length) out.push(st);
   }
   for (const h of p.hand) {
     const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)) ?? [];
@@ -1517,6 +1530,16 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
   const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig };
   for (const eff of effs) {
     if (!conditionMet(state, eff, c, pid)) continue;
+    /* Traps pay their costs too. `activateSpell` has always paid `cost.lp`;
+       this path silently ignored it, so a trap priced in Life Points was a
+       trap priced in nothing. Announced like any other payment — the total
+       must never move with nothing on screen saying why. */
+    if (eff.cost?.lp) {
+      if (p.lp <= eff.cost.lp) continue;
+      p.lp -= eff.cost.lp;
+      log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
+      anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
+    }
     runOps(ctx, eff.ops);
   }
 
@@ -1578,6 +1601,18 @@ function resolveBattle(state: DuelState) {
   attacker.attacksUsed += 1;
 
   if (!susp.targetUid) {
+    /* The Toon toll: a declared direct attack costs its controller 500 Life
+       Points when the attacker carries the tax. Paid before the blow lands
+       and paid win-or-lose — mischief is not free. Only a true declared
+       direct attack pays; a target vanishing mid-swing is not mischief.
+       Through `dealDamage` so the payment is announced, floored and
+       winner-checked exactly like every other Life Point movement — a
+       duelist CAN pay themselves out at 500 or less, which is the bet. */
+    if (effFlags(state, attacker, controller).directAttackTax) {
+      log(state, `${state.players[controller].name} pays the toll for the direct attack.`, 'effect', controller);
+      dealDamage(state, controller, 500, false);
+      if (state.winner) return;
+    }
     const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
@@ -1859,9 +1894,13 @@ export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance):
   if (monstersFrozen(state, pid)) return false;
   // Held down by something on the field rather than by a timed lock, so it
   // lifts the instant that card is gone.
-  if (effFlags(state, c, pid).cannotAttack) return false;
+  const flags = effFlags(state, c, pid);
+  if (flags.cannotAttack) return false;
   if (c.face === 'down' || c.position !== 'atk') return false;
-  if (c.summonedOnTurn === state.turn && c.isToken) return false;
+  // Tokens have always waited a turn; `summonSick` is the same rule worn as
+  // an aura — a Toon summoned for free under Toon World waits out the turn
+  // it arrived, which is the window the opponent is given to answer it.
+  if (c.summonedOnTurn === state.turn && (c.isToken || flags.summonSick)) return false;
   return c.attacksUsed < maxAttacks(state, c, pid);
 }
 
@@ -2022,6 +2061,10 @@ export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInst
      and Umi sat dead in their owners' hands. */
   if (!eff && !isPassiveSpell(def)) return false;
   if (eff && !canPayCost(state, pid, eff)) return false;
+  /* Spells can carry a condition too. Traps and triggers already went through
+     `conditionMet`; a Spell's condition was silently ignored here, so a card
+     saying "if you control a Winged Beast" would have activated bare. */
+  if (eff?.condition && !conditionMet(state, eff, c, pid)) return false;
   if (eff && activationIsDead(state, pid, c, def, eff)) return false;
   const p = state.players[pid];
   if (def.subKind === 'Field') return true; // field zone is separate
@@ -2040,6 +2083,7 @@ export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInsta
   }
   const eff = def.effects.find((e) => e.trigger === 'activate');
   if (!eff) return false;
+  if (eff.condition && !conditionMet(state, eff, c, pid)) return false;
   return canPayCost(state, pid, eff) && !activationIsDead(state, pid, c, def, eff);
 }
 
@@ -2316,6 +2360,9 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          already hides the card, so this only catches a tap that raced the
          board — but a Spell that leaves the hand having done nothing is the
          worst way to find out. */
+      if (eff?.condition && !conditionMet(state, eff, c, pid)) {
+        return { state: prev, error: 'Its condition is not met.' };
+      }
       if (eff && activationIsDead(state, pid, c, def, eff)) {
         return { state: prev, error: 'There is nothing for that card to affect.' };
       }

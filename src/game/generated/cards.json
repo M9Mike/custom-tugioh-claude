@@ -79,38 +79,6 @@
     "isEffect": false,
     "artId": 28279543
   },
-  "celtic-guardian": {
-    "slug": "celtic-guardian",
-    "name": "Celtic Guardian",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Warrior",
-    "attribute": "EARTH",
-    "level": 4,
-    "atk": 1400,
-    "def": 1200,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 91152256
-  },
-  "beaver-warrior": {
-    "slug": "beaver-warrior",
-    "name": "Beaver Warrior",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Beast-Warrior",
-    "attribute": "EARTH",
-    "level": 4,
-    "atk": 1200,
-    "def": 1500,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 32452818
-  },
   "mystical-elf": {
     "slug": "mystical-elf",
     "name": "Mystical Elf",
@@ -559,22 +527,6 @@
     "isEffect": false,
     "artId": 14898066
   },
-  "la-jinn-the-mystical-genie-of-the-lamp": {
-    "slug": "la-jinn-the-mystical-genie-of-the-lamp",
-    "name": "La Jinn the Mystical Genie of the Lamp",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Fiend",
-    "attribute": "DARK",
-    "level": 4,
-    "atk": 1800,
-    "def": 1000,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 97590747
-  },
   "hitotsu-me-giant": {
     "slug": "hitotsu-me-giant",
     "name": "Hitotsu-Me Giant",
@@ -942,22 +894,6 @@
     "isRitual": false,
     "isEffect": false,
     "artId": 44287299
-  },
-  "battle-steer": {
-    "slug": "battle-steer",
-    "name": "Battle Steer",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Beast-Warrior",
-    "attribute": "EARTH",
-    "level": 5,
-    "atk": 1800,
-    "def": 1300,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 18246479
   },
   "kojikocy": {
     "slug": "kojikocy",
@@ -2479,22 +2415,6 @@
     "isEffect": true,
     "artId": 12472242
   },
-  "man-eating-treasure-chest": {
-    "slug": "man-eating-treasure-chest",
-    "name": "Man-Eating Treasure Chest",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Fiend",
-    "attribute": "DARK",
-    "level": 4,
-    "atk": 1600,
-    "def": 1000,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 13723605
-  },
   "cocoon-of-evolution": {
     "slug": "cocoon-of-evolution",
     "name": "Cocoon of Evolution",
@@ -2751,22 +2671,6 @@
     "isEffect": true,
     "artId": 79870141
   },
-  "dark-assailant": {
-    "slug": "dark-assailant",
-    "name": "Dark Assailant",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Zombie",
-    "attribute": "DARK",
-    "level": 4,
-    "atk": 1200,
-    "def": 1200,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 41949033
-  },
   "sabersaurus": {
     "slug": "sabersaurus",
     "name": "Sabersaurus",
@@ -2879,22 +2783,6 @@
     "isEffect": false,
     "artId": 24311372
   },
-  "launcher-spider": {
-    "slug": "launcher-spider",
-    "name": "Launcher Spider",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Machine",
-    "attribute": "FIRE",
-    "level": 7,
-    "atk": 2200,
-    "def": 2500,
-    "frameType": "normal",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": false,
-    "artId": 87322377
-  },
   "pendulum-machine": {
     "slug": "pendulum-machine",
     "name": "Pendulum Machine",
@@ -2958,22 +2846,6 @@
     "isRitual": false,
     "isEffect": false,
     "artId": 7359741
-  },
-  "giant-rat": {
-    "slug": "giant-rat",
-    "name": "Giant Rat",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Beast",
-    "attribute": "EARTH",
-    "level": 4,
-    "atk": 1400,
-    "def": 1450,
-    "frameType": "effect",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": true,
-    "artId": 97017120
   },
   "steel-ogre-grotto-1": {
     "slug": "steel-ogre-grotto-1",
