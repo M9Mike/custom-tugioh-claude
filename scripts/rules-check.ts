@@ -2611,6 +2611,74 @@ console.log('\nChimera comes apart into both halves');
     'destroying it returns Gazelle and Berfomet both', halves.join(', ') || 'nothing came back');
 }
 
+console.log('\nEvery beat names the card it is showing');
+{
+  /* Reported from a real duel: "with dark hole when I destroyed the monsters
+     sometimes a different image shows on the text for the info which monster
+     was sent to the graveyard". The declaration band draws the beat's own
+     `slug` beside the beat's own `note`, and `destroyCard` animated BEFORE it
+     logged — so each destroy claimed the *previous* monster's line, and the
+     first beat got the last monster's line off `speakRemainingLog`. With one
+     monster on the board the pairing lands by luck, which is the "sometimes". */
+  const s = fresh();
+  s.players[FOE].monsters = [card(FOE, 'battle-ox'), card(FOE, 'summoned-skull'), card(FOE, 'harpie-lady')];
+  s.players[ME].monsters = [card(ME, 'curse-of-dragon'), null, null];
+  const hole = card(ME, 'dark-hole');
+  s.players[ME].hand = [hole];
+  const swept = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+
+  const kills = swept.anims.filter((a) => a.kind === 'destroy');
+  ok(kills.length === 4, 'Dark Hole gives every monster its own beat', `${kills.length} beats`);
+  const mismatched = kills.filter((a) => {
+    const name = a.slug ? CARDS[a.slug]?.name : null;
+    return !name || !a.note || !a.note.includes(name);
+  });
+  ok(mismatched.length === 0,
+    'and each one says the name of the card whose picture it shows',
+    mismatched.map((a) => `${CARDS[a.slug!]?.name} → "${a.note}"`).join(' · '));
+  ok(kills.every((a) => !!a.note), 'no destroyed monster arrives with nothing said about it');
+
+  /* CONTROL: the single-destroy case, which was correct all along — so this
+     block cannot pass merely because the pairing was disabled. */
+  const one = fresh();
+  one.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  const hole2 = card(ME, 'dark-hole');
+  one.players[ME].hand = [hole2];
+  const single = act(one, ME, { type: 'activateSpell', uid: hole2.uid, targets: [] });
+  const solo = single.anims.find((a) => a.kind === 'destroy');
+  ok(!!solo && !!solo.note && solo.note.includes('Battle Ox'),
+    'CONTROL: one monster on the board still names itself', solo?.note ?? 'no beat');
+
+  /* Two lines about one card need two beats. A God sweeping a protected
+     monster aside says why, and then says what happened — and the first of
+     those used to eat the second's beat. */
+  const divine = fresh();
+  divine.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  divine.players[ME].hand = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+  const shield = card(FOE, 'big-shield-gardna');
+  shield.summonedOnTurn = 0;
+  divine.players[FOE].monsters = [shield, null, null];
+  divine.phase = 'battle';
+  const god = divine.players[ME].monsters[0]!;
+  god.summonedOnTurn = 0;
+  const felled = act(divine, ME, { type: 'attack', uid: god.uid, targetUid: shield.uid });
+  const said = felled.anims.filter((a) => a.note).map((a) => a.note!);
+  ok(said.some((t) => /No protection stands before a God/.test(t)),
+    'the God line is still spoken on the field');
+  ok(said.some((t) => /Big Shield Gardna is destroyed/.test(t)),
+    'and the destruction it caused is spoken too');
+
+  // Pot of Greed draws twice, and each draw is its own beat with its own line.
+  const greed = fresh();
+  const pot = card(ME, 'pot-of-greed');
+  greed.players[ME].hand = [pot];
+  greed.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'battle-ox'), card(ME, 'harpie-lady')];
+  const drawn = act(greed, ME, { type: 'activateSpell', uid: pot.uid, targets: [] });
+  const draws = drawn.anims.filter((a) => a.kind === 'draw');
+  ok(draws.length === 2 && draws.every((a) => !!a.note),
+    'both of Pot of Greed\'s draws are announced', `${draws.length} beats, ${draws.filter((a) => a.note).length} spoken`);
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

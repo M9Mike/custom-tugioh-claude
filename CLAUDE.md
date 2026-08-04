@@ -183,6 +183,28 @@ some do the reverse, and giving those an extra beat made Kuriboh's token
 announce itself twice. Leftovers attach to the last beat that has no line, and
 only a genuinely orphaned line gets one of its own.
 
+**That tolerance is for a line with no beat, not for a beat with the wrong
+line.** The paragraph above is true and it hid a bug for months: a caller that
+animates *before* it logs claims whatever line is pending, which on a repeated
+op is the **previous** iteration's. `destroyCard` was written that way, so Dark
+Hole drew each destroyed monster's picture beside the name of the one before
+it, and the first beat got the *last* monster's name off `speakRemainingLog`.
+Reported as "sometimes a different image shows on the text for which monster
+was sent to the graveyard" — *sometimes* because a board with one monster has
+one destroy, and a single beat pairs correctly by luck. Six sites had the
+inversion (`draw`, `damage`, `heal`, `destroy`, and both flips); all four that
+can repeat inside one action were wrong every time they repeated. The rule is
+now what `anim()`'s own comment always claimed: **log, then animate**, so a
+beat that names a card carries the line about *that* card.
+
+Two lines about one card need two beats, not one beat and a dropped line. A
+God sweeping a protected monster aside says why and then says what happened;
+`anim()` consumes only one pending line and marks the rest shown, so the first
+line gets an explicit `kind: 'note'` beat rather than being silently eaten by
+the destroy. Pinned both ways — the old order turns the mismatch assertion red
+while the single-destroy CONTROL stays green, and removing the note beat turns
+exactly the God-line assertion red.
+
 **The board must not know things the player has not been told.** `state` from
 the server is already final, and it arrives one commit before any effect can
 react — so in that commit the Life Points showed the post-damage total and the

@@ -460,8 +460,8 @@ function drawCard(state: DuelState, pid: PlayerId, silent = false): boolean {
   }
   p.hand.push(c);
   if (!silent) {
-    anim(state, { kind: 'draw', player: pid });
     log(state, `${p.name} draws a card.`, 'normal', pid);
+    anim(state, { kind: 'draw', player: pid });
   }
   return true;
 }
@@ -596,16 +596,16 @@ function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = fal
   // from a player who never had that many Life Points.
   const applied = Math.min(amount, state.players[to].lp);
   state.players[to].lp -= applied;
-  anim(state, { kind: 'damage', player: to, amount, applied });
   log(state, `${state.players[to].name} takes ${amount} damage. (${state.players[to].lp} LP)`, 'damage', to);
+  anim(state, { kind: 'damage', player: to, amount, applied });
   checkLifePoints(state);
 }
 
 function healPlayer(state: DuelState, to: PlayerId, amount: number) {
   if (amount <= 0) return;
   state.players[to].lp += amount;
-  anim(state, { kind: 'heal', player: to, amount });
   log(state, `${state.players[to].name} gains ${amount} Life Points. (${state.players[to].lp} LP)`, 'effect', to);
+  anim(state, { kind: 'heal', player: to, amount });
 }
 
 function checkLifePoints(state: DuelState) {
@@ -840,10 +840,20 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
     return;
   }
   if (divine && (flags.indestructibleByBattle || flags.indestructibleByEffect || flags.untargetable)) {
+    /* Its own beat, rather than riding on the destroy below. A beat carries one
+       line, so two lines about the same card need two beats — and this one is
+       the reason the next one happens. */
     log(state, `No protection stands before a God — ${displayName(c)} is swept aside.`, 'effect', found.controller);
+    anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
   }
-  anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
+  /* Logged before it is animated, which is the whole of the pairing rule: a
+     beat claims the line the duel has just written. Reversed — as this site
+     was — Dark Hole gave every destroyed monster the *previous* one's name
+     beside its own picture, and the first beat got the last monster's name
+     off `speakRemainingLog`. One monster on the board hid it completely,
+     which is why it read as "sometimes". */
   log(state, `${displayName(c)} is destroyed.`, 'effect', found.controller);
+  anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
   // The card leaves the field *before* its own destruction effect resolves.
   // Otherwise it is still sitting in its Monster Zone, and an effect like
   // Anthrosaurus's — "when destroyed by battle, Special Summon a Dinosaur" —
@@ -1361,8 +1371,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (wasDown) {
             const ctrl = controllerOf(state, t.uid);
             if (ctrl) {
-              anim(state, { kind: 'flip', uid: t.uid, slug: t.slug, player: ctrl });
               log(state, `${displayName(t)} is flipped face-up!`, 'effect', ctrl);
+              anim(state, { kind: 'flip', uid: t.uid, slug: t.slug, player: ctrl });
               fireTriggers(state, t, ctrl, 'onFlip', {});
             }
           }
@@ -1679,8 +1689,8 @@ function resolveBattle(state: DuelState) {
   const flipped = target.face === 'down';
   if (flipped) {
     target.face = 'up';
-    anim(state, { kind: 'flip', uid: target.uid, slug: target.slug, player: defender });
     log(state, `${displayName(target)} is flipped face-up!`, 'effect', defender);
+    anim(state, { kind: 'flip', uid: target.uid, slug: target.slug, player: defender });
   }
 
   /** Runs after the damage step, whether or not the monster survived it. */
