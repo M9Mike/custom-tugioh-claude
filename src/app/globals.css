@@ -191,12 +191,46 @@ body {
   background: linear-gradient(180deg, #262d38, #171c24);
   color: var(--parchment);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 3px 10px rgba(0, 0, 0, 0.4);
-  transition: transform 0.12s ease, filter 0.15s ease, border-color 0.15s ease;
+  /* No `filter` leg here, deliberately — see the hover block below. */
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
 }
-.btn:hover:not(:disabled) {
-  filter: brightness(1.22);
-  border-color: var(--brass);
-  transform: translateY(-1px);
+
+/*
+ * The lift is the same; the lighting is painted rather than filtered.
+ *
+ * This used to be `filter: brightness(1.22)` with `filter` in the transition
+ * above, and it killed the WebKit renderer outright. Animating `filter`
+ * promotes the button to a composited layer that has to be re-rasterised
+ * through the filter every frame — and every button here sits inside a
+ * `.panel.grain`, whose `::after` is an SVG `feTurbulence` painted with
+ * `mix-blend-mode: overlay`. A filtered layer compositing through a blended
+ * one is a pathological case, and the lobby stacks fifteen of them.
+ *
+ * Measured, not guessed: sitting on the duelist-choice screen crashed the
+ * renderer 8/8, and *three* independent ways of removing this one filter —
+ * dropping the transition, dropping only its `filter` leg, or dropping the
+ * hover filter itself — each took it to 0/8. The home page never crashed,
+ * because the cursor is not left resting on a `.btn` there.
+ *
+ * The colours are `brightness(1.22)` worked out by hand, so the look is
+ * unchanged: each channel × 1.22, per variant.
+ */
+@media (hover: hover) and (pointer: fine) {
+  /* And only where there is a real pointer. iOS synthesises hover after a tap
+     and never takes it back, which would leave a button lit until you touched
+     something else — the same trap the card inspector fell into. `:active`
+     is what gives a phone its press feedback, and that is below. */
+  .btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, #2e3744, #1c222c);
+    border-color: var(--brass);
+    transform: translateY(-1px);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #856527, #5a4318);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: linear-gradient(180deg, #712730, #48181e);
+  }
 }
 .btn:active:not(:disabled) {
   transform: translateY(1px);

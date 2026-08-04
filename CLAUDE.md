@@ -76,6 +76,7 @@ npm run rematch  http://localhost:3100               # the second duel narrates 
 npm run race                                         # two requests cannot undo each other
 npm run rejoin   http://localhost:3100               # you can walk back into your own duel
 npm run spectate http://localhost:3100               # the exhibition plays, pauses, resumes
+npm run paint    http://localhost:3100               # no screen is too expensive to sit and look at
 ```
 
 `--skilled` on the tournament test plays the human seat with the AI too. Without it
@@ -1213,6 +1214,57 @@ production and none locally. It is not worth guessing at: the probe's own
 documented failure mode is "did not reach the attack prompt", which real Paris
 latency would plausibly cause, but chasing a fix without a captured failure is
 how a check that cannot fail gets written.
+
+**One CSS declaration was crashing the browser, and it read as flakiness for
+weeks.** `npm run rejoin` could not finish a single run against production —
+four attempts, four different deaths, every one classified "this proves
+nothing" by the crash handling added the day before. That handling was right
+and it was also hiding the answer: *four* inconclusive runs is not patience,
+it is a finding. Sitting on the duelist-choice screen killed the WebKit
+renderer **8 times out of 8**; `about:blank` and the home page, 0 out of 6.
+
+`.btn` transitioned `filter`, and `.btn:hover` set `brightness(1.22)`. A
+click leaves the cursor exactly where it clicked, so arriving on the lobby
+left a button hovered — promoting it to a composited layer re-rasterised
+through a filter every frame, inside a `.panel.grain` whose `::after` paints
+an SVG `feTurbulence` with `mix-blend-mode: overlay`. A filtered layer
+compositing through a blended one is pathological in WebKit, and the lobby
+stacks fifteen of them. The hover is painted rather than filtered now — the
+same colours, `brightness(1.22)` worked out per variant by hand — and it is
+behind `@media (hover: hover) and (pointer: fine)`, because iOS synthesises
+hover after a tap and never takes it back. 8/8 → 0/10, and `npm run rejoin`
+went 3/3 including its CONTROL.
+
+Every other probe in the battery clicks off that screen inside a second,
+which is the only reason this survived. It has been there since the first
+commit.
+
+Three things about how it was found, all of which cost time:
+
+- **Every arm needs a null control.** Three "fixes" scored 0/5 early on,
+  including one that turned out to be a *no-op* — `will-change: auto` when
+  nothing in the codebase sets `will-change`. That should have been the tell
+  that the injection itself was suspect. Two inert arms then crashed 8/8 and
+  6/8, clearing the method — but had they not, every result to that point
+  would have been measuring the act of injecting a stylesheet.
+- **Bisect the whole before the parts.** Hiding the duelist grid, the aside
+  and every image each changed nothing; `* { transition: none }` was 0/8. The
+  page-level arm found in one run what the element-level arms missed in three.
+- **A rate is not a diagnosis.** Production crashed 1 in 5 and localhost 8 in
+  8, and the difference is only cold-start timing deciding where the cursor
+  comes to rest. The louder reproduction was the local one, which is the
+  opposite of where a production-only failure suggests looking.
+
+`npm run paint` guards it from both ends deliberately: the mechanism (nothing
+may transition `filter` — cheap, deterministic, names the defect) and the
+symptom (park the cursor on a button, sit there, insist the renderer is still
+alive — coarse, but blind to *how* a future regression makes a screen too
+expensive). Verified against the unfixed build, where it goes red three ways
+and reports the lobby as unreachable rather than passing by never looking.
+
+Whether this crashes a real iPhone is untested and probably not — a phone has
+a GPU, and headless WebKit here composites in software. What is certain is
+that the work was real, on the one screen you sit and read.
 
 **A God that did not pay for itself does not stay.** Three tributes is the
 price of a Divine-Beast and nothing charged it on a *Special* Summon — so the

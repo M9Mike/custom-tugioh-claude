@@ -32,6 +32,7 @@
     "ai-ab": "tsx scripts/ai-ab.ts",
     "rematch": "node scripts/rematch-check.mjs",
     "race": "tsx scripts/race-check.ts",
+    "paint": "node scripts/paint-check.mjs",
     "rejoin": "node scripts/rejoin-check.mjs",
     "spectate": "node scripts/spectate-check.mjs"
   },
