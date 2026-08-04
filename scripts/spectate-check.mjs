@@ -153,11 +153,31 @@ for (let i = 0; i < 120 && !moved; i++) {
 ok(moved, 'resumed: the duel carries on');
 
 /* ---- to the death, then run it back ---- */
+/* Sized for 8000 Life Points on production: a narrated AI-vs-AI exhibition
+   over Paris latency runs well past the ~6 minutes that fit a 4000-LP duel —
+   this window failed on production the day the pool doubled, with the duel
+   alive and narrating at the cutoff. Watching longer is half the fix; the
+   other half is telling a SLOW duel apart from a STALLED one, because "the
+   duel never ends" is the win-screen-stall class of bug and must stay red.
+   Beats still arriving near the cutoff mean the probe ran out of patience,
+   not that the game ran out of duel — inconclusive, said out loud. */
 let ended = false;
-for (let i = 0; i < 700 && !ended; i++) {
+let lastBeatAt = Date.now();
+let lastBagSize = bag.size;
+for (let i = 0; i < 1600 && !ended; i++) {
   await sample();
+  if (bag.size > lastBagSize) {
+    lastBagSize = bag.size;
+    lastBeatAt = Date.now();
+  }
   ended = await winHeading();
   if (!ended) await page.waitForTimeout(500);
+}
+const aliveAtCutoff = Date.now() - lastBeatAt < 90_000;
+if (!ended && aliveAtCutoff) {
+  console.log('  ⚠️  the duel was still narrating when the watch window closed — this proves nothing about the ending');
+  await browser.close();
+  process.exit(1);
 }
 ok(ended, 'the duel ends while the audience only watches');
 ok(!offeredATurn, 'no End Turn button ever existed for the audience');
