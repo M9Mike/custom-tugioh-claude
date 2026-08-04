@@ -716,18 +716,28 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
 
   if (s.pick === 'self') return [ctx.source];
 
-  if (s.pick === 'attacker') {
-    const c = ctx.trig.attackerUid ? findOnField(state, ctx.trig.attackerUid)?.c : null;
-    return c ? [c] : [];
-  }
-  if (s.pick === 'attackTarget') {
-    const c = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid)?.c : null;
-    return c ? [c] : [];
+  /* The ctx picks resolve from the trigger, not from a pool — but they are
+     still an effect reaching a monster, so protection applies the same as
+     everywhere else. This is how an untargetable God shrugs off the Trap Hole
+     and Mirror Wall its summon or attack just opened: `isProtectedTarget`
+     never shields a card from its own controller, and a Divine-Beast source
+     pierces it, so Call of the Haunted's own buff and Slifer's second mouth
+     both still land. */
+  if (s.pick === 'attacker' || s.pick === 'attackTarget') {
+    const uid = s.pick === 'attacker' ? ctx.trig.attackerUid : ctx.trig.targetUid;
+    const c = uid ? findOnField(state, uid)?.c : null;
+    if (!c) return [];
+    if (isProtectedTarget(state, c, ctx.controller, ctx)) {
+      const ctrl = controllerOf(state, c.uid);
+      if (ctrl) log(state, `${displayName(c)} stands beyond that effect's reach.`, 'effect', ctrl);
+      return [];
+    }
+    return [c];
   }
   if (s.pick === 'summoned') {
     return (ctx.summoned ?? [])
       .map((uid) => findOnField(state, uid)?.c)
-      .filter((c): c is CardInstance => !!c);
+      .filter((c): c is CardInstance => !!c && !isProtectedTarget(state, c, ctx.controller, ctx));
   }
 
   const pool = targetPool(ctx, s);
@@ -755,23 +765,44 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
     } else if (picked.length === 0 && pool.length > 0) {
       picked.push(pool[0]);
     }
-    return picked.filter((c) => !isProtectedTarget(state, c, ctx.controller));
+    return picked.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
   }
 
-  if (s.pick === 'all') return pool.filter((c) => zone !== 'monster' || !isProtectedTarget(state, c, ctx.controller));
+  if (s.pick === 'all') return pool.filter((c) => zone !== 'monster' || !isProtectedTarget(state, c, ctx.controller, ctx));
   if (s.pick === 'random') {
-    const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller));
+    const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
     if (!legal.length) return [];
     return [legal[randInt(state, legal.length)]];
   }
-  const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller));
+  const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
   if (!legal.length) return [];
   if (s.pick === 'strongest') return [legal.reduce((a, b) => (effAtk(state, a) >= effAtk(state, b) ? a : b))];
   return [legal.reduce((a, b) => (effAtk(state, a) <= effAtk(state, b) ? a : b))];
 }
 
-/** "Untargetable" only protects against the opponent's effects. */
-function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId): boolean {
+/** A Divine-Beast outranks every protection in the game — see `divineSource`. */
+function isDivine(slug: string): boolean {
+  return CARDS[slug]?.type === 'Divine-Beast';
+}
+
+/**
+ * GOD CARDS ARE ABOVE EVERYTHING — the owner's decree, verbatim.
+ *
+ * A protection is a claim between mortals: "cannot be destroyed by battle",
+ * "cannot be targeted", "immune to card effects" all hold against every card
+ * in the game except a God. When the card acting — the attacker in a battle,
+ * the source of an effect — is a Divine-Beast, every such claim is void:
+ * Slifer's second mouth drains and destroys monsters no Spell could touch,
+ * and no wall survives the blow of a God it cannot outfight. The reverse is
+ * untouched: a God keeps its own immunities against everything beneath it.
+ */
+function divineSource(ctx?: EffectCtx): boolean {
+  return !!ctx?.source && isDivine(ctx.source.slug);
+}
+
+/** "Untargetable" only protects against the opponent's effects — and never against a God's. */
+function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, ctx?: EffectCtx): boolean {
+  if (ctx && divineSource(ctx)) return false;
   const ctrl = controllerOf(state, c.uid);
   if (ctrl === actor) return false;
   return !!effFlags(state, c).untargetable;
@@ -796,13 +827,20 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
   const found = findOnField(state, c.uid);
   if (!found) return;
   const flags = effFlags(state, c, found.controller);
-  if (byBattle && flags.indestructibleByBattle) {
+  /* Every battle call and every effect call hands this function a ctx whose
+     `source` is the card responsible, so the decree is one check: a God's
+     blow and a God's effect ignore the protection outright. */
+  const divine = divineSource(ctx);
+  if (byBattle && flags.indestructibleByBattle && !divine) {
     log(state, `${displayName(c)} cannot be destroyed by battle.`, 'effect', found.controller);
     return;
   }
-  if (!byBattle && flags.indestructibleByEffect) {
+  if (!byBattle && flags.indestructibleByEffect && !divine) {
     log(state, `${displayName(c)} is immune to that effect.`, 'effect', found.controller);
     return;
+  }
+  if (divine && (flags.indestructibleByBattle || flags.indestructibleByEffect || flags.untargetable)) {
+    log(state, `No protection stands before a God — ${displayName(c)} is swept aside.`, 'effect', found.controller);
   }
   anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
   log(state, `${displayName(c)} is destroyed.`, 'effect', found.controller);
@@ -852,7 +890,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              be targeted at all, the destroy was correctly refused and the
              damage went through anyway — 1400 Life Points off an untargetable
              monster, for free, every turn. One card, one effect. */
-          const v = t && !isProtectedTarget(state, t, ctx.controller) ? effAtk(state, t) : 0;
+          const v = t && !isProtectedTarget(state, t, ctx.controller, ctx) ? effAtk(state, t) : 0;
           amount = op.scale === 'halfTargetAtk' ? Math.floor(v / 2) : v;
         } else if (op.scale === 'selfAtk') {
           amount = effAtk(state, ctx.source, ctx.controller);
@@ -2000,7 +2038,7 @@ const RIDER_OPS = new Set(['draw', 'mill', 'search', 'revealHand']);
 function hasLegalTarget(ctx: EffectCtx, s: Selector): boolean {
   if (!POOL_PICKS.has(s.pick)) return true; // the context supplies it, not a pool
   const zone = s.zone ?? 'monster';
-  return targetPool(ctx, s).some((c) => zone !== 'monster' || !isProtectedTarget(ctx.state, c, ctx.controller));
+  return targetPool(ctx, s).some((c) => zone !== 'monster' || !isProtectedTarget(ctx.state, c, ctx.controller, ctx));
 }
 
 /**

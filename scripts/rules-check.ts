@@ -2055,6 +2055,168 @@ console.log('\nThe balance pass, second turn of the wheel');
     'CONTROL: an 1850 Machine is over the factory line and stays in hand');
 }
 
+console.log('\nGOD CARDS ARE ABOVE EVERYTHING');
+{
+  /* The owner's decree, verbatim. No protection in the game holds against a
+     Divine-Beast: not battle immunity when the blow is a God's, not effect
+     immunity or untargetability when the effect is a God's. Everything
+     beneath a God still respects every protection — the controls below are
+     the rule's other half. */
+
+  // A God's attack breaks battle immunity.
+  const wall = fresh('battle');
+  const slifer = card(ME, 'slifer-the-sky-dragon');
+  slifer.summonedOnTurn = 0;
+  wall.players[ME].monsters = [slifer, null, null];
+  wall.players[ME].hand = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh')]; // 3000/3000 Slifer
+  const shield = card(FOE, 'big-shield-gardna'); // battle-proof 100/2600, in Attack for the kill math
+  shield.summonedOnTurn = 0;
+  wall.players[FOE].monsters = [shield, null, null];
+  const smitten = act(wall, ME, { type: 'attack', uid: slifer.uid, targetUid: shield.uid });
+  ok(!smitten.players[FOE].monsters.some((m) => m?.slug === 'big-shield-gardna'),
+    "battle immunity does not survive a God's attack");
+
+  // And in the other direction: losing a battle AGAINST a God is fatal too.
+  const brave = fresh('battle');
+  brave.active = FOE;
+  const godWall = card(ME, 'slifer-the-sky-dragon');
+  godWall.summonedOnTurn = 0;
+  brave.players[ME].monsters = [godWall, null, null];
+  // Pot of Greed, not Kuriboh: a Kuriboh in hand is a hand-trap whose window
+  // would suspend the battle and leave the zealot standing unresolved.
+  brave.players[ME].hand = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+  const zealot = card(FOE, 'rocket-warrior'); // battle-proof 1500
+  zealot.summonedOnTurn = 0;
+  brave.players[FOE].monsters = [zealot, null, null];
+  const routed = act(brave, FOE, { type: 'attack', uid: zealot.uid, targetUid: godWall.uid });
+  ok(!routed.players[FOE].monsters.some((m) => m?.slug === 'rocket-warrior'),
+    'a battle-proof monster that loses to a God is destroyed anyway');
+  ok(routed.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'and the God, naturally, stands');
+
+  /* A God's effect reaches monsters no mortal card may touch. The diver
+     carries the full sentence — cannot be targeted AND unaffected by card
+     effects — so this exercises both halves of the bypass: the drain lands
+     through `untargetable` (the ctx-pick filter yields to a divine source)
+     and the destroy lands through `indestructibleByEffect`. */
+  const mouth = fresh();
+  mouth.active = FOE;
+  mouth.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const diver = card(FOE, 'deepsea-warrior');
+  diver.flags.untargetable = true;
+  diver.flags.indestructibleByEffect = true;
+  const fodder = card(FOE, 'kuriboh');
+  mouth.players[FOE].monsters = [fodder, null, null];
+  mouth.players[FOE].hand = [diver];
+  const surfaced = act(mouth, FOE, {
+    type: 'normalSummon', uid: diver.uid, zone: 1, position: 'atk', face: 'up', tributes: [fodder.uid],
+  });
+  ok(!surfaced.players[FOE].monsters.some((m) => m?.slug === 'deepsea-warrior'),
+    "the second mouth drains an 'untouchable' monster to nothing and destroys it");
+
+  // Effect-indestructibility alone bows the same way: a Toon under its own book.
+  const book = fresh();
+  book.active = FOE;
+  book.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  book.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
+  const toon = card(FOE, 'toon-mermaid'); // 1400 + 800 book = 2200, drained to 200... still standing
+  book.players[FOE].hand = [toon];
+  const drawn = act(book, FOE, {
+    type: 'normalSummon', uid: toon.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  const inked = drawn.players[FOE].monsters.find((m) => m?.slug === 'toon-mermaid');
+  ok(!!inked && effAtk(drawn, inked, FOE) === 200,
+    "the drain lands on a Toon, and one left above zero stands", inked ? `ATK ${effAtk(drawn, inked, FOE)}` : 'destroyed');
+
+  /* ...while one drained below zero dies through the book's protection. Dark
+     Rabbit is 1100 + 800 = 1900, the mouth takes 2000, and Toon World's
+     `indestructibleByEffect` would save it from any mortal card. */
+  const rabbit = card(FOE, 'dark-rabbit');
+  const book2 = fresh();
+  book2.active = FOE;
+  book2.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  book2.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
+  book2.players[FOE].hand = [rabbit];
+  const erased = act(book2, FOE, {
+    type: 'normalSummon', uid: rabbit.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(!erased.players[FOE].monsters.some((m) => m?.slug === 'dark-rabbit'),
+    'one drained below zero is destroyed through it');
+
+  /* The decree cuts the other way too: what a God's arrival or attack opens,
+     no mortal trap may turn back on it. Trap Hole answers the Summon and
+     cannot touch the God — only the 400-damage rider lands. */
+  const pit = fresh();
+  const digger = card(FOE, 'trap-hole');
+  digger.face = 'down';
+  digger.summonedOnTurn = 0;
+  pit.turn = 2;
+  pit.players[FOE].spellTrap = digger;
+  const god3 = card(ME, 'slifer-the-sky-dragon');
+  const t1 = card(ME, 'kuriboh');
+  const t2 = card(ME, 'kuriboh');
+  const t3 = card(ME, 'kuriboh');
+  pit.players[ME].monsters = [t1, t2, t3];
+  pit.players[ME].hand = [god3];
+  const lpBefore = pit.players[ME].lp;
+  const risen = act(pit, ME, {
+    type: 'normalSummon', uid: god3.uid, zone: 0, position: 'atk', face: 'up', tributes: [t1.uid, t2.uid, t3.uid],
+  });
+  ok(risen.pending?.kind === 'trap', 'CONTROL: the window still opens on a God');
+  const sprung3 = risen.pending?.kind === 'trap' ? act(risen, FOE, { type: 'respondTrap', uid: digger.uid, targets: [] }) : risen;
+  ok(sprung3.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'a God does not fall in the Trap Hole');
+  ok(sprung3.players[ME].lp === lpBefore - 400,
+    'though its 400-damage rider still lands');
+
+  /* And Mirror Wall may still refuse the blow — negation is an answer, not a
+     protection — but it cannot maim what it refused: the halving slides off. */
+  const glass = fresh();
+  glass.active = ME;
+  glass.phase = 'battle';
+  const god4 = card(ME, 'slifer-the-sky-dragon');
+  god4.summonedOnTurn = 0;
+  glass.players[ME].monsters = [god4, null, null];
+  glass.players[ME].hand = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+  const pane = card(FOE, 'mirror-wall');
+  pane.face = 'down';
+  pane.summonedOnTurn = 0;
+  glass.turn = 2;
+  glass.players[FOE].spellTrap = pane;
+  glass.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  const swung = act(glass, ME, { type: 'attack', uid: god4.uid, targetUid: glass.players[FOE].monsters[0]!.uid });
+  const walled = swung.pending?.kind === 'trap' ? act(swung, FOE, { type: 'respondTrap', uid: pane.uid, targets: [] }) : swung;
+  const godAfter = walled.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon');
+  ok(!!godAfter && effAtk(walled, godAfter, ME) === 3000,
+    'Mirror Wall cannot halve a God', godAfter ? `ATK ${effAtk(walled, godAfter, ME)}` : 'gone');
+  ok(walled.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
+    'CONTROL: the negation itself still holds — the wall says no, it just cannot maim');
+
+  // CONTROL: between mortals every protection still holds.
+  const mortal = fresh();
+  const guarded = card(FOE, 'deepsea-warrior');
+  guarded.flags.untargetable = true;
+  mortal.players[FOE].monsters = [guarded, null, null];
+  const doomed2 = card(ME, 'tribute-to-the-doomed');
+  mortal.players[ME].hand = [doomed2, card(ME, 'kuriboh')];
+  const refused2 = applyAction(mortal, ME, { type: 'activateSpell', uid: doomed2.uid, targets: [guarded.uid] });
+  ok(!!refused2.error || refused2.state.players[FOE].monsters.some((m) => m?.slug === 'deepsea-warrior'),
+    'CONTROL: a mortal Spell still cannot touch the same monster');
+
+  // CONTROL: the God's own immunity against mortals is untouched.
+  const temple = fresh();
+  const god2 = card(FOE, 'slifer-the-sky-dragon');
+  const acolyte = card(FOE, 'battle-ox'); // a mortal beside the God, so the wipe is live
+  temple.players[FOE].monsters = [god2, acolyte, null];
+  const hole = card(ME, 'dark-hole');
+  temple.players[ME].hand = [hole];
+  const swallowed = act(temple, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  ok(swallowed.players[FOE].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'CONTROL: Dark Hole still cannot swallow a God');
+  ok(!swallowed.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
+    'though it swallows the mortal standing beside one');
+}
+
 console.log('\nPolymerization needs somewhere to be activated');
 {
   /* Reported from a real duel: a Fusion went through with the Spell/Trap Zone

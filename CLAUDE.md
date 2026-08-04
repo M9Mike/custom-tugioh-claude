@@ -1220,6 +1220,33 @@ written with a 2500 ATK attacker against 2600 DEF, which it survives on the
 arithmetic alone — the check passed with the flag deleted. It swings a 3000
 now. yami 73→71%, pegasus 86→84%, mako 39→39%, all inside their intervals.
 
+**GOD CARDS ARE ABOVE EVERYTHING.** The owner's decree, verbatim, and the
+completion of the rule above: a God is not only entitled to protections, it is
+exempt from everyone else's. Both directions are one mechanism. When the card
+*acting* — the attacker in a battle, the source of an effect — is a
+Divine-Beast, every protection on the other card is void: `divineSource(ctx)`
+is checked in `destroyCard` (both immunity gates) and in `isProtectedTarget`,
+so Slifer's blow fells Big Shield Gardna and his second mouth drains and
+destroys monsters no mortal Spell may touch, straight through `untargetable`
+and `indestructibleByEffect` alike. The reverse was the buried half: the ctx
+picks (`attacker`, `attackTarget`, `summoned`) in `resolveTargets` returned
+the trigger's card **without ever asking `isProtectedTarget`** — so a mortal
+Trap Hole destroyed a freshly-summoned Slifer and Mirror Wall halved him
+permanently, both live on production, both straight decree violations. The
+picks filter now, which also gives every *conditional* untargetable (the
+Fisherman under Umi) the dodge its sentence always promised. Negation is
+deliberately not a protection: Mirror Wall and Negate Attack still refuse a
+God's blow — an answer the whole roster reaches — they just cannot maim or
+destroy what they refused, and Trap Hole's 400-damage rider still lands.
+
+Two mechanisms need two falsifications: supremacy disabled turns exactly the
+four offense pins red (the defense pins *pass* on that arm — a more protective
+engine protects Gods too), and the ctx-pick filter removed turns exactly the
+two defense pins red. Neither arm alone proves the other. The decree is also
+printed on the card — "A God is above everything: this card's attacks and
+effects ignore your opponent's protections" — because a Toon dying through
+Toon World's shield with nothing explaining why is the bad kind of surprise.
+
 **Take a card's identity away and you owe it one back.** Relinquished lost
 immunity to card effects to the rule above and was left with nothing in its
 place, which is a nerf rather than a redesign. The printed card's most famous

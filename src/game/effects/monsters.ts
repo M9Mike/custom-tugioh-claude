@@ -1315,6 +1315,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
       "When your opponent Summons a monster: it loses 2000 ATK, and if that leaves it with nothing, destroy it. " +
       "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage. " +
+      /* The decree, printed where the rule lives: a God's attacks and effects
+         ignore every protection, and no mortal trap may reach one. */
+      "A God is above everything: this card's attacks and effects ignore your opponent's protections. " +
       /* Said out loud on the card, unlike the Magnet Warriors' secret. That
          one is a bonus to find; this is a restriction, and a God vanishing
          with nothing having explained why is the bad kind of surprise. */
