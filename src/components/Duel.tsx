@@ -28,6 +28,7 @@ import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
 import type { RoomView } from '@/server/rooms';
+import { isFinalRound } from '@/server/tournament';
 
 /** How long a signature card's moment runs. Must match the `sig-*` keyframes. */
 const SIG_MS = 1400;
@@ -201,6 +202,16 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      but it is nobody's seat: every way of acting is closed off below by the two
      flags everything else already asks, and a tap on any card only inspects. */
   const spectator = !!view.spectate;
+
+  /* Winning the final wins the tournament, and the win screen used to say only
+     "Victory" — the same word it says for a quarter-final — so the run ended
+     with no announcement at all and the player had to tap through to the
+     bracket to discover they had taken the Kingdom. The final is the round with
+     one match and nobody sitting it out; a round of one match *and* a bye is
+     not the final. Read here rather than from `tournament.status`, which is
+     still 'duelling' at the moment the win screen appears: the server has not
+     been told the result yet. */
+  const wonTheKingdom = !!view.tournament && state.winner === me && isFinalRound(view.tournament);
 
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [inspect, setInspect] = useState<CardInstance | null>(null);
@@ -501,6 +512,15 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
    */
   const spoken = (a: AnimEvent | null): { text: string; slug?: string; who?: PlayerId } | null => {
     if (!a) return null;
+    /* An effect that fired because the card arrived says the card's cry. The
+       generic "…'s effect activates" is right for a monster *choosing* to go
+       off, and wrong on a Summon: a card with more than one effect announces
+       every one of them identically, so Slifer's draw rider read as his second
+       mouth — reported as the mouth firing on his own Summon, which it never
+       did. The beat itself stays; it is what carries the flourish. */
+    if (a.kind === 'activate' && a.arrival && a.text) {
+      return { text: a.text, slug: a.slug, who: a.player };
+    }
     const d = declare(a);
     if (d) {
       const actor = state.players[d.who].name;
@@ -2092,11 +2112,15 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   ? /* The audience has no side, so the screen names the duelist
                        rather than calling somebody's loss yours. */
                     `${state.players[state.winner === 'p1' ? 'p1' : 'p2'].name} wins`
-                  : state.winner === me
-                    ? 'Victory'
-                    : 'Defeat'}
+                  : wonTheKingdom
+                    ? '👑 Champion of the Kingdom'
+                    : state.winner === me
+                      ? 'Victory'
+                      : 'Defeat'}
             </p>
-            <p className="mt-2 text-sm text-ptext/85">{state.winReason}</p>
+            <p className="mt-2 text-sm text-ptext/85">
+              {wonTheKingdom ? 'You have won the final. The Kingdom is yours.' : state.winReason}
+            </p>
             <div className="brass-rule my-4" />
             <div className="flex flex-col gap-2">
               {/* The last few turns are worth being able to read back, and this
@@ -2113,7 +2137,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               {onBracket ? (
                 /* A bracket match has no rematch: the result stands. */
                 <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={onBracket}>
-                  To the bracket
+                  {wonTheKingdom ? 'See the finished bracket' : 'To the bracket'}
                 </button>
               ) : spectator ? (
                 /* Both duelists are the computer, so one tap runs it back —

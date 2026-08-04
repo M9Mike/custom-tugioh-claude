@@ -136,12 +136,6 @@ export default function Bracket({ t, busy, onContinue }: Props) {
         </div>
       )}
 
-      {t.status === 'won' && (
-        <p className="text-center text-sm leading-relaxed text-ptext/85">
-          {t.matches.filter((m) => m.human).length} duels, all of them won, against a computer that never once
-          played down to you.
-        </p>
-      )}
       {t.status === 'eliminated' && (
         <p className="text-center text-sm leading-relaxed text-ptext/85">
           Knocked out in the {nameAt(t.round).toLowerCase()}. The bracket does not offer a rematch — but it plays

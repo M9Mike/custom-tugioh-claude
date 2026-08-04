@@ -1314,7 +1314,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'Requires 3 Tributes. When this card is Summoned: draw 1 card. ' +
       'Gains 1000 ATK and 1000 DEF for each card in your hand. ' +
       "When your opponent Summons a monster: it loses 2000 ATK, and if that leaves it with nothing, destroy it. " +
-      "This card cannot be targeted by your opponent's card effects and inflicts piercing battle damage. " +
+      "This card cannot be targeted by your opponent's card effects. " +
       /* The decree, printed where the rule lives: a God's attacks and effects
          ignore every protection, and no mortal trap may reach one. */
       "A God is above everything: this card's attacks and effects ignore your opponent's protections. " +
@@ -1339,8 +1339,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: {
           target: SELF,
+          /* No piercing. A God is not a damage engine, and the decree that
+             makes it untouchable by card effects already means the only
+             answer to one is a bigger body — so it must not also punish the
+             player for putting a body in the way. Defence is the counterplay;
+             piercing was quietly deleting it. */
           per: { zone: 'ownHand', atk: 1000, def: 1000 },
-          grants: ['untargetable', 'pierce'],
+          grants: ['untargetable'],
         },
       },
       {

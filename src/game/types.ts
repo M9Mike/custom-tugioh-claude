@@ -634,6 +634,13 @@ export interface AnimEvent {
       from the card that made it but which is not that card. */
   as?: string;
   text?: string;
+  /** This effect fired *because the card arrived*, not because it was played.
+      A card with several effects otherwise announces every one of them with
+      the same bare "…'s effect activates", so a monster whose famous effect is
+      something else entirely reads as that one going off: reported of Slifer,
+      whose draw-on-summon rider looked exactly like the second mouth. The
+      board says the card's cry instead, which belongs to the arrival. */
+  arrival?: boolean;
 }
 
 export interface LogEntry {

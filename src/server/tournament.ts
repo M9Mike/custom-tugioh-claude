@@ -143,6 +143,24 @@ export function humanMatch(t: Tournament): TourMatch | undefined {
   return t.matches.find((m) => m.round === t.round && m.human);
 }
 
+/**
+ * Is the round being played right now the final?
+ *
+ * One match and both seats filled. The "both seats" half is the whole point:
+ * a round can also come down to a single match *and* a bye — three survivors
+ * pair one against one and send the third through — and that is a semi-final
+ * with a spectator, not the final.
+ *
+ * Lives here rather than in the win screen that needed it, because the win
+ * screen is not allowed to be the second place this rule is written down.
+ * `status` cannot answer it: at the moment the screen appears the server has
+ * not been told the result yet, so the tournament still says 'duelling'.
+ */
+export function isFinalRound(t: Tournament): boolean {
+  const playing = t.matches.filter((m) => m.round === t.round);
+  return playing.length === 1 && !!playing[0].a && !!playing[0].b;
+}
+
 /** The duelist the human faces this round. */
 export function humanOpponent(t: Tournament): string | null {
   const m = humanMatch(t);

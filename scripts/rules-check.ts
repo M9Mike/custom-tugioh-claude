@@ -11,6 +11,7 @@
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, tributesRequired } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
+import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -1521,7 +1522,11 @@ console.log('\nSlifer is only ever as strong as the hand behind it');
   ok(effAtk(s, slifer, ME) === 4000, 'four cards is 4000', String(effAtk(s, slifer, ME)));
   ok(effDef(s, slifer, ME) === 4000, 'and the DEF climbs with it', String(effDef(s, slifer, ME)));
   ok(!!effFlags(s, slifer, ME).untargetable, "and their effects cannot touch it");
-  ok(!!effFlags(s, slifer, ME).pierce, 'and it pierces');
+  /* A God does NOT pierce. Untouchable by card effects already means the only
+     answer to one is a bigger body; piercing on top of that deleted the other
+     answer — putting something in Defence to survive the turn. Battle is the
+     way past a God, so battle has to stay worth attempting. */
+  ok(!effFlags(s, slifer, ME).pierce, 'and it does not pierce — Defence is still an answer');
 }
 
 console.log('\nThe second mouth answers a Summon, not a Set');
@@ -2677,6 +2682,108 @@ console.log('\nEvery beat names the card it is showing');
   const draws = drawn.anims.filter((a) => a.kind === 'draw');
   ok(draws.length === 2 && draws.every((a) => !!a.note),
     'both of Pot of Greed\'s draws are announced', `${draws.length} beats, ${draws.filter((a) => a.note).length} spoken`);
+}
+
+console.log('\nThe second mouth never bites its own side, and says so');
+{
+  /* Reported as "Slifer's 2nd mouth activates when he is summoned as well".
+     It does not — and never did. What the board said was "Slifer the Sky
+     Dragon's effect activates", which is the draw-on-summon rider, and a card
+     with three effects announced all of them with that same bare line. The
+     rules half is pinned here anyway, because it is the thing that was
+     believed broken and it is cheap to hold. */
+  const own = fresh();
+  for (let i = 0; i < 3; i++) own.players[ME].monsters[i] = card(ME, 'kuriboh');
+  const god = card(ME, 'slifer-the-sky-dragon');
+  own.players[ME].hand = [god];
+  own.players[ME].deck = [card(ME, 'battle-ox')];
+  const ox = card(FOE, 'battle-ox');
+  const skull = card(FOE, 'summoned-skull');
+  own.players[FOE].monsters = [ox, skull, null];
+  const risen = act(own, ME, {
+    type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: own.players[ME].monsters.map((m) => m!.uid),
+  });
+  const stillThere = risen.players[FOE].monsters.filter(Boolean);
+  ok(stillThere.length === 2 && stillThere.every((m) => effAtk(risen, m!, FOE) === baseAtkOf(m!.slug)),
+    "summoning a God does not fire its own mouth at the board",
+    stillThere.map((m) => `${m!.slug} ${effAtk(risen, m!, FOE)}`).join(', '));
+  ok(risen.players[ME].hand.length === 1, 'the draw rider still fires, exactly once',
+    `hand ${risen.players[ME].hand.length}`);
+
+  // And it never bites a monster its own controller summons later.
+  const beside = fresh();
+  beside.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const friend = card(ME, 'battle-ox');
+  beside.players[ME].hand = [card(ME, 'pot-of-greed'), friend];
+  const together = act(beside, ME, {
+    type: 'normalSummon', uid: friend.uid, zone: 1, position: 'atk', face: 'up', tributes: [],
+  });
+  const ally = together.players[ME].monsters.find((m) => m?.slug === 'battle-ox');
+  ok(!!ally && effAtk(together, ally, ME) === baseAtkOf('battle-ox'),
+    'and a monster summoned beside it is untouched', ally ? String(effAtk(together, ally, ME)) : 'destroyed');
+
+  /* CONTROL: the mouth does still answer the other player's Summon — this
+     block must not pass by the trigger being switched off. */
+  const theirs = fresh();
+  theirs.active = FOE;
+  theirs.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  theirs.players[ME].hand = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+  const victim = card(FOE, 'summoned-skull');
+  theirs.players[FOE].hand = [victim];
+  theirs.players[FOE].monsters = [card(FOE, 'kuriboh'), null, null];
+  const drained = act(theirs, FOE, {
+    type: 'normalSummon', uid: victim.uid, zone: 1, position: 'atk', face: 'up',
+    tributes: [theirs.players[FOE].monsters[0]!.uid],
+  });
+  const bitten = drained.players[FOE].monsters.find((m) => m?.slug === 'summoned-skull');
+  ok(!!bitten && effAtk(drained, bitten, FOE) === 500,
+    'CONTROL: their Summon is still drained by 2000', bitten ? String(effAtk(drained, bitten, FOE)) : 'destroyed');
+
+  /* The narration half: an effect that fired because the card arrived says the
+     card's cry, so it cannot be mistaken for the effect everyone knows it by. */
+  const arrivals = risen.anims.filter((a) => a.kind === 'activate' && a.slug === 'slifer-the-sky-dragon');
+  ok(arrivals.length === 1 && arrivals[0].arrival === true,
+    'the arrival beat is marked as an arrival');
+  ok(arrivals[0]?.text === CARDS['slifer-the-sky-dragon'].cry,
+    'and carries the cry, not a bare "effect activates"', arrivals[0]?.text ?? 'nothing');
+
+  // CONTROL: an effect the player chooses to use is not an arrival.
+  const ignite = fresh();
+  ignite.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  const greed = card(ME, 'pot-of-greed');
+  ignite.players[ME].hand = [greed];
+  ignite.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const played = act(ignite, ME, { type: 'activateSpell', uid: greed.uid, targets: [] });
+  const spell = played.anims.find((a) => a.kind === 'activate' && a.slug === 'pot-of-greed');
+  ok(!!spell && !spell.arrival, 'CONTROL: a card played from the hand is not an arrival');
+}
+
+console.log('\nWinning the final wins the tournament, and the screen says so');
+{
+  /* Reported: "when I won the tournament it returned me for a to the final
+     match post screen I had to click view bracket to see that I won the
+     tournament". The win screen said "Victory" — the same word it says for a
+     quarter-final — so the run ended with no announcement. `isFinalRound` is
+     what the screen now asks, and it lives in the tournament module rather
+     than in the component, because a rule with two homes is how three of the
+     bugs in CLAUDE.md happened. */
+  const t = (round: number, matches: [string | null, string | null][]): Tournament => ({
+    entrants: ['yugi', 'kaiba', 'mai', 'joey'],
+    humanSeat: 0,
+    humanDuelist: 'yugi',
+    round,
+    matches: matches.map(([a, b], slot) => ({ round, slot, a, b, winner: null, human: a === 'yugi' || b === 'yugi' })),
+    status: 'duelling',
+    seed: 1,
+  });
+
+  ok(isFinalRound(t(2, [['yugi', 'kaiba']])), 'one match with both seats filled is the final');
+  ok(!isFinalRound(t(0, [['yugi', 'kaiba'], ['mai', 'joey']])), 'two matches is not');
+  /* The one that would have been missed: three survivors pair one match and
+     send the third through on a bye. One match, and not the final. */
+  ok(!isFinalRound(t(1, [['yugi', 'kaiba'], ['mai', null]])), 'and neither is a single match beside a bye');
+  ok(!isFinalRound(t(1, [['mai', null]])), 'a lone bye is not a final either');
 }
 
 /* The summary goes LAST, and there is nothing after it.

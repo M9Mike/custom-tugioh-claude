@@ -1487,7 +1487,13 @@ function fireTriggers(state: DuelState, c: CardInstance, controller: PlayerId, t
     if (!conditionMet(state, eff, c, controller)) continue;
     const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
     if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
-      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: controller, text: def.cry });
+      /* `arrival` when the effect fired because the card turned up. The beat is
+         worth keeping — it is what gives a signature monster its flourish — but
+         a card with several effects announced all of them the same bare way, so
+         Slifer's draw-on-summon rider was indistinguishable from his second
+         mouth and got reported as the mouth firing on his own Summon. */
+      const arrival = trigger === 'onSummon' || trigger === 'onNormalSummon';
+      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: controller, text: def.cry, arrival });
     }
     runOps(ctx, eff.ops);
   }
