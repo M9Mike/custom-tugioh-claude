@@ -1497,10 +1497,15 @@ The shape every deck follows:
 - **The spine stays neutral and small.** Six staples (Monster Reborn, Dark
   Hole, Pot of Greed, Trap Hole, Negate Attack, Polymerization) plus Just
   Desserts are the shared skeleton; everything else should be unique to its
-  deck. **Monster Reborn reads your own Graveyard only** — either-grave was
-  the one card that actively eroded identity, turning every dead signature
-  bomb into the opponent's best play. Buff a deck through its unique cards,
-  never through the spine: a spine change moves all eleven at once.
+  deck. Buff a deck through its unique cards, never through the spine: a
+  spine change moves all eleven at once. **Monster Reborn reads either
+  Graveyard** — the balance pass had narrowed it to your own side, because in
+  eleven decks that all carry it a dead signature bomb becomes the opponent's
+  best play; the owner reversed that, and the cost is accepted knowingly,
+  because taking the other duelist's monster is the card's whole drama. It is
+  still only ever a *rental* where a God is concerned: `returnBorrowedGods`
+  sweeps at the End Phase and `toGrave` sends a card to its **owner's**
+  Graveyard, so a stolen Slifer goes home and the thief keeps nothing.
 - **Dead weight is a real cost.** In 25 cards, a card serving no theme is a
   wasted draw one game in six. The balance pass cut seven such cards from the
   roster entirely (Beaver Warrior, Celtic Guardian, La Jinn, Battle Steer,
@@ -1525,10 +1530,11 @@ The measurement discipline:
   halved, and the two untouchable-attacker decks broke out (yami 68 → 80,
   pegasus 66 → 75) while the floor barely moved and rex's tempo edge
   blunted (53 → 44). Three printed-faithful corrections brought them home —
-  Multiply requires a face-up Kuriboh to multiply, Toon World's activation
-  costs its printed 1000, and Toons are *effect-indestructible* rather than
-  engine-untargetable, so Mirror Wall can halve one and Skull Dice can
-  shrink one even though nothing may destroy it. The measured 8000-LP
+  Multiply required a face-up Kuriboh to multiply (since reversed, below),
+  Toon World's activation costs its printed 1000, and Toons are
+  *effect-indestructible* rather than engine-untargetable, so Mirror Wall can
+  halve one and Skull Dice can shrink one even though nothing may destroy it.
+  The measured 8000-LP
   ladder (100 games, ±9-10): **yami 71 · pegasus 70 · mai 58 · kaiba 50 ·
   weevil 45 · rex 44 · bakura 43 · yugi 39 · mako 37 · joey 34 · keith
   30** — the top two statistically level, the next block twelve points
@@ -1562,6 +1568,25 @@ The measurement discipline:
   reverting fixes one at a time and watching exactly the right assertions go
   red while the controls stayed green. A regression added after a fix, green
   against the fix, has proven nothing yet.
+- **A price is only worth what the field makes of it.** The owner reversed
+  three balance-pass prices at once — Multiply needs no Kuriboh, Brain
+  Control costs no Life Points, Monster Reborn reads either Graveyard — and
+  the obvious prediction was that Yami would go straight back to the 80 he
+  posted the last time Multiply was unconditional at 8000 Life Points. He
+  measured **72% ±9** against the 71 on record, and Yugi — who carries the
+  same two unique cards and nothing else of the three — **40% ±10** against
+  39. Both flat, both inside the interval.
+
+  Worth knowing *why* it is plausible rather than just recording the number:
+  two of the three are unique cards held by exactly those two decks
+  (`brain-control` and `multiply` are Yugi's and Yami's alone), while the
+  third is a **spine** card in all eleven, and the bench is round-robin and
+  zero-sum. A spine buff that hands the whole field a way to reach into the
+  deck with the biggest bodies lands hardest on the deck with the biggest
+  bodies. That is a story, not a bisect — the honest claim is only that the
+  ladder did not move measurably, which is what two 100-game runs can
+  support. Re-price a card because a duel felt wrong, not because a
+  prediction about the bench felt right.
 
 ## Adding a duelist
 

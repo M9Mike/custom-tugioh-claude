@@ -30,21 +30,24 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'monster-reborn': {
-    /* Your own Graveyard, deliberately. This card is in all eleven decks, and
-       reading either Graveyard made it the one deliberate anti-identity clause
-       in the game: the moment a signature bomb died — Blue-Eyes, Metalzoa,
-       Great Moth, Dark Necrofear — it became the *opponent's* best play, so
-       late duels converged on "whoever draws Reborn second wins the bomb".
-       Own-side keeps the comeback and keeps every deck's monster its own.
-       (Stealing a God was already closed separately by `returnBorrowedGods`;
-       this closes the same door for everything beneath one.) */
-    text: 'Special Summon 1 monster from your Graveyard in Attack Position.',
+    /* Either Graveyard — owner's call, and the printed card's own wording.
+       The balance pass had narrowed it to your own side because in eleven
+       decks that all carry it, a dead signature bomb becomes the opponent's
+       best play; that cost is accepted deliberately, because taking the
+       other duelist's monster is the card's whole drama.
+
+       A borrowed God is still only a rental: `returnBorrowedGods` sweeps
+       every Divine-Beast that did not pay its three Tributes at the End
+       Phase, and `toGrave` sends a card to its *owner's* Graveyard, so a
+       stolen Slifer goes home rather than into the thief's. That rule was
+       written for exactly this wording and is pinned. */
+    text: "Special Summon 1 monster from either player's Graveyard in Attack Position.",
     cry: 'Rise again!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', count: 1, position: 'atk' }],
+        ops: [{ op: 'specialSummon', from: 'grave', side: 'both', count: 1, position: 'atk' }],
       },
     ],
   },
@@ -188,17 +191,16 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'brain-control': {
-    /* Priced when the game started at 4000 Life Points and kept at 8000: a
-       stolen monster converts straight into tribute fodder or a lethal swing,
-       so the borrowing has to cost something the race can feel — and 600 is
-       still a real bite without being the printed 800's tenth of the duel. */
-    text: 'Pay 600 Life Points: take control of 1 monster your opponent controls until the end of the turn.',
+    /* Owner's call: free. It carried 600 Life Points from the 4000-LP days as
+       a brake on borrowing a body for tribute fodder or a lethal swing — the
+       card is now priced by the turn limit alone, which is the register this
+       game is written in. */
+    text: 'Take control of 1 monster your opponent controls until the end of the turn.',
     cry: 'Your mind is mine!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        cost: { lp: 600 },
         ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
       },
     ],
@@ -246,18 +248,16 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   multiply: {
-    /* The printed card multiplies a Kuriboh you control — it is not three
-       bodies from nothing. Unconditional, it was the fastest God line in the
-       game (one Quick-Play into three Slifer tributes), and at 8000 Life
-       Points there was always time to draw it: yami benched 80. The gate is
-       one turn of setup — summon the fluffball, then the horde — and a
-       Kuriboh Token counts, because a token of Kuriboh is a Kuriboh. */
-    text: 'Requires a face-up "Kuriboh" on your field: Special Summon 3 Kuriboh Tokens (300/200).',
+    /* Owner's call, and it is the anime's version: the horde comes out of
+       nowhere. It was gated on a face-up Kuriboh during the balance pass
+       because unconditional it is the fastest God line in the game — one card
+       into three Slifer tributes — which is the point. Yami is the God deck
+       and the God deck is decreed to sit at the top; the gate is off. */
+    text: 'Special Summon 3 Kuriboh Tokens (300/200).',
     cry: 'Multiply!',
     effects: [
       {
         trigger: 'activate',
-        condition: { requiresOnField: 'kuriboh' },
         ops: [{ op: 'summonToken', name: 'Kuriboh Token', atk: 300, def: 200, count: 3, artSlug: 'kuriboh' }],
       },
     ],

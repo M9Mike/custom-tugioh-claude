@@ -1602,12 +1602,10 @@ console.log('\nThe second mouth hears a Special Summon too');
   const gone = act(t, FOE, { type: 'activateSpell', uid: rb.uid, targets: [small.uid] });
   ok(!gone.players[FOE].monsters.some((m) => m?.slug === 'harpie-lady'), 'anything under 2000 does not survive the revival');
 
-  // A Token is a monster being Summoned. Multiply needs its Kuriboh down
-  // since the balance pass, so one stands ready before the horde is called.
+  // A Token is a monster being Summoned.
   const k = fresh();
   k.active = FOE;
   k.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
-  k.players[FOE].monsters[0] = card(FOE, 'kuriboh');
   const mult = card(FOE, 'multiply');
   k.players[FOE].hand.push(mult);
   const tokens = act(k, FOE, { type: 'activateSpell', uid: mult.uid, targets: [] });
@@ -2494,19 +2492,25 @@ console.log('\nA God that did not pay for itself does not stay');
     'but it goes back at the end of that turn');
   ok(after.players[ME].grave.some((c) => c.slug === 'slifer-the-sky-dragon'), 'to the Graveyard, not nowhere');
 
-  /* The theft door is closed one layer earlier now — Monster Reborn reads
-     your OWN Graveyard only, so the case that motivated the sweep cannot be
-     set up through it at all. Pinned first; the rental sweep is then driven
-     from the owner's own side, which is the way a God still arrives without
-     paying. */
+  /* Theft is live again — Monster Reborn reads either Graveyard — so this is
+     the case the sweep was written for, driven end to end: take their God,
+     have it for the turn, and it goes home. `toGrave` sends a card to its
+     OWNER's Graveyard, so the thief does not even keep the corpse. */
   const theft = fresh();
   const theirs = card(FOE, 'slifer-the-sky-dragon');
   theft.players[FOE].grave.push(theirs);
   const steal = card(ME, 'monster-reborn');
   theft.players[ME].hand = [steal, card(ME, 'kuriboh')];
-  const refusedTheft = applyAction(theft, ME, { type: 'activateSpell', uid: steal.uid, targets: [theirs.uid] });
-  ok(!refusedTheft.state.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
-    "Monster Reborn cannot reach the other player's Graveyard at all");
+  const stolen = act(theft, ME, { type: 'activateSpell', uid: steal.uid, targets: [theirs.uid] });
+  ok(stolen.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    "Monster Reborn reaches the other player's Graveyard");
+  const returned = act(stolen, ME, { type: 'endTurn' });
+  ok(!returned.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'but a borrowed God is only ever a rental');
+  ok(returned.players[FOE].grave.some((c) => c.slug === 'slifer-the-sky-dragon'),
+    'and it goes home to its owner, not into the thief\'s Graveyard');
+  ok(!returned.players[ME].grave.some((c) => c.slug === 'slifer-the-sky-dragon'),
+    'CONTROL: the thief keeps nothing');
 
   /* The rental: your own God, revived without its three Tributes, leaves at
      the End Phase — from your own field, to your own Graveyard. */
