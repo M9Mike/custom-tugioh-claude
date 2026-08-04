@@ -1155,6 +1155,33 @@ written with a 2500 ATK attacker against 2600 DEF, which it survives on the
 arithmetic alone — the check passed with the flag deleted. It swings a 3000
 now. yami 73→71%, pegasus 86→84%, mako 39→39%, all inside their intervals.
 
+**A dead renderer is not a failed assertion.** `npm run rejoin` failed against
+production with "typing your own code puts you back in your seat — neither",
+which reads as the feature being broken. It was not: WebKit had dropped its
+renderer, `Promise.race(...).catch(() => 'neither')` swallowed the crash
+whole, and the probe reported a red check against working code. The tell came
+from making the failure print what was on screen — the read itself returned
+`"?"`, because the page it was reading was already gone.
+
+Both races classify the error now: anything saying the page or its target has
+died is rethrown and the run is called **inconclusive** (non-zero, but saying
+so), and only a genuinely quiet timeout is still `neither`. Six production
+runs afterwards: three pass, three inconclusive, no false failures. The crash
+rate in this container is that high, which is why it was chased twice as a
+production bug.
+
+The outer block was `try`/`finally` with no `catch`, so a crash also killed
+the process before the summary line — a probe exiting on a stack trace reads
+as "the feature is broken" rather than "the probe could not look". Same
+lesson as the rules-check summary, one level up.
+
+Two latent bugs fell out of the same read, both now fixed: the join race
+waited 20s while `joinRoomWithRetry`'s own ladder is **23.5s of sleeps** plus
+eleven requests, so the probe could give up while the client was still
+legitimately retrying; and the CONTROL leg waited only 15s for the same
+ladder. Neither ever showed against localhost, where the first attempt always
+lands.
+
 **Never `tail -2` a probe.** Every check here prints its failures *above* the
 summary line, so piping a run through `tail -2` keeps the verdict and throws
 away the only thing that explains it. Done exactly that on a production

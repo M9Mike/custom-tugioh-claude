@@ -26,6 +26,25 @@ import { webkit } from 'playwright';
 const BASE = (process.argv[2] ?? 'http://localhost:3100').replace(/\/$/, '');
 
 let failures = 0;
+/** Set when the run died before it could reach a verdict — see the catch. */
+let inconclusive = null;
+
+/**
+ * A dead renderer is not a failed assertion.
+ *
+ * WebKit drops its renderer often enough in this container that both races
+ * below hit it — and `.catch(() => 'neither')` swallowed it whole, so a
+ * crashed page was reported as "typing your own code did nothing", a red
+ * check against a feature that was working. It was chased twice as a
+ * production bug on that evidence. Anything that says the page or its target
+ * is gone is rethrown to the outer catch, which calls the run inconclusive;
+ * only a real, quiet timeout is still 'neither'.
+ */
+const CRASHED = /crash|closed|Target (?:page|closed)|Session closed|Execution context/i;
+const raceOutcome = (err) => {
+  if (CRASHED.test(String(err))) throw err;
+  return 'neither';
+};
 function ok(pass, label, detail = '') {
   console.log(`  ${pass ? '✅' : '❌'} ${label}${!pass && detail ? ` — ${detail}` : ''}`);
   if (!pass) failures += 1;
@@ -89,15 +108,44 @@ try {
   /* Either we end up in the room, or the home page tells us we cannot. Waiting
      for whichever comes first, rather than for one and timing out on the other,
      so a refusal is reported as a refusal instead of as a timeout naming a
-     selector. */
-  const outcome = await Promise.race([
-    page.waitForURL(new RegExp(`/duel/${code}`, 'i'), { timeout: 20000 }).then(() => 'in'),
-    page
-      .waitForSelector('text=/already has two players|duel is full|could not find/i', { timeout: 20000 })
-      .then(() => 'refused'),
-  ]).catch(() => 'neither');
+     selector.
 
-  ok(outcome === 'in', 'typing your own code puts you back in your seat', outcome === 'refused' ? `refused: ${await onScreen(page)}` : `${outcome} — still on ${page.url()}`);
+     Longer than the client's own patience, which is the whole point. Join
+     retries on a 404 — a room written a moment ago is not always readable yet
+     — and `joinRoomWithRetry`'s ladder is 23.5s of sleeps before it gives up,
+     plus eleven requests. A 20s race here was therefore *shorter than a
+     legitimate join*: on a cold serverless start one slow first attempt put
+     the client into its backoff and this reported "neither" while it was
+     still trying, which is a probe calling a working feature broken. It never
+     showed against localhost, where the first attempt always lands. */
+  const JOIN_WINDOW_MS = 45000;
+  const outcome = await Promise.race([
+    page.waitForURL(new RegExp(`/duel/${code}`, 'i'), { timeout: JOIN_WINDOW_MS }).then(() => 'in'),
+    page
+      .waitForSelector('text=/already has two players|duel is full|could not find/i', { timeout: JOIN_WINDOW_MS })
+      .then(() => 'refused'),
+  ]).catch(raceOutcome);
+
+  /* On "neither", say what is actually on the screen and what the field
+     really holds. "still on the home page" names the symptom and hides
+     everything else, which is the shape of every diagnosis this repo has
+     had to redo. */
+  const stuck =
+    outcome === 'neither'
+      ? await page
+          .evaluate(() => ({
+            code: document.querySelector('input[placeholder="CODE"]')?.value ?? '(no field)',
+            text: document.body.innerText.replace(/\s+/g, ' ').slice(0, 220),
+          }))
+          .catch(() => null)
+      : null;
+  ok(
+    outcome === 'in',
+    'typing your own code puts you back in your seat',
+    outcome === 'refused'
+      ? `refused: ${await onScreen(page)}`
+      : `${outcome} — field holds "${stuck?.code ?? '?'}" (wanted "${code}") — screen: ${stuck?.text ?? page.url()}`
+  );
 
   if (outcome === 'in') {
     /* And it is really the room rather than an error screen behind a URL that
@@ -138,16 +186,30 @@ try {
   for (let i = 0; i < 40 && (await strangerJoin.isDisabled()); i++) await stranger.waitForTimeout(250);
   await strangerJoin.click();
   const strangerOutcome = await Promise.race([
-    stranger.waitForURL(/\/duel\//, { timeout: 15000 }).then(() => 'in'),
+    stranger.waitForURL(/\/duel\//, { timeout: JOIN_WINDOW_MS }).then(() => 'in'),
     stranger
-      .waitForSelector('text=/already has two players|duel is full/i', { timeout: 15000 })
+      .waitForSelector('text=/already has two players|duel is full/i', { timeout: JOIN_WINDOW_MS })
       .then(() => 'refused'),
-  ]).catch(() => 'neither');
+  ]).catch(raceOutcome);
   ok(strangerOutcome === 'refused', 'CONTROL: somebody with no seat is still refused', `outcome: ${strangerOutcome}`);
   await other.close().catch(() => {});
+} catch (err) {
+  /* This block was `try`/`finally` with nothing in between, so anything that
+     threw killed the process outright — the summary below never ran and the
+     whole run ended in a Node stack trace. WebKit drops its renderer often
+     enough in this container that it happened for real, and a probe that
+     exits without a verdict reads as "the feature is broken" when what
+     actually happened is "the probe could not look". Non-zero either way,
+     because a run that proved nothing is not a pass — but it says which. */
+  inconclusive = String(err).split('\n')[0];
 } finally {
   await browser.close();
 }
 
-console.log(failures ? `\n${failures} check(s) FAILED` : '\nYou can always walk back into your own duel. ✅');
-process.exitCode = failures ? 1 : 0;
+if (inconclusive) {
+  console.log(`\n⚠️  the run could not finish (${inconclusive}) — this proves nothing`);
+  process.exitCode = 1;
+} else {
+  console.log(failures ? `\n${failures} check(s) FAILED` : '\nYou can always walk back into your own duel. ✅');
+  process.exitCode = failures ? 1 : 0;
+}
