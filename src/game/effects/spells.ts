@@ -903,6 +903,126 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       },
     ],
   },
+  /* ---------------------------------------------------------------- */
+  /* Yami Marik                                                        */
+  /* ---------------------------------------------------------------- */
+
+  'left-arm-offering': {
+    /* Give up everything you are holding to reach the one card you want.
+       It is the deck's tutor for Ra, and the cost is real — but this deck
+       cares less about a full hand than any other in the game, because Ra
+       is priced by the board rather than the hand. Slifer's opposite,
+       again. */
+    text: 'Discard your entire hand, then add 1 card from your Deck to your hand.',
+    cry: 'An arm for a wish.',
+    effects: [
+      {
+        trigger: 'activate',
+        ops: [
+          { op: 'discard', count: 99, who: 'own' },
+          { op: 'search', filter: {} },
+        ],
+      },
+    ],
+  },
+
+  'nightmare-s-steelcage': {
+    /* The card that makes the theme work, and the reason it was missing is
+       written down in CLAUDE.md now: instrumenting real duels showed Marik
+       dead by turn ten having never once reached Ra. A burn deck does not
+       need more burn, it needs *turns* — and a cage that stops the Battle
+       Phase dead is two full turns of Bowganian ticking while nothing can be
+       done about it.
+
+       Both players, exactly as printed. It costs Marik nothing because his
+       plan was never to attack, which is the whole joke of the card, and it
+       leaves the opponent a real answer: outlast it, or break the board he
+       builds behind it. */
+    text: 'Neither player can attack for 2 turns.',
+    cry: 'Welcome to the cage.',
+    effects: [
+      {
+        trigger: 'activate',
+        ops: [{ op: 'freezeMonsters', who: 'both', turns: 2 }],
+      },
+    ],
+  },
+
+  'nightmare-wheel': {
+    /* Genuinely Continuous, unlike Spellbinding Circle — which was made a
+       one-shot precisely because parking in the only Spell/Trap Zone was too
+       high a price for Yugi. Marik pays it deliberately: the wheel attaches
+       to the monster it binds, so it holds for exactly as long as the card
+       does and any backrow removal frees the prisoner. That is the
+       counterplay, and it is one the whole roster can reach.
+
+       Written as an equip on purpose. A one-shot trap leaves the field, and
+       an equip grant is read live — so the bind would have lapsed the instant
+       the card hit the Graveyard, leaving a card whose whole sentence did
+       nothing. `npm run text` cannot see that and the audit cannot either;
+       only driving the attack and reading the flag afterwards can. */
+    text: 'Stays face-up. When your opponent declares an attack: negate the attack, and that monster cannot attack while this card remains face-up. Inflict 500 damage to your opponent.',
+    cry: 'Turn, and keep turning.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Nightmare Wheel — bind the attacker',
+        ops: [
+          { op: 'negateAttack' },
+          { op: 'equipTo', atk: 0, def: 0, grants: ['cannotAttack'], target: sel('opp', 'attacker') },
+          { op: 'damage', amount: 500, to: 'opp' },
+        ],
+      },
+    ],
+  },
+
+  'coffin-seller': {
+    /* Marik profits from his own dead, and this is the card that turns a
+       losing board into a clock: it stays face-up and bills them *every*
+       time something of his is broken, which is the deck's whole plan — his
+       monsters are small, they die, and dying is the point.
+
+       Continuous and `reusable`, which is the pair that makes a standing
+       threat: the `monsterDestroyed` window belongs to the player whose
+       monster died, so it is always his own. The price is the single
+       Spell/Trap Zone it sits in for the rest of the duel, and any backrow
+       removal in the game answers it. */
+    text: 'Stays face-up. Each time a monster you control is destroyed: inflict 1000 damage to your opponent.',
+    cry: 'Someone always pays for the burial.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'monsterDestroyed',
+        label: 'Coffin Seller — 1000 damage',
+        reusable: true,
+        ops: [{ op: 'damage', amount: 1000, to: 'opp' }],
+      },
+    ],
+  },
+
+  'metal-reflect-slime': {
+    /* A wall that is also a body, and the answer to the thing that kept Ra
+       off the board entirely: instrumented duels had Ra in hand and three
+       monsters standing *at the same time* in 3 games out of 24. Yami reaches
+       Slifer because Multiply makes three bodies out of one card; Marik had
+       nothing that did that. The slime spends itself into a 3000 DEF token —
+       a wall this turn, a Tribute for the God later.
+
+       One-shot, so the zone is free again immediately: this is the deck's
+       Spell/Trap Zone and Coffin Seller wants to live in it. */
+    subKindOverride: 'Normal',
+    text: "During your opponent's turn: Special Summon 1 Reflect Slime Token (0/3000) in Defence Position.",
+    cry: 'It takes the shape of your fear.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'anyOpponentTurn',
+        label: 'Metal Reflect Slime — a wall of 3000',
+        ops: [{ op: 'summonToken', name: 'Reflect Slime Token', atk: 0, def: 3000, count: 1, artSlug: 'metal-reflect-slime' }],
+      },
+    ],
+  },
 };
 
 /** Cards whose "chosen" target is on the controller's own side of the field. */

@@ -1620,6 +1620,65 @@ git-ignored and re-fetched by the `prebuild`). Effects go in
 same engine gates the interface uses and scores with one generic `evaluate`, so
 a new deck is played competently from the first duel without a line of AI work.
 
+**Two cards can answer each other forever, and the engine must survive it.**
+Revival Jam revives the instant it is destroyed; a revival is a Summon; Slifer's
+second mouth destroys what the opponent Summons. The pair ping-ponged until the
+*call stack* overflowed — which on a serverless function is a 500 and a duel
+both players lose. It surfaced the first time Yami Marik was benched against the
+field, as a crash rather than a bad number, and it was invisible to every other
+check because no single deck contains both cards.
+
+Two guards, deliberately: `MAX_TRIGGER_DEPTH` in `fireTriggers` so no future
+pair can take the server down, and `oncePerTurn` on the card itself so the
+interaction is *sane* rather than merely non-fatal. `oncePerTurn` used to be
+honoured only for ignition effects, where the count lives on the card instance —
+no use at all to a card that dies and comes back, since `resetInstance` wipes
+the instance on the way in. It is kept on the state now, keyed
+`controller:slug:trigger` and cleared at every turn start. Both are pinned, and
+both were proved to bite: removing the card's limit turns three assertions red,
+and removing the depth guard as well reproduces the raw stack overflow.
+
+**A trigger with no users is a trigger nobody has tested.** `onOwnTurnStart`
+existed in the DSL and *no card in the game used it* until Bowganian arrived —
+so the audit's driver for it had never once fired. It ended the player's turn,
+which starts the *opponent's*, and the card duly reported "does nothing". The
+driver goes all the way round the table now. Proved by zeroing Bowganian's
+damage and watching the audit go red, which it could not have done before.
+
+**A new duelist re-prices everyone.** `npm run deck-bench` is round-robin and
+therefore zero-sum: adding a deck that benches badly hands the rest of the field
+free wins, and Yami went **72 → 81** without a single card of his changing.
+Bench the *new* deck and at least one established one, and read the second
+number as a measurement of the field rather than of that deck.
+
+**Yami Marik ships at 28% ±9, and the number is honest rather than finished.**
+Four rounds of tuning moved him 21 → 19 → 25 → 28, and the useful part was not
+the tuning: it was instrumenting real duels instead of guessing. That probe said
+what no bench number could — **Ra reached the field in 0 of 24 duels**, Marik was
+dead by turn ten on ~540 Life Points, and Ra was in hand *and* three bodies stood
+*at the same time* in 3 games out of 24. Three structural faults came out of it,
+all of them mine:
+
+- **Eight traps in a game with one Spell/Trap Zone.** Every other deck runs
+  2–5; most of his were dead cards in hand. Rebuilt to 13/6/6, which is the
+  roster's normal shape.
+- **The God was not searchable.** Every other deck searches its hinge — Toon
+  Alligator finds Toon World, Baby Dragon finds Time Wizard — and the God deck
+  was hoping to draw a 1-of in a duel that ends on turn ten. Viser Des finds Ra
+  now, which is the rule this file already had written down.
+- **No way to make three bodies.** Yami reaches Slifer off Multiply tokens;
+  Marik had nothing equivalent until Metal Reflect Slime came back as a
+  one-shot that spends itself into a 3000 DEF body.
+
+What remains is the bias this file already documents for the attrition quartet,
+and Marik is the purest case of it in the game: `evaluate()` prices a card in
+hand at 220 and scores a two-turn Nightmare's Steelcage lock at **zero**, and a
+monster bound by Nightmare Wheel still counts in the race term. Tuning his cards
+until the bench says 50 would make him oppressive in the duels the game is
+actually for — two humans on two phones — so the next move is AI work (scoring
+`state.ongoing`, respecting binds in `clock()`), not another card buff. Believe a
+human's report over the bench for this deck.
+
 **A God costs three bodies.** `tributesRequired` gives any `Divine-Beast` three
 tributes, written against the type rather than a per-card override so Obelisk
 and Ra cost the same the day they arrive. Tokens are bodies, so Kuriboh and

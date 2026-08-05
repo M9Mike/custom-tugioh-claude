@@ -1042,7 +1042,16 @@ for (const def of Object.values(CARDS)) {
       const c = place(s, ME, 2, def.slug);
       c.summonedOnTurn = 0;
       satisfy(s, eff, c);
-      audit(def, eff, s, (st) => run(st, ME, { type: 'endTurn' }));
+      /* One `endTurn` ends MY turn, which is what `onOwnTurnEnd` wants — and
+         it starts the *opponent's*, so it never once fired an
+         `onOwnTurnStart`. The trigger had no users until Yami Marik arrived,
+         so the gap sat here unnoticed rather than reporting anything. Going
+         all the way round the table is what makes my turn start again. */
+      audit(def, eff, s, (st) => {
+        const mine = run(st, ME, { type: 'endTurn' });
+        if (typeof mine === 'string' || eff.trigger === 'onOwnTurnEnd') return mine;
+        return run(mine, FOE, { type: 'endTurn' });
+      });
       continue;
     }
     /* Dark Hole destroys, so it satisfies both: `onSentToGrave` fires for any

@@ -1090,7 +1090,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
                   // A card never Special Summons itself with its own "when this
                   // card is destroyed" effect — it is in the Graveyard by the
                   // time that resolves, and reviving itself is not the intent.
-                  c.uid !== ctx.source.uid
+                  // Unless it says so: Revival Jam opts in by name.
+                  (op.includeSelf || c.uid !== ctx.source.uid)
               );
               if (pool.length) {
                 picked = pool.reduce((a, b) => (baseAtk(a.slug) >= baseAtk(b.slug) ? a : b));
@@ -1478,13 +1479,61 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   return true;
 }
 
+/**
+ * How deep one trigger may set off another before the engine stops listening.
+ *
+ * Two cards can answer each other forever: Revival Jam revives itself the
+ * moment it is destroyed, a revival is a Summon, and Slifer's second mouth
+ * destroys what the opponent Summons — so the pair ping-ponged until the
+ * *stack* overflowed, which on a serverless function is a 500 and a duel both
+ * players lose. Found by `npm run deck-bench` the first time Yami Marik was
+ * measured against the field.
+ *
+ * The cap is deliberately far above any real chain (a long combo here is a
+ * handful deep) and exists so that no future pair of cards can take the
+ * server down. It is a backstop, not a rule: cards that could loop are
+ * expected to carry their own limit, which is what `oncePerTurn` below is for.
+ */
+const MAX_TRIGGER_DEPTH = 16;
+let triggerDepth = 0;
+
 function fireTriggers(state: DuelState, c: CardInstance, controller: PlayerId, trigger: CardEffect['trigger'], trig: TriggerContext, targets: string[] = []) {
   if (c.isToken || c.flags.negated || state.winner) return;
   const def = CARDS[c.slug];
   if (!def) return;
+  if (triggerDepth >= MAX_TRIGGER_DEPTH) return;
+  triggerDepth += 1;
+  try {
+    fireTriggersInner(state, c, controller, trigger, trig, targets, def);
+  } finally {
+    triggerDepth -= 1;
+  }
+}
+
+function fireTriggersInner(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  trigger: CardEffect['trigger'],
+  trig: TriggerContext,
+  targets: string[],
+  def: CardDef
+) {
   for (const eff of def.effects) {
     if (eff.trigger !== trigger) continue;
     if (!conditionMet(state, eff, c, controller)) continue;
+    /* "Once per turn" used to mean it only for an ignition, where the count
+       lives on the card instance — which is no use to a card that dies and
+       comes back, because `resetInstance` clears the marker on the way in.
+       Kept on the state and keyed by controller and name, so Revival Jam
+       revives once a turn however many times it is broken. Cleared at every
+       turn start, so it really is per turn and not per duel. */
+    if (eff.oncePerTurn && trigger !== 'ignition') {
+      const key = `${controller}:${c.slug}:${trigger}`;
+      const used = state.oncePerTurnUsed ?? (state.oncePerTurnUsed = []);
+      if (used.includes(key)) continue;
+      used.push(key);
+    }
     const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
     if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
       /* `arrival` when the effect fired because the card turned up. The beat is
@@ -1822,6 +1871,9 @@ function startTurn(state: DuelState) {
   const pid = state.active;
   const p = state.players[pid];
   p.normalSummonUsed = false;
+  // Per turn, not per duel — and cleared for both players, because a triggered
+  // effect can fire on the turn that is not its controller's.
+  state.oncePerTurnUsed = [];
   state.phase = 'draw';
   log(state, `Turn ${state.turn} — ${p.name}'s turn.`, 'system', pid);
   anim(state, { kind: 'phase', player: pid, text: `${p.name}'s Turn` });
@@ -2329,6 +2381,20 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (occupant && !tributes.includes(occupant.uid)) {
         return { state: prev, error: 'That Monster Zone is occupied.' };
       }
+      /* Read *before* the tributes are paid, because a moment later they are
+         in the Graveyard and the number is gone. Effective stats, not printed
+         ones, so a monster standing in a buff is worth what it was worth on
+         the board — and there is no recursion to fear: these are other cards,
+         totalled before the God they are paying for exists. */
+      let paidAtk = 0;
+      let paidDef = 0;
+      if (def.statsFromTributes) {
+        for (const tu of tributes) {
+          const t = p.monsters.find((m) => m?.uid === tu)!;
+          paidAtk += effAtk(state, t, pid);
+          paidDef += effDef(state, t, pid);
+        }
+      }
       for (const tu of tributes) {
         log(state, `${p.name} tributes ${displayName(p.monsters.find((m) => m?.uid === tu)!)}.`, 'summon', pid);
         toGrave(state, tu, true);
@@ -2350,6 +2416,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       c.specialSummonedOnTurn = undefined;
       c.attacksUsed = 0;
       c.attacked = [];
+      /* The God is worth what was spent on it. Written as a modifier on a 0
+         base rather than as a live aura, because what it counts is gone: the
+         three monsters are in the Graveyard before the number is ever read. */
+      if (def.statsFromTributes) {
+        c.atkMod = paidAtk;
+        c.defMod = paidDef;
+      }
       p.monsters[dest] = c;
       p.normalSummonUsed = true;
 

@@ -179,6 +179,7 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
         defOverride: custom.defOverride,
         summonRequires: custom.summonRequires,
         subKindOverride: custom.subKindOverride,
+        statsFromTributes: custom.statsFromTributes,
       } satisfies CardDef,
     ];
   })

@@ -19,6 +19,17 @@ export interface EffectDef {
   summonRequires?: string;
   /** Our version of the card sits in a different zone than the printed one. */
   subKindOverride?: string;
+  /**
+   * ATK and DEF become the combined ATK and DEF of the monsters Tributed to
+   * Summon this card — the Winged Dragon of Ra, and the reason the deck that
+   * carries it wants a wide board rather than a full hand.
+   *
+   * A snapshot, deliberately: the monsters are in the Graveyard by the time
+   * anybody reads the number, so there is nothing live left to track. The
+   * sentence has a "to Summon it" clause for exactly that reason, which is
+   * what `npm run text` looks for before it allows a one-shot.
+   */
+  statsFromTributes?: boolean;
 }
 
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
@@ -2268,5 +2279,190 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        it does now. */
     text: 'When this card attacks: it gains 400 ATK until the end of the turn.',
     effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' }] }],
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* Yami Marik — the torture chamber, and the Sun Dragon it feeds     */
+  /* ---------------------------------------------------------------- */
+
+  'the-winged-dragon-of-ra': {
+    /* The second God, and deliberately the opposite of the first. Slifer is
+       worth whatever is left in your *hand*, so he shrinks as you develop;
+       Ra is worth whatever you put on the *board* and then spent. One God
+       rewards holding back, the other rewards committing everything — and
+       both cost the same three bodies.
+
+       The printed "?" stats come through as -1, so the floor is 0 and the
+       monsters Tributed are the whole of the number. */
+    atkOverride: 0,
+    defOverride: 0,
+    statsFromTributes: true,
+    text:
+      'Requires 3 Tributes. This card\'s ATK and DEF become the combined ATK and DEF of the monsters Tributed to Summon it. ' +
+      'Once per turn: pay 2000 Life Points; this card gains 2000 ATK until the end of the turn. ' +
+      "This card cannot be targeted by your opponent's card effects. " +
+      "A God is above everything: this card's attacks and effects ignore your opponent's protections. " +
+      'If this card is Special Summoned, it returns to the Graveyard at the end of that turn.',
+    cry: 'The sun itself answers!',
+    effects: [
+      {
+        /* Untargetable like Slifer — the God privilege, and the reason the
+           only answer to one is a bigger body. `summonSick` is the price of
+           that: Ra hatches out of Sphere Mode, so the turn it lands is the
+           turn its owner is given nothing, and the other player gets one
+           full turn to find an answer to a monster they cannot touch. That
+           is the same lever that brought Pegasus home — nerf the clock, not
+           the number. No pierce: a God does not pierce, so putting a body in
+           the way really is an answer, which is what the torture engine
+           below exists to punish. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['untargetable'] },
+      },
+      {
+        /* The One-Turn Kill, priced rather than literal. The anime line is
+           "I pay all but one Life Point and Ra takes it all", which in a game
+           with burn in it is just a losing move dressed up; 2000 for 2000 is
+           the same bargain at a size a duel can survive, and it still only
+           wins when their board is open, because Ra cannot pierce. */
+        trigger: 'ignition',
+        label: 'One-Turn Kill — pay 2000 for 2000 ATK',
+        oncePerTurn: true,
+        cost: { lp: 2000 },
+        ops: [{ op: 'gainAtk', amount: 2000, target: SELF, duration: 'turn' }],
+      },
+    ],
+  },
+
+  bowganian: {
+    /* The engine of the whole deck, and it sits in the Monster Zone on
+       purpose: `onOwnTurnStart` only ever fires for monsters, and with a
+       single Spell/Trap Zone a backrow full of tickers could never have
+       existed anyway. Two copies, because this is the enabler. */
+    text: 'At the start of your turn: inflict 1200 damage to your opponent.',
+    cry: 'The bolt finds you again.',
+    effects: [{ trigger: 'onOwnTurnStart', ops: [{ op: 'damage', amount: 1200, to: 'opp' }] }],
+  },
+
+  'revival-jam': {
+    /* It does not stay dead, which is three things at once here: a wall that
+       cannot be cleared, a body that is always available for Ra's three, and
+       — with Coffin Seller face-up — a repeating 800 to the face every time
+       the opponent breaks it. */
+    /* Once per turn, and the limit is the card working rather than the card
+       being nerfed: without it, a Revival Jam facing Slifer's second mouth
+       revives into the very effect that killed it, forever — the pair
+       overflowed the call stack the first time this deck was benched against
+       Yami's. The engine carries a depth backstop for the general case; a
+       card that can obviously loop should still carry its own limit. */
+    text: 'Once per turn, when this card is destroyed: Special Summon it from your Graveyard.',
+    cry: 'You cannot kill what will not die.',
+    effects: [
+      {
+        trigger: 'onDestroyed',
+        oncePerTurn: true,
+        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', filter: { slugs: ['revival-jam'] }, count: 1, position: 'atk', includeSelf: true }],
+      },
+    ],
+  },
+
+  'viser-des': {
+    /* The enabler that finds itself — the rule every deck here follows. A
+       500 ATK body is nothing on its own; what it does is make the next step
+       visible, which is also how the generic AI pilots a combo nobody has
+       told it about. */
+    /* The enabler that finds itself, and the God is part of what it finds.
+       Instrumenting real duels said Ra reached the field in 0 of 24 — one
+       copy in twenty-five cards, in duels that end around turn ten, is a
+       signature card nobody ever sees. Every other deck here searches its
+       hinge (Toon Alligator finds Toon World, Baby Dragon finds Time Wizard,
+       Lord of D. finds the Flute); the God deck was hoping to draw it. */
+    text: "When this card is Normal Summoned: add 1 'The Winged Dragon of Ra', 'Bowganian', 'Nightmare Wheel' or 'Coffin Seller' from your Deck to your hand.",
+    cry: 'Into the vise.',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'search', filter: { slugs: ['the-winged-dragon-of-ra', 'bowganian', 'nightmare-wheel', 'coffin-seller'] } }],
+      },
+    ],
+  },
+
+  'legendary-fiend': {
+    text: 'At the start of your turn: this card gains 700 ATK.',
+    cry: 'Every hour, stronger.',
+    effects: [{ trigger: 'onOwnTurnStart', ops: [{ op: 'gainAtk', amount: 700, target: SELF, duration: 'permanent' }] }],
+  },
+
+  'dark-jeroid': {
+    text: 'When this card is Summoned: 1 monster your opponent controls loses 800 ATK.',
+    cry: 'Wither.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'gainAtk', amount: -800, target: sel('opp', 'strongest'), duration: 'permanent' }],
+      },
+    ],
+  },
+
+  granadora: {
+    /* Marik's whole register in one card: take something now, pay for it
+       later, and the paying is not optional. 1900 ATK for four stars with a
+       bill attached — and the bill comes due the moment it is Tributed for
+       Ra, which is exactly when it is worth paying. */
+    text: 'When this card is Summoned: gain 1000 Life Points. When this card leaves the field: take 2000 damage.',
+    cry: 'A loan, not a gift.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
+      { trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 2000, to: 'own' }] },
+    ],
+  },
+
+  'masked-beast-des-gardius': {
+    /* The mask outlives the beast: 3300 is the biggest body in the deck and
+       therefore the best single Tribute for Ra, and spending it hands you
+       one of their monsters — which is another body for the same summon. */
+    text: 'When this card leaves the field: take control of 1 monster your opponent controls.',
+    cry: 'The mask chooses its next face.',
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'takeControl', target: sel('opp', 'strongest'), duration: 'permanent' }],
+      },
+    ],
+  },
+
+  drillago: {
+    /* The answer to the answer. A God that cannot pierce is walled by any
+       body in Defence, so the deck carries one drill of its own — this is
+       the card that makes hiding behind a 3000 DEF wall cost real Life
+       Points. */
+    text: 'This card inflicts piercing battle damage.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] }],
+  },
+
+  'melchid-the-four-face-beast': {
+    /* The torture chamber is staffed by Fiends, and a deck of 1500s loses
+       every race it enters. The mask lifts the whole cell block rather than
+       only itself — a live condition on the board, which is the shape every
+       theme here is supposed to have. */
+    text: 'All monsters you control gain 500 ATK.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all'), atk: 500 },
+      },
+    ],
+  },
+
+  juragedo: {
+    text: 'When this card is destroyed by battle: gain 1000 Life Points.',
+    effects: [{ trigger: 'onDestroyedByBattle', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
+  },
+
+  helpoemer: {
+    text: 'When this card is sent to the Graveyard: your opponent discards 1 card.',
+    cry: 'From the grave, I still take from you.',
+    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'discard', count: 1, who: 'opp' }] }],
   },
 };

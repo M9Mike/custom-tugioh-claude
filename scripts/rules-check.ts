@@ -2786,6 +2786,204 @@ console.log('\nWinning the final wins the tournament, and the screen says so');
   ok(!isFinalRound(t(1, [['mai', null]])), 'a lone bye is not a final either');
 }
 
+console.log('\nRa is worth what was spent on it');
+{
+  /* The second God, and the opposite of the first: Slifer counts the hand,
+     Ra counts the board you gave up. Both cost three bodies. */
+  const s = fresh();
+  const a = card(ME, 'battle-ox'); // 1700/1000
+  const b = card(ME, 'summoned-skull'); // 2500/1200
+  const c2 = card(ME, 'harpie-lady'); // 1300/1400
+  s.players[ME].monsters = [a, b, c2];
+  const ra = card(ME, 'the-winged-dragon-of-ra');
+  s.players[ME].hand = [ra];
+  s.players[ME].deck = [card(ME, 'kuriboh')];
+  ok(tributesRequired('the-winged-dragon-of-ra') === 3, 'a God still costs three bodies');
+  /* Read off the board a moment before it is spent, not from the printed
+     numbers: a monster standing in a buff is worth what it was worth on the
+     field, which is the rule the engine states and which the first version of
+     this check disagreed with by 200. */
+  const wantAtk = effAtk(s, a, ME) + effAtk(s, b, ME) + effAtk(s, c2, ME);
+  const wantDef = effDef(s, a, ME) + effDef(s, b, ME) + effDef(s, c2, ME);
+  const risen = act(s, ME, {
+    type: 'normalSummon', uid: ra.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [a.uid, b.uid, c2.uid],
+  });
+  const god = risen.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra');
+  ok(!!god && effAtk(risen, god, ME) === wantAtk,
+    'its ATK is the combined ATK of the three it ate', god ? `${effAtk(risen, god, ME)} vs ${wantAtk}` : 'no God');
+  ok(!!god && effDef(risen, god, ME) === wantDef,
+    'and its DEF the combined DEF', god ? `${effDef(risen, god, ME)} vs ${wantDef}` : '');
+
+  /* Sphere Mode: it lands and it does nothing. That pause is the whole of
+     its counterplay — the other player gets one full turn to answer a
+     monster they cannot target. */
+  /* In the Battle Phase, or this proves nothing: a monster cannot attack
+     during Main Phase either, so the first version of this assertion passed
+     with Sphere Mode deleted. Falsification caught it — the same trap this
+     file keeps recording. */
+  const swinging = { ...risen, phase: 'battle' as const };
+  const fresh_god = swinging.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra')!;
+  /* Ra swings the turn it lands, unlike a Toon. Three *real* bodies is a far
+     steeper price than Slifer's three Kuribohs, so the cost is the balance —
+     and it still cannot pierce, so a body in Defence is a real answer. */
+  ok(canAttackWith(swinging, ME, fresh_god), 'it can swing the turn it arrives — its cost is its price');
+  const later = { ...risen, turn: risen.turn + 2, phase: 'battle' as const };
+  const settled = later.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra')!;
+  ok(canAttackWith(later, ME, settled), 'CONTROL: the turn after, it swings');
+
+  ok(!!god && !!effFlags(risen, god, ME).untargetable, 'no mortal effect may touch it');
+  /* And it does NOT pierce — the rule the owner set for every God. A body in
+     Defence is a real answer to Ra, which is what the burn engine punishes. */
+  ok(!!god && !effFlags(risen, god, ME).pierce, 'a God still does not pierce');
+
+  // A bigger board makes a bigger God: the same summon, fed better.
+  const rich = fresh();
+  const big1 = card(ME, 'summoned-skull');
+  const big2 = card(ME, 'summoned-skull');
+  const big3 = card(ME, 'summoned-skull');
+  rich.players[ME].monsters = [big1, big2, big3];
+  const ra2 = card(ME, 'the-winged-dragon-of-ra');
+  rich.players[ME].hand = [ra2];
+  rich.players[ME].deck = [card(ME, 'kuriboh')];
+  const fed = act(rich, ME, {
+    type: 'normalSummon', uid: ra2.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [big1.uid, big2.uid, big3.uid],
+  });
+  const fatGod = fed.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra');
+  ok(!!fatGod && effAtk(fed, fatGod, ME) === 7500,
+    'three Summoned Skulls make a 7500 God', fatGod ? String(effAtk(fed, fatGod, ME)) : '');
+
+  /* CONTROL: an ordinary Tribute Summon is unaffected — this is Ra's rule,
+     not a rule about tributing. */
+  const ordinary = fresh();
+  const f1 = card(ME, 'summoned-skull');
+  const f2 = card(ME, 'summoned-skull');
+  ordinary.players[ME].monsters = [f1, f2, null];
+  const beast = card(ME, 'blue-eyes-white-dragon'); // level 8, two tributes, 3000
+  ordinary.players[ME].hand = [beast];
+  const plain = act(ordinary, ME, {
+    type: 'normalSummon', uid: beast.uid, zone: 0, position: 'atk', face: 'up', tributes: [f1.uid, f2.uid],
+  });
+  const body = plain.players[ME].monsters.find((m) => m?.slug === 'blue-eyes-white-dragon');
+  ok(!!body && effAtk(plain, body, ME) === baseAtkOf('blue-eyes-white-dragon'),
+    'CONTROL: an ordinary Tribute Summon keeps its printed ATK',
+    body ? String(effAtk(plain, body, ME)) : '');
+}
+
+console.log('\nThe torture chamber ticks every turn');
+{
+  // Bowganian: the deck's engine, and the first card in the game to use
+  // `onOwnTurnStart` — a trigger that existed and had no users at all.
+  const s = fresh();
+  s.players[ME].monsters[0] = card(ME, 'bowganian');
+  s.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  s.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  const lp = s.players[FOE].lp;
+  const round = act(act(s, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  ok(round.players[FOE].lp === lp - 1200, 'Bowganian bleeds them 1200 at the start of your turn',
+    `${lp} → ${round.players[FOE].lp}`);
+
+  // Legendary Fiend grows on the same clock.
+  const g = fresh();
+  const fiend = card(ME, 'legendary-fiend');
+  g.players[ME].monsters[0] = fiend;
+  g.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  g.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  const grown = act(act(g, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  const older = grown.players[ME].monsters.find((m) => m?.slug === 'legendary-fiend');
+  ok(!!older && effAtk(grown, older, ME) === baseAtkOf('legendary-fiend') + 700,
+    'and Legendary Fiend takes 700 ATK on the same clock',
+    older ? String(effAtk(grown, older, ME)) : 'gone');
+
+  /* Revival Jam does not stay dead — which with Coffin Seller is the
+     deck's whole attrition plan. */
+  const jam = fresh();
+  const slime = card(ME, 'revival-jam');
+  jam.players[ME].monsters = [slime, null, null];
+  const hole = card(ME, 'dark-hole');
+  jam.players[ME].hand = [hole];
+  const wiped = act(jam, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  ok(wiped.players[ME].monsters.some((m) => m?.slug === 'revival-jam'),
+    'Revival Jam comes straight back out of the Graveyard');
+
+  // Viser Des is the enabler that finds itself.
+  const des = fresh();
+  const viser = card(ME, 'viser-des');
+  des.players[ME].hand = [viser];
+  des.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'nightmare-wheel'), card(ME, 'battle-ox')];
+  const searched = act(des, ME, {
+    type: 'normalSummon', uid: viser.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(searched.players[ME].hand.some((c) => c.slug === 'nightmare-wheel'),
+    'Viser Des fetches a torture card rather than hoping to draw it',
+    searched.players[ME].hand.map((c) => c.slug).join(', ') || 'empty hand');
+
+  // Granadora takes a loan and the bill really comes due.
+  const gran = fresh();
+  const lizard = card(ME, 'granadora');
+  gran.players[ME].hand = [lizard];
+  const lent = act(gran, ME, {
+    type: 'normalSummon', uid: lizard.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(lent.players[ME].lp === gran.players[ME].lp + 1000, 'Granadora pays 1000 up front',
+    String(lent.players[ME].lp));
+  const dh2 = card(ME, 'dark-hole');
+  lent.players[ME].hand.push(dh2);
+  const settled2 = act(lent, ME, { type: 'activateSpell', uid: dh2.uid, targets: [] });
+  ok(settled2.players[ME].lp === lent.players[ME].lp - 2000, 'and takes 2000 back when it leaves',
+    String(settled2.players[ME].lp));
+}
+
+console.log('\nTwo cards cannot answer each other forever');
+{
+  /* Found by `npm run deck-bench` the first time Yami Marik was measured
+     against the field, as a stack overflow rather than a bad number: Revival
+     Jam revives the instant it is destroyed, a revival is a Summon, and
+     Slifer's second mouth destroys whatever the opponent Summons. The two
+     cards ping-ponged until the call stack gave out — which on a serverless
+     function is a 500 and a duel both players lose.
+
+     Two guards, and this drives both at once: the card's own once-per-turn
+     limit, and the engine's depth backstop underneath it. */
+  const s = fresh();
+  s.active = FOE;
+  s.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
+  s.players[ME].hand = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+  const jam = card(FOE, 'revival-jam'); // 1500, so the mouth's 2000 finishes it
+  s.players[FOE].hand = [jam];
+  let landed: DuelState | null = null;
+  let threw = '';
+  try {
+    landed = act(s, FOE, { type: 'normalSummon', uid: jam.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  } catch (e) {
+    threw = e instanceof Error ? e.message : String(e);
+  }
+  ok(!threw, 'summoning into a God that kills it does not hang the engine', threw);
+  ok(!!landed && !landed.players[FOE].monsters.some((m) => m?.slug === 'revival-jam'),
+    'the Jam is destroyed and stays down for the rest of the turn');
+  ok(!!landed && landed.players[FOE].grave.some((c) => c.slug === 'revival-jam'),
+    'and it is in the Graveyard, not in limbo');
+
+  /* CONTROL: with no God across the table it revives exactly as it should —
+     the limit must not have quietly turned the card off. */
+  const alone = fresh();
+  const jam2 = card(ME, 'revival-jam');
+  alone.players[ME].monsters = [jam2, null, null];
+  const hole = card(ME, 'dark-hole');
+  alone.players[ME].hand = [hole];
+  const wiped = act(alone, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  ok(wiped.players[ME].monsters.some((m) => m?.slug === 'revival-jam'),
+    'CONTROL: it still comes back the first time it is destroyed');
+
+  // ...and only the first time in a turn.
+  const hole2 = card(ME, 'dark-hole');
+  wiped.players[ME].hand.push(hole2);
+  const again = act(wiped, ME, { type: 'activateSpell', uid: hole2.uid, targets: [] });
+  ok(!again.players[ME].monsters.some((m) => m?.slug === 'revival-jam'),
+    'but not twice in the same turn');
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

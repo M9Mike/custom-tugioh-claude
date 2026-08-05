@@ -68,6 +68,13 @@ export interface CardDef extends GeneratedCard {
   summonRequires?: string;
   /** Our version of the card sits in a different zone than the printed one. */
   subKindOverride?: string;
+  /**
+   * ATK and DEF become the combined ATK and DEF of the monsters Tributed to
+   * Summon this card — the Winged Dragon of Ra. Written on the card rather
+   * than as a branch in the summon path, so a second card that works this way
+   * needs no engine change.
+   */
+  statsFromTributes?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,7 +265,14 @@ export type Op =
   | { op: 'search'; filter: CardFilter; count?: number }
   /** `from` may list several zones, searched in order — a Ritual Spell has to
    *  reach the monster whether it was drawn or is still in the Deck. */
-  | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face }
+  /**
+   * `includeSelf` lets a card Special Summon *itself* back. The pool normally
+   * excludes the effect's own source, because "when this card is destroyed:
+   * Special Summon 1 monster" should never quietly mean "put me back" — but
+   * Revival Jam's entire identity is that it will not stay dead, so it opts
+   * in by name rather than the guard being loosened for everybody.
+   */
+  | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face; includeSelf?: boolean }
   | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string }
   | { op: 'transformInto'; slug: string }
   | { op: 'addCounter'; amount: number }
@@ -664,6 +678,16 @@ export interface DuelState {
   pending: Pending | null;
   winner: PlayerId | 'draw' | null;
   winReason?: string;
+  /**
+   * Triggered effects flagged `oncePerTurn` that have already fired this turn,
+   * keyed `controller:slug:trigger`. Kept on the state rather than the card
+   * because the case it exists for is a card that dies and comes back —
+   * `resetInstance` wipes anything held on the instance itself.
+   *
+   * Optional so a duel already in flight through a deploy keeps working; every
+   * read goes through `?? []`.
+   */
+  oncePerTurnUsed?: string[];
   seed: number;
   /**
    * Stable for the life of one duel, unlike `seed`, which advances every time

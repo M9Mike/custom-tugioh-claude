@@ -1150,6 +1150,99 @@
         "valkyrion-the-magna-warrior",
         "chimera-the-flying-mythical-beast"
       ]
+    },
+    {
+      "id": "yamimarik",
+      "name": "Yami Marik",
+      "epithet": "The Darkness in the Rod",
+      "quote": "Suffer. Every turn you draw breath, you will suffer.",
+      "accent": "#b8933a",
+      "accent2": "#6d2230",
+      "emblem": "the-winged-dragon-of-ra",
+      "strategy": "Torture them a little every turn, refuse to stay dead, then spend the whole board on the Sun Dragon.",
+      "deck": [
+        [
+          "the-winged-dragon-of-ra",
+          1
+        ],
+        [
+          "bowganian",
+          2
+        ],
+        [
+          "revival-jam",
+          2
+        ],
+        [
+          "viser-des",
+          2
+        ],
+        [
+          "legendary-fiend",
+          1
+        ],
+        [
+          "dark-jeroid",
+          1
+        ],
+        [
+          "granadora",
+          1
+        ],
+        [
+          "melchid-the-four-face-beast",
+          1
+        ],
+        [
+          "helpoemer",
+          1
+        ],
+        [
+          "juragedo",
+          1
+        ],
+        [
+          "monster-reborn",
+          1
+        ],
+        [
+          "dark-hole",
+          1
+        ],
+        [
+          "pot-of-greed",
+          1
+        ],
+        [
+          "nightmare-s-steelcage",
+          2
+        ],
+        [
+          "card-of-sanctity",
+          1
+        ],
+        [
+          "trap-hole",
+          1
+        ],
+        [
+          "just-desserts",
+          1
+        ],
+        [
+          "nightmare-wheel",
+          1
+        ],
+        [
+          "coffin-seller",
+          1
+        ],
+        [
+          "metal-reflect-slime",
+          2
+        ]
+      ],
+      "extra": []
     }
   ]
 }
