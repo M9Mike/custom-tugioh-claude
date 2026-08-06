@@ -44,6 +44,33 @@ async function goHome(page) {
 }
 
 /**
+ * Taps a home-page button once the page is actually listening.
+ *
+ * The home page keeps its four actions disabled until hydration lands — by
+ * design, because a tap before then is gone rather than queued. `enterName`
+ * waits a fixed 2.6s afterwards, which is plenty against localhost and has not
+ * been enough against a cold production start: the tap then times out after
+ * thirty more seconds against a *disabled* button and the run dies on a stack
+ * trace naming a locator, which reads as the button being broken.
+ *
+ * Waits for the button to become enabled, and says so plainly if it never
+ * does — a page that was never awake proves nothing about what a tap on it
+ * would have done.
+ */
+const tapWhenAwake = async (page, selector) => {
+  const btn = page.locator(selector).first();
+  await btn.waitFor({ timeout: 30000 });
+  for (let i = 0; i < 160; i++) {
+    if (await btn.isEnabled().catch(() => false)) {
+      await btn.tap();
+      return;
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`the home page never finished hydrating — "${selector}" stayed disabled. This proves nothing.`);
+};
+
+/**
  * The card inspector is a modal on phones; dismiss it before driving the board.
  *
  * If it will not go, say so here rather than leaving the next tap to time out
@@ -144,7 +171,7 @@ const main = async () => {
     await a.unroute(CHUNKS);
     await shot(a, '01-home-17promax');
 
-    await a.tap('text=Start a new duel');
+    await tapWhenAwake(a, 'button:has-text("Start a new duel")');
     await a.waitForURL(/\/duel\//, { timeout: 25000 });
     await a.waitForTimeout(1600);
     const code = a.url().split('/').pop();
@@ -156,7 +183,7 @@ const main = async () => {
     await goHome(b);
     await enterName(b, 'Sis');
     await b.fill('input[placeholder="CODE"]', code);
-    await b.tap('button:has-text("Join")');
+    await tapWhenAwake(b, 'button:has-text("Join")');
     await b.waitForURL(/\/duel\//, { timeout: 25000 });
     await b.waitForTimeout(1600);
     await seatedAs(b, 'Sis');
@@ -286,7 +313,7 @@ const main = async () => {
     const c = await mk(PHONES.iphone11, 'cup');
     await goHome(c);
     await enterName(c, 'Mihail');
-    await c.tap('button:has-text("Enter the tournament")');
+    await tapWhenAwake(c, 'button:has-text("Enter the tournament")');
     await c.waitForSelector('text=Choose your duelist', { timeout: 15000 });
     await shot(c, '11-tournament-pick');
     // Choosing a duelist no longer commits — the panel's button does, so a

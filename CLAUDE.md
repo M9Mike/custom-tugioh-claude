@@ -1377,15 +1377,22 @@ how a check that cannot fail gets written.
 
 **Thirty seconds is a localhost number.** Playwright's default navigation and
 click timeouts are generous against a local server and are *not* reliably
-enough against Paris plus a cold serverless start. Three probes have now died
-that way, each reporting a stack trace that reads as the app being broken when
-nothing had been asserted at all: `npm run pwa` on a `page.goto`, then
-`npm run iphone` on the same call — on the *second* phone, after the first had
-already loaded and opened a room — and `npm run spectate` on a click against a
-button the home page deliberately keeps disabled until hydration lands. All
-three wait longer now, and the spectate one says "the home page never finished
+enough against Paris plus a cold serverless start. Four probe deaths now, each
+reporting a stack trace that reads as the app being broken when nothing had
+been asserted at all: `npm run pwa` on a `page.goto`, then `npm run iphone` on
+the same call — on the *second* phone, after the first had already loaded and
+opened a room — then `npm run spectate` on a click against a button the home
+page deliberately keeps disabled until hydration lands, and `npm run iphone`
+again on exactly that second thing, tapping "Enter the tournament" on the
+*third* phone after a fixed 2.6s wait that a cold start outran.
+
+Two shapes, and both need fixing wherever they appear: the navigation waits
+60s with a retry, and every home-page tap goes through a helper that waits for
+the button to be *enabled* and then says "the home page never finished
 hydrating — this proves nothing" rather than asserting into a page that was
 never awake. Widened, not loosened: a page that truly never loads still throws.
+Worth grepping for the next bare `page.goto` or fixed-sleep-then-tap rather
+than waiting for it to fail in Paris.
 
 **A card lying face-down is doing nothing.** Reported as "effects of face down
 monsters like burn can not happen if they are face down — for example Marik's
