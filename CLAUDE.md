@@ -1329,6 +1329,40 @@ documented failure mode is "did not reach the attack prompt", which real Paris
 latency would plausibly cause, but chasing a fix without a captured failure is
 how a check that cannot fail gets written.
 
+**Thirty seconds is a localhost number.** Playwright's default navigation and
+click timeouts are generous against a local server and are *not* reliably
+enough against Paris plus a cold serverless start. Three probes have now died
+that way, each reporting a stack trace that reads as the app being broken when
+nothing had been asserted at all: `npm run pwa` on a `page.goto`, then
+`npm run iphone` on the same call — on the *second* phone, after the first had
+already loaded and opened a room — and `npm run spectate` on a click against a
+button the home page deliberately keeps disabled until hydration lands. All
+three wait longer now, and the spectate one says "the home page never finished
+hydrating — this proves nothing" rather than asserting into a page that was
+never awake. Widened, not loosened: a page that truly never loads still throws.
+
+**A probe can starve the thing it is measuring.** Chasing an intermittent
+silent second showing in the exhibition, I wrote a sampler that polled two
+Playwright accessibility queries every 700ms — and the duel slowed to *27
+seconds a version*, five times worse than the failure being investigated. It
+was the probe: those queries hold the main thread, and the page's own nudge
+loop is what advances a serverless duel. The same trap is already recorded one
+section up for a 50ms `setInterval`; it applies just as much to a loop that
+merely *looks* patient. Sample from the Node side, or drive the API directly
+and leave the browser out of it.
+
+That is what settled this one. Driving exhibitions straight through the
+production API — create, nudge to the end, rematch, nudge again — the second
+duel ran to completion 3 times out of 3, needing up to 69 nudges. So the room
+and the engine are healthy and a silent rerun, when it happens, is the board's
+narration or the probe's patience, not the server. Worth doing before
+theorising: it took one small script and ruled out half the search space.
+
+The residue is honest and still unexplained: against production the
+exhibition's second showing came up silent once in four runs, and localhost has
+never reproduced it. Recorded rather than guessed at, the same as the `pwa`
+flake above.
+
 **One CSS declaration was crashing the browser, and it read as flakiness for
 weeks.** `npm run rejoin` could not finish a single run against production —
 four attempts, four different deaths, every one classified "this proves

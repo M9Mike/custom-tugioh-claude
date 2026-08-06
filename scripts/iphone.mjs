@@ -18,6 +18,32 @@ const PHONES = {
 
 
 /**
+ * Opens the home page, patiently.
+ *
+ * Playwright's default navigation timeout is 30 seconds, which is generous
+ * against localhost and not always enough against production: Paris plus a
+ * cold serverless start has taken longer than that, and the check then exits
+ * on a stack trace naming `page.goto` — which reads as the app being broken
+ * when nothing was ever asserted. `npm run pwa` was fixed exactly this way and
+ * this probe kept the bare goto; it duly failed the same afternoon, on the
+ * *second* phone, after the first had already loaded and opened a room.
+ *
+ * Widened rather than loosened: a page that genuinely never loads still throws
+ * after two attempts.
+ */
+async function goHome(page) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      return;
+    } catch (err) {
+      if (attempt >= 1) throw err;
+      await page.waitForTimeout(2000);
+    }
+  }
+}
+
+/**
  * The card inspector is a modal on phones; dismiss it before driving the board.
  *
  * If it will not go, say so here rather than leaving the next tap to time out
@@ -113,7 +139,7 @@ const main = async () => {
 
     console.log('• home (iPhone 17 Pro Max)');
     await slowHydration(a);
-    await a.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await goHome(a);
     await enterName(a, 'Mihail');
     await a.unroute(CHUNKS);
     await shot(a, '01-home-17promax');
@@ -127,7 +153,7 @@ const main = async () => {
     await shot(a, '02-lobby-17promax');
 
     console.log('• join (iPhone 11)');
-    await b.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await goHome(b);
     await enterName(b, 'Sis');
     await b.fill('input[placeholder="CODE"]', code);
     await b.tap('button:has-text("Join")');
@@ -258,7 +284,7 @@ const main = async () => {
        bracket that has to stack rather than push the page sideways. */
     console.log('• tournament (iPhone 11)');
     const c = await mk(PHONES.iphone11, 'cup');
-    await c.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await goHome(c);
     await enterName(c, 'Mihail');
     await c.tap('button:has-text("Enter the tournament")');
     await c.waitForSelector('text=Choose your duelist', { timeout: 15000 });

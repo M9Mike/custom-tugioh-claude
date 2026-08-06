@@ -44,8 +44,23 @@ const ok = (pass, label, detail = '') => {
 await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 const watchBtn = page.getByRole('button', { name: /watch the computers duel/i }).first();
 await watchBtn.waitFor({ timeout: 20000 });
-// The home page's buttons stay disabled until hydration has landed.
-for (let i = 0; i < 40 && !(await watchBtn.isEnabled().catch(() => false)); i++) await page.waitForTimeout(250);
+/* The home page's buttons stay disabled until hydration has landed — by
+   design, because a tap before then is gone rather than queued. Ten seconds
+   of that is plenty against localhost and has not been enough against a cold
+   production start: the click then times out after thirty seconds on a
+   disabled button, and the probe dies on a stack trace that reads as the
+   exhibition being broken when the page had simply not woken up yet. Wait
+   longer, and if it never wakes say *that* instead of asserting anything. */
+let awake = false;
+for (let i = 0; i < 160 && !awake; i++) {
+  awake = await watchBtn.isEnabled().catch(() => false);
+  if (!awake) await page.waitForTimeout(250);
+}
+if (!awake) {
+  console.log('⚠️  the home page never finished hydrating — this proves nothing about spectating');
+  await browser.close();
+  process.exit(1);
+}
 await watchBtn.click();
 
 await page.getByText('Choose the first duelist').waitFor({ timeout: 10000 });
