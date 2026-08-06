@@ -40,6 +40,38 @@ const ok = (pass, label, detail = '') => {
   if (!pass) failures += 1;
 };
 
+/**
+ * A dead renderer is not a failed assertion.
+ *
+ * WebKit drops its renderer often enough in this container that `npm run
+ * rejoin` was chased twice as a production bug on that evidence, and it
+ * carries the same classification for exactly this reason. This probe had
+ * none: it is a flat top-level script, so a crash exited on a bare Node stack
+ * trace with no verdict — which reads as the exhibition being broken when what
+ * happened is that the probe could not look. Seen for real against production,
+ * twice, after six assertions had already passed.
+ *
+ * A handler rather than wrapping the whole file, because the body is
+ * top-level `await` with early exits threaded through it; the point is only
+ * that the run must *say* it could not finish. Non-zero either way, because a
+ * run that proved nothing is not a pass — but it says which it was.
+ *
+ * This probe also simply takes a long time against production: it watches a
+ * whole computer-vs-computer duel and then a rerun, which is minutes of real
+ * duelling, so give it room rather than a ten-minute ceiling.
+ */
+const CRASHED = /crash|closed|Target (?:page|closed)|Session closed|Execution context/i;
+process.on('uncaughtException', (err) => {
+  const line = String(err instanceof Error ? err.message : err).split('\n')[0];
+  if (CRASHED.test(line)) {
+    console.log(`\n⚠️  the page died before the run could finish (${line}) — this proves nothing`);
+  } else {
+    console.log(`\n❌ the run threw and stopped early — ${line}`);
+  }
+  console.log(`${failures} failure(s) had been recorded up to that point.`);
+  process.exit(1);
+});
+
 /* ---- through the front door ---- */
 await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 const watchBtn = page.getByRole('button', { name: /watch the computers duel/i }).first();

@@ -1348,6 +1348,18 @@ runs afterwards: three pass, three inconclusive, no false failures. The crash
 rate in this container is that high, which is why it was chased twice as a
 production bug.
 
+`npm run spectate` needed the same lesson and had none of it — a flat
+top-level script, so a dead renderer exited on a bare Node stack trace with no
+verdict at all. It happened twice against production after six assertions had
+already passed, which reads as the exhibition being broken. It classifies now
+(verified by killing the page mid-run and watching it report "this proves
+nothing" rather than a trace). Note also that this is the *slowest* probe in
+the battery against production — it watches a whole computer-vs-computer duel
+and then a rerun — so it needs more than a ten-minute ceiling, and it must be
+run with the machine to itself: a `deck-bench` alongside it pegs the CPU, the
+page never hydrates, and the probe's own hydration guard fires. Two runs were
+wasted that way.
+
 The outer block was `try`/`finally` with no `catch`, so a crash also killed
 the process before the summary line — a probe exiting on a stack trace reads
 as "the feature is broken" rather than "the probe could not look". Same
