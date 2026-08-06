@@ -26,6 +26,28 @@ import { webkit } from 'playwright';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 
+/**
+ * `page.goto` with production's patience.
+ *
+ * Every assertion in this file had already passed and the run still exited
+ * non-zero, on a 30-second navigation timeout against Vercel — the probe ran
+ * out of patience after proving the thing it exists to prove. Paris latency
+ * plus a cold serverless start is genuinely slower than the Playwright
+ * default, so the wait is longer and a single retry absorbs one bad hop.
+ * Widened, not loosened: a page that truly never loads still throws.
+ */
+async function goHome(page) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      return;
+    } catch (err) {
+      if (attempt >= 1) throw err;
+      await page.waitForTimeout(2000);
+    }
+  }
+}
+
 const read = (page) =>
   page.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
@@ -67,7 +89,7 @@ const main = async () => {
       });
     }
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await goHome(page);
     await page.waitForTimeout(700);
     const r = await read(page);
     console.log(`\nnavigator.standalone = ${standalone}`);
@@ -124,14 +146,14 @@ const main = async () => {
   const a = await phone();
   const b = await phone();
 
-  await a.page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await goHome(a.page);
   await a.page.waitForTimeout(900);
   await a.page.tap('text=Start a new duel');
   await a.page.waitForURL(/\/duel\//, { timeout: 25000 });
   await a.page.waitForTimeout(1400);
   const code = a.page.url().split('/').pop();
 
-  await b.page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await goHome(b.page);
   await b.page.waitForTimeout(900);
   await b.page.fill('input[placeholder="CODE"]', code);
   await b.page.tap('button:has-text("Join")');
@@ -285,7 +307,7 @@ const main = async () => {
      hand. The notice replaces it rather than showing something unplayable. */
   const land = await browser.newContext({ viewport: { width: 896, height: 414 }, isMobile: true, hasTouch: true });
   const lp = await land.newPage();
-  await lp.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await goHome(lp);
   await lp.waitForTimeout(900);
   await lp.tap('button:has-text("Duel the computer")');
   await lp.waitForURL(/\/duel\//, { timeout: 25000 });

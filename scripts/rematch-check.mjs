@@ -86,9 +86,20 @@ const duelOver = () =>
     .isVisible({ timeout: 400 })
     .catch(() => false);
 
-/** Passes turns until the computer ends the duel, sampling as it goes. */
+/**
+ * Passes turns until the computer ends the duel, sampling as it goes.
+ *
+ * The turn ceiling is patience, not a rule: a probe that passes every turn is
+ * waiting for the AI to kill it, and how long that takes depends on the deck
+ * across the table. It went inconclusive on production the day Yami Marik's
+ * walls landed — 3000 DEF tokens, battle-immune Bowganians and two
+ * Nightmare's Steelcages make a genuinely longer duel, and 40 turns of
+ * passing was no longer enough to reach the end of one. Widened rather than
+ * loosened: a duel that truly never ends still reports "this proves nothing"
+ * instead of passing quietly.
+ */
 async function playToTheDeath(tag, bag) {
-  for (let turn = 0; turn < 40; turn++) {
+  for (let turn = 0; turn < 80; turn++) {
     if (await duelOver()) return true;
     const btn = page.getByRole('button', { name: /^end turn$/i }).first();
     let mine = false;
