@@ -2299,7 +2299,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     statsFromTributes: true,
     text:
       'Requires 3 Tributes. This card\'s ATK and DEF become the combined ATK and DEF of the monsters Tributed to Summon it. ' +
-      'Once per turn: pay 2000 Life Points; this card gains 2000 ATK until the end of the turn. ' +
+      'This card gains 300 ATK for each monster in your Graveyard. ' +
+      'Once per turn: pay 1000 Life Points; destroy every monster your opponent controls. ' +
       "This card cannot be targeted by your opponent's card effects. " +
       "A God is above everything: this card's attacks and effects ignore your opponent's protections. " +
       'If this card is Special Summoned, it returns to the Graveyard at the end of that turn.',
@@ -2320,16 +2321,28 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         aura: { target: SELF, grants: ['untargetable'] },
       },
       {
-        /* The One-Turn Kill, priced rather than literal. The anime line is
-           "I pay all but one Life Point and Ra takes it all", which in a game
-           with burn in it is just a losing move dressed up; 2000 for 2000 is
-           the same bargain at a size a duel can survive, and it still only
-           wins when their board is open, because Ra cannot pierce. */
+        /* Slifer counts what is still in your hand and shrinks as you spend
+           it; Ra counts what you have already lost and grows as you are
+           ground down. Two Gods, one register, opposite directions — and it
+           is what makes paying three bodies worth doing, because the three
+           you paid are in the Graveyard feeding it a moment later. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 300 } },
+      },
+      {
+        /* The God Phoenix. Ra rises out of the Graveyard as a bird of fire in
+           the anime and burns the field clean; here it is the reason paying
+           three bodies for the God is worth it at all. Marik's deck has no
+           other removal to speak of, while the deck it has to face carries
+           Mirror Force, Magical Hats, Spellbinding Circle, Swords of Revealing
+           Light and Dark Hole. A God's effect ignores protections, so this
+           really does clear the board. */
         trigger: 'ignition',
-        label: 'One-Turn Kill — pay 2000 for 2000 ATK',
+        label: 'God Phoenix — pay 1000, burn the field clean',
         oncePerTurn: true,
-        cost: { lp: 2000 },
-        ops: [{ op: 'gainAtk', amount: 2000, target: SELF, duration: 'turn' }],
+        cost: { lp: 1000 },
+        ops: [{ op: 'destroy', target: OPP_ALL }],
       },
     ],
   },
@@ -2338,10 +2351,40 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The engine of the whole deck, and it sits in the Monster Zone on
        purpose: `onOwnTurnStart` only ever fires for monsters, and with a
        single Spell/Trap Zone a backrow full of tickers could never have
-       existed anyway. Two copies, because this is the enabler. */
-    text: 'At the start of your turn: inflict 1200 damage to your opponent.',
+       existed anyway.
+
+       It brings its twin, which is Queen's Knight's trick and the reason
+       Yami Yugi's board is three bodies deep off one card: measured against
+       him, Marik held 1.72 monsters at turn six and had *no* free summons at
+       all — every body cost a card and the one Normal Summon a turn. Two
+       crossbows is 2400 a turn and, more importantly, two thirds of the
+       Tributes the God needs.
+
+       `onNormalSummon`, so the copy it fetches cannot fetch another: the
+       chain is one link long by construction rather than by counting the
+       deck. */
+    text: "When this card is Normal Summoned: Special Summon 1 'Bowganian' from your Deck. While you control another Bowganian, this card gains 800 ATK and cannot be destroyed by battle. At the start of your turn: inflict 1500 damage to your opponent.",
     cry: 'The bolt finds you again.',
-    effects: [{ trigger: 'onOwnTurnStart', ops: [{ op: 'damage', amount: 1200, to: 'opp' }] }],
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['bowganian'] }, count: 1, position: 'atk' }],
+      },
+      {
+        /* Gazelle and Berfomet's clause: the pair is worth more than two
+           singles, and this card now always arrives in twos. */
+        trigger: 'continuous',
+        condition: { requiresOnField: 'bowganian' },
+        ops: [],
+        /* Battle immunity only — the one axis a mortal card is allowed, per
+           the rule that only a God is proof against both. Card effects still
+           break the pair, which is the counterplay every deck can reach, and
+           it is why the clock is worth building around rather than merely
+           worth playing. */
+        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle'] },
+      },
+      { trigger: 'onOwnTurnStart', ops: [{ op: 'damage', amount: 1500, to: 'opp' }] },
+    ],
   },
 
   'revival-jam': {
@@ -2355,13 +2398,30 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        overflowed the call stack the first time this deck was benched against
        Yami's. The engine carries a depth backstop for the general case; a
        card that can obviously loop should still carry its own limit. */
-    text: 'Once per turn, when this card is destroyed: Special Summon it from your Graveyard.',
+    text: 'While you control a Fiend monster, this card gains 800 ATK. Once per turn, when this card is destroyed: Special Summon it and 1 other monster with 1500 or less ATK from your Graveyard.',
     cry: 'You cannot kill what will not die.',
     effects: [
       {
+        /* Beta the Magnet Warrior's clause, which is the shape of every buff
+           in Yami Yugi's deck: a live condition on the board, paid while the
+           theme is assembled. A 1500 that keeps coming back is a speed bump;
+           2300 that keeps coming back is a wall. */
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Fiend' },
+        ops: [],
+        aura: { target: SELF, atk: 800 },
+      },
+      {
         trigger: 'onDestroyed',
         oncePerTurn: true,
-        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', filter: { slugs: ['revival-jam'] }, count: 1, position: 'atk', includeSelf: true }],
+        ops: [
+          { op: 'specialSummon', from: 'grave', side: 'own', filter: { slugs: ['revival-jam'] }, count: 1, position: 'atk', includeSelf: true },
+          /* Removal becomes income: the opponent breaking his board is how
+             Marik rebuilds it. `oncePerTurn` is keyed by slug, so two copies
+             share one revival a turn and the A-revives-B-revives-A shape is
+             closed along with the original Slifer loop. */
+          { op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', maxAtk: 1500 }, count: 1, position: 'atk' },
+        ],
       },
     ],
   },
@@ -2377,12 +2437,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        signature card nobody ever sees. Every other deck here searches its
        hinge (Toon Alligator finds Toon World, Baby Dragon finds Time Wizard,
        Lord of D. finds the Flute); the God deck was hoping to draw it. */
-    text: "When this card is Normal Summoned: add 1 'The Winged Dragon of Ra', 'Bowganian', 'Nightmare Wheel' or 'Coffin Seller' from your Deck to your hand.",
+    text: "When this card is Normal Summoned: add 1 'The Winged Dragon of Ra', 'Bowganian', 'Nightmare Wheel' or 'Coffin Seller' from your Deck to your hand, then Special Summon 1 'Viser Des' from your Deck or Graveyard.",
     cry: 'Into the vise.',
     effects: [
       {
         trigger: 'onNormalSummon',
-        ops: [{ op: 'search', filter: { slugs: ['the-winged-dragon-of-ra', 'bowganian', 'nightmare-wheel', 'coffin-seller'] } }],
+        ops: [
+          { op: 'search', filter: { slugs: ['the-winged-dragon-of-ra', 'bowganian', 'nightmare-wheel', 'coffin-seller'] } },
+          /* The fetched copy arrives by *Special* Summon, so it fires
+             `onSummon` and not `onNormalSummon` — it neither searches again
+             nor reaches for a third. The chain is one link by construction. */
+          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['viser-des'] }, count: 1, position: 'atk' },
+        ],
       },
     ],
   },
@@ -2394,12 +2460,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-jeroid': {
-    text: 'When this card is Summoned: 1 monster your opponent controls loses 800 ATK.',
+    text: 'When this card is Summoned: 1 monster your opponent controls loses 1500 ATK.',
     cry: 'Wither.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'gainAtk', amount: -800, target: sel('opp', 'strongest'), duration: 'permanent' }],
+        ops: [{ op: 'gainAtk', amount: -1500, target: sel('opp', 'strongest'), duration: 'permanent' }],
       },
     ],
   },
@@ -2409,11 +2475,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        later, and the paying is not optional. 1900 ATK for four stars with a
        bill attached — and the bill comes due the moment it is Tributed for
        Ra, which is exactly when it is worth paying. */
-    text: 'When this card is Summoned: gain 1000 Life Points. When this card leaves the field: take 2000 damage.',
+    text: 'When this card is Summoned: gain 1000 Life Points. When this card is destroyed: take 2000 damage.',
     cry: 'A loan, not a gift.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
-      { trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 2000, to: 'own' }] },
+      /* `onDestroyed`, not `onSentToGrave`: Tributing it towards Ra is
+         spending it, not losing it, and charging the bill for the God's own
+         summon was taxing the play the card exists to enable. */
+      { trigger: 'onDestroyed', ops: [{ op: 'damage', amount: 2000, to: 'own' }] },
     ],
   },
 
@@ -2445,12 +2514,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        every race it enters. The mask lifts the whole cell block rather than
        only itself — a live condition on the board, which is the shape every
        theme here is supposed to have. */
-    text: 'All monsters you control gain 500 ATK.',
+    text: 'All monsters you control gain 700 ATK.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all'), atk: 500 },
+        aura: { target: sel('own', 'all'), atk: 700 },
       },
     ],
   },
@@ -2461,8 +2530,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   helpoemer: {
-    text: 'When this card is sent to the Graveyard: your opponent discards 1 card.',
+    /* Gamma the Magnet Warrior's clause. Helpoemer costs a Tribute to put
+       down, and arriving hands the Tribute straight back out of the
+       Graveyard — which in this deck is where its small bodies always are,
+       because the deck is built around them dying. */
+    text: 'When this card is Summoned: Special Summon 1 monster with 1500 or less ATK from your Graveyard. When this card is sent to the Graveyard: your opponent discards 1 card.',
     cry: 'From the grave, I still take from you.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'discard', count: 1, who: 'opp' }] }],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', maxAtk: 1500 }, count: 1, position: 'atk' }],
+      },
+      { trigger: 'onSentToGrave', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
+    ],
   },
 };

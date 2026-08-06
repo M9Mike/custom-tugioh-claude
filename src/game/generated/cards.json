@@ -3343,22 +3343,6 @@
     "isEffect": true,
     "artId": 76052811
   },
-  "juragedo": {
-    "slug": "juragedo",
-    "name": "Juragedo",
-    "kind": "monster",
-    "subKind": null,
-    "type": "Fiend",
-    "attribute": "DARK",
-    "level": 4,
-    "atk": 1700,
-    "def": 1300,
-    "frameType": "effect",
-    "isFusion": false,
-    "isRitual": false,
-    "isEffect": true,
-    "artId": 59546797
-  },
   "nightmare-s-steelcage": {
     "slug": "nightmare-s-steelcage",
     "name": "Nightmare's Steelcage",
@@ -3422,5 +3406,21 @@
     "isRitual": false,
     "isEffect": false,
     "artId": 26905245
+  },
+  "masked-beast-des-gardius": {
+    "slug": "masked-beast-des-gardius",
+    "name": "Masked Beast Des Gardius",
+    "kind": "monster",
+    "subKind": null,
+    "type": "Fiend",
+    "attribute": "DARK",
+    "level": 8,
+    "atk": 3300,
+    "def": 2500,
+    "frameType": "effect",
+    "isFusion": false,
+    "isRitual": false,
+    "isEffect": true,
+    "artId": 48948935
   }
 }

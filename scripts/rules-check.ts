@@ -2810,10 +2810,36 @@ console.log('\nRa is worth what was spent on it');
     tributes: [a.uid, b.uid, c2.uid],
   });
   const god = risen.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra');
-  ok(!!god && effAtk(risen, god, ME) === wantAtk,
-    'its ATK is the combined ATK of the three it ate', god ? `${effAtk(risen, god, ME)} vs ${wantAtk}` : 'no God');
+  /* The three it ate are in the Graveyard by the time anybody reads the
+     number, and Ra counts monsters there at 300 apiece — so the expectation
+     is the Tribute sum PLUS the scaling, not the sum alone. Slifer's mirror:
+     one God counts what you still hold, the other what you have already
+     lost. */
+  const graveMon = (st: DuelState) => st.players[ME].grave.filter((c) => CARDS[c.slug]?.kind === 'monster').length;
+  const scaled = (st: DuelState) => 300 * graveMon(st);
+  ok(!!god && effAtk(risen, god, ME) === wantAtk + scaled(risen),
+    'its ATK is the combined ATK of the three it ate, plus its Graveyard',
+    god ? `${effAtk(risen, god, ME)} vs ${wantAtk} + ${scaled(risen)}` : 'no God');
   ok(!!god && effDef(risen, god, ME) === wantDef,
     'and its DEF the combined DEF', god ? `${effDef(risen, god, ME)} vs ${wantDef}` : '');
+
+  /* The scaling measured the way this file insists: empty the counted zone,
+     read the stat, add exactly one matching card, and demand the number moves
+     by exactly the promised step. A restored aura that merely puts the card's
+     own body back would satisfy "something moved" and prove nothing. */
+  {
+    const bare = fresh();
+    const lone = card(ME, 'the-winged-dragon-of-ra');
+    bare.players[ME].monsters = [lone, null, null];
+    bare.players[ME].grave = [];
+    const empty = effAtk(bare, lone, ME);
+    bare.players[ME].grave.push(card(ME, 'battle-ox'));
+    const one = effAtk(bare, lone, ME);
+    ok(one - empty === 300, 'one monster in the Graveyard is worth exactly 300 to it', `${empty} → ${one}`);
+    bare.players[ME].grave.push(card(ME, 'pot-of-greed')); // a Spell is not a monster
+    ok(effAtk(bare, lone, ME) === one, 'and a Spell in the Graveyard is worth nothing to it',
+      String(effAtk(bare, lone, ME)));
+  }
 
   /* Sphere Mode: it lands and it does nothing. That pause is the whole of
      its counterplay — the other player gets one full turn to answer a
@@ -2851,8 +2877,10 @@ console.log('\nRa is worth what was spent on it');
     tributes: [big1.uid, big2.uid, big3.uid],
   });
   const fatGod = fed.players[ME].monsters.find((m) => m?.slug === 'the-winged-dragon-of-ra');
-  ok(!!fatGod && effAtk(fed, fatGod, ME) === 7500,
-    'three Summoned Skulls make a 7500 God', fatGod ? String(effAtk(fed, fatGod, ME)) : '');
+  const fedGrave = 300 * fed.players[ME].grave.filter((c) => CARDS[c.slug]?.kind === 'monster').length;
+  ok(!!fatGod && effAtk(fed, fatGod, ME) === 7500 + fedGrave,
+    'three Summoned Skulls make a 7500 God before its Graveyard is counted',
+    fatGod ? `${effAtk(fed, fatGod, ME)} vs 7500 + ${fedGrave}` : '');
 
   /* CONTROL: an ordinary Tribute Summon is unaffected — this is Ra's rule,
      not a rule about tributing. */
@@ -2881,7 +2909,7 @@ console.log('\nThe torture chamber ticks every turn');
   s.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
   const lp = s.players[FOE].lp;
   const round = act(act(s, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
-  ok(round.players[FOE].lp === lp - 1200, 'Bowganian bleeds them 1200 at the start of your turn',
+  ok(round.players[FOE].lp === lp - 1500, 'Bowganian bleeds them 1500 at the start of your turn',
     `${lp} → ${round.players[FOE].lp}`);
 
   // Legendary Fiend grows on the same clock.
@@ -2982,6 +3010,68 @@ console.log('\nTwo cards cannot answer each other forever');
   const again = act(wiped, ME, { type: 'activateSpell', uid: hole2.uid, targets: [] });
   ok(!again.players[ME].monsters.some((m) => m?.slug === 'revival-jam'),
     'but not twice in the same turn');
+}
+
+console.log('\nMarik pays for his God the way Yugi pays for his');
+{
+  /* The gap that made the two God decks 93-7 was body income, not card power:
+     every exclusive card in Yami Yugi's deck summons another card for free,
+     and Marik had none at all. These are the cards that closed it, and each
+     one is one Normal Summon turning into two bodies. */
+  const twin = (slug: string, deck: string[]) => {
+    const s = fresh();
+    const c = card(ME, slug);
+    s.players[ME].hand = [c];
+    s.players[ME].deck = deck.map((d) => card(ME, d));
+    const out = act(s, ME, { type: 'normalSummon', uid: c.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    return out.players[ME].monsters.filter((m) => m?.slug === slug).length;
+  };
+  ok(twin('bowganian', ['bowganian', 'kuriboh']) === 2,
+    'one Bowganian Normal Summoned brings its twin out of the Deck');
+  ok(twin('viser-des', ['viser-des', 'nightmare-wheel']) === 2,
+    'and Viser Des brings its own, on top of the search');
+
+  /* CONTROL: the fetched copy arrives by *Special* Summon, so it fires
+     `onSummon` and not `onNormalSummon` — the chain is one link long by
+     construction rather than by counting how many are left in the Deck. */
+  ok(twin('bowganian', ['bowganian', 'bowganian', 'bowganian']) === 2,
+    'CONTROL: and only its twin — the chain does not run away');
+
+  // The wall that is also two Tributes.
+  /* An `anyOpponentTurn` trap is activated from the Set card itself rather
+     than answered in a window, which is the path `canActivateSetCard` opens
+     for it — the first version of this check reached for `respondTrap` with
+     no window open and threw. */
+  const slime = fresh();
+  const trap = card(ME, 'metal-reflect-slime');
+  trap.face = 'down';
+  trap.summonedOnTurn = 0;
+  slime.turn = 4;
+  slime.players[ME].spellTrap = trap;
+  const sprung = act(slime, ME, { type: 'activateSetCard', uid: trap.uid, targets: [] });
+  ok(sprung.players[ME].monsters.filter((m) => m?.isToken).length === 2,
+    'Metal Reflect Slime puts down two bodies, not one',
+    String(sprung.players[ME].monsters.filter(Boolean).length));
+}
+
+console.log('\nOnly the first ignition on a card can ever be reached');
+{
+  /* `applyAction` resolves an ignition with
+     `def.effects.find((e) => e.trigger === 'ignition')` — the FIRST one — and
+     `canIgnite` asks the same question. So a card carrying two activated
+     effects has a second one that no player and no AI can ever use: dead text
+     of exactly the kind `npm run text` exists to catch, except the text check
+     sees an ignition trigger and is satisfied.
+
+     Found by giving Ra both the God Phoenix and the One-Turn Kill; the audit
+     caught it because the second effect never fired. Asserted over the whole
+     card set so the next card to try it fails here rather than shipping half
+     a sentence. Lift this the day the engine learns to choose. */
+  const offenders = Object.entries(CARDS)
+    .filter(([, def]) => def.effects.filter((e) => e.trigger === 'ignition').length > 1)
+    .map(([slug]) => slug);
+  ok(offenders.length === 0,
+    'no card carries a second ignition the engine cannot reach', offenders.join(', '));
 }
 
 /* The summary goes LAST, and there is nothing after it.

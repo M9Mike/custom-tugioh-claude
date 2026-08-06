@@ -71,6 +71,7 @@ npm run pwa      http://localhost:3100               # standalone insets
 npm run anim     http://localhost:3100               # the flourish moves, the LP bar glides
 npm run audio    http://localhost:3100               # the AudioContext waits for a tap
 npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
+npm run h2h      yami yamimarik 80                   # two decks against each other only
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 npm run rematch  http://localhost:3100               # the second duel narrates too
 npm run race                                         # two requests cannot undo each other
@@ -1536,8 +1537,11 @@ The shape every deck follows:
 
 The measurement discipline:
 
-- **`npm run deck-bench <id> 100` is the number.** ±9 at 100 games; sim plays
-  at random and lies about combo decks. The bench is round-robin against the
+- **`npm run deck-bench <id> 100` is the ladder number; `npm run h2h <a> <b>`
+  is the matchup number.** ±9-11 at 80-100 games; sim plays at random and lies
+  about combo decks. The bench is round-robin and therefore zero-sum, so it
+  moves when *other* decks change — use `h2h` whenever the question is about
+  two specific decks rather than about the ladder. The bench is round-robin against the
   whole field, so it is zero-sum: pulling the floor up drags the top down
   without touching a single card in the top decks. Nerf the outliers only
   after the floor has been raised, or you overshoot.
@@ -1651,7 +1655,52 @@ free wins, and Yami went **72 → 81** without a single card of his changing.
 Bench the *new* deck and at least one established one, and read the second
 number as a measurement of the field rather than of that deck.
 
-**Yami Marik ships at 28% ±9, and the number is honest rather than finished.**
+**Two decks are an even match or they are not — and `deck-bench` cannot tell
+you.** The bench is round-robin, so it measures a deck *against the field*,
+which makes it zero-sum and therefore partly a measurement of everyone else:
+adding Yami Marik moved Yami Yugi 72 → 81 without a card of his changing.
+"Are these two decks competitive with each other" is a question about exactly
+two decks and nobody else, and it needs `npm run h2h <a> <b> [games]`. The two
+numbers can disagree wildly and both be right.
+
+Reported as "Yami Marik's cards don't feel anything close to the over anime OP
+of Yami Yugi's". They did not: head to head he won **7%**. The gap was one
+shape, repeated. *Every* exclusive card in Yami Yugi's deck summons another
+card for free — Queen's Knight fetches King's fetches Jack's, so one Normal
+Summon is three bodies and ~6500 ATK; Gazelle and Berfomet summon each other
+and pay +800 apiece; Alpha searches two Magnets and Gamma and Beta put them on
+the board. Marik had **no free summons at all**: every body cost a card and
+the one Normal Summon a turn, which is also why his God never landed —
+measured equilibrium board **1.01 monsters**, against a three-Tribute price.
+
+So the fix was the same shape rather than bigger numbers: Bowganian and Viser
+Des each fetch their twin, Metal Reflect Slime puts down two tokens worth
+1000/3000, Revival Jam drags another body up with it, and Melchid pays the
+whole board. Then the God stopped being a coincidence — Ra gains 300 ATK for
+each monster in your own Graveyard, which is Slifer's exact mirror: one God
+counts what you still hold and shrinks as you spend it, the other counts what
+you have already lost and grows as you are ground down. `npm run h2h` went
+**7 → 35 → 38 → 48% ±11**, and against the field the two Gods finished level
+at 76 and 75.
+
+Two things worth keeping from how it was found. The measurement that mattered
+was never the win rate: it was instrumenting bodies-on-board at turn six and
+"was Ra in hand *and* three bodies standing at once", which is what showed the
+gap was income rather than power. And the adversarial pass proposed the
+Graveyard-scaling God independently and better than the first draft — worth
+running before believing a balance change is finished.
+
+**Only the first ignition effect on a card can ever be reached.** `applyAction`
+resolves one with `def.effects.find((e) => e.trigger === 'ignition')` and
+`canIgnite` asks the same question, so a card carrying two activated effects
+has a second that no player and no AI can use. Ra briefly had both the God
+Phoenix and the One-Turn Kill; the audit caught it because the second never
+fired, while `npm run text` was satisfied — it sees an ignition trigger and
+cannot know the engine will never reach it. Asserted over the whole card set
+in `npm run rules` so the next card to try it fails there instead of shipping
+half a sentence.
+
+**Yami Marik shipped at 28% ±9, and the number was honest rather than finished.**
 Four rounds of tuning moved him 21 → 19 → 25 → 28, and the useful part was not
 the tuning: it was instrumenting real duels instead of guessing. That probe said
 what no bench number could — **Ra reached the field in 0 of 24 duels**, Marik was

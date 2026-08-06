@@ -988,15 +988,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        monster died, so it is always his own. The price is the single
        Spell/Trap Zone it sits in for the rest of the duel, and any backrow
        removal in the game answers it. */
-    text: 'Stays face-up. Each time a monster you control is destroyed: inflict 1000 damage to your opponent.',
+    text: 'Stays face-up. Each time a monster you control is destroyed: inflict 1500 damage to your opponent.',
     cry: 'Someone always pays for the burial.',
     effects: [
       {
         trigger: 'trap',
         window: 'monsterDestroyed',
-        label: 'Coffin Seller — 1000 damage',
+        label: 'Coffin Seller — 1500 damage',
         reusable: true,
-        ops: [{ op: 'damage', amount: 1000, to: 'opp' }],
+        ops: [{ op: 'damage', amount: 1500, to: 'opp' }],
       },
     ],
   },
@@ -1012,14 +1012,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        One-shot, so the zone is free again immediately: this is the deck's
        Spell/Trap Zone and Coffin Seller wants to live in it. */
     subKindOverride: 'Normal',
-    text: "During your opponent's turn: Special Summon 1 Reflect Slime Token (0/3000) in Defence Position.",
+    text: "During your opponent's turn: Special Summon 2 Reflect Slime Tokens (1000/3000) in Defence Position.",
     cry: 'It takes the shape of your fear.',
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
-        label: 'Metal Reflect Slime — a wall of 3000',
-        ops: [{ op: 'summonToken', name: 'Reflect Slime Token', atk: 0, def: 3000, count: 1, artSlug: 'metal-reflect-slime' }],
+        label: 'Metal Reflect Slime — two walls of 3000',
+        ops: [{ op: 'summonToken', name: 'Reflect Slime Token', atk: 1000, def: 3000, count: 2, artSlug: 'metal-reflect-slime' }],
       },
     ],
   },
