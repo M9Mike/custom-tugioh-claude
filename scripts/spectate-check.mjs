@@ -121,18 +121,48 @@ const winHeading = () =>
     .isVisible({ timeout: 300 })
     .catch(() => false);
 
-/** Collects declarations while insisting the audience is never asked to play. */
+/**
+ * Collects declarations while insisting the audience is never asked to play.
+ *
+ * One `page.evaluate` rather than three round trips, and no accessibility
+ * queries at all. This used to read the declaration by evaluate and then ask
+ * `getByRole(...).count()` and `getByRole(...).isVisible()` — two accessibility
+ * queries, every 500ms, for up to thirteen minutes.
+ *
+ * That is precisely the trap already written down in CLAUDE.md: those queries
+ * hold the page's main thread, and a serverless duel is advanced *by the
+ * page's own nudge loop*, so the sampler slows the very thing it is timing.
+ * I wrote that note earlier about a throwaway sampler and did not notice the
+ * shipped probe doing the same thing. Localhost has the headroom to absorb it;
+ * against production, where a version already costs real latency, the first
+ * run that ever got to finish reported the exhibition going quiet for over
+ * ninety seconds and never ending.
+ *
+ * Reading the DOM directly is cheaper and, for these two, stricter: the
+ * accessible name of a `<button>` *is* its text, and a button that exists at
+ * all is the meaningful signal — the trap-response modal is only rendered when
+ * a window is open, so its presence is the breach whether or not it has been
+ * painted yet.
+ */
 const bag = new Set();
 let offeredATurn = false;
 let offeredAWindow = false;
 async function sample() {
-  const t = await page
-    .evaluate(() => document.querySelector('[data-testid="declaration"]')?.innerText ?? null)
+  const seen = await page
+    .evaluate(() => {
+      const say = document.querySelector('[data-testid="declaration"]')?.innerText ?? null;
+      const buttons = [...document.querySelectorAll('button')].map((b) => (b.textContent ?? '').trim());
+      return {
+        say,
+        endTurn: buttons.some((t) => /^end turn$/i.test(t)),
+        doNothing: buttons.some((t) => /^do nothing$/i.test(t)),
+      };
+    })
     .catch(() => null);
-  if (t) bag.add(t.replace(/\s+/g, ' ').trim());
-  if ((await page.getByRole('button', { name: /^end turn$/i }).count().catch(() => 0)) > 0) offeredATurn = true;
-  if (await page.getByRole('button', { name: /^do nothing$/i }).isVisible({ timeout: 50 }).catch(() => false))
-    offeredAWindow = true;
+  if (!seen) return;
+  if (seen.say) bag.add(seen.say.replace(/\s+/g, ' ').trim());
+  if (seen.endTurn) offeredATurn = true;
+  if (seen.doNothing) offeredAWindow = true;
 }
 
 /* ---- 1. it plays itself ---- */

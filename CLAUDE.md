@@ -1475,10 +1475,31 @@ and the engine are healthy and a silent rerun, when it happens, is the board's
 narration or the probe's patience, not the server. Worth doing before
 theorising: it took one small script and ruled out half the search space.
 
-The residue is honest and still unexplained: against production the
-exhibition's second showing came up silent once in four runs, and localhost has
-never reproduced it. Recorded rather than guessed at, the same as the `pwa`
-flake above.
+**And the probe doing the starving was `npm run spectate` itself.** That note
+was written about a throwaway sampler while the shipped one did the same thing
+three feet away: read the declaration by `evaluate`, then ask
+`getByRole(...).count()` and `getByRole(...).isVisible()` — two accessibility
+queries, every 500ms, for up to thirteen minutes. Localhost has the headroom to
+absorb that; production does not, and the *first run that ever got far enough
+to finish* against production duly reported the exhibition going quiet for over
+ninety seconds and never ending.
+
+`sample()` is one `page.evaluate` now, reading the declaration and both button
+texts from the DOM in a single round trip. Cheaper, and stricter for what it
+asserts: the accessible name of a `<button>` *is* its text, and the
+trap-response modal only exists in the DOM when a window is open, so its mere
+presence is the breach. Falsified by removing `!spectator` from `myTurn` and
+watching "no End Turn button ever existed" go red.
+
+That very likely explains the residue this section used to record as unknown —
+the exhibition's second showing coming up silent about one run in four against
+production, never on localhost. After the change the first full production run
+was **12/12, second showing included**. One green run is evidence rather than
+proof, so if it ever comes back, suspect the sampler again before the app.
+
+Two lessons compounded here and both are worth keeping: run this probe with
+the machine to itself, and grep your *own* probes for the trap the moment you
+write the note about it.
 
 **One CSS declaration was crashing the browser, and it read as flakiness for
 weeks.** `npm run rejoin` could not finish a single run against production —
