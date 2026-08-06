@@ -530,7 +530,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a Trap, and the deck that most needs its enabler was the deck least able
        to afford it. The Field Zone is separate, so it costs him nothing now. */
     subKindOverride: 'Field',
-    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 800 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
+    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 600 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
@@ -565,7 +565,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              that targets, sitting in a zone nothing could reach either.
              Reported as "Toon World as a field spell should be destroyable". */
           target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
-          atk: 800,
+          atk: 600,
           /* The toll rides with the mischief: every direct attack a Toon
              declares costs Pegasus 500 Life Points — the printed rule.
              Effect-indestructible, NOT untargetable, since the 8000 pool:

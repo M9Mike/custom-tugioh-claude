@@ -572,7 +572,7 @@ console.log('\nToon World sits in the Field Zone and still powers the Toons');
   withToon.players[ME].monsters[0] = card(ME, 'toon-mermaid');
   const toon = withToon.players[ME].monsters[0]!;
   const flags = effFlags(withToon, toon, ME);
-  ok(effAtk(withToon, toon, ME) === 1400 + 800, 'and gains 800 ATK', `ATK ${effAtk(withToon, toon, ME)}`);
+  ok(effAtk(withToon, toon, ME) === 1400 + 600, 'and gains 600 ATK', `ATK ${effAtk(withToon, toon, ME)}`);
   /* Effect-indestructible since the 8000-LP pass, not untargetable: nothing
      may DESTROY a Toon while the book is open, but binds and debuffs land. */
   ok(flags.directAttack === true && flags.indestructibleByEffect === true && flags.pierce === true, 'with direct attack, effect-indestructibility and piercing');
@@ -1830,8 +1830,8 @@ console.log('\nGazelle and Berfomet are a pair, not a stack');
   const b = card(ME, 'berfomet');
   s.players[ME].monsters = [g, b, null];
   const blueEyes = baseAtkOf('blue-eyes-white-dragon');
-  ok(effAtk(s, g, ME) === 2300, 'Gazelle beside Berfomet is 2300', `${effAtk(s, g, ME)}`);
-  ok(effAtk(s, b, ME) === 2200, 'Berfomet beside Gazelle is 2200', `${effAtk(s, b, ME)}`);
+  ok(effAtk(s, g, ME) === 2100, 'Gazelle beside Berfomet is 2100', `${effAtk(s, g, ME)}`);
+  ok(effAtk(s, b, ME) === 2000, 'Berfomet beside Gazelle is 2000', `${effAtk(s, b, ME)}`);
   ok(effAtk(s, g, ME) < blueEyes && effAtk(s, b, ME) < blueEyes,
     'and neither of them outgrows Blue-Eyes', `${effAtk(s, g, ME)} / ${effAtk(s, b, ME)} vs ${blueEyes}`);
 
@@ -1848,8 +1848,8 @@ console.log('\nGazelle and Berfomet are a pair, not a stack');
   const b3 = card(ME, 'berfomet');
   const chim = card(ME, 'chimera-the-flying-mythical-beast');
   pride.players[ME].monsters = [g3, b3, chim];
-  ok(effAtk(pride, chim, ME) === baseAtkOf('chimera-the-flying-mythical-beast') + 800,
-    'another Beast beside them still gains the 800', `${effAtk(pride, chim, ME)}`);
+  ok(effAtk(pride, chim, ME) === baseAtkOf('chimera-the-flying-mythical-beast') + 600,
+    'another Beast beside them still gains the pride bonus', `${effAtk(pride, chim, ME)}`);
 }
 
 console.log('\nThe balance pass: a theme is the reason a deck wins');
@@ -2122,13 +2122,13 @@ console.log('\nGOD CARDS ARE ABOVE EVERYTHING');
   book.active = FOE;
   book.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
   book.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
-  const toon = card(FOE, 'toon-mermaid'); // 1400 + 800 book = 2200, drained to 200... still standing
+  const toon = card(FOE, 'toon-summoned-skull'); // 2500 + 600 book = 3100, drained to 1100 — still standing
   book.players[FOE].hand = [toon];
   const drawn = act(book, FOE, {
     type: 'normalSummon', uid: toon.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
   });
-  const inked = drawn.players[FOE].monsters.find((m) => m?.slug === 'toon-mermaid');
-  ok(!!inked && effAtk(drawn, inked, FOE) === 200,
+  const inked = drawn.players[FOE].monsters.find((m) => m?.slug === 'toon-summoned-skull');
+  ok(!!inked && effAtk(drawn, inked, FOE) === 1100,
     "the drain lands on a Toon, and one left above zero stands", inked ? `ATK ${effAtk(drawn, inked, FOE)}` : 'destroyed');
 
   /* ...while one drained below zero dies through the book's protection. Dark
@@ -2310,7 +2310,7 @@ console.log('\nOne Normal Summon stands the whole court up');
      non-null assertion turns that into a crash that takes the rest of the
      suite with it rather than a failure it can report. */
   const jack = court.players[ME].monsters.find((m) => m?.slug === 'jack-s-knight');
-  ok(!!jack && effAtk(court, jack, ME) === 1900 + 500, 'every Warrior is 500 stronger for him',
+  ok(!!jack && effAtk(court, jack, ME) === 1900 + 300, 'every Warrior is 300 stronger for him',
     jack ? String(effAtk(court, jack, ME)) : 'never arrived');
   ok(!!jack && !!effFlags(court, jack, ME).directAttack, 'and with the court complete he can swing past blockers');
 
@@ -2342,8 +2342,8 @@ console.log('\nThe magnets hold, the beasts trade places, the shield does not br
   const gaz = card(ME, 'gazelle-the-king-of-mythical-beasts');
   const ber = card(ME, 'berfomet');
   b.players[ME].monsters = [gaz, ber, null];
-  ok(effAtk(b, gaz, ME) === 1500 + 800, 'Gazelle takes the pair bonus once', String(effAtk(b, gaz, ME)));
-  ok(effAtk(b, ber, ME) === 1400 + 800, 'and Berfomet takes his own', String(effAtk(b, ber, ME)));
+  ok(effAtk(b, gaz, ME) === 1500 + 600, 'Gazelle takes the pair bonus once', String(effAtk(b, gaz, ME)));
+  ok(effAtk(b, ber, ME) === 1400 + 600, 'and Berfomet takes his own', String(effAtk(b, ber, ME)));
 
   /* Big Shield Gardna stops attacks and nothing else. It used to walk out of
      a Dark Hole too, which made it unanswerable — a wall proof on both axes
@@ -2909,7 +2909,7 @@ console.log('\nThe torture chamber ticks every turn');
   s.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
   const lp = s.players[FOE].lp;
   const round = act(act(s, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
-  ok(round.players[FOE].lp === lp - 1500, 'Bowganian bleeds them 1500 at the start of your turn',
+  ok(round.players[FOE].lp === lp - 1100, 'Bowganian bleeds them 1100 at the start of your turn',
     `${lp} → ${round.players[FOE].lp}`);
 
   // Legendary Fiend grows on the same clock.

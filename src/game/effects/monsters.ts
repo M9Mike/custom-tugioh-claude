@@ -1562,14 +1562,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'jack-s-knight': {
     text:
-      'All Warrior monsters you control gain 500 ATK. ' +
+      'All Warrior monsters you control gain 300 ATK. ' +
       "While you control Queen's Knight and King's Knight, this card can attack your opponent directly.",
     cry: 'For the crown!',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { type: 'Warrior' } }), atk: 500 },
+        aura: { target: sel('own', 'all', { filter: { type: 'Warrior' } }), atk: 300 },
       },
       {
         /* The court complete, and only then. Written as a conditional aura
@@ -1592,7 +1592,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        on the page. */
     text:
       'When this card is Normal Summoned: add Berfomet from your Deck to your hand. ' +
-      'While you control Berfomet, this card and your other Beast monsters gain 800 ATK.',
+      'While you control Berfomet, this card and your other Beast monsters gain 600 ATK.',
     effects: [
       {
         trigger: 'onNormalSummon',
@@ -1602,7 +1602,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         condition: { requiresOnField: 'berfomet' },
         ops: [],
-        aura: { target: SELF, atk: 800 },
+        aura: { target: SELF, atk: 600 },
       },
       {
         /* The pride buff sits on Gazelle, not on Berfomet, and it is the King
@@ -1618,7 +1618,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         condition: { requiresOnField: 'berfomet' },
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { type: 'Beast' }, excludeSelf: true }), atk: 800 },
+        aura: { target: sel('own', 'all', { filter: { type: 'Beast' }, excludeSelf: true }), atk: 600 },
       },
     ],
   },
@@ -1629,7 +1629,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        out, and both of them 800 bigger for standing together. */
     text:
       'When this card is Summoned: Special Summon Gazelle the King of Mythical Beasts from your Deck or Graveyard. ' +
-      'While you control Gazelle the King of Mythical Beasts, this card gains 800 ATK.',
+      'While you control Gazelle the King of Mythical Beasts, this card gains 600 ATK.',
     cry: 'Come, my other half!',
     effects: [
       {
@@ -1652,7 +1652,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         condition: { requiresOnField: 'gazelle-the-king-of-mythical-beasts' },
         ops: [],
-        aura: { target: SELF, atk: 800 },
+        aura: { target: SELF, atk: 600 },
       },
     ],
   },
@@ -2363,7 +2363,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        `onNormalSummon`, so the copy it fetches cannot fetch another: the
        chain is one link long by construction rather than by counting the
        deck. */
-    text: "When this card is Normal Summoned: Special Summon 1 'Bowganian' from your Deck. While you control another Bowganian, this card gains 800 ATK and cannot be destroyed by battle. At the start of your turn: inflict 1500 damage to your opponent.",
+    text: "When this card is Normal Summoned: Special Summon 1 'Bowganian' from your Deck. While you control another Bowganian, this card gains 800 ATK and cannot be destroyed by battle. At the start of your turn: inflict 1100 damage to your opponent.",
     cry: 'The bolt finds you again.',
     effects: [
       {
@@ -2383,7 +2383,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
            worth playing. */
         aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle'] },
       },
-      { trigger: 'onOwnTurnStart', ops: [{ op: 'damage', amount: 1500, to: 'opp' }] },
+      { trigger: 'onOwnTurnStart', ops: [{ op: 'damage', amount: 1100, to: 'opp' }] },
     ],
   },
 
@@ -2514,12 +2514,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        every race it enters. The mask lifts the whole cell block rather than
        only itself — a live condition on the board, which is the shape every
        theme here is supposed to have. */
-    text: 'All monsters you control gain 700 ATK.',
+    text: 'All monsters you control gain 500 ATK.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all'), atk: 700 },
+        aura: { target: sel('own', 'all'), atk: 500 },
       },
     ],
   },

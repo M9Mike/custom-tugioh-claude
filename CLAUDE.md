@@ -1655,6 +1655,22 @@ free wins, and Yami went **72 → 81** without a single card of his changing.
 Bench the *new* deck and at least one established one, and read the second
 number as a measurement of the field rather than of that deck.
 
+**Lifting one deck squashes ten, so the top has to come back down.** Bringing
+Yami Marik up to parity took the two God decks to 76 and 75 with Pegasus at
+69 — the three decks the decree puts on top, all of them above the band's
+ceiling, because the round-robin is zero-sum and everyone else absorbs the
+difference. The fix is a trim to the *unique* cards of all three at once,
+never the spine: Bowganian 1500 → 1100 and Coffin Seller 1500 → 1000 and
+Melchid 700 → 500 (walking back an over-correction of my own), Jack's Knight
+500 → 300 and the Gazelle/Berfomet pair 800 → 600, and Toon World 800 → 600.
+
+Trim them **together and by similar amounts**, because the thing being
+protected is the *relationship*: Marik and Yami stayed level through it
+(48% → 46% head to head) while the ladder came in to **marik 72 · yami 70 ·
+pegasus 68**, three decks now inside each other's intervals rather than two
+of them towering. That is what "slight edges to Pegasus and the God cards"
+looks like when it is measured rather than asserted.
+
 **Two decks are an even match or they are not — and `deck-bench` cannot tell
 you.** The bench is round-robin, so it measures a deck *against the field*,
 which makes it zero-sum and therefore partly a measurement of everyone else:
