@@ -1045,12 +1045,35 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             if (idx >= 0) ctx.cursor += 1;
           }
           if (idx < 0) {
-            let best = -1;
-            for (let k = 0; k < p.deck.length; k++) {
-              if (!matchesFilter(p.deck[k], op.filter)) continue;
-              if (best < 0 || (CARDS[p.deck[k].slug]?.atk ?? 0) > (CARDS[p.deck[best].slug]?.atk ?? 0)) best = k;
+            /* A filter that names its cards is a preference order, and the
+               card's own text is where it is written: Viser Des says "add Ra,
+               Bowganian, Nightmare Wheel or Coffin Seller", and it means them
+               in that order. Ranking by ATK instead was not merely arbitrary
+               here, it was backwards — a God's printed stats are "?", which
+               the card database gives as -1, so the headline card of the
+               whole deck sorted *below* two Traps on 0 and could effectively
+               never be fetched. Reported as "a random chance for which
+               monster it gives you". */
+            const named = op.filter?.slugs;
+            if (named?.length) {
+              for (const slug of named) {
+                const at = p.deck.findIndex((c) => c.slug === slug && matchesFilter(c, op.filter));
+                if (at >= 0) {
+                  idx = at;
+                  break;
+                }
+              }
             }
-            idx = best;
+            if (idx < 0) {
+              /* No named order to follow: take the strongest, which is what a
+                 player would have said if there had been anyone to ask. */
+              let best = -1;
+              for (let k = 0; k < p.deck.length; k++) {
+                if (!matchesFilter(p.deck[k], op.filter)) continue;
+                if (best < 0 || (CARDS[p.deck[k].slug]?.atk ?? 0) > (CARDS[p.deck[best].slug]?.atk ?? 0)) best = k;
+              }
+              idx = best;
+            }
           }
           if (idx < 0) break;
           const c = p.deck.splice(idx, 1)[0];

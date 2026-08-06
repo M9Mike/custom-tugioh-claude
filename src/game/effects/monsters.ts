@@ -2472,13 +2472,44 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   granadora: {
     /* Marik's whole register in one card: take something now, pay for it
-       later, and the paying is not optional. 1900 ATK for four stars with a
-       bill attached — and the bill comes due the moment it is Tributed for
-       Ra, which is exactly when it is worth paying. */
-    text: 'When this card is Summoned: gain 1000 Life Points. When this card is destroyed: take 2000 damage.',
-    cry: 'A loan, not a gift.',
+       later, and the paying is not optional.
+     *
+     * The bargain had no upside, which is the one thing a bargain must have.
+     * Reported exactly: "it's just too weak to cost ultimately 1000LP for a
+     * 1900atk monster in this format with nothing extra" — and the
+     * arithmetic was that blunt, +1000 on arrival against −2000 on death, so
+     * a four-star vanilla body charged its owner a net 1000 Life Points for
+     * the privilege. That is a printed drawback card in a game whose whole
+     * register is over anime OP.
+     *
+     * So the loan pays interest, and it collects it from across the table:
+     * every one of Marik's turns the lizard drains 800 out of the opponent
+     * and puts it in his own pocket, which is a 1600-point swing a turn on a
+     * card that also gave 1000 up front. The 2000 bill stays, because the
+     * Faustian shape *is* the card and because it is what the opponent buys
+     * when they finally break it — but one turn of life now clears it, which
+     * is the difference between a bargain and a tax. The first draft drained
+     * 500 and was still net negative after a turn, which is the same mistake
+     * one size smaller.
+     *
+     * It is also the deck's second clock. Bowganian bleeds them on a timer;
+     * this one bleeds them *and* heals him, which is the torture chamber
+     * sustaining its keeper — and both are answerable the same way, by
+     * killing the small body doing it. */
+    text:
+      'When this card is Summoned: gain 1000 Life Points. ' +
+      'At the start of your turn: inflict 800 damage to your opponent and gain 800 Life Points. ' +
+      'When this card is destroyed: take 2000 damage.',
+    cry: 'A loan, and the interest is yours to pay.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
+      {
+        trigger: 'onOwnTurnStart',
+        ops: [
+          { op: 'damage', amount: 800, to: 'opp' },
+          { op: 'heal', amount: 800, to: 'own' },
+        ],
+      },
       /* `onDestroyed`, not `onSentToGrave`: Tributing it towards Ra is
          spending it, not losing it, and charging the bill for the God's own
          summon was taxing the play the card exists to enable. */

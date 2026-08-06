@@ -2961,6 +2961,52 @@ console.log('\nThe torture chamber ticks every turn');
   const settled2 = act(lent, ME, { type: 'activateSpell', uid: dh2.uid, targets: [] });
   ok(settled2.players[ME].lp === lent.players[ME].lp - 2000, 'and takes 2000 back when it leaves',
     String(settled2.players[ME].lp));
+
+  /* The interest, which is the whole reason the loan is worth taking. It was
+     reported as "too weak to cost ultimately 1000LP for a 1900atk monster
+     with nothing extra", and the arithmetic really was +1000 against −2000:
+     a four-star vanilla that charged its own controller a net thousand. One
+     turn alive now clears that, and the payment comes out of the opponent. */
+  const rent = fresh();
+  rent.players[ME].monsters[0] = card(ME, 'granadora');
+  rent.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  rent.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  const mine0 = rent.players[ME].lp;
+  const theirs0 = rent.players[FOE].lp;
+  const round2 = act(act(rent, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  ok(round2.players[FOE].lp === theirs0 - 800, 'the lizard drains 800 out of them each of your turns',
+    `${theirs0} → ${round2.players[FOE].lp}`);
+  ok(round2.players[ME].lp === mine0 + 800, 'and puts it straight in his pocket',
+    `${mine0} → ${round2.players[ME].lp}`);
+
+  /* The point of the change, stated as arithmetic: summoned, left alone for
+     one turn and then destroyed, the card must be Life-Point POSITIVE. The
+     old one was −1000 here, which is what made it a drawback card rather
+     than a bargain. */
+  const cycle = fresh();
+  const liz2 = card(ME, 'granadora');
+  cycle.players[ME].hand = [liz2];
+  cycle.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  cycle.players[FOE].deck = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  const start = cycle.players[ME].lp;
+  const theirsStart = cycle.players[FOE].lp;
+  const down = act(cycle, ME, {
+    type: 'normalSummon', uid: liz2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  const survived = act(act(down, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  const hole3 = card(ME, 'dark-hole');
+  survived.players[ME].hand.push(hole3);
+  const dead = act(survived, ME, { type: 'activateSpell', uid: hole3.uid, targets: [] });
+  /* Measured as the SWING, because half the interest is collected from the
+     other side of the table and a race is decided by the gap, not by one
+     total. Summoned, left alone for a single turn and then broken, the card
+     must come out ahead — the old one was 1000 behind however long it
+     lived, which is what "nothing extra" meant. */
+  const swing =
+    (dead.players[ME].lp - start) + (theirsStart - dead.players[FOE].lp);
+  ok(swing > 0,
+    'summoned, left alone one turn and then broken, the bargain still comes out ahead',
+    `swing ${swing}`);
 }
 
 console.log('\nTwo cards cannot answer each other forever');
@@ -3052,6 +3098,50 @@ console.log('\nMarik pays for his God the way Yugi pays for his');
   ok(sprung.players[ME].monsters.filter((m) => m?.isToken).length === 2,
     'Metal Reflect Slime puts down two bodies, not one',
     String(sprung.players[ME].monsters.filter(Boolean).length));
+}
+
+console.log('\nA card that names its options means them in that order');
+{
+  /* Reported as "summoning Viser Des has a random chance for which monster it
+     gives you". It was not random, it was backwards: with no explicit choice
+     the search took the highest printed ATK, and a God's stats are "?" —
+     which the card database gives as **-1**. So Ra sorted below Bowganian's
+     1300 and below two Traps on 0, and the headline card of the whole deck
+     was the one option the search would never take.
+
+     A filter that names its cards is a preference order, and the card's text
+     is where that order is written. */
+  const fetched = (deck: string[]) => {
+    const s = fresh();
+    const v = card(ME, 'viser-des');
+    s.players[ME].hand = [v];
+    s.players[ME].deck = deck.map((d) => card(ME, d));
+    const out = act(s, ME, { type: 'normalSummon', uid: v.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    return out.players[ME].hand.filter((c) => c.slug !== 'viser-des').map((c) => c.slug);
+  };
+
+  ok(fetched(['coffin-seller', 'nightmare-wheel', 'bowganian', 'the-winged-dragon-of-ra'])[0] === 'the-winged-dragon-of-ra',
+    'the God is named first, so the God is what it fetches');
+  /* Deck order must not matter, or the fix is luck wearing a rule's clothes. */
+  ok(fetched(['the-winged-dragon-of-ra', 'bowganian'])[0] === 'the-winged-dragon-of-ra',
+    'and it does not matter where in the Deck it is sitting');
+  ok(fetched(['coffin-seller', 'nightmare-wheel', 'bowganian'])[0] === 'bowganian',
+    'with no God to find it takes the next one named');
+  ok(fetched(['coffin-seller', 'nightmare-wheel'])[0] === 'nightmare-wheel',
+    'and the next after that');
+  ok(fetched(['coffin-seller'])[0] === 'coffin-seller', 'down to the last one listed');
+
+  /* CONTROL: a search with no named list still takes the strongest, which is
+     what a player would have said if there were anyone to ask. */
+  const anyDeck = fresh();
+  const alpha = card(ME, 'alpha-the-magnet-warrior');
+  anyDeck.players[ME].hand = [alpha];
+  anyDeck.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'beta-the-magnet-warrior'), card(ME, 'gamma-the-magnet-warrior')];
+  const magnets = act(anyDeck, ME, {
+    type: 'normalSummon', uid: alpha.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(magnets.players[ME].hand.some((c) => c.slug === 'beta-the-magnet-warrior'),
+    'CONTROL: an unordered search still reaches for what it wants');
 }
 
 console.log('\nOnly the first ignition on a card can ever be reached');
