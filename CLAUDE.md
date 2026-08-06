@@ -340,6 +340,16 @@ power of two: ten becomes five matches, then two and a bye, then one and a bye,
 then the final. Only an odd count makes a bye at all, and it never goes to the
 player. Sizing it to the next power of two handed six of ten a walkover.
 
+**A background bench barely runs.** This container suspends between tool
+calls, so a `deck-bench` started in the background only advances while the
+session is busy doing something else — one was left "running" for twenty
+minutes and had six of them to show for it, its elapsed time creeping forward
+a few seconds per check. Run a bench in the *foreground* and size it to fit
+the command timeout: 60 games is ±12-13, which is enough to say a deck did not
+move, and it finishes. The corollary is the trap one section down — a bench
+that *is* getting CPU will starve any browser probe running beside it, so
+never overlap the two.
+
 **Benchmarks need intervals.** At 30 games an AI matchup is ±18%, which is wide enough
 to hide any real difference. Early tuning against numbers that noisy sent this AI down
 a blind alley. `scripts/ai-arena.ts` prints 95% intervals; believe those, not a raw
