@@ -77,6 +77,7 @@ npm run rematch  http://localhost:3100               # the second duel narrates 
 npm run race                                         # two requests cannot undo each other
 npm run rejoin   http://localhost:3100               # you can walk back into your own duel
 npm run spectate http://localhost:3100               # the exhibition plays, pauses, resumes
+npm run firstturn http://localhost:3100              # the computer waits for somebody to be watching
 npm run paint    http://localhost:3100               # no screen is too expensive to sit and look at
 ```
 
@@ -507,10 +508,10 @@ a Special Summon now takes a list of zones, and `npm run playable` checks that a
 monster it refuses to summon has something in the same deck that brings it out.
 
 **The Toon idea, in full.** Toon World is the engine: while it is face-up your
-Toons need no Tribute, gain 800 ATK, pierce, cannot be *destroyed* by card
+Toons need no Tribute, gain 600 ATK, pierce, cannot be *destroyed* by card
 effects (they can be targeted — a bind or a debuff lands, removal does not),
-and attack directly — at 500 Life Points a swing, and never on the turn they
-arrived. Opening the book costs its printed 1000.
+and attack directly — never on the turn they arrived. Opening the book costs
+its printed 1000.
 Blue-Eyes Toon Dragon, Toon Summoned Skull, Toon Mermaid, Manga Ryu-Ran and Dark
 Rabbit cannot be Summoned without it. Toon Alligator is the way in — it is never
 gated, and Normal Summoning it fetches Toon World from the Deck. Ryu-Ran,
@@ -525,6 +526,32 @@ finally landed him at **66** was summoning sickness, because his 85 was
 always *tempo* — a free 3800 that swings the turn it arrives is a two-turn
 kill, and the same monster a turn later is a threat the whole roster holds an
 answer to. Nerf the clock, not the number, when a tempo deck is too strong.
+
+**Two of those prices came back off, by decree.** Reported as "Toon world is
+too weak now, monsters needing lp to attack is a lot and destroying all
+monsters when the toon world is a lot". Both are gone: a Toon direct attack
+costs nothing, and closing the book no longer kills the board. Summoning
+sickness and the printed 1000 stay, which is the clock rather than the number
+— the lesson above, kept.
+
+Losing the book is still the answer to Pegasus, and it is now exactly one
+answer instead of two: the 600 ATK and the direct attack go with it, and a
+Pegasus without it cannot deploy at all (five of his Toons are gated on it).
+Destroying it *and* sweeping everything he had committed was the same answer
+twice over, off one De-Spell.
+
+That exposed a bug the old rule had been hiding: **every gated Toon carried its
+own permanent `directAttack`**, granted on summon and lifted into a self-aura,
+so a Toon that outlived Toon World kept walking past blockers. Nobody noticed
+while they were destroyed along with it. The book is the only source now, and
+the five gated cards say "attacks directly only while it is face-up" rather
+than promising it outright. Toon Alligator keeps its own — it is the ungated
+way in and its text never mentioned the book.
+
+Pegasus went **68 → 77% ±8** on the pair, so he is clearly the top deck again,
+which is what the decree asks for. He is above the band's written ceiling; that
+was already true of all three decreed-top decks and is worth re-reading before
+the next pass rather than trimming on sight.
 
 **The board runs ahead of the queue, so the numbers have to be held back.**
 `Duel.tsx` drains animations one at a time while the state from the server is
@@ -1058,6 +1085,25 @@ battery green either. The tell was there and went unread — the summary line
 stopped appearing at the bottom of the output the moment the tests were
 appended.
 
+**A throw takes the verdict with it.** `rules-check.ts` prints its summary
+last, so an uncaught exception killed the process before the count, the verdict
+and the exit code — what reached the terminal was a bare stack trace, which
+reads as the engine being broken when what broke was one test's setup. Found
+while falsifying Revival Jam: the run died at assertion 377 of 411, printed no
+summary, and the falsification looked like it had proved something it had not.
+The same lesson already written on the summary line, one level up, and the same
+shape as the rejoin probe's missing `catch`. An `uncaughtException` handler now
+says how far it got and that the run proves nothing about the rest.
+
+**And the obvious Revival Jam assertion passed on the broken engine.** "The Jam
+is on the field after Dark Hole" is satisfied by the *wrong* mechanism: with
+`includeSelf` removed, its first op finds nothing and its second — "1 other
+monster with 1500 or less ATK" — brings back whatever is best in the Graveyard.
+Only the *count* separates them, so the assertion is two bodies from one
+destruction. The passenger is Magician of Faith rather than Kuriboh, too:
+Kuriboh arrives with a token and quietly made a two-body board a three-body
+one.
+
 **Adversarial verification found all four of those, and the battery found
 none.** Six independent skeptics, one per fix, each told to try to break it
 rather than confirm it — they turned up the missing Trap Hole window (twice,
@@ -1340,6 +1386,48 @@ button the home page deliberately keeps disabled until hydration lands. All
 three wait longer now, and the spectate one says "the home page never finished
 hydrating — this proves nothing" rather than asserting into a page that was
 never awake. Widened, not loosened: a page that truly never loads still throws.
+
+**A card lying face-down is doing nothing.** Reported as "effects of face down
+monsters like burn can not happen if they are face down — for example Marik's
+monster, if I end the turn and the monster is facedown it can't burn the
+enemy". True of every standing-on-the-field trigger a Set monster carries:
+Bowganian burning 1100 out of a turn it spent asleep, Granadora draining 800
+and healing 800, and Legendary Fiend quietly growing 700 a turn under its own
+card back. Everything else already had it right — `fieldCards` only lists
+face-up cards so auras never applied, `canIgnite` refuses a face-down card,
+`fireOpponentSummon` filters to face-up watchers, and a Set fires no summon
+trigger at all. The two turn loops in `startTurn`/`endTurn` were the last
+places asking "is there a monster in the zone" rather than "is there a monster
+looking at the board". Deliberately not extended to `onDestroyed` /
+`onSentToGrave`: a card leaves the field whichever way up it was lying, and a
+Set flip monster still pays out when the attack that kills it turns it over —
+which is the whole point of setting one, and is pinned as a control.
+
+**The computer must not play to an empty room.** Reported as "the duel can not
+start with the ai just ending its turn (no matter if it played summoned set
+whatever, it must take place for the human to see)". The nudge loop lives in
+`useDuelRoom` — the *room*, not the board — so it kept asking the computer for
+its next move while the player was on a screen that is not the board. In a
+tournament that is guaranteed: every round opens on the bracket and you walk
+into your duel by tapping through, so a computer holding the first turn played
+the whole thing behind the standings. Walking in, the board primes on a view
+where all of it has already happened and correctly swallows the tail as
+history — the same mechanism that stops a re-join re-enacting the last dozen
+beats. Nothing was broken except *when* the turn happened.
+
+The board now reports whether it is on screen (`setWatching`, set on mount and
+cleared on unmount) and the computer's own move waits for that. A bracket's
+*side* matches are driven by `bracketBusy` and are deliberately not gated, or
+the round would never resolve. It also covers tapping 🏆 mid-duel: the turn
+pauses and plays out when you come back. `setWatching` is a required prop
+rather than optional, because a call site that forgot it would silently stop
+the computer.
+
+`npm run firstturn` opens bracket rooms until the computer has the first turn,
+then asserts the duel's `version` does not move while the bracket is up and
+does move once you walk in. Against the unfixed build it fails exactly as
+reported: version 0 → 2 behind the bracket, and **0 declarations** on the board
+afterwards.
 
 **A probe can starve the thing it is measuring.** Chasing an intermittent
 silent second showing in the exhibition, I wrote a sampler that polled two

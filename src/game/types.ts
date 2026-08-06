@@ -361,7 +361,6 @@ export type EquipGrant =
    * is both the printed rule and what keeps a board of direct attackers from
    * simply ending the game for free.
    */
-  | 'directAttackTax'
   /**
    * Cannot attack the turn it was Summoned — the other printed Toon rule.
    * A Toon arrives for free under Toon World; the pause before it may swing
@@ -487,7 +486,6 @@ export interface CardFlags {
   /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
   halvedBattleDamage?: boolean;
   /** Attacking directly costs the controller 500 LP — see `EquipGrant`. */
-  directAttackTax?: boolean;
   /** Cannot attack the turn it was Summoned — see `EquipGrant`. */
   summonSick?: boolean;
   /** See the `reflectBattleDamage` grant. */

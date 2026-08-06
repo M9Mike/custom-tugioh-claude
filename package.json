@@ -35,7 +35,8 @@
     "race": "tsx scripts/race-check.ts",
     "paint": "node scripts/paint-check.mjs",
     "rejoin": "node scripts/rejoin-check.mjs",
-    "spectate": "node scripts/spectate-check.mjs"
+    "spectate": "node scripts/spectate-check.mjs",
+    "firstturn": "node scripts/first-turn-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

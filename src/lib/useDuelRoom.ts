@@ -122,6 +122,12 @@ export function useDuelRoom(code: string | null) {
      its own finger on its own button. */
   const [paused, setPaused] = useState(false);
 
+  /* Whether the duel board is on screen. The board sets it on mount and clears
+     it on unmount; it starts false so a screen that is not the board can never
+     let the computer play unwatched. State rather than a ref, because the nudge
+     effect has to re-run the moment the player walks in. */
+  const [watching, setWatching] = useState(false);
+
   /**
    * Applies a server view — unless a newer one has already landed.
    *
@@ -269,7 +275,12 @@ export function useDuelRoom(code: string | null) {
    * checks whose move it is — so a duplicate in flight is harmless.
    */
   useEffect(() => {
-    if (!code || paused || !(view?.aiToMove || view?.bracketBusy)) return;
+    /* The computer's own move waits for an audience — see the comment on the
+       board's `setWatching` effect. A bracket's side matches do not: they are
+       what the bracket screen is showing you, so gating them on the duel board
+       being open would deadlock the round. */
+    const owed = (view?.aiToMove && watching) || view?.bracketBusy;
+    if (!code || paused || !owed) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       /* Hold while the board is still narrating. The computer used to be asked
@@ -306,7 +317,7 @@ export function useDuelRoom(code: string | null) {
     /* `animating` is in the deps so the turn resumes the moment the board goes
        quiet, rather than waiting for the next poll to nudge it along —
        `paused` for the same reason in the other direction. */
-  }, [code, view, applyView, animating, paused]);
+  }, [code, view, applyView, animating, paused, watching]);
 
   const act = useCallback((action: DuelAction) => send({ kind: 'duel', action }), [send]);
   const chooseDuelist = useCallback((duelistId: string) => send({ kind: 'chooseDuelist', duelistId }), [send]);
@@ -330,6 +341,7 @@ export function useDuelRoom(code: string | null) {
     toLobby,
     configureAi,
     setAnimating,
+    setWatching,
     paused,
     setPaused,
     clearError: () => setError(null),

@@ -430,15 +430,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'blue-eyes-toon-dragon': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Can attack your opponent directly. When summoned: your opponent discards 1 random card.',
+    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: your opponent discards 1 random card.',
     cry: 'Toon power!',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'discard', count: 1, who: 'opp' },
-        ],
+        ops: [{ op: 'discard', count: 1, who: 'opp' }],
       },
     ],
   },
@@ -865,28 +862,26 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'toon-summoned-skull': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Can attack your opponent directly. When summoned: inflict 600 damage to your opponent.',
+    /* The mischief belongs to the book, not to the monster — see the note on
+       Toon World. Owning it outright meant destroying Toon World took the 600
+       ATK and left the Toon still walking past blockers, which is the opposite
+       of "when the toon world is gone they just can't attack directly". */
+    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: inflict 600 damage to your opponent.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'damage', amount: 600, to: 'opp' },
-        ],
+        ops: [{ op: 'damage', amount: 600, to: 'opp' }],
       },
     ],
   },
 
   'toon-mermaid': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Can attack your opponent directly. When summoned: draw 1 card.',
+    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: draw 1 card.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'draw', count: 1, who: 'own' },
-        ],
+        ops: [{ op: 'draw', count: 1, who: 'own' }],
       },
     ],
   },
@@ -905,14 +900,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'manga-ryu-ran': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Can attack your opponent directly and cannot be targeted by your opponent\'s effects.',
+    text: 'Requires "Toon World", and attacks directly only while it is face-up. Cannot be targeted by your opponent\'s effects.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'untargetable', duration: 'permanent' },
-        ],
+        ops: [{ op: 'untargetable', duration: 'permanent' }],
       },
     ],
   },
@@ -964,14 +956,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'dark-rabbit': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Can attack your opponent directly. When summoned: your opponent discards 1 random card.',
+    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: your opponent discards 1 random card.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'discard', count: 1, who: 'opp' },
-        ],
+        ops: [{ op: 'discard', count: 1, who: 'opp' }],
       },
     ],
   },

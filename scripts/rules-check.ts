@@ -77,6 +77,32 @@ function act(s: DuelState, pid: PlayerId, a: DuelAction): DuelState {
   return r.state;
 }
 
+/**
+ * A throw must not be able to swallow the verdict.
+ *
+ * `act` throws when the engine refuses an action, which is right for a test
+ * whose setup has gone wrong — but this file prints its summary *last*, so an
+ * uncaught throw killed the process before the count, the verdict and the exit
+ * code ever happened. What reached the terminal was a bare stack trace, which
+ * reads as the engine being broken when what broke was one test's setup.
+ *
+ * Found while falsifying Revival Jam: the run died partway, printed no
+ * summary, and the falsification looked like it had proved something it had
+ * not. Exactly the lesson already written on the summary line itself, one
+ * level up — a suite that cannot report failure is worse than a check that
+ * cannot fail — and the same shape as the rejoin probe's missing `catch`.
+ *
+ * The blocks below are plain `{ }` scopes rather than callbacks, so this is
+ * the one place that can cover all of them. It does not let the rest of the
+ * run continue; it makes sure the run *says* it stopped.
+ */
+process.on('uncaughtException', (err) => {
+  console.log(`\n❌ the battery threw and stopped early — ${err instanceof Error ? err.message : String(err)}`);
+  console.log(err instanceof Error && err.stack ? err.stack.split('\n').slice(1, 4).join('\n') : '');
+  console.log(`\n${checks} assertions ran before it died. This run proves nothing about the rest.`);
+  process.exit(1);
+});
+
 const on = (s: DuelState, pid: PlayerId) => s.players[pid].monsters.filter((m): m is CardInstance => !!m);
 
 console.log('Rules regressions\n');
@@ -1867,32 +1893,32 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   ok(open.players[ME].deck.length === deckBefore - 1, 'and draws nothing beyond the search', `deck ${open.players[ME].deck.length}`);
   ok(open.players[ME].lp === 4000 - 1000, 'and costs its printed 1000 Life Points', `LP ${open.players[ME].lp}`);
 
-  /* And the book closing takes the Toons with it — the printed rule, and the
-     whole counterplay story for the deck that benched 85%. */
+  /* Closing the book takes what the book was giving, and nothing more.
+     Reported as "Toon world is too weak now … destroying all monsters when
+     the toon world is a lot": the Toons used to be destroyed outright when it
+     left, which made a single De-Spell a one-card sweep of everything Pegasus
+     had committed. Losing the 600 ATK and the direct attack is already an
+     answer the whole roster can reach — that is the counterplay, and it is
+     enough. The bodies stay. */
   const doom = fresh();
   doom.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
   const toon = card(FOE, 'toon-summoned-skull');
   const plain = card(FOE, 'ryu-kishin-powered');
   doom.players[FOE].monsters = [toon, plain, null];
+  const buffed = effAtk(doom, toon, FOE);
   const despell = card(ME, 'de-spell');
   doom.players[ME].hand = [despell];
   const popped = act(doom, ME, { type: 'activateSpell', uid: despell.uid, targets: [doom.players[FOE].field!.uid] });
   ok(!popped.players[FOE].field, 'destroying Toon World empties the Field Zone');
-  ok(!popped.players[FOE].monsters.some((m) => m?.slug === 'toon-summoned-skull'),
-    'and the Toons die with the book', popped.players[FOE].monsters.map((m) => m?.slug).join(','));
+  const survivor = popped.players[FOE].monsters.find((m) => m?.slug === 'toon-summoned-skull');
+  ok(!!survivor, 'the Toons outlive the book', popped.players[FOE].monsters.map((m) => m?.slug).join(','));
+  ok(!!survivor && effAtk(popped, survivor, FOE) === buffed - 600,
+    'and lose exactly the 600 the book was lending them',
+    survivor ? `${buffed} -> ${effAtk(popped, survivor, FOE)}` : 'gone');
+  ok(!!survivor && !effFlags(popped, survivor, FOE).directAttack,
+    'and can no longer walk past a blocker');
   ok(popped.players[FOE].monsters.some((m) => m?.slug === 'ryu-kishin-powered'),
-    'CONTROL: the monster that was never a Toon stands');
-
-  // CONTROL: a bounce closes the book without burning it.
-  const lift = fresh();
-  lift.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
-  const toon2 = card(FOE, 'toon-summoned-skull');
-  lift.players[FOE].monsters = [toon2, null, null];
-  const trunade = card(ME, 'giant-trunade');
-  lift.players[ME].hand = [trunade];
-  const lifted = act(lift, ME, { type: 'activateSpell', uid: trunade.uid, targets: [] });
-  ok(lifted.players[FOE].monsters.some((m) => m?.slug === 'toon-summoned-skull'),
-    'CONTROL: a bounced Toon World spares the Toons', lifted.players[FOE].monsters.map((m) => m?.slug).join(',') || 'empty');
+    'CONTROL: the monster that was never a Toon is untouched either way');
 
   /* Dark Magician: the full wipe is his arrival, the ignition takes one. */
   const dm = fresh();
@@ -1985,9 +2011,10 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
 
 console.log('\nThe balance pass, second turn of the wheel');
 {
-  /* The Toon toll: mischief is paid for. A Toon under Toon World declaring a
-     direct attack costs Pegasus 500 Life Points — the printed rule, and what
-     keeps an untouchable board of direct attackers from being free. */
+  /* Mischief is free again. The 500-a-swing toll was the printed rule and it
+     priced the deck out of its own gimmick — "monsters needing lp to attack
+     is a lot" — so a Toon walks past a blocker for nothing. The book's own
+     1000 to open, and the turn it makes them wait, are what it costs. */
   const s = fresh('battle');
   s.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
   const toon = card(ME, 'toon-mermaid');
@@ -1996,8 +2023,8 @@ console.log('\nThe balance pass, second turn of the wheel');
   const lpBefore = s.players[ME].lp;
   const foeLp = s.players[FOE].lp;
   const swung = act(s, ME, { type: 'attack', uid: toon.uid, targetUid: null });
-  ok(swung.players[ME].lp === lpBefore - 500, 'a Toon direct attack costs its duelist 500', `LP ${swung.players[ME].lp}`);
-  ok(swung.players[FOE].lp < foeLp, 'and the blow still lands', `foe LP ${swung.players[FOE].lp}`);
+  ok(swung.players[ME].lp === lpBefore, 'a Toon direct attack costs its duelist nothing', `LP ${swung.players[ME].lp}`);
+  ok(swung.players[FOE].lp < foeLp, 'and the blow lands', `foe LP ${swung.players[FOE].lp}`);
 
   /* And the pause: a Toon summoned this turn waits — the other printed Toon
      rule, and the turn the opponent is given to answer a free 3800. */
@@ -3162,6 +3189,153 @@ console.log('\nOnly the first ignition on a card can ever be reached');
     .map(([slug]) => slug);
   ok(offenders.length === 0,
     'no card carries a second ignition the engine cannot reach', offenders.join(', '));
+}
+
+console.log('\nA card lying face-down is doing nothing');
+{
+  /* Reported as "effects of face down monsters like burn can not happen if
+     they are face down — for example Marik's monster, if I end the turn and
+     the monster is facedown it can't burn the enemy". Every `onOwnTurnStart`
+     card in the game was doing it: Bowganian burning 1100 out of a turn it
+     spent asleep, Granadora draining 800 and healing 800, Legendary Fiend
+     quietly growing 700 under its own card back.
+
+     Driven through a real turn change rather than by calling the trigger, so
+     it is the engine's own loop being tested. */
+  const asleep = fresh();
+  asleep.active = FOE;
+  asleep.players[ME].monsters = [
+    { ...card(ME, 'bowganian'), face: 'down' as const, position: 'def' as const },
+    { ...card(ME, 'granadora'), face: 'down' as const, position: 'def' as const },
+    { ...card(ME, 'legendary-fiend'), face: 'down' as const, position: 'def' as const },
+  ];
+  const fiendBase = baseAtkOf('legendary-fiend');
+  const foeLpBefore = asleep.players[FOE].lp;
+  const myLpBefore = asleep.players[ME].lp;
+  // FOE ends their turn, which starts mine — every onOwnTurnStart fires here.
+  const woken = act(asleep, FOE, { type: 'endTurn' });
+  ok(woken.active === ME && woken.turn === asleep.turn + 1, 'the turn really did change', `turn ${woken.turn} active ${woken.active}`);
+  ok(woken.players[FOE].lp === foeLpBefore, 'a face-down Bowganian burns nobody', `foe LP ${woken.players[FOE].lp}`);
+  ok(woken.players[ME].lp === myLpBefore, 'and a face-down Granadora collects no interest', `LP ${woken.players[ME].lp}`);
+  const sleeper = woken.players[ME].monsters.find((m) => m?.slug === 'legendary-fiend')!;
+  ok(effAtk(woken, sleeper, ME) === fiendBase,
+    'and a face-down Legendary Fiend does not grow', `${effAtk(woken, sleeper, ME)} vs ${fiendBase}`);
+
+  /* CONTROL: face-up, all three do exactly what they say — or the assertions
+     above would pass just as happily on an engine that had lost the effects
+     altogether, which is the failure mode this whole file exists to avoid. */
+  const awake = fresh();
+  awake.active = FOE;
+  awake.players[ME].monsters = [card(ME, 'bowganian'), card(ME, 'granadora'), card(ME, 'legendary-fiend')];
+  const foeLp2 = awake.players[FOE].lp;
+  const myLp2 = awake.players[ME].lp;
+  const played = act(awake, FOE, { type: 'endTurn' });
+  ok(played.players[FOE].lp === foeLp2 - 1100 - 800, 'CONTROL: face-up, the pair bleed them for 1900', `foe LP ${played.players[FOE].lp}`);
+  ok(played.players[ME].lp === myLp2 + 800, 'CONTROL: and Granadora pays its keeper 800', `LP ${played.players[ME].lp}`);
+  const grown = played.players[ME].monsters.find((m) => m?.slug === 'legendary-fiend')!;
+  ok(effAtk(played, grown, ME) === fiendBase + 700, 'CONTROL: and the Fiend takes its 700', `${effAtk(played, grown, ME)}`);
+
+  /* CONTROL: leaving the field is not the same as standing on it asleep. A
+     Set flip monster still pays out when the attack that kills it turns it
+     face-up, which is the entire reason for setting one — the gate above is
+     deliberately only on the two turn loops. */
+  const bug = fresh('battle');
+  bug.active = FOE;
+  const eater = { ...card(ME, 'man-eater-bug'), face: 'down' as const, position: 'def' as const };
+  bug.players[ME].monsters = [eater, null, null];
+  const big = card(FOE, 'summoned-skull');
+  big.summonedOnTurn = 0;
+  bug.players[FOE].monsters = [big, null, null];
+  const bitten = act(bug, FOE, { type: 'attack', uid: big.uid, targetUid: eater.uid });
+  ok(!bitten.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'CONTROL: a Set flip monster still bites the attacker that reveals it',
+    bitten.players[FOE].monsters.map((m) => m?.slug).join(',') || 'empty');
+}
+
+console.log('\nThe book gives the mischief, and takes it back');
+{
+  /* "When the toon world is gone they just can't attack directly and lose the
+     atk buff." They did lose the buff and they did NOT lose the direct attack:
+     every gated Toon carried its own permanent `directAttack`, granted on
+     summon, so destroying Toon World left an unbuffed Toon still walking past
+     blockers. The book is the only source now. */
+  const open = fresh('battle');
+  open.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const mermaid = card(ME, 'toon-mermaid');
+  mermaid.summonedOnTurn = 0;
+  open.players[ME].monsters = [mermaid, null, null];
+  ok(!!effFlags(open, mermaid, ME).directAttack, 'under the book a Toon attacks directly');
+  ok(effAtk(open, mermaid, ME) === baseAtkOf('toon-mermaid') + 600, 'and carries the 600', `${effAtk(open, mermaid, ME)}`);
+
+  const shut = structuredClone(open);
+  shut.players[ME].field = null;
+  const stranded = shut.players[ME].monsters[0]!;
+  ok(!effFlags(shut, stranded, ME).directAttack, 'close the book and the direct attack goes with it');
+  ok(effAtk(shut, stranded, ME) === baseAtkOf('toon-mermaid'), 'and so does the 600', `${effAtk(shut, stranded, ME)}`);
+  ok(!!shut.players[ME].monsters[0], 'but the body is still standing');
+
+  /* CONTROL: Toon Alligator is the way *into* the deck and is never gated —
+     its own text promises the direct attack with no book required, and it
+     keeps it. Removing the innate grant from the five gated Toons must not
+     have taken the enabler's with it. */
+  const gator = fresh('battle');
+  const alli = card(ME, 'toon-alligator');
+  alli.summonedOnTurn = 0;
+  gator.players[ME].monsters = [alli, null, null];
+  ok(!!effFlags(gator, alli, ME).directAttack, 'CONTROL: Toon Alligator needs no book to be a nuisance');
+}
+
+console.log('\nRevival Jam does not stay dead');
+{
+  /* Asked for directly: "check if revival jam special summons itself". It is
+     the one card in the game whose revival target is the card being revived,
+     which needs `includeSelf` on the op — a Special Summon otherwise refuses
+     the effect's own source, and the card silently did nothing at all. */
+  const s = fresh();
+  const jam = card(ME, 'revival-jam');
+  s.players[ME].monsters = [jam, null, null];
+  /* The passenger is Magician of Faith on purpose: 300 ATK, and her only
+     effect is a flip, so being Special Summoned face-up adds nothing to the
+     board beyond herself. Kuriboh was the obvious pick and brings a token
+     with her, which quietly made a two-body board a three-body one. */
+  s.players[ME].grave = [card(ME, 'magician-of-faith')];
+  const hole = card(ME, 'dark-hole');
+  s.players[ME].hand = [hole];
+  const broken = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  const back = broken.players[ME].monsters.map((m) => m?.slug).filter(Boolean).join(',') || 'empty';
+
+  /* Both bodies is the assertion that means anything.
+     "The Jam is on the field" is satisfied by the *wrong* mechanism and was:
+     without `includeSelf` the first op finds nothing, and the second op —
+     "1 other monster with 1500 or less ATK" — then picks the strongest thing
+     in the Graveyard, which is the 1500 Jam itself. So the Jam comes back
+     either way and the card looks fine while its own clause does nothing.
+     Only the count separates them: self-revival plus a passenger is two
+     monsters, the fallback is one. Written the obvious way first, and it
+     passed on the broken engine. */
+  ok(broken.players[ME].monsters.some((m) => m?.slug === 'revival-jam'),
+    'broken by Dark Hole, the Jam is back on the field', back);
+  ok(broken.players[ME].monsters.some((m) => m?.slug === 'magician-of-faith'),
+    'and it drags another body up with it', back);
+  ok(on(broken, ME).length === 2, 'two bodies out of one destruction — it revived *itself*, not merely a Jam', back);
+  ok(!broken.players[ME].grave.some((c) => c.slug === 'revival-jam'),
+    'and no copy is left behind in the Graveyard it came out of');
+}
+
+console.log('\nOnly the duelist who goes first sits out the Battle Phase');
+{
+  /* Reported as "wait what I can attack on the first turn? that is a bug" —
+     and turn 1 was already refused; what was reached was turn 2, the *second*
+     duelist's own first turn, which the official rule allows and which the
+     owner confirmed should stay. Pinned so the decision is a decision rather
+     than an accident, and so nobody quietly widens it later. */
+  const s = createDuel({ seed: 12, p1: { duelistId: 'kaiba', name: 'A' }, p2: { duelistId: 'yugi', name: 'B' }, firstPlayer: ME });
+  ok(s.turn === 1 && s.active === ME, 'the duel opens on turn 1 with the first duelist', `turn ${s.turn} active ${s.active}`);
+  ok(!!applyAction(s, ME, { type: 'toPhase', phase: 'battle' }).error, 'who cannot reach the Battle Phase');
+  const second = act(s, ME, { type: 'endTurn' });
+  ok(second.turn === 2 && second.active === FOE, 'and turn 2 belongs to the other one', `turn ${second.turn}`);
+  ok(!applyAction(second, FOE, { type: 'toPhase', phase: 'battle' }).error,
+    'who may attack on their own first turn — the official rule, kept on purpose');
 }
 
 /* The summary goes LAST, and there is nothing after it.

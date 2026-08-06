@@ -530,7 +530,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a Trap, and the deck that most needs its enabler was the deck least able
        to afford it. The Field Zone is separate, so it costs him nothing now. */
     subKindOverride: 'Field',
-    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 600 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly at a cost of 500 Life Points per attack — but cannot attack the turn they are Summoned. When this card is sent to the Graveyard: destroy all your Toon monsters.',
+    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 600 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly — but cannot attack the turn they are Summoned.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
@@ -545,17 +545,6 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [{ op: 'search', filter: { kind: 'monster', toon: true } }],
       },
       {
-        /* The printed rule, and the whole counterplay story: the Toons only
-           exist while the book is open. Destroying Toon World — De-Spell,
-           Feather Duster, a Hunting Ground pop, Ultimate Dragon's arrival —
-           was already the intended answer to Pegasus; now it answers the
-           board too, not just the next summon. `onSentToGrave` fires when the
-           card is destroyed or replaced; a bounce keeps the book intact, so a
-           returned Toon World spares the Toons — closed, not burned. */
-        trigger: 'onSentToGrave',
-        ops: [{ op: 'destroy', target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }) }],
-      },
-      {
         trigger: 'continuous',
         ops: [],
         aura: {
@@ -566,17 +555,27 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              Reported as "Toon World as a field spell should be destroyable". */
           target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
           atk: 600,
-          /* The toll rides with the mischief: every direct attack a Toon
-             declares costs Pegasus 500 Life Points — the printed rule.
-             Effect-indestructible, NOT untargetable, since the 8000 pool:
+          /* Effect-indestructible, NOT untargetable, since the 8000 pool:
              this engine's `untargetable` skips every opposing effect, so
              Mirror Wall could not halve a Toon and Skull Dice could not
              shrink one, and at 8000 Life Points an attacker no card may
              even touch simply grinds the duel out (pegasus benched 74).
              Nothing can DESTROY a Toon while the book is open — that is
              the cartoon promise — but binds, debuffs and borrowings land,
-             and half the roster carries one. */
-          grants: ['directAttack', 'directAttackTax', 'indestructibleByEffect', 'pierce', 'summonSick'],
+             and half the roster carries one.
+
+             Two prices came off this card, both reported at once: "Toon
+             world is too weak now, monsters needing lp to attack is a lot
+             and destroying all monsters when the toon world is a lot".
+             The 500-a-swing toll is gone, and so is the clause that killed
+             the Toons when the book closed — closing it already takes the
+             600 ATK and the direct attack with it, and *that* is the
+             counterplay. Losing the buff is an answer the whole roster can
+             reach; losing the board as well was the same answer twice, and
+             it made a De-Spell into a one-card sweep of everything Pegasus
+             had committed. The book still gates the summon, so a Pegasus
+             without it is a Pegasus who cannot deploy. */
+          grants: ['directAttack', 'indestructibleByEffect', 'pierce', 'summonSick'],
         },
       },
     ],

@@ -342,7 +342,6 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
-  if (grants.has('directAttackTax')) merged.directAttackTax = true;
   if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
   return merged;
@@ -1727,18 +1726,11 @@ function resolveBattle(state: DuelState) {
   attacker.attacksUsed += 1;
 
   if (!susp.targetUid) {
-    /* The Toon toll: a declared direct attack costs its controller 500 Life
-       Points when the attacker carries the tax. Paid before the blow lands
-       and paid win-or-lose — mischief is not free. Only a true declared
-       direct attack pays; a target vanishing mid-swing is not mischief.
-       Through `dealDamage` so the payment is announced, floored and
-       winner-checked exactly like every other Life Point movement — a
-       duelist CAN pay themselves out at 500 or less, which is the bet. */
-    if (effFlags(state, attacker, controller).directAttackTax) {
-      log(state, `${state.players[controller].name} pays the toll for the direct attack.`, 'effect', controller);
-      dealDamage(state, controller, 500, false);
-      if (state.winner) return;
-    }
+    /* The Toon toll used to be charged here — 500 Life Points per declared
+       direct attack, carried by a `directAttackTax` grant. Reported as too
+       expensive ("monsters needing lp to attack is a lot") and removed with
+       the rest of that pricing pass; the flag went with it rather than
+       staying behind as a branch no card can reach. */
     const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
@@ -1890,6 +1882,28 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
   });
 }
 
+/**
+ * A card lying face-down is doing nothing.
+ *
+ * Reported as "effects of face down monsters like burn can not happen if they
+ * are face down — for example Marik's monster, if I end the turn and the
+ * monster is facedown it can't burn the enemy", and it was true of every
+ * standing-on-the-field trigger a Set monster carries: Bowganian burning for
+ * 1100 and Granadora draining 800 at the start of a turn it spent asleep, and
+ * Legendary Fiend quietly growing 700 a turn under its own card back.
+ *
+ * Everything else in the engine already had this right — `fieldCards` only
+ * lists face-up cards, so auras never applied; `canIgnite` refuses a face-down
+ * card; `fireOpponentSummon` filters to face-up watchers; a Set fires no summon
+ * trigger at all. These two loops were the last place that asked "is there a
+ * monster in the zone" instead of "is there a monster looking at the board".
+ *
+ * Deliberately not extended to `onDestroyed`/`onSentToGrave`: a card leaving
+ * the field leaves it whichever way up it was lying, and the engine already
+ * turns a Set monster face-up (`resolveFlip`) before the attack that kills it
+ * finishes — so a flip monster still pays out on the way down, which is the
+ * whole point of setting one.
+ */
 function startTurn(state: DuelState) {
   const pid = state.active;
   const p = state.players[pid];
@@ -1901,7 +1915,7 @@ function startTurn(state: DuelState) {
   log(state, `Turn ${state.turn} — ${p.name}'s turn.`, 'system', pid);
   anim(state, { kind: 'phase', player: pid, text: `${p.name}'s Turn` });
 
-  for (const m of p.monsters) if (m) fireTriggers(state, m, pid, 'onOwnTurnStart', {});
+  for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnStart', {});
   if (state.winner) return;
 
   const skipDraw = state.ongoing.some((o) => o.kind === 'skipDraw' && o.target === pid);
@@ -1948,7 +1962,7 @@ function endTurn(state: DuelState) {
   const pid = state.active;
   state.phase = 'end';
   const p = state.players[pid];
-  for (const m of p.monsters) if (m) fireTriggers(state, m, pid, 'onOwnTurnEnd', {});
+  for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnEnd', {});
   if (p.field) fireTriggers(state, p.field, pid, 'onOwnTurnEnd', {});
   if (state.winner) return;
 

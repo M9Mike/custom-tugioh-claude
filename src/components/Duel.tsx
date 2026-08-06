@@ -107,6 +107,11 @@ interface Props {
   /** Tells the room whether the board is still narrating, so the computer's
       next action waits for the current one to finish being announced. */
   setAnimating?: (busy: boolean) => void;
+  /** Tells the room that somebody is looking at the board, so the computer
+      never plays a turn nobody is there to watch. Required rather than
+      optional: a call site that forgets it would silently stop the computer,
+      and that is the kind of thing the compiler should catch. */
+  setWatching: (watching: boolean) => void;
   /** The spectator's pause — see useDuelRoom, where not-nudging is the pause. */
   paused?: boolean;
   setPaused?: (p: boolean) => void;
@@ -192,7 +197,7 @@ function PlayerBar({
   );
 }
 
-export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating, paused, setPaused }: Props) {
+export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating, setWatching, paused, setPaused }: Props) {
   const state = view.state!;
   const me = view.you;
   const foe = other(me);
@@ -311,6 +316,35 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     primeAudio();
     setSoundOn(getSfxEnabled());
   }, []);
+
+  /**
+   * Somebody is looking at the board.
+   *
+   * The computer plays one action per nudge and the nudge loop lives in
+   * `useDuelRoom` — the *room*, not this component — so it kept asking the
+   * computer for its next move while the player was on a screen that is not
+   * the board. In a tournament that is guaranteed: every round opens on the
+   * bracket and the player walks into their duel by tapping Continue, so if
+   * the computer had the first turn it played the whole thing behind the
+   * bracket. Walking in afterwards, the board primes on a view where all of
+   * that has already happened and correctly treats it as history — it swallows
+   * the tail, exactly as it does when you re-join a duel mid-way. The player
+   * arrives at a board that was built while they were somewhere else.
+   *
+   * Reported as "the duel can not start with the ai just ending its turn (no
+   * matter if it played summoned set whatever, it must take place for the
+   * human to see)".
+   *
+   * So the computer waits for an audience. Mounting says the board is being
+   * watched and unmounting says it is not — which also covers tapping 🏆
+   * mid-duel to look at the bracket: the turn pauses and plays out when you
+   * come back. A tournament's *side* matches are driven by `bracketBusy` and
+   * are deliberately not gated on this, or the bracket would never resolve.
+   */
+  useEffect(() => {
+    setWatching(true);
+    return () => setWatching(false);
+  }, [setWatching]);
 
   // Cards are sized so an opening hand of five fits; past that the strip
   // scrolls, and the edge fade is the only thing that says so.
