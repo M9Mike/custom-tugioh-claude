@@ -44,6 +44,30 @@ async function post(path, body) {
 const { code, token } = await post('/api/room', { name: 'Mihail', vsAi: true });
 await post(`/api/room/${code}/act`, { kind: 'chooseDuelist', token, duelistId: 'yugi' });
 
+/**
+ * A dead renderer is not a failed assertion.
+ *
+ * WebKit drops its renderer often enough in this container that `npm run
+ * rejoin` was chased twice as a production bug before it learned to say so,
+ * and `npm run spectate` exited on a bare stack trace for the same reason.
+ * This probe is the third: it died against production having watched duel 1
+ * narrate 18 declarations, and reported a Node trace — which reads as the
+ * rematch being broken when what happened is that the page went away.
+ *
+ * Non-zero either way, because a run that proved nothing is not a pass — but
+ * it says which it was.
+ */
+const CRASHED = /crash|closed|Target (?:page|closed)|Session closed|Execution context/i;
+process.on('uncaughtException', (err) => {
+  const line = String(err instanceof Error ? err.message : err).split('\n')[0];
+  console.log(
+    CRASHED.test(line)
+      ? `\n⚠️  the page died before the run could finish (${line}) — this proves nothing`
+      : `\n❌ the run threw and stopped early — ${line}`
+  );
+  process.exit(1);
+});
+
 const browser = await webkit.launch();
 const ctx = await browser.newContext({ ...devices['iPhone 11'] });
 await ctx.addInitScript(

@@ -1358,6 +1358,12 @@ runs afterwards: three pass, three inconclusive, no false failures. The crash
 rate in this container is that high, which is why it was chased twice as a
 production bug.
 
+`npm run rematch` was the third to need it, and it died against production
+having already watched duel 1 narrate eighteen declarations — reporting a Node
+trace, which reads as the rematch being broken when what happened is that the
+page went away. All three classify now; if a fourth probe is ever written,
+give it the handler on the first day.
+
 `npm run spectate` needed the same lesson and had none of it — a flat
 top-level script, so a dead renderer exited on a bare Node stack trace with no
 verdict at all. It happened twice against production after six assertions had
