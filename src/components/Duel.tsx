@@ -1310,7 +1310,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     : [];
 
   return (
-    <div className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'hit-shake' : ''}`}>
+    /* `data-unspoken` is how many beats the board still owes the player. It is
+       the exact quantity the win screen waits on, so a probe can check the
+       thing itself rather than a stand-in: the first version of
+       `npm run winscreen` asserted "a Life Point bar reads 0", which is only
+       true of a duel that ended on damage — a deck-out ended one on 8700/5100
+       and the check went red against working code. */
+    <div data-unspoken={unspoken.length} className={`duel-root relative flex w-full flex-col overflow-hidden ${shakeOn ? 'hit-shake' : ''}`}>
       {/* Shown instead of the board when a phone is turned sideways — see the
           landscape rules in globals.css. Everything else is hidden by CSS, so
           no resize listener and no re-render. */}

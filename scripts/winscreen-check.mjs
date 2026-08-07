@@ -85,6 +85,7 @@ const run = async () => {
         if (window.__winSnap) return;
         if (!document.querySelector('[data-testid=win-screen]')) return;
         window.__winSnap = {
+          unspoken: Number(document.querySelector('.duel-root')?.getAttribute('data-unspoken') ?? -1),
           lps: [...document.querySelectorAll('[data-testid=lp]')].map((el) => Number(el.textContent)),
           declaring: !!document.querySelector('[data-testid=declaration]'),
         };
@@ -104,10 +105,13 @@ const run = async () => {
 
     ok(!!won, 'the duel played through to a result', won ? '' : `gave up after ${passes} passes`);
     if (won) {
-      ok(won.lps.length === 2, 'both Life Point bars are on screen with it', `${won.lps.length} found`);
-      ok(won.lps.some((n) => n === 0),
-        'and the moment it appears, a bar already reads 0 — the blow was spoken first',
-        `bars read ${won.lps.join(' / ')} when the modal went up`);
+      ok(won.unspoken >= 0, 'the board reports what it still owes', `read ${won.unspoken}`);
+      /* The thing itself, not a stand-in. Every ending is covered: a duel won
+         on damage, on a deck-out or by Exodia all have to arrive with the
+         board's account settled. */
+      ok(won.unspoken === 0,
+        'the moment the result appears, the board owes the player nothing',
+        `${won.unspoken} beat(s) still unspoken, bars read ${won.lps.join(' / ')}`);
     }
   } catch (e) {
     if (isDead(e)) {
