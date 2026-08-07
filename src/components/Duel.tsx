@@ -1748,6 +1748,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* hand action sheet */}
       {handCard && handDef && (
         <div
+          data-testid="hand-sheet"
           className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 sm:items-center"
           style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
           onClick={() => setMode({ kind: 'idle' })}

@@ -1425,11 +1425,39 @@ intermittent but never what it *was*. Capture the whole output, or grep for
 `❌|⚠️` and print the run in full when it is not green — which is what the
 diagnosis actually needs, and costs nothing on a passing run.
 
-That flake is real and unexplained, at roughly one run in eight against
-production and none locally. It is not worth guessing at: the probe's own
-documented failure mode is "did not reach the attack prompt", which real Paris
-latency would plausibly cause, but chasing a fix without a captured failure is
-how a check that cannot fail gets written.
+**And the first captured failure solved it in ten minutes.** That flake sat
+here for weeks as "real and unexplained, roughly one run in eight against
+production and none locally", with a guess attached — that it was the
+documented "did not reach the attack prompt" path, caused by real Paris
+latency. The guess was wrong in every part. The first run that was captured in
+full said:
+
+```
+❌ hand action sheet: -2587px above the edge, indicator is 34
+✅ attack / targeting prompt: starts at 67px, notch ends at 59
+```
+
+The attack prompt was fine, so latency was never in it. And −2587 is not a
+layout number, it is a *wrong element* number: the probe read
+`button:has-text("Cancel")).last()`, and the duel has **three** Cancels — the
+hand sheet's, the targeting banner's, and the target picker's. The sheet's is
+the **first** in DOM order, so `.last()` could never pick it once any other was
+on screen; the picker's sits underneath a `max-h-[70vh] overflow-y-auto` card
+grid, thousands of pixels down its own scroll container. Whether it happened at
+all turned on which card the shuffle put first in hand — which is exactly what
+"one in eight, never locally" looks like when the cause is a deck order rather
+than a network.
+
+The sheet carries `data-testid="hand-sheet"` now and the probe asks it by name,
+insisting on exactly one Cancel inside it rather than picking a positional
+match. Falsified by removing the sheet's own `paddingBottom` inset: 59px → 13px
+against a 34px indicator, red. Three clean runs with it restored.
+
+Two things to carry: **"never trust the first match" is just as true of the
+last one** — `.last()` looks more specific than `.first()` and is exactly as
+positional. And a probe that names the thing it is measuring cannot drift onto
+a different element when the screen changes, which is the only reason this was
+ever intermittent.
 
 **Thirty seconds is a localhost number.** Playwright's default navigation and
 click timeouts are generous against a local server and are *not* reliably

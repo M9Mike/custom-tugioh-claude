@@ -195,17 +195,38 @@ const main = async () => {
     if (!ok) bad += 1;
   };
 
-  // The hand action sheet is pinned to the bottom on a phone.
+  /* The hand action sheet is pinned to the bottom on a phone.
+   *
+   * Scoped to the sheet by name, and that is the whole of a flake this file
+   * chased for weeks. It used to read `button:has-text("Cancel")).last()` —
+   * and there are *three* Cancels in the duel: the sheet's, the targeting
+   * banner's, and the target picker's. The sheet's is the FIRST in DOM order,
+   * so `.last()` could never pick it once any other was on screen. Worse, the
+   * picker's Cancel sits underneath a `max-h-[70vh] overflow-y-auto` card
+   * grid, so with a long list it is thousands of pixels down its own scroll
+   * container — which is where the reported "-2587px above the edge" came
+   * from. Whether it happened at all turned on which card the shuffle put
+   * first in hand, which is why it read as one run in eight and never
+   * reproduced locally. Latency had nothing to do with it.
+   *
+   * "Never trust the first match" is already written down here. It is just as
+   * true of the last one. */
   await dismiss(a.page);
   await a.page.locator('[data-testid="hand-card"]').first().tap();
   await a.page.waitForTimeout(500);
-  const sheetCancel = a.page.locator('button:has-text("Cancel")').last();
-  if (await sheetCancel.count()) {
+  const sheet = a.page.locator('[data-testid="hand-sheet"]');
+  const sheetCancel = sheet.locator('button:has-text("Cancel")');
+  const cancels = await sheetCancel.count();
+  if (cancels === 1) {
     await clearsBottom('hand action sheet', sheetCancel);
     await sheetCancel.tap();
     await a.page.waitForTimeout(300);
-  } else {
+  } else if (cancels === 0) {
     console.log('  ❌ hand action sheet never opened'); bad += 1;
+  } else {
+    // Exactly one, or the measurement is ambiguous again — say which, rather
+    // than picking one and reporting a number nobody can trace.
+    console.log(`  ❌ hand action sheet has ${cancels} Cancel buttons — which one is the edge?`); bad += 1;
   }
 
   /* Then play until someone can attack. Both seats are driven, so this does not
