@@ -169,7 +169,7 @@ function PlayerBar({
               </span>
             )}
           </span>
-          <span className="font-display text-sm tabular-nums text-brassbright">{shownLp}</span>
+          <span data-testid="lp" className="font-display text-sm tabular-nums text-brassbright">{shownLp}</span>
         </div>
         <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-black/60">
           <div
@@ -832,7 +832,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      commit before the queue has said a word, so the fanfare used to play over
      the attack that was still being announced: you heard you had lost, and then
      watched the blow that did it. It waits for the same moment the modal does. */
-  const winScreenUp = !!state.winner && (forceWin || (settled && !hit));
+  /* `settled` alone is a commit too late. It is turned off inside the effect
+     that queues fresh beats, and `state.winner` arrives in the *same* commit as
+     the beats that killed you — so the render that first sees a winner still
+     reads the `settled: true` left over from the last quiet moment, and the
+     modal went up over a board that had not yet said a word. That is the
+     victory splash arriving early.
+     `unspoken` is derived during render from this very commit's `state.anims`,
+     so it is true the instant the killing blow lands and there is no ordering
+     hole to lose. Same lesson as the Life Point total, which is held back by
+     the same list: the board must not know things the player has not been
+     told. `forceWin` is untouched and still the way out — three seconds of
+     silence shows the result however stuck the queue is. */
+  const winScreenUp = !!state.winner && (forceWin || (settled && !hit && unspoken.length === 0));
   useEffect(() => {
     if (!winScreenUp || !state.winner || sungFor.current === state.winner) return;
     sungFor.current = state.winner;
@@ -2138,7 +2150,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           The queue being empty is not enough on its own: the blow that ended the
           duel is still popping for another second after its event has played. */}
       {winScreenUp && (
-        <div className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
+        <div data-testid="win-screen" className="absolute inset-0 z-[60] grid place-items-center bg-black/85 p-6">
           <div className="panel grain w-full max-w-md rounded p-6 text-center">
             <p className="font-display text-3xl tracking-wide" style={{ color: spectator || state.winner === me ? '#e6c980' : '#c98a8a' }}>
               {state.winner === 'draw'

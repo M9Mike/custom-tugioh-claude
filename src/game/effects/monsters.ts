@@ -2387,7 +2387,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        overflowed the call stack the first time this deck was benched against
        Yami's. The engine carries a depth backstop for the general case; a
        card that can obviously loop should still carry its own limit. */
-    text: 'While you control a Fiend monster, this card gains 800 ATK. Once per turn, when this card is destroyed: Special Summon it and 1 other monster with 1500 or less ATK from your Graveyard.',
+    text: 'While you control a Fiend monster, this card gains 800 ATK. Once per turn, when this card is destroyed: Special Summon it and 1 other monster with 1500 or less ATK from your Graveyard, both in face-up Defense Position.',
     cry: 'You cannot kill what will not die.',
     effects: [
       {
@@ -2404,12 +2404,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onDestroyed',
         oncePerTurn: true,
         ops: [
-          { op: 'specialSummon', from: 'grave', side: 'own', filter: { slugs: ['revival-jam'] }, count: 1, position: 'atk', includeSelf: true },
+          { op: 'specialSummon', from: 'grave', side: 'own', filter: { slugs: ['revival-jam'] }, count: 1, position: 'def', includeSelf: true },
           /* Removal becomes income: the opponent breaking his board is how
              Marik rebuilds it. `oncePerTurn` is keyed by slug, so two copies
              share one revival a turn and the A-revives-B-revives-A shape is
              closed along with the original Slifer loop. */
-          { op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', maxAtk: 1500 }, count: 1, position: 'atk' },
+          { op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', maxAtk: 1500 }, count: 1, position: 'def' },
         ],
       },
     ],

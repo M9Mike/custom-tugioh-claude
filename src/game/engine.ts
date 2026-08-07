@@ -802,6 +802,20 @@ function divineSource(ctx?: EffectCtx): boolean {
 /** "Untargetable" only protects against the opponent's effects — and never against a God's. */
 function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, ctx?: EffectCtx): boolean {
   if (ctx && divineSource(ctx)) return false;
+  /* NO EFFECTS ON THE GODS. The decree in full: a Divine-Beast is reached by
+     no card effect whatsoever — not targeted, not destroyed, not bounced, not
+     banished, not negated, not stolen, not shrunk, not turned around. The only
+     thing that removes one is a bigger body in battle.
+     Checked *before* the `ctrl === actor` line, so it holds against your own
+     Dark Hole as well as theirs. That line exists so a protection cannot stop
+     its owner using their own card, and it was the hole this fell through:
+     Dark Hole sweeps both fields, so the God on the sweeper's own side was
+     never protected from it.
+     The one exception is written where it belongs and not here:
+     `returnBorrowedGods` takes a Special Summoned God back at the End Phase
+     through `toGrave` directly, which is the rental clause and is deliberately
+     not a destruction. */
+  if (isDivine(c.slug)) return true;
   const ctrl = controllerOf(state, c.uid);
   if (ctrl === actor) return false;
   return !!effFlags(state, c).untargetable;
@@ -830,6 +844,15 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
      `source` is the card responsible, so the decree is one check: a God's
      blow and a God's effect ignore the protection outright. */
   const divine = divineSource(ctx);
+  /* A God dies to a bigger body and to nothing else. `isProtectedTarget` keeps
+     every *targeting* effect off it, but a sweep that names no target — Dark
+     Hole, Torrential Tribute, Raigeki — arrives straight here, and that is how
+     Slifer was destroyed by a Dark Hole. Both doors, or the rule has a hole in
+     it. Another God is still above this one. */
+  if (!byBattle && isDivine(c.slug) && !divine) {
+    log(state, `${displayName(c)} is a God — no card effect may destroy it.`, 'effect', found.controller);
+    return;
+  }
   if (byBattle && flags.indestructibleByBattle && !divine) {
     log(state, `${displayName(c)} cannot be destroyed by battle.`, 'effect', found.controller);
     return;
@@ -1586,9 +1609,16 @@ function fireTriggersInner(
 function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): CardInstance[] {
   const p = state.players[pid];
   const out: CardInstance[] = [];
+  /* A condition is exactly the same shape as a cost, and was missed where the
+     cost was caught: Tornado Wall says "activate only while Umi is on the
+     field", was offered with no Umi anywhere, and `activateTrapCard` then
+     announced it, skipped the condition-gated effect and spent the card for
+     nothing. Reported from a real duel. Asked here so the card is never
+     offered, rather than refused after the window has already been fired. */
+  const live = (c: CardInstance) => (e: CardEffect) => !e.condition || conditionMet(state, e, c, pid);
   const st = p.spellTrap;
   if (st && CARDS[st.slug]?.kind === 'trap') {
-    const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && windowMatches(e.window, window));
+    const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && windowMatches(e.window, window)).filter(live(st));
     // A face-down trap cannot be activated on the turn it was set. A face-up
     // Continuous Trap has already served that wait, and one flagged `reusable`
     // goes off every time its window opens — that ongoing threat is the whole
@@ -1600,7 +1630,7 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
     if (ready && payable && effs.length) out.push(st);
   }
   for (const h of p.hand) {
-    const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)) ?? [];
+    const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)).filter(live(h)) ?? [];
     if (effs.length) out.push(h);
   }
   return out;
@@ -2063,11 +2093,17 @@ export function monstersFrozen(state: DuelState, pid: PlayerId): boolean {
 export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'battle' || state.active !== pid || state.winner || state.pending) return false;
   if (state.turn === 1) return false;
-  if (monstersFrozen(state, pid)) return false;
+  /* A God attacks through everything. Swords of Revealing Light, Nightmare's
+     Steelcage, Spellbinding Circle, Shadow Spell — every one of them is a card
+     effect, and no card effect touches a Divine-Beast. The lock still holds
+     down every mortal monster beside it, which is what keeps those cards worth
+     playing: they answer the board, they do not answer the God. */
+  const divine = isDivine(c.slug);
+  if (monstersFrozen(state, pid) && !divine) return false;
   // Held down by something on the field rather than by a timed lock, so it
   // lifts the instant that card is gone.
   const flags = effFlags(state, c, pid);
-  if (flags.cannotAttack) return false;
+  if (flags.cannotAttack && !divine) return false;
   if (c.face === 'down' || c.position !== 'atk') return false;
   // Tokens have always waited a turn; `summonSick` is the same rule worn as
   // an aura — a Toon summoned for free under Toon World waits out the turn
@@ -2803,7 +2839,12 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (action.phase === 'battle') {
         if (state.phase !== 'main') return { state: prev, error: 'You can only enter the Battle Phase from the Main Phase.' };
         if (state.turn === 1) return { state: prev, error: 'No attacks are allowed on the first turn.' };
-        if (state.ongoing.some((o) => o.kind === 'skipBattlePhase' && o.target === pid)) {
+        /* Unless a God is standing. Steelcage stops the Battle Phase itself
+           rather than the monsters in it, so exempting the God one level down
+           in `canAttackWith` would not have been enough — it could never reach
+           the phase to use the exemption. */
+        const godStanding = p.monsters.some((m) => m && m.face === 'up' && isDivine(m.slug));
+        if (!godStanding && state.ongoing.some((o) => o.kind === 'skipBattlePhase' && o.target === pid)) {
           return { state: prev, error: 'You must skip your Battle Phase.' };
         }
         state.phase = 'battle';
