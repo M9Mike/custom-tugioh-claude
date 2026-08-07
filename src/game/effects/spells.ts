@@ -1057,20 +1057,20 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        will be spent for the God, which is the right way round for this deck. */
     subKindOverride: 'Field',
     text:
-      'Field Spell: your monsters other than Divine-Beast monsters gain 400 ATK. ' +
-      'Once per turn, at the start of your turn: Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 400/DEF 400).',
+      'Field Spell: your monsters other than Divine-Beast monsters gain 300 ATK. ' +
+      'At the start of your turn: Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800).',
     cry: 'The mound remembers every soul it swallowed.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { kind: 'monster', excludeType: 'Divine-Beast' } }), atk: 400 },
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster', excludeType: 'Divine-Beast' } }), atk: 300 },
       },
       {
         /* The body engine, and the one income source that is not a card out of
            hand: three Tributes are only payable if the board refills itself. */
         trigger: 'onOwnTurnStart',
-        ops: [{ op: 'summonToken', name: 'Ka Token', atk: 400, def: 400, count: 1, artSlug: 'aswan-apparition' }],
+        ops: [{ op: 'summonToken', name: 'Ka Token', atk: 800, def: 800, count: 1, artSlug: 'aswan-apparition' }],
       },
     ],
   },
@@ -1133,19 +1133,29 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
        The aura is written for every monster she controls rather than for
        Fairies, because her ace is a Beast-Warrior: a Fairy-typed aura would
-       have skipped the one card the deck exists to land. Read live, so the
-       tomb filling up is ATK on the board in the same instant — the one thing
-       that makes this theme visible to an AI blind to Graveyards. */
-    text: 'Field Spell: monsters you control gain 150 ATK for each monster in your Graveyard.',
+       have skipped the one card the deck exists to land.
+
+       Flat, and that is the whole balance of this deck. The valley used to pay
+       *per monster in the Graveyard* — and so does Mudora, onto the same
+       cards, which is the Gazelle-and-Berfomet double-dip written down in
+       CLAUDE.md, one theme over: two auras counting the same quantity, where
+       the second one's only real function is doubling the first. Ishizu's mill
+       fills the tomb by design, so the two of them together were compounding
+       against a number the deck itself was racing upward: 3490 board ATK by
+       turn 4 against Yami's 2269, and 87% on the bench. Cutting the
+       coefficients moved nothing (83 → 87, inside the interval) because the
+       shape was wrong, not the number.
+       So the valley guards and Mudora counts. One card counting the dead is a
+       theme with an answer — destroy her, or destroy the valley — and it is
+       still read live, which is what keeps the tomb visible to an AI that
+       scores stats and is blind to Graveyards. */
+    text: 'Field Spell: monsters you control gain 300 ATK.',
     cry: 'The valley has been waiting for you.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: {
-          target: sel('own', 'all', { filter: { kind: 'monster' } }),
-          per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 150 },
-        },
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 300 },
       },
     ],
   },
@@ -1155,9 +1165,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        her guardians are paid for. Conditioned so it is never a blank — a mill
        into an empty board is the state the design is built for, but paying a
        card for nothing is not. */
-    text: 'Send the top 3 cards of your Deck to the Graveyard, then each guardian you control is worth what they are worth.',
+    text: 'Send the top 3 cards of your Deck to the Graveyard, then draw 1 card.',
     cry: 'The tomb takes its due.',
-    effects: [{ trigger: 'activate', ops: [{ op: 'mill', count: 3, who: 'own' }] }],
+    effects: [{ trigger: 'activate', ops: [{ op: 'mill', count: 3, who: 'own' }, { op: 'draw', count: 1, who: 'own' }] }],
   },
 
   'exchange-of-the-spirit': {
@@ -1166,7 +1176,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        no way to express and which would be a deck-out win condition the AI
        cannot see coming. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent declares an attack — negate the attack, and each guardian you control gains 500 ATK until the end of the turn.',
+    text: 'Trap: when your opponent declares an attack — negate the attack, send the top 3 cards of your Deck to the Graveyard, and each guardian you control gains 600 ATK until the end of the turn.',
     cry: 'I saw this before you drew it.',
     effects: [
       {
@@ -1175,7 +1185,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Exchange of the Spirit',
         ops: [
           { op: 'negateAttack' },
-          { op: 'gainAtk', amount: 500, target: sel('own', 'all', { filter: { kind: 'monster' } }), duration: 'turn' },
+          /* The mill is the buff here: every card it buries is another 300 on
+             every guardian through Necrovalley, so the negate and the pump are
+             the same sentence read twice. */
+          { op: 'mill', count: 3, who: 'own' },
+          { op: 'gainAtk', amount: 600, target: sel('own', 'all', { filter: { kind: 'monster' } }), duration: 'turn' },
         ],
       },
     ],
@@ -1183,7 +1197,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'blast-held-by-a-tribute': {
     /* Pre-emption that lands as removal AND damage, so the AI can see it. */
-    text: 'Trap: when your opponent declares an attack — destroy the attacking monster and inflict 1000 damage to your opponent.',
+    text: 'Trap: when your opponent declares an attack — destroy the attacking monster and inflict 800 damage to your opponent.',
     cry: 'The blast was set long before you came.',
     effects: [
       {
@@ -1192,7 +1206,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Blast Held by a Tribute',
         ops: [
           { op: 'destroy', target: sel('opp', 'attacker') },
-          { op: 'damage', amount: 1000, to: 'opp' },
+          { op: 'damage', amount: 800, to: 'opp' },
         ],
       },
     ],
@@ -1208,13 +1222,27 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        single Spell/Trap Zone free, because his traps are his monsters. A
        Continuous Spell here would have been the deck strangling itself. */
     subKindOverride: 'Field',
-    text: 'Field Spell: monsters you control gain 400 ATK and inflict piercing battle damage. Required to Summon "Mystical Beast of Serket".',
+    text: 'Field Spell: monsters you control gain 300 ATK, a further 100 ATK for each monster you control, and inflict piercing battle damage. Required to Summon "Mystical Beast of Serket".',
     cry: 'The temple opens for its keeper.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 400, grants: ['pierce'] },
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 300, grants: ['pierce'] },
+      },
+      {
+        /* The shrine pays the assembled guard. Odion's whole engine makes
+           bodies three at a time, so a bonus that counts them is the payoff
+           the deck was missing: a full board is +400 +900 on every one of
+           them, which is what "when three stand, they are terrible" should
+           feel like. Read live through `per`, so breaking the board takes the
+           bonus with it — that is the counterplay. */
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: sel('own', 'all', { filter: { kind: 'monster' } }),
+          per: { zone: 'ownField', filter: { kind: 'monster' }, atk: 100 },
+        },
       },
     ],
   },
@@ -1225,7 +1253,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        resolves, which is what stops a trap deck strangling itself on a single
        zone — the backrow becomes the board. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent declares an attack — negate the attack and Special Summon this card as a 1600/1800 Serpent monster.',
+    text: 'Trap: when your opponent declares an attack — negate the attack and Special Summon 3 "Apophis Serpent" Tokens (1300/1500) in Attack Position.',
     cry: 'The serpent was always coiled here.',
     effects: [
       {
@@ -1234,7 +1262,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Embodiment of Apophis',
         ops: [
           { op: 'negateAttack' },
-          { op: 'summonToken', name: 'Embodiment of Apophis', atk: 1600, def: 1800, count: 1, artSlug: 'embodiment-of-apophis', position: 'atk' },
+          /* Three, not one. A trap that spends the single Spell/Trap Zone and
+             leaves one body behind is a bad rate in a game whose register is
+             above anime OP; a trap that answers the attack and fills the board
+             is the card the deck is named for. It also turns the Temple on:
+             the shrine pays per monster standing, so the swarm buffs itself. */
+          { op: 'summonToken', name: 'Apophis Serpent', atk: 1300, def: 1500, count: 3, artSlug: 'embodiment-of-apophis', position: 'atk' },
         ],
       },
     ],
@@ -1244,28 +1277,28 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     /* The width version of the same idea: two bodies instead of one, and no
        attack needed to trigger it. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent Summons a monster — Special Summon 2 "Swamp Serpent" Tokens (1200/1200).',
+    text: 'Trap: when your opponent Summons a monster — Special Summon 3 "Swamp Serpent" Tokens (1400/1400).',
     cry: 'The swamp rises to meet you.',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentSummon',
         label: 'Apophis the Swamp Deity',
-        ops: [{ op: 'summonToken', name: 'Swamp Serpent', atk: 1200, def: 1200, count: 2, artSlug: 'apophis-the-swamp-deity' }],
+        ops: [{ op: 'summonToken', name: 'Swamp Serpent', atk: 1400, def: 1400, count: 3, artSlug: 'apophis-the-swamp-deity' }],
       },
     ],
   },
 
   'statue-of-the-wicked': {
     /* Removal becomes income: killing one of his leaves two behind. */
-    text: 'Trap: when a monster you control is destroyed — Special Summon 2 "Wicked Tokens" (1000/1000).',
+    text: 'Trap: when a monster you control is destroyed — Special Summon 3 "Wicked Tokens" (1200/1200).',
     cry: 'Break one, and two stand up.',
     effects: [
       {
         trigger: 'trap',
         window: 'monsterDestroyed',
         label: 'Statue of the Wicked',
-        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 1000, def: 1000, count: 2, artSlug: 'statue-of-the-wicked', position: 'atk' }],
+        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 1200, def: 1200, count: 3, artSlug: 'statue-of-the-wicked', position: 'atk' }],
       },
     ],
   },
@@ -1292,19 +1325,20 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'fake-trap': {
     /* The forgery. Odion plays a Ra that is not Ra, and the counterfeit is
-       worth exactly as much as the faith people put in it: a 3000/3000 body
-       that costs 2000 Life Points and is, in the end, only a token. It is not
+       worth exactly as much as the faith people put in it: a 4000/4000 body
+       that costs 1000 Life Points and is, in the end, only a token. It is not
        a Divine-Beast, it is not untargetable, and nothing about it is above
-       anything — which is the whole point of a forgery. */
-    text: 'Trap: pay 2000 Life Points; Special Summon 1 "Forged God Token" (Winged Beast/DIVINE/ATK 3000/DEF 3000). It is not a Divine-Beast.',
+       anything — which is the whole point of a forgery, and why it may wear
+       the real God's numbers without being the real God. */
+    text: 'Trap: pay 1000 Life Points; Special Summon 1 "Forged God Token" (Winged Beast/DIVINE/ATK 4000/DEF 4000). It is not a Divine-Beast.',
     cry: 'They will believe it is a god. That is enough.',
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Fake Trap — reveal the forgery',
-        cost: { lp: 2000 },
-        ops: [{ op: 'summonToken', name: 'Forged God Token', atk: 3000, def: 3000, count: 1, artSlug: 'fake-trap', position: 'atk' }],
+        cost: { lp: 1000 },
+        ops: [{ op: 'summonToken', name: 'Forged God Token', atk: 4000, def: 4000, count: 1, artSlug: 'fake-trap', position: 'atk' }],
       },
     ],
   },

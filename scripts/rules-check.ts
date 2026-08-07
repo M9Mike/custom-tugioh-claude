@@ -3406,6 +3406,31 @@ console.log('\nObelisk is the God that does not scale');
 
   ok(tributesRequired('obelisk-the-tormentor') === 3, 'it costs three bodies like any Divine-Beast');
 
+  /* Double Coston is two souls in one body, and the discount lives in
+     `tributesRequired` rather than in a tribute that pays double — because
+     five separate places pick the tributes and every one of them asks this
+     function, while a double-value tribute would have to be understood by all
+     five. Pinned here so the day somebody "simplifies" it back, the interface,
+     the AI, autoplay, the simulator and the audit do not quietly disagree. */
+  const coston = fresh();
+  coston.players[ME].monsters = [{ ...card(ME, 'double-coston'), face: 'up' as const }, null, null];
+  ok(tributesRequired('obelisk-the-tormentor', coston, ME) === 2,
+    'a Double Coston on the field pays for one of the God\'s three bodies',
+    `${tributesRequired('obelisk-the-tormentor', coston, ME)}`);
+  const hidden = structuredClone(coston);
+  hidden.players[ME].monsters[0]!.face = 'down';
+  ok(tributesRequired('obelisk-the-tormentor', hidden, ME) === 3,
+    'CONTROL: face-down, it pays nothing — a card lying face-down is doing nothing',
+    `${tributesRequired('obelisk-the-tormentor', hidden, ME)}`);
+  ok(tributesRequired('obelisk-the-tormentor', fresh(), ME) === 3,
+    'CONTROL: without one the God costs its full three');
+  /* And it is a discount, never a free summon: a Level 5 monster asking for
+     one tribute still asks for one. `need > 1` is what guards that, and it is
+     the difference between a strong card and a broken one. */
+  ok(tributesRequired('guardian-sphinx', coston, ME) === 1,
+    'it never takes a summon below one tribute',
+    `${tributesRequired('guardian-sphinx', coston, ME)}`);
+
   /* The Fist of Fate: two souls spent, their field erased, and the souls come
      out the other side as damage. The burn is what separates it from Ra. */
   const fist = fresh();
@@ -3452,12 +3477,23 @@ console.log('\nObelisk is the God that does not scale');
   ok(canAttackWith(rested, ME, rested.players[ME].monsters[0]!), 'CONTROL: a turn later it swings');
 }
 
-console.log('\nThe valley pays every guardian, including the one that is not a Fairy');
+console.log('\nThe valley guards every guardian; only Mudora counts the dead');
 {
-  /* Her ace is a Beast-Warrior, and the first draft wrote Necrovalley's aura
+  /* Two things pinned here, and the second is the one that cost a rebalance.
+
+     Her ace is a Beast-Warrior, and the first draft wrote Necrovalley's aura
      for Fairies — so the one card the deck exists to land was the one card the
      field did not pay. A deck whose ace does not benefit from its own hinge
-     has two themes. */
+     has two themes.
+
+     And the valley must NOT scale with the Graveyard, because Mudora does and
+     they land on the same cards. That is the Gazelle-and-Berfomet double-dip
+     one theme over: two auras counting the same quantity, the second's only
+     real function being to double the first — and against a deck whose whole
+     engine is milling itself, it compounded to 3490 board ATK by turn 4
+     against Yami's 2269. Trimming the coefficients moved the bench 83 → 87,
+     inside the interval, which is what a wrong *shape* looks like when you
+     tune its numbers. */
   const s = fresh();
   s.players[ME].field = { ...card(ME, 'necrovalley'), face: 'up' as const };
   const jackal = card(ME, 'mystical-knight-of-jackal');
@@ -3465,18 +3501,26 @@ console.log('\nThe valley pays every guardian, including the one that is not a F
   s.players[ME].monsters = [jackal, mudora, null];
   s.players[ME].grave = [];
   const bareJackal = effAtk(s, jackal, ME);
-  ok(bareJackal === baseAtkOf('mystical-knight-of-jackal'), 'an empty tomb pays nothing', `${bareJackal}`);
+  ok(bareJackal === baseAtkOf('mystical-knight-of-jackal') + 300,
+    'the valley pays her Beast-Warrior ace its flat 300', `${bareJackal}`);
 
   const buried = structuredClone(s);
   buried.players[ME].grave = [card(ME, 'kuriboh'), card(ME, 'battle-ox')];
   const j2 = buried.players[ME].monsters[0]!;
-  ok(effAtk(buried, j2, ME) === bareJackal + 300,
-    'two in the tomb is +300 to the Jackal — the aura reaches a Beast-Warrior',
+  ok(effAtk(buried, j2, ME) === bareJackal,
+    'and filling the tomb does not move him — the valley counts nothing',
     `${bareJackal} -> ${effAtk(buried, j2, ME)}`);
   const m2 = buried.players[ME].monsters[1]!;
   ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 300 + 400,
-    'and Mudora takes the valley\'s 300 on top of her own 200 a body',
+    'Mudora alone counts the dead: the valley\'s flat 300 and her own 200 a body',
     `${effAtk(buried, m2, ME)}`);
+  /* And the count is hers, so it keeps moving — the half that makes the theme
+     visible to an AI that scores stats and is blind to Graveyards. */
+  const deeper = structuredClone(buried);
+  deeper.players[ME].grave.push(card(ME, 'summoned-skull'));
+  ok(effAtk(deeper, deeper.players[ME].monsters[1]!, ME) === effAtk(buried, m2, ME) + 200,
+    'one more body in the tomb is exactly 200 more on her',
+    `${effAtk(deeper, deeper.players[ME].monsters[1]!, ME)}`);
 }
 
 console.log('\nOdion: the backrow stands up, and the forgery is only a forgery');
@@ -3508,7 +3552,7 @@ console.log('\nOdion: the backrow stands up, and the forgery is only a forgery')
   const revealed = act(forged, ME, { type: 'activateSetCard', uid: fake.uid, targets: [] });
   const token = revealed.players[ME].monsters.find((m) => m?.isToken);
   ok(!!token, 'the forgery puts a body on the board', on(revealed, ME).map((m) => m.slug).join(',') || 'empty');
-  ok(revealed.players[ME].lp === lp - 2000, 'and it costs its 2000 Life Points', `${revealed.players[ME].lp}`);
+  ok(revealed.players[ME].lp === lp - 1000, 'and it costs its 1000 Life Points', `${revealed.players[ME].lp}`);
   ok(!!token && CARDS[token.slug]?.type !== 'Divine-Beast',
     'but it is not a Divine-Beast — a forgery is above nothing', token ? String(CARDS[token.slug]?.type) : '?');
 }

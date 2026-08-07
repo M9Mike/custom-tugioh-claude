@@ -26,6 +26,7 @@
     "playable": "tsx scripts/playable-check.ts",
     "text": "tsx scripts/text-check.ts",
     "deck-bench": "tsx scripts/deck-bench.ts",
+    "shape": "tsx scripts/deck-shape.ts",
     "h2h": "tsx scripts/head-to-head.ts",
     "pacing": "node scripts/pacing-check.mjs",
     "layout": "node scripts/layout-check.mjs",

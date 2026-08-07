@@ -71,6 +71,7 @@ npm run pwa      http://localhost:3100               # standalone insets
 npm run anim     http://localhost:3100               # the flourish moves, the LP bar glides
 npm run audio    http://localhost:3100               # the AudioContext waits for a tap
 npm run deck-bench pegasus 100                       # a deck's real win rate, ±95%
+npm run shape    ishizu 24                           # *why* it wins: bodies, board ATK, clock
 npm run h2h      yami yamimarik 80                   # two decks against each other only
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 npm run rematch  http://localhost:3100               # the second duel narrates too
@@ -662,6 +663,33 @@ The path that actually broke was landing straight on a duel URL — a shared lin
 or the app restoring into a duel — because on that page nothing had been tapped
 yet. Coming through the home page happened to build it inside a click, which is
 why a probe that only walked the normal route passed on the broken code.
+
+**The audit read every side from a fixed seat, and two of its own drivers sit
+on the other one.** `onAttacked` and `onDestroyedByBattle` only fire on the
+side *being* attacked, so the card under test is placed on FOE — while
+`checkOp`'s expectations are written from the card's own point of view
+("damage `to: 'opp'`" must land on the other player). Every side was inverted
+for those two drivers: Kelbek's damage hit ME and the check looked at FOE.
+
+It survived because the four cards already using that path all pass **for the
+wrong reason**. They are all `onDestroyedByBattle`, so the +5000 attacker that
+fires the trigger also takes a slab off FOE's Life Points, and the check reads
+that *battle damage* as the effect's. The first card whose effect stops the
+attack before it lands — Kelbek bounces the attacker — is the first one where
+the accident stops working. `snap` takes the effect's own seat now.
+
+A proxy that happens to correlate is the trap this project keeps rediscovering,
+and it is worth noticing how quietly it fails: four cards were "verified" by a
+number the card never produced.
+
+**A `str.replace(a, b, 1)` across a card file is a loaded gun.** Trimming
+Mudora's `atk: 300` grave aura, I hit **Ra's** instead — the two lines are
+character-identical and Ra's comes first in the file. The God quietly stopped
+scaling and `npm run rules` turned three Ra pins red within seconds, which is
+the whole argument for pinning a card's arithmetic by name. Every bulk edit
+here now asserts `count(a) == 1` before writing, and the assertion fires
+*before* any file is opened for writing, so an ambiguous pattern aborts the
+whole batch rather than half-applying it. It caught two more the same session.
 
 **Loops the rules allow.** A monster could once be turned between Attack and Defence
 without limit — every move legal, the turn never ending. If the AI ever seems to hang,
@@ -1674,6 +1702,31 @@ edges are reserved by decree: **Pegasus (the creator) and the God cards sit at
 the top**, everyone else in a band around even. When a new duelist arrives,
 build the deck to this shape and measure it into that ladder.
 
+**Never nerf an existing duelist to make room for a new one.** The owner's
+standing instruction, verbatim: *"We never nurf other duelist we just buff the
+new ones personal cards to reach ~50% !!!"* — said after Priest Seto, Ishizu
+and Odion shipped at roughly 28% and were reported as *"omega weak"*. Only the
+newcomer's own unique cards move, in either direction, until the bench puts
+them in the band. A newcomer that lands too *high* is corrected the same way,
+by trimming its own cards; that is not a nerf of anybody, it is the same
+instruction with the sign reversed. And every card the newcomer holds has to
+be above anime OP like everything else in the game — a deck reaching the band
+by being mild is the wrong deck at the right number.
+
+Two consequences worth stating, because they look like exceptions and are not:
+
+- **The other decks' bench numbers will move anyway, and that is not a nerf.**
+  The bench is round-robin and zero-sum, so three competitive newcomers take
+  share from the twelve that were already there. Yami measured **63% ±12**
+  after this pass against 70–72 on record, without one of his cards being
+  touched. Read a change to somebody you did not edit as a measurement of the
+  field, never as a reason to buff them back.
+- **Overshooting is the cheap direction.** Buff hard, measure, then trim — the
+  first pass here went 28 → 73/75/83 and came back down. That is faster and
+  safer than creeping upward, because a deck that is too strong tells you
+  *which* card is doing it (see `npm run shape`), while a deck that is too weak
+  tells you nothing at all.
+
 The shape every deck follows:
 
 - **An enabler that finds itself.** A theme hinging on one card must search
@@ -1714,6 +1767,54 @@ The shape every deck follows:
   on second copies of enablers. Prefer that trade every time.
 
 The measurement discipline:
+
+- **A win rate says a deck is wrong; `npm run shape <id>` says what is wrong
+  with it.** Three decks came in at 83/75/73 against a 50% target. Every
+  coefficient on all three was trimmed substantially — Necrovalley 300→150,
+  Mudora 400→300, tokens down 20–30%, riders cut — and the bench answered
+  **87/72/63**, every interval overlapping the one before it. A whole round of
+  tuning that measured as nothing.
+
+  `deck-shape` reads the board instead of the result, and the answer was one
+  table:
+
+  | turn 4 | bodies | board ATK | duel ends |
+  |---|---|---|---|
+  | yami (the reference, ~63%) | 1.25 | 2269 | 8.7 |
+  | ishizu (87%) | 1.46 | 3490 | 7.3 |
+  | priestseto (75%) | 1.74 | 3598 | 6.7 |
+  | odion (73%) | 1.70 | 3378 | 7.2 |
+
+  Half again as much board by turn 4 and a duel a turn and a half shorter. So
+  the fault was **shape** — width and per-body power — and no amount of moving
+  numbers inside the wrong shape was going to reach it. Fixing the shape moved
+  all three to **62/60/52** in one pass.
+
+  Read it against a deck you consider correctly priced, not against absolutes:
+  the numbers move with the Life Point pool and with the roster.
+
+- **Two auras counting the same quantity onto the same cards is the recurring
+  bug, and it has a name.** Necrovalley paid every monster she controls 150 per
+  monster in the Graveyard; Mudora paid *herself* 300 more per monster in the
+  same Graveyard; and Ishizu's whole engine is milling herself, so the two
+  compounded against a number the deck was racing upward on purpose. Odion's
+  Temple and Priest Seto's Millennium Seeker each had their own version — a
+  flat field buff plus a `per: ownField` aura on a swarm the same deck makes
+  three at a time.
+
+  That is exactly Gazelle and Berfomet, written down two sections above, where
+  the second aura's *entire function was doubling the first*. It reappeared
+  three times in one afternoon because it is easy to write and invisible at the
+  card level: each aura reads perfectly reasonably on its own. The valley
+  guards and Mudora counts, now, and one card counting the dead is a theme with
+  an answer.
+
+  `npm run audit` could not see it either, and that was its own gap: the
+  exact-delta aura reading lifts the whole card, so on a card with two auras
+  the delta is their *sum* and the promised figure is simply wrong — the Temple
+  moved a body by 1300 and the audit called it a broken 400. It narrows the
+  definition to the one effect under test now, which measures Berfomet, Gazelle
+  and Toon World honestly for the first time.
 
 - **`npm run deck-bench <id> 100` is the ladder number; `npm run h2h <a> <b>`
   is the matchup number.** ±9-11 at 80-100 games; sim plays at random and lies

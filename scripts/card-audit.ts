@@ -181,9 +181,27 @@ function sideOf(s: DuelState, pid: PlayerId): Side {
   };
 }
 
-const snap = (s: DuelState): Snap => ({
-  me: sideOf(s, ME),
-  foe: sideOf(s, FOE),
+/**
+ * `me` is *the effect's own side*, not a fixed seat.
+ *
+ * Every expectation below is written from the point of view of the card being
+ * driven — "damage to: 'opp'" must land on the other player — and two of the
+ * drivers deliberately place the card on FOE, because a trigger like
+ * `onAttacked` only fires on the side being attacked. Read from a fixed seat,
+ * those two had every side inverted: Kelbek's 1200 hit ME and the check looked
+ * at FOE.
+ *
+ * It went unnoticed because the four cards already using the flipped drivers
+ * pass for the wrong reason — they are all `onDestroyedByBattle`, so the +5000
+ * attacker that fires the trigger *also* takes a slab off FOE's Life Points,
+ * and the check reads that battle damage as the effect's. The first card whose
+ * effect stops the attack before it lands (a bounce) is the first one where the
+ * accident stops working. A proxy that happens to correlate is the trap this
+ * project keeps rediscovering.
+ */
+const snap = (s: DuelState, self: PlayerId = ME): Snap => ({
+  me: sideOf(s, self),
+  foe: sideOf(s, self === ME ? FOE : ME),
   ongoing: s.ongoing.length,
   winner: s.winner ?? null,
   log: s.log.length,
@@ -531,15 +549,23 @@ const results: Result[] = [];
 const skipped: string[] = [];
 
 /** Runs `fire`, comparing snapshots around it and scoring the effect's ops. */
-function audit(def: CardDef, eff: CardEffect, s: DuelState, fire: (s: DuelState) => DuelState | string, ownAtkOffset = 0) {
-  const before = snap(s);
+function audit(
+  def: CardDef,
+  eff: CardEffect,
+  s: DuelState,
+  fire: (s: DuelState) => DuelState | string,
+  ownAtkOffset = 0,
+  /** Which seat controls the card being driven. See `snap`. */
+  self: PlayerId = ME
+) {
+  const before = snap(s, self);
   const fb = allFlags(s);
   const out = fire(s);
   if (typeof out === 'string') {
     results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: out, ok: false }], unverified: 0 });
     return;
   }
-  const after = snap(out);
+  const after = snap(out, self);
   // A monster arriving on the board raises my total ATK all by itself; that is
   // not the effect doing anything, so take its printed body back off.
   after.me.totalAtk -= ownAtkOffset;
@@ -977,10 +1003,30 @@ for (const def of Object.values(CARDS)) {
             atk: effAtk(s, fodder!, fodder!.owner),
             def: effDef(s, fodder!, fodder!.owner),
           });
-          lift();
-          const off = readOne();
-          restore();
-          const on = readOne();
+          /* Lifting the card takes *all* of its auras with it, so on a card
+             carrying more than one the delta is their sum and the exact figure
+             is wrong — which is precisely the fault the paragraph above
+             describes, one rung further up. The Temple of the Kings pays 400
+             flat and 300 more for every monster standing; lifting it moved a
+             body by 1300 and the check called that a broken 400.
+             So the *siblings* are put aside for the reading rather than the
+             card: the definition is narrowed to the one effect under test,
+             which every aura lookup reads live, and the delta can then only be
+             this aura's own promise. No rule is re-implemented to do it — the
+             engine still resolves the aura, it is simply given one to resolve.
+             This also measures Berfomet, Gazelle and Toon World for the first
+             time; before, a card with two auras was not measured at all. */
+          const all = def.effects;
+          def.effects = [eff];
+          let off, on;
+          try {
+            lift();
+            off = readOne();
+            restore();
+            on = readOne();
+          } finally {
+            def.effects = all;
+          }
           checks.push({
             what: `aura reaches ${CARDS[fodder.slug].name} for exactly ${wantAtk}/${wantDef}`,
             ok: on.atk - off.atk === wantAtk && on.def - off.def === wantDef,
@@ -1073,7 +1119,10 @@ for (const def of Object.values(CARDS)) {
         attacker.atkMod += 3000;
       }
       const targetUid = weak ? c.uid : (s.players[FOE].monsters.find((m) => m && m.uid !== c.uid)?.uid ?? null);
-      audit(def, eff, s, (st) => run(st, ME, { type: 'attack', uid: attacker.uid, targetUid }));
+      // `owner` — a weak trigger fires on the side being attacked, so the card
+      // under test is sitting on FOE and every expectation is written from
+      // there. See `snap`.
+      audit(def, eff, s, (st) => run(st, ME, { type: 'attack', uid: attacker.uid, targetUid }), 0, owner);
       continue;
     }
 

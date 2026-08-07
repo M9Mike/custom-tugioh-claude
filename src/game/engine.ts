@@ -2034,6 +2034,19 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
      they arrive, without anybody having to remember. Tokens count as bodies —
      Kuriboh's Multiply is how this deck gets there. */
   if (def?.type === 'Divine-Beast') need = 3;
+  /* Double Coston is two souls in one body, and the printed card says so:
+     "when Tributed for a DARK monster, it counts as 2 Tributes". A God is
+     DIVINE rather than DARK, so here it pays for the God instead — which is
+     the one line that makes Obelisk reachable off a board that is merely good
+     rather than perfect.
+     Written as a discount rather than as a double-value tribute on purpose.
+     Five separate places pick the tributes to pay — the interface, the AI,
+     autoplay, the simulator and the audit — and every one of them asks this
+     function, so a rule that lives here is a rule they all get. A tribute that
+     counted twice would have to be understood by all five, and this file's
+     longest-running lesson is what happens when one rule is copied into
+     several places: `summonBlocked` had already drifted in two of them. */
+  if (need > 1 && state && pid && faceUpOnSide(state, pid, 'double-coston')) need -= 1;
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
   // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World

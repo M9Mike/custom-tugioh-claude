@@ -2645,9 +2645,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'search', filter: { slugs: ['obelisk-the-tormentor', 'mound-of-the-bound-creator'] } },
           /* The fetched twin arrives by Special Summon, so it fires `onSummon`
-             and not `onNormalSummon` — one link, by construction, the same way
-             Viser Des is built. Two bodies off one Normal Summon is how three
-             Tributes ever become payable. */
+             and not `onNormalSummon` — no chain, by construction, the same way
+             Viser Des is built. Two bodies off one Normal Summon is the shape
+             that makes Yami Yugi the deck he is, and it is what makes three
+             Tributes payable at all.
+             It was three for a while, with a `per: ownField` aura on top so
+             the swarm bought its own buff. Measured: 1.74 bodies and 3598 board
+             ATK by turn 4, against 1.25 and 2269 for Yami — half again as much
+             board, a turn and a half sooner, and 75% on the bench. Three bodies
+             on a three-zone field is not a strong opening, it is a finished
+             duel, and the self-scaling aura was the Mound's flat buff counted a
+             second time on a swarm the same card had just made. */
           { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['millennium-seeker'] }, count: 1, position: 'atk' },
         ],
       },
@@ -2655,20 +2663,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'double-coston': {
-    /* The printed card counts as two Tributes for a DARK monster; a God is
-       DIVINE, so here it counts as two for the God itself. That is the line
-       that makes Obelisk reachable without a perfect board: Normal Summon the
-       Coston, add one more body, and the three Tributes are paid. */
+    /* The printed card counts as two Tributes for a DARK monster, and this is
+       the line that makes Obelisk reachable without a perfect board.
+       "Counts as two" is *said* the printed way and *done* one clause over: a
+       card that pays double would have to be understood by five separate
+       tribute pickers (the interface, the AI, autoplay, the simulator, the
+       audit), and this file already records what happens when one rule lives in
+       five places. Lightening the God's price instead lives in
+       `tributesRequired` alone, which every one of the five already asks — so
+       the text says what the engine does and nothing can drift. */
     text:
-      'When this card is Tributed for the Tribute Summon of a Divine-Beast monster, it counts as 2 Tributes. ' +
-      'While you control another Zombie monster, this card gains 500 ATK.',
+      'While you control this face-up card, a Divine-Beast monster you Tribute Summon requires 1 less Tribute. ' +
+      'While you control another Zombie monster, this card gains 900 ATK.',
     cry: 'Two souls, one body.',
     effects: [
       {
         trigger: 'continuous',
         condition: { controlsOtherOfType: 'Zombie' },
         ops: [],
-        aura: { target: SELF, atk: 500 },
+        aura: { target: SELF, atk: 900 },
       },
     ],
   },
@@ -2679,9 +2692,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        for the God, eaten by the Fist, or destroyed — because `onSentToGrave`
        fires for every departure from the field, which is exactly right for a
        card whose text says "sent to the Graveyard". */
-    text: 'When this card is sent to the Graveyard from the field: inflict 600 damage to your opponent.',
+    text: 'When this card is sent to the Graveyard from the field: inflict 900 damage to your opponent.',
     cry: 'My life is his to spend.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 600, to: 'opp' }] }],
+    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 900, to: 'opp' }] }],
   },
 
   'newdoria': {
@@ -2689,9 +2702,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        play rather than a cost. Deliberately `onSentToGrave` and not
        `onDestroyed`: being Tributed for the God is the *intended* way to cash
        it, so it has to pay out on a tribute too. */
-    text: 'When this card is sent to the Graveyard from the field: destroy 1 monster your opponent controls.',
+    text:
+      'When this card is sent to the Graveyard from the field: destroy 1 monster your opponent controls ' +
+      'and inflict 300 damage to your opponent.',
     cry: 'I take one with me.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'destroy', target: OPP_PICK }] }],
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          { op: 'destroy', target: OPP_PICK },
+          /* The burn is what makes feeding the Fist a *play* rather than a
+             price. Two of these eaten by Obelisk is two monsters gone, 1600
+             straight off the top, and the Fist's own damage on top of that. */
+          { op: 'damage', amount: 300, to: 'opp' },
+        ],
+      },
+    ],
   },
 
   'aswan-apparition': {
@@ -2699,15 +2725,29 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        infinite well — the same limit Revival Jam carries, and for the same
        reason: a card that answers its own destruction needs its own ceiling
        rather than relying on the engine's depth backstop. */
-    text: 'Once per turn, when this card is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard.',
+    text:
+      'Once per turn, when this card is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard, ' +
+      'then Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800).',
     cry: 'The tomb is not empty yet.',
     effects: [
       {
         trigger: 'onDestroyed',
         oncePerTurn: true,
-        ops: [{ op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['aswan-apparition'] }, count: 1, position: 'atk' }],
+        ops: [
+          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['aswan-apparition'] }, count: 1, position: 'atk' },
+          /* The token is the guarantee. Two Apparitions in the deck means the
+             revival can come up empty late, and a card whose whole job is to
+             refill the board must never answer a destruction with nothing —
+             that is the difference between a resilient deck and a deck that
+             only looks resilient in the opening hand. */
+          { op: 'summonToken', name: 'Ka Token', atk: 800, def: 800, count: 1, artSlug: 'aswan-apparition', position: 'atk' },
+        ],
       },
     ],
+    /* Once per turn, so the Fist cannot be fed from an infinite well — the same
+       limit Revival Jam carries, and for the same reason: a card that answers
+       its own destruction needs its own ceiling rather than relying on the
+       engine's depth backstop. */
   },
 
   'possessed-dark-soul': {
@@ -2715,14 +2755,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        work at all: the cost is paid before the ops run, so the zone this card
        vacates is the zone the stolen monster lands in — on a full board every
        other theft in the deck silently fizzles, and this one cannot. */
-    text: 'Tribute this card: take control of 1 monster your opponent controls with 1500 or less ATK.',
+    text: 'Tribute this card: take control of 1 monster your opponent controls with 2000 or less ATK.',
     cry: 'Your ka answers to me now.',
     effects: [
       {
         trigger: 'ignition',
+        /* 2500 rather than 1500 reaches almost everything on the roster that is
+           not a God or a Fusion — and a stolen body is worth double here,
+           because it is one fewer blocker across the table *and* one more soul
+           to feed the Fist with. */
         label: 'Tear out their ka',
         cost: { tributeSelf: true },
-        ops: [{ op: 'takeControl', target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 1500 } }), duration: 'permanent' }],
+        ops: [{ op: 'takeControl', target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 2000 } }), duration: 'permanent' }],
       },
     ],
   },
@@ -2742,7 +2786,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'While you control another Fairy monster, this card cannot be destroyed by battle.',
     cry: 'Anubis has already weighed you.',
     effects: [
-      { trigger: 'onBattleDestroy', ops: [{ op: 'mill', count: 3, who: 'opp' }] },
+      {
+        trigger: 'onBattleDestroy',
+        ops: [
+          { op: 'mill', count: 3, who: 'opp' },
+        ],
+      },
       {
         /* "Another Fairy" rather than "another monster": every tomb guardian
            in the deck is a Fairy, so the sentence is the same promise with a
@@ -2761,7 +2810,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        tomb filling up is ATK on the board in the same instant rather than
        stored value — which is the one thing that makes this theme visible to
        an AI that scores stats and is blind to Graveyards. */
-    text: 'This card gains 200 ATK for each monster in your Graveyard. When this card is Normal Summoned: send the top 2 cards of your Deck to the Graveyard.',
+    text: 'This card gains 200 ATK for each monster in your Graveyard. When this card is Normal Summoned: send the top 2 cards of your Deck to the Graveyard, then Special Summon 1 "Mudora" from your Deck.',
     cry: 'The dead are counted, and they answer to me.',
     effects: [
       {
@@ -2769,16 +2818,35 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 200 } },
       },
-      { trigger: 'onNormalSummon', ops: [{ op: 'mill', count: 2, who: 'own' }] },
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          { op: 'mill', count: 2, who: 'own' },
+          /* The mill and the twin are one sentence: four cards buried is 1200
+             on every guardian through Necrovalley and 1600 on each Mudora, and
+             the second body is what turns that arithmetic into a board. This is
+             the deck's whole engine in one Normal Summon — bury, then stand up
+             something that got bigger while you were burying. */
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['mudora'] }, count: 1, position: 'atk' },
+        ],
+      },
     ],
   },
 
   'keldo': {
     /* The enabler that finds itself: the deck hinges on Necrovalley and cannot
        be left hoping to draw it. */
-    text: 'When this card is Normal Summoned: add "Necrovalley" from your Deck to your hand.',
+    text: 'When this card is Normal Summoned: add "Necrovalley" from your Deck to your hand, then Special Summon 1 "Keldo" from your Deck.',
     cry: 'The valley remembers.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['necrovalley'] } }] }],
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          { op: 'search', filter: { slugs: ['necrovalley'] } },
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['keldo'] }, count: 1, position: 'atk' },
+        ],
+      },
+    ],
   },
 
   'kelbek': {
@@ -2792,7 +2860,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'onAttacked',
         oncePerTurn: true,
-        ops: [{ op: 'bounce', target: sel('opp', 'attacker') }],
+        ops: [
+          { op: 'bounce', target: sel('opp', 'attacker') },
+        ],
       },
     ],
   },
@@ -2801,13 +2871,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Body income out of the tomb, and the second half of the mill engine:
        every guardian that dies makes the next one bigger, so the deck is paid
        for losing as well as for winning. */
-    text: 'When this card is sent to the Graveyard from the field: Special Summon 1 "Agido" or "Keldo" from your Deck.',
+    text: 'When this card is sent to the Graveyard from the field: Special Summon 1 "Agido" or "Keldo" from your Deck, and send the top 2 cards of your Deck to the Graveyard.',
     cry: 'One falls, another rises.',
     effects: [
       {
         trigger: 'onSentToGrave',
         oncePerTurn: true,
-        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['agido', 'keldo'] }, count: 1, position: 'atk' }],
+        ops: [
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['agido', 'keldo'] }, count: 1, position: 'atk' },
+          /* Two up and two buried, so losing a guardian makes the survivors
+             bigger as well as more numerous. That is the whole promise of a
+             tomb deck and it was being paid one card at a time. */
+          { op: 'mill', count: 2, who: 'own' },
+        ],
       },
     ],
   },
@@ -2816,9 +2892,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The offering. Her biggest guardian, and worth more spent than standing —
        `onSentToGrave` so it pays whether it is Tributed for the Jackal or
        simply destroyed. */
-    text: 'When this card is sent to the Graveyard from the field: gain 1500 Life Points.',
+    text: 'When this card is sent to the Graveyard from the field: gain 1500 Life Points and draw 1 card.',
     cry: 'Take what is left of me.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'heal', amount: 1500, to: 'own' }] }],
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          { op: 'heal', amount: 1500, to: 'own' },
+          /* A 3500 Life Point swing and a card, for a body that was going to be
+             spent anyway. Ishizu's game is the long one — she wins by still
+             being there — and the offering is what buys the turns her Graveyard
+             needs to fill. */
+          { op: 'draw', count: 1, who: 'own' },
+        ],
+      },
+    ],
   },
 
   /* ================================================================ */
@@ -2829,14 +2917,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The enabler that finds itself. Odion's whole deck wants the Temple down,
        and a deck that hopes to draw its hinge is a deck that loses to its own
        shuffle. */
-    text: 'When this card is Normal Summoned: add "Temple of the Kings" from your Deck to your hand, then Special Summon 1 "Ra\'s Disciple" from your Deck.',
+    text: 'When this card is Normal Summoned: add "Temple of the Kings" from your Deck to your hand, then Special Summon 2 "Ra\'s Disciple" from your Deck in Attack Position.',
     cry: 'I keep the forgery, and the faith.',
     effects: [
       {
         trigger: 'onNormalSummon',
         ops: [
           { op: 'search', filter: { slugs: ['temple-of-the-kings'] } },
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['ra-s-disciple'] }, count: 1, position: 'def' },
+          /* Two, and in Attack Position. The Temple pays 400 flat plus 300 for
+             every monster standing, so three Disciples are 1100 + 400 + 900 =
+             2400 each rather than three 1100 bodies hiding in Defence — the
+             swarm is the payoff, and a swarm in Defence is invisible to the
+             race term the AI actually scores. */
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['ra-s-disciple'] }, count: 2, position: 'atk' },
         ],
       },
     ],
@@ -2849,12 +2942,27 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        and both test drivers all ask it. Take the Temple away and Odion is
        back to being only a wall, which is the counterplay. */
     summonRequires: 'temple-of-the-kings',
-    text: 'Requires "Temple of the Kings". Each time this card destroys a monster by battle, it gains 500 ATK permanently.',
+    text:
+      'Requires "Temple of the Kings". ' +
+      'Each time this card destroys a monster by battle, it gains 500 ATK permanently. ' +
+      'This card can attack twice during each Battle Phase.',
     cry: 'The scorpion feeds.',
     effects: [
       {
+        /* Two swings. The scorpion is the only card in Odion's deck that
+           actually kills, and a single 2500 attack a turn is not a win
+           condition behind a wall of traps — it is a clock so slow the deck
+           loses to time. Two attacks with a body that grows 800 every kill is
+           the finisher the traps have been buying turns for. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['doubleAttack'] },
+      },
+      {
         trigger: 'onBattleDestroy',
-        ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }],
+        ops: [
+          { op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' },
+        ],
       },
     ],
   },
@@ -2862,12 +2970,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'gravekeeper-s-spy': {
     /* A face-down card that turns out to be a threat — the shape of the whole
        deck, in monster form. */
-    text: 'FLIP: Special Summon 1 "Gravekeeper\'s Spy" from your Deck in Defense Position.',
+    text: 'FLIP: Special Summon 2 "Gravekeeper\'s Spy" from your Deck in Attack Position.',
     cry: 'You were watched the whole time.',
     effects: [
       {
         trigger: 'onFlip',
-        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['gravekeeper-s-spy'] }, count: 1, position: 'def' }],
+        /* Attack Position, and two of them. A 1200 body is nothing; a 1200 body
+           under the Temple standing beside two more is 1200 + 400 + 900 = 2500,
+           three times over. Every one of Odion's summons had been putting cards
+           down in Defence, which is exactly the shape of deck that never
+           closes a duel out. */
+        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['gravekeeper-s-spy'] }, count: 2, position: 'atk' }],
       },
     ],
   },
@@ -2880,7 +2993,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onFlip',
-        ops: [{ op: 'stealFromGrave', from: 'own', filter: { kind: 'trap' } }],
+        ops: [
+          { op: 'stealFromGrave', from: 'own', filter: { kind: 'trap' } },
+        ],
       },
     ],
   },
@@ -2888,10 +3003,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'wall-of-illusion': {
     /* The shield's shield: anything that hits it is sent home. Odion does not
        open, he answers, and this is the cheapest answer in the deck. */
-    text: 'When this card is attacked: return the attacking monster to its owner\'s hand after the damage step.',
+    text: 'When this card is attacked: return the attacking monster to its owner\'s hand after the damage step and inflict 600 damage to your opponent.',
     cry: 'A shield does not need to strike back.',
     effects: [
-      { trigger: 'onAttacked', ops: [{ op: 'bounce', target: sel('opp', 'attacker') }] },
+      {
+        trigger: 'onAttacked',
+        ops: [
+          { op: 'bounce', target: sel('opp', 'attacker') },
+          { op: 'damage', amount: 600, to: 'opp' },
+        ],
+      },
     ],
   },
 
@@ -2902,8 +3023,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        is one per turn cycle and the rest sit in hand. Two of those slots are
        this instead: a card that is face-down like a trap, answers like a trap,
        and is a 2400 wall in the meantime. */
-    text: 'FLIP: return every monster your opponent controls to their hand.',
+    text: 'FLIP: inflict 400 damage to your opponent for each monster they control, then return every monster your opponent controls to their hand.',
     cry: 'The sphinx wakes, and the field is swept.',
-    effects: [{ trigger: 'onFlip', ops: [{ op: 'bounce', target: OPP_ALL }] }],
+    effects: [
+      {
+        trigger: 'onFlip',
+        /* The damage is read *before* the sweep, because `perOppMonster` counts
+           what is standing when the op runs — put the bounce first and the
+           burn is always zero. Ops resolve in order, so the order is the
+           card. */
+        ops: [
+          { op: 'damage', amount: 400, scale: 'perOppMonster', to: 'opp' },
+          { op: 'bounce', target: OPP_ALL },
+        ],
+      },
+    ],
   },
 };
