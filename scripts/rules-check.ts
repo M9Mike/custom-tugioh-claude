@@ -488,9 +488,9 @@ console.log('\nA card already face-up on the field cannot be activated again');
 
 console.log('\nA card does what its text says, not a convenient half of it');
 {
-  /* Masaki survives battle only "while you control another Warrior". The grant
-     was handed out permanently on summon instead, so he was immortal standing
-     alone — which is the opposite of the card. */
+  /* Masaki no longer refuses to die — the owner traded the immortality for a
+     rate that counts his company, living and fallen. He is destroyed in battle
+     like anybody else, and the two rates are pinned below. */
   const alone = fresh('battle');
   const m1 = card(FOE, 'masaki-the-legendary-swordsman');
   m1.summonedOnTurn = 0;
@@ -506,13 +506,13 @@ console.log('\nA card does what its text says, not a convenient half of it');
   m2.summonedOnTurn = 0;
   guarded.players[FOE].monsters[0] = m2;
   guarded.players[FOE].monsters[1] = card(FOE, 'kojikocy'); // another Warrior
-  const killer2 = card(ME, 'summoned-skull');
+  const killer2 = card(ME, 'summoned-skull'); // 2500, over Masaki's 1100 + 500
   killer2.summonedOnTurn = 0;
   guarded.players[ME].monsters[0] = killer2;
   const after2 = act(guarded, ME, { type: 'attack', uid: killer2.uid, targetUid: m2.uid });
   ok(
-    after2.players[FOE].monsters.some((m) => m?.uid === m2.uid),
-    'and survives with another Warrior beside him'
+    !after2.players[FOE].monsters.some((m) => m?.uid === m2.uid),
+    'and with a comrade beside him too — the battle immunity is gone'
   );
 
   /* Rocket Warrior's second sentence had no effect behind it at all. It is
@@ -1996,7 +1996,10 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   bare2.players[ME].monsters = [alone, null, null];
   ok(!effFlags(bare2, alone, ME).indestructibleByBattle, 'CONTROL: an unshelled moth is soft');
 
-  /* Ring of Destruction burns both duelists now — the printed symmetry. */
+  /* Ring of Destruction burns the opponent alone — the owner took the recoil
+     off. The second assertion is the whole of the change and has to stay
+     explicit: the symmetric version was here for two passes, and "the opponent
+     took damage" is true under both. */
   const ring = fresh();
   const trap = card(ME, 'ring-of-destruction');
   trap.face = 'down';
@@ -2006,7 +2009,8 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   ring.players[FOE].monsters = [target, null, null];
   const boom = act(ring, ME, { type: 'activateSetCard', uid: trap.uid, targets: [target.uid] });
   ok(boom.players[FOE].lp === 4000 - 1700, 'the ring burns the opponent for the ATK', `LP ${boom.players[FOE].lp}`);
-  ok(boom.players[ME].lp === 4000 - 1700, 'and its own duelist for exactly the same', `LP ${boom.players[ME].lp}`);
+  ok(boom.players[ME].lp === 4000, 'and leaves its own duelist untouched', `LP ${boom.players[ME].lp}`);
+  ok(!boom.players[FOE].monsters.some((m) => m?.uid === target.uid), 'and the monster still dies');
 }
 
 console.log('\nThe balance pass, second turn of the wheel');
@@ -3571,6 +3575,386 @@ console.log('\nOnly the duelist who goes first sits out the Battle Phase');
   ok(second.turn === 2 && second.active === FOE, 'and turn 2 belongs to the other one', `turn ${second.turn}`);
   ok(!applyAction(second, FOE, { type: 'toPhase', phase: 'battle' }).error,
     'who may attack on their own first turn — the official rule, kept on purpose');
+}
+
+/* ------------------------------------------------------------------ *
+ * The owner's card pass: Yugi, Kaiba and Joey                          *
+ *                                                                      *
+ * Seventeen cards changed at once, and the generic harnesses cannot see *
+ * most of what changed: `npm run audit` proves an op *fires*, not that  *
+ * it fires for the right number or at the right side, and a swap from   *
+ * `both` to `opp` leaves every op exactly where it was. So each one is  *
+ * pinned here by the thing that was actually asked for.                 *
+ * ------------------------------------------------------------------ */
+
+console.log("\nYugi: the knight fetches his dragon, and the Champion goes around the board");
+{
+  // Curse of Dragon draws on top of shattering a backrow.
+  const s = fresh();
+  const cod = card(ME, 'curse-of-dragon'); // Level 5 — one tribute
+  s.players[ME].hand = [cod];
+  const codFodder = card(ME, 'mystical-elf');
+  s.players[ME].monsters = [codFodder, null, null];
+  s.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'mystical-elf')];
+  const backrow = card(FOE, 'mirror-force');
+  backrow.face = 'down';
+  s.players[FOE].spellTrap = backrow;
+  const drew = act(s, ME, {
+    type: 'normalSummon', uid: cod.uid, zone: 0, position: 'atk', face: 'up', tributes: [codFodder.uid], targets: [backrow.uid],
+  });
+  ok(drew.players[ME].hand.length === 1, 'Curse of Dragon draws 1 on summon', `hand ${drew.players[ME].hand.length}`);
+  ok(drew.players[FOE].spellTrap === null, 'and still shatters the backrow');
+
+  /* Gaia fetches BOTH named cards, which is why he carries two search ops:
+     one op with two slugs is a preference order and adds a single card. */
+  const g = fresh();
+  const knight = card(ME, 'gaia-the-fierce-knight'); // Level 7 — two tributes
+  g.players[ME].hand = [knight];
+  const kf1 = card(ME, 'mystical-elf');
+  const kf2 = card(ME, 'mystical-elf');
+  g.players[ME].monsters = [kf1, kf2, null];
+  /* The filler sits FIRST because the draw runs before the two searches and
+     `drawCard` shifts off the front — leave a combo piece on top and the draw
+     takes it, the search that wanted it finds nothing, and the test blames the
+     card for the deck order. */
+  g.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'polymerization'), card(ME, 'curse-of-dragon')];
+  const fetched = act(g, ME, {
+    type: 'normalSummon', uid: knight.uid, zone: 0, position: 'atk', face: 'up', tributes: [kf1.uid, kf2.uid],
+  });
+  const inHand = fetched.players[ME].hand.map((h) => h.slug);
+  ok(inHand.includes('polymerization'), 'Gaia The Fierce Knight fetches Polymerization', inHand.join(','));
+  ok(inHand.includes('curse-of-dragon'), 'and Curse of Dragon as well', inHand.join(','));
+  ok(inHand.length === 3, 'and draws 1 on top of the pair', `hand ${inHand.length}`);
+
+  /* One of the two is missing and he still takes the other — the owner's
+     "if just one is in the deck add that one only". */
+  const half = fresh();
+  const knight2 = card(ME, 'gaia-the-fierce-knight');
+  half.players[ME].hand = [knight2];
+  const hf1 = card(ME, 'mystical-elf');
+  const hf2 = card(ME, 'mystical-elf');
+  half.players[ME].monsters = [hf1, hf2, null];
+  half.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'curse-of-dragon')];
+  const halfDone = act(half, ME, {
+    type: 'normalSummon', uid: knight2.uid, zone: 0, position: 'atk', face: 'up', tributes: [hf1.uid, hf2.uid],
+  });
+  ok(
+    halfDone.players[ME].hand.filter((h) => h.slug === 'curse-of-dragon').length === 1,
+    'and with only one of the pair in the Deck he takes that one'
+  );
+
+  /* The Champion: two attacks, either of which may go around the board for
+     half. Fusion Summoned properly, because the draw rides on the summon. */
+  const f = fresh();
+  const champ = card(ME, 'gaia-the-dragon-champion');
+  const mat1 = card(ME, 'gaia-the-fierce-knight');
+  const mat2 = card(ME, 'curse-of-dragon');
+  f.players[ME].extra = [champ];
+  f.players[ME].monsters = [mat1, mat2, null];
+  f.players[ME].hand = [card(ME, 'polymerization')];
+  f.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'mystical-elf')];
+  const fused = act(f, ME, {
+    type: 'fusionSummon', extraUid: champ.uid, materials: [mat1.uid, mat2.uid], zone: 0, position: 'atk',
+  });
+  ok(fused.players[ME].hand.length === 1, 'Gaia the Dragon Champion draws 1 when Fusion Summoned', `hand ${fused.players[ME].hand.length}`);
+  const onField = fused.players[ME].monsters.find((m) => m?.slug === 'gaia-the-dragon-champion')!;
+  const cf = effFlags(fused, onField, ME);
+  ok(cf.directAttack === true, 'and can attack directly');
+  ok(cf.halvedDirectDamage === true, 'for half');
+  ok(cf.halvedBattleDamage !== true, 'but is NOT halved across the board — a monster still takes everything');
+  ok((cf.extraAttacks ?? 0) === 1, 'and still has both of its attacks', `extra ${cf.extraAttacks}`);
+
+  /* The halving is charged on the direct path and nowhere else. Champion is
+     2600; an empty field takes 1300, a Battle Ox eats the full 2600 - 1700. */
+  const swing = structuredClone(fused);
+  swing.phase = 'battle';
+  swing.turn = 8;
+  const champOnField = swing.players[ME].monsters.find((m) => m?.slug === 'gaia-the-dragon-champion')!;
+  champOnField.summonedOnTurn = 0;
+  champOnField.attacksUsed = 0;
+  const base = effAtk(swing, champOnField, ME);
+  const direct = act(swing, ME, { type: 'attack', uid: champOnField.uid, targetUid: null });
+  ok(
+    direct.players[FOE].lp === 4000 - Math.floor(base / 2),
+    'a direct swing lands for exactly half',
+    `LP ${direct.players[FOE].lp} of ${4000 - Math.floor(base / 2)}`
+  );
+
+  const intoMonster = structuredClone(fused);
+  intoMonster.phase = 'battle';
+  intoMonster.turn = 8;
+  const champ2 = intoMonster.players[ME].monsters.find((m) => m?.slug === 'gaia-the-dragon-champion')!;
+  champ2.summonedOnTurn = 0;
+  champ2.attacksUsed = 0;
+  const ox = card(FOE, 'battle-ox'); // 1700
+  ox.summonedOnTurn = 0;
+  intoMonster.players[FOE].monsters = [ox, null, null];
+  const through = act(intoMonster, ME, { type: 'attack', uid: champ2.uid, targetUid: ox.uid });
+  ok(
+    through.players[FOE].lp === 4000 - (base - 1700),
+    'and a swing THROUGH a monster is not halved',
+    `LP ${through.players[FOE].lp} of ${4000 - (base - 1700)}`
+  );
+}
+
+console.log('\nKaiba: the ring stops biting its owner, and the giant fetches the Pot');
+{
+  // Vorse Raider draws on top of the burn.
+  const s = fresh('battle');
+  const vorse = card(ME, 'vorse-raider'); // 1900
+  vorse.summonedOnTurn = 0;
+  s.players[ME].monsters = [vorse, null, null];
+  const prey = card(FOE, 'kuriboh'); // 300
+  prey.summonedOnTurn = 0;
+  s.players[FOE].monsters = [prey, null, null];
+  s.players[ME].deck = [card(ME, 'mystical-elf'), card(ME, 'kuriboh')];
+  const killed = act(s, ME, { type: 'attack', uid: vorse.uid, targetUid: prey.uid });
+  ok(killed.players[ME].hand.length === 1, 'Vorse Raider draws when it destroys a monster', `hand ${killed.players[ME].hand.length}`);
+
+  // Rude Kaiser swings at 1800 + 1000, not 1800 + 400.
+  const r = fresh('battle');
+  const kaiser = card(ME, 'rude-kaiser'); // 1800
+  kaiser.summonedOnTurn = 0;
+  r.players[ME].monsters = [kaiser, null, null];
+  const swung = act(r, ME, { type: 'attack', uid: kaiser.uid, targetUid: null });
+  ok(swung.players[FOE].lp === 4000 - 2800, 'Rude Kaiser declares at 1800 + 1000', `LP ${swung.players[FOE].lp}`);
+
+  /* Hitotsu-Me Giant takes Pot of Greed back out of its OWN Graveyard, and
+     only Pot of Greed — the slug filter is what stops it looting the pile. */
+  const h = fresh();
+  const giant = card(ME, 'hitotsu-me-giant');
+  h.players[ME].hand = [giant];
+  h.players[ME].grave = [card(ME, 'dark-hole'), card(ME, 'pot-of-greed'), card(ME, 'monster-reborn')];
+  const back = act(h, ME, { type: 'normalSummon', uid: giant.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(back.players[ME].hand.some((c) => c.slug === 'pot-of-greed'), 'Hitotsu-Me Giant returns Pot of Greed from the Graveyard');
+  ok(back.players[ME].hand.length === 1, 'and takes nothing else with it', `hand ${back.players[ME].hand.length}`);
+  ok(!back.players[ME].grave.some((c) => c.slug === 'pot-of-greed'), 'and it really left the Graveyard');
+
+  // No Pot down there and the summon simply happens.
+  const none = fresh();
+  const giant2 = card(ME, 'hitotsu-me-giant');
+  none.players[ME].hand = [giant2];
+  none.players[ME].grave = [card(ME, 'dark-hole')];
+  const quiet = act(none, ME, { type: 'normalSummon', uid: giant2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(quiet.players[ME].hand.length === 0, 'CONTROL: with no Pot in the Graveyard it takes nothing', `hand ${quiet.players[ME].hand.length}`);
+  ok(!!quiet.players[ME].monsters.find((m) => m?.uid === giant2.uid), 'and the giant is still summoned');
+}
+
+console.log('\nJoey: the underdog draws his own combo pieces');
+{
+  /* Alligator's Sword stopped poking and became the other half of the fusion.
+     Named order is a preference, so Baby Dragon comes first when both sit
+     in the Deck. */
+  const s = fresh();
+  const gator = card(ME, "alligator-s-sword");
+  s.players[ME].hand = [gator];
+  s.players[ME].deck = [card(ME, 'polymerization'), card(ME, 'baby-dragon'), card(ME, 'kuriboh')];
+  const got = act(s, ME, { type: 'normalSummon', uid: gator.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(got.players[ME].hand.length === 1, "Alligator's Sword adds exactly one card", `hand ${got.players[ME].hand.length}`);
+  ok(got.players[ME].hand[0].slug === 'baby-dragon', 'and it is Baby Dragon, the first name in its text', got.players[ME].hand[0].slug);
+  const swordOnField = got.players[ME].monsters.find((m) => m?.uid === gator.uid)!;
+  ok(effAtk(got, swordOnField, ME) === baseAtkOf(gator.slug), 'and the old +400 swing is gone', `ATK ${effAtk(got, swordOnField, ME)}`);
+
+  // Only Polymerization left, and it takes that instead.
+  const p = fresh();
+  const gator2 = card(ME, "alligator-s-sword");
+  p.players[ME].hand = [gator2];
+  p.players[ME].deck = [card(ME, 'polymerization'), card(ME, 'kuriboh')];
+  const poly = act(p, ME, { type: 'normalSummon', uid: gator2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(poly.players[ME].hand[0]?.slug === 'polymerization', 'and Polymerization when the dragon is elsewhere', poly.players[ME].hand[0]?.slug);
+
+  /* Flame Swordsman arms himself from EITHER pile, which is two ops: `search`
+     reads the Deck, `stealFromGrave` the Graveyard. */
+  const d = fresh();
+  const fsDeck = card(ME, 'flame-swordsman'); // Level 5 — one tribute
+  d.players[ME].hand = [fsDeck];
+  const dFodder = card(ME, 'mystical-elf');
+  d.players[ME].monsters = [dFodder, null, null];
+  d.players[ME].deck = [card(ME, 'salamandra'), card(ME, 'kuriboh')];
+  const fromDeck = act(d, ME, { type: 'normalSummon', uid: fsDeck.uid, zone: 0, position: 'atk', face: 'up', tributes: [dFodder.uid] });
+  ok(fromDeck.players[ME].hand.some((c) => c.slug === 'salamandra'), 'Flame Swordsman pulls Salamandra out of the Deck');
+
+  const gr = fresh();
+  const fsGrave = card(ME, 'flame-swordsman');
+  gr.players[ME].hand = [fsGrave];
+  const gFodder = card(ME, 'mystical-elf');
+  gr.players[ME].monsters = [gFodder, null, null];
+  gr.players[ME].deck = [card(ME, 'kuriboh')];
+  gr.players[ME].grave = [card(ME, 'salamandra')];
+  const fromGrave = act(gr, ME, { type: 'normalSummon', uid: fsGrave.uid, zone: 0, position: 'atk', face: 'up', tributes: [gFodder.uid] });
+  ok(fromGrave.players[ME].hand.some((c) => c.slug === 'salamandra'), 'and out of the Graveyard when that is where it is');
+  ok(
+    fromGrave.players[ME].hand.filter((c) => c.slug === 'salamandra').length === 1,
+    'and exactly one copy — the two ops cannot both land'
+  );
+
+  /* Time Wizard's bad half is the board and nothing else now. Both branches
+     are driven by seeding the state until the coin lands each way, so the
+     pin does not depend on which face a given seed shows. */
+  let sawTails = false;
+  let sawHeads = false;
+  for (let seed = 1; seed < 60 && !(sawTails && sawHeads); seed++) {
+    const t = fresh();
+    t.seed = seed;
+    const wizard = card(ME, 'time-wizard');
+    wizard.summonedOnTurn = 0;
+    t.players[ME].monsters = [wizard, card(ME, 'baby-dragon'), null];
+    t.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+    const rolled = act(t, ME, { type: 'ignition', uid: wizard.uid, targets: [] });
+    const mineGone = !rolled.players[ME].monsters.some((m) => m?.slug === 'baby-dragon');
+    if (mineGone && !sawTails) {
+      sawTails = true;
+      ok(rolled.players[ME].lp === 4000, 'Time Wizard on tails costs the board and no Life Points', `LP ${rolled.players[ME].lp}`);
+      ok(!rolled.players[ME].monsters.some((m) => m?.slug === 'baby-dragon'), 'and the board really did go');
+    } else if (!mineGone && !sawHeads) {
+      sawHeads = true;
+      ok(
+        !rolled.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
+        'CONTROL: heads still clears their side'
+      );
+    }
+  }
+  ok(sawTails && sawHeads, 'and both faces of the coin were reached', `tails ${sawTails} heads ${sawHeads}`);
+
+  /* Garoozis feeds off its own die: 100 ATK a pip, applied ONCE with one log
+     line rather than once per pip. Damage stays at 200 a pip. */
+  const g = fresh('battle');
+  const garo = card(ME, 'garoozis'); // 1800
+  garo.summonedOnTurn = 0;
+  g.players[ME].monsters = [garo, null, null];
+  const morsel = card(FOE, 'kuriboh'); // 300
+  morsel.summonedOnTurn = 0;
+  g.players[FOE].monsters = [morsel, null, null];
+  g.players[ME].deck = [card(ME, 'mystical-elf'), card(ME, 'kuriboh')];
+  const rolledOut = act(g, ME, { type: 'attack', uid: garo.uid, targetUid: morsel.uid });
+  const garoAfter = rolledOut.players[ME].monsters.find((m) => m?.uid === garo.uid)!;
+  const gained = effAtk(rolledOut, garoAfter, ME) - baseAtkOf('garoozis');
+  /* The ATK gain fires in `onBattleDestroy`, which is *after* the damage step,
+     so the swing itself still landed for the printed 1800 - 300. Anything left
+     on top of that is the die. */
+  const battleDamage = baseAtkOf('garoozis') - baseAtkOf('kuriboh');
+  const burned = 4000 - battleDamage - rolledOut.players[FOE].lp;
+  ok(gained >= 100 && gained <= 600 && gained % 100 === 0, 'Garoozis gains 100 ATK a pip', `gained ${gained}`);
+  ok(burned === gained * 2, 'and the burn is the same roll at 200 a pip', `burn ${burned} vs gain ${gained}`);
+  ok(rolledOut.players[ME].hand.length === 1, 'and it still draws afterwards', `hand ${rolledOut.players[ME].hand.length}`);
+
+  /* Masaki counts his company, living and fallen — and never himself. */
+  const m = fresh();
+  const masaki = card(ME, 'masaki-the-legendary-swordsman'); // 1100
+  m.players[ME].monsters = [masaki, null, null];
+  ok(effAtk(m, masaki, ME) === 1100, 'Masaki alone is his printed 1100', `ATK ${effAtk(m, masaki, ME)}`);
+
+  const withOne = fresh();
+  const masaki2 = card(ME, 'masaki-the-legendary-swordsman');
+  withOne.players[ME].monsters = [masaki2, card(ME, 'kojikocy'), null]; // Kojikocy is a Warrior
+  ok(effAtk(withOne, masaki2, ME) === 1100 + 500, 'one comrade is +500, and he does not count himself', `ATK ${effAtk(withOne, masaki2, ME)}`);
+
+  const withTwo = fresh();
+  const masaki3 = card(ME, 'masaki-the-legendary-swordsman');
+  withTwo.players[ME].monsters = [masaki3, card(ME, 'kojikocy'), card(ME, 'axe-raider')];
+  ok(effAtk(withTwo, masaki3, ME) === 1100 + 1000, 'two comrades are +1000', `ATK ${effAtk(withTwo, masaki3, ME)}`);
+
+  const buried = fresh();
+  const masaki4 = card(ME, 'masaki-the-legendary-swordsman');
+  buried.players[ME].monsters = [masaki4, null, null];
+  buried.players[ME].grave = [card(ME, 'kojikocy'), card(ME, 'axe-raider'), card(ME, 'baby-dragon')];
+  ok(
+    effAtk(buried, masaki4, ME) === 1100 + 200,
+    'and the fallen are +100 each — the Dragon in the pile is not one of them',
+    `ATK ${effAtk(buried, masaki4, ME)}`
+  );
+
+  const both = fresh();
+  const masaki5 = card(ME, 'masaki-the-legendary-swordsman');
+  both.players[ME].monsters = [masaki5, card(ME, 'kojikocy'), null];
+  both.players[ME].grave = [card(ME, 'axe-raider')];
+  ok(effAtk(both, masaki5, ME) === 1100 + 500 + 100, 'and the two rates stack', `ATK ${effAtk(both, masaki5, ME)}`);
+
+  const theirs = fresh();
+  const masaki6 = card(ME, 'masaki-the-legendary-swordsman');
+  theirs.players[ME].monsters = [masaki6, null, null];
+  theirs.players[FOE].monsters = [card(FOE, 'kojikocy'), null, null];
+  theirs.players[FOE].grave = [card(FOE, 'axe-raider')];
+  ok(effAtk(theirs, masaki6, ME) === 1100, "CONTROL: the opponent's Warriors are not his company", `ATK ${effAtk(theirs, masaki6, ME)}`);
+
+  /* Tiger Axe shatters a backrow on the way in, on top of the flinch. */
+  const t2 = fresh('battle');
+  const tiger = card(ME, 'tiger-axe');
+  tiger.summonedOnTurn = 0;
+  t2.players[ME].monsters = [tiger, null, null];
+  const set = card(FOE, 'mirror-force');
+  set.face = 'down';
+  set.summonedOnTurn = 0;
+  t2.players[FOE].spellTrap = set;
+  const struck = act(t2, ME, { type: 'attack', uid: tiger.uid, targetUid: null });
+  ok(struck.players[FOE].spellTrap === null, 'Tiger Axe destroys a Spell or Trap when it declares an attack');
+}
+
+console.log('\nJoey, the spells: one-sided swaps and a wind that costs them a card');
+{
+  /* Shield & Sword turns THEIR monsters inside out and leaves mine alone —
+     the whole of the change, and invisible to an op-level audit. */
+  const s = fresh();
+  const sns = card(ME, 'shield-sword');
+  s.players[ME].hand = [sns];
+  const mine = card(ME, 'battle-ox'); // 1700 / 1000
+  s.players[ME].monsters = [mine, null, null];
+  const theirs = card(FOE, 'battle-ox');
+  s.players[FOE].monsters = [theirs, null, null];
+  const swapped = act(s, ME, { type: 'activateSpell', uid: sns.uid, targets: [] });
+  const mineAfter = swapped.players[ME].monsters[0]!;
+  const theirsAfter = swapped.players[FOE].monsters[0]!;
+  ok(effAtk(swapped, theirsAfter, FOE) === 1000, 'Shield & Sword swaps the opponent down to their DEF', `ATK ${effAtk(swapped, theirsAfter, FOE)}`);
+  ok(effAtk(swapped, mineAfter, ME) === 1700, 'and leaves my own monster exactly as it was', `ATK ${effAtk(swapped, mineAfter, ME)}`);
+
+  /* Giant Trunade clears the backrow and then takes a card off them.
+
+     Only THEIR backrow is set, and that is not the test being lazy: this game
+     has one Spell/Trap Zone, so a Trunade in hand cannot be activated at all
+     while its owner's own zone is occupied — the engine refuses with "Your
+     Spell/Trap Zone is occupied". The card can only ever sweep the other side,
+     and pretending otherwise would be pinning a position no player can reach.
+
+     The hand count is the assertion the generic audit could not make: the
+     bounce refills the hand the discard empties, so the totals come out level.
+     Two in hand at the end can only happen if BOTH halves ran — bounce alone
+     leaves three, discard alone leaves one. */
+  const g = fresh();
+  const trunade = card(ME, 'giant-trunade');
+  g.players[ME].hand = [trunade];
+  const theirSet = card(FOE, 'mirror-force');
+  theirSet.face = 'down';
+  g.players[FOE].spellTrap = theirSet;
+  g.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'dark-hole')];
+  const blown = act(g, ME, { type: 'activateSpell', uid: trunade.uid, targets: [] });
+  ok(blown.players[FOE].spellTrap === null, 'Giant Trunade clears their backrow');
+  ok(
+    blown.players[FOE].hand.length === 2,
+    'and they end on 2: three in hand after the bounce, one discarded',
+    `hand ${blown.players[FOE].hand.length}`
+  );
+  ok(blown.players[FOE].grave.length === 1, 'with the discard landing in their Graveyard', `grave ${blown.players[FOE].grave.length}`);
+
+  /* Scapegoat's tokens were already legal tribute fodder — nothing changed
+     for it, which is exactly why it is pinned: the owner asked for it, and a
+     property nobody wrote down is a property somebody removes later. */
+  const t = fresh();
+  const goat = card(ME, 'scapegoat');
+  t.players[ME].hand = [goat];
+  const bleating = act(t, ME, { type: 'activateSpell', uid: goat.uid, targets: [] });
+  const tokens = bleating.players[ME].monsters.filter((m): m is CardInstance => !!m);
+  ok(tokens.length === 3 && tokens.every((m) => m.isToken), 'Scapegoat makes 3 tokens', `${tokens.length}`);
+  const skull = card(ME, 'summoned-skull'); // Level 6, one tribute
+  bleating.players[ME].hand = [skull];
+  bleating.players[ME].normalSummonUsed = false;
+  const paid = applyAction(bleating, ME, {
+    type: 'normalSummon', uid: skull.uid, zone: 0, position: 'atk', face: 'up', tributes: [tokens[0].uid],
+  });
+  ok(!paid.error, 'and a Sheep Token pays for a Tribute Summon', paid.error ?? '');
+  ok(
+    paid.state.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'with the tributed monster actually arriving'
+  );
 }
 
 /* The summary goes LAST, and there is nothing after it.

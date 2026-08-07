@@ -123,6 +123,21 @@ const COSTS: { phrase: RegExp; needs: (def: CardDef) => boolean; label: string }
           !!e.aura?.grants?.includes('halvedBattleDamage')
       ),
   },
+  /* The narrower bargain, and it needs its own rule: a card that pays only on
+     the direct swing carries `halvedDirectDamage`, which the clause above does
+     not accept — and the clause above's phrase does not reach this sentence
+     either, so without this one Gaia the Dragon Champion could promise the
+     price and never be charged it. */
+  {
+    phrase: /\bbattle damage from a direct attack is halved\b|\bdirect attacks? (?:deals?|inflicts?) half\b/i,
+    label: 'its battle damage from a direct attack is halved',
+    needs: (def) =>
+      def.effects.some(
+        (e) =>
+          e.ops.some((o) => o.op === 'halvedDirectDamage') ||
+          !!e.aura?.grants?.includes('halvedDirectDamage')
+      ),
+  },
 ];
 
 /** The sentence a phrase sits in, so a trigger clause elsewhere cannot excuse it. */

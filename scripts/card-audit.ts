@@ -294,7 +294,28 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
     case 'takeControl':
       return { what: "takes control of an opponent's monster", ok: b.me.borrowed > a.me.borrowed || fell(a.foe.monsters, b.foe.monsters) };
     case 'bounce':
-      return { what: 'returns a card to the hand', ok: grew(a.foe.hand, b.foe.hand) || grew(a.me.hand, b.me.hand) };
+      /* The `search`/`discard` trap one more time, and Giant Trunade is the
+         card that walked into it: it returns their backrow *and* makes them
+         discard, so the hand it filled is the same size it started, and a check
+         that could only see the total reported a bounce that plainly happened
+         as not happening. What a bounce always does is take a card off the
+         field, so that is what is asked.
+
+         Deliberately not "a card with a new slug is in their hand": the discard
+         picks at random from the hand the bounce just refilled, so it can take
+         back the very card that arrived, and the check would fail on a dice
+         roll. Which cards move where is pinned per card in `npm run rules`,
+         where it is deterministic and the point. */
+      return {
+        what: 'returns a card to the hand',
+        ok:
+          grew(a.foe.hand, b.foe.hand) ||
+          grew(a.me.hand, b.me.hand) ||
+          (a.foe.spellTrap !== null && b.foe.spellTrap !== a.foe.spellTrap) ||
+          (a.me.spellTrap !== null && b.me.spellTrap !== a.me.spellTrap) ||
+          fell(a.foe.monsters, b.foe.monsters) ||
+          fell(a.me.monsters, b.me.monsters),
+      };
     case 'shuffleIntoDeck':
       return { what: 'shuffles a card into the Deck', ok: grew(a.me.deck, b.me.deck) || grew(a.foe.deck, b.foe.deck) };
     case 'gainAtk': {

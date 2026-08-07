@@ -89,7 +89,7 @@ const FACEDOWN: CardDef = {
  * card definitions: a definition may still say "when summoned: pierce", which
  * is how a player thinks of it, and the engine reads it as the property it is.
  */
-const PASSIVE_OPS = new Set(['pierce', 'directAttack', 'halvedBattleDamage', 'reflectBattleDamage', 'indestructibleByBattle', 'indestructibleByEffect', 'untargetable']);
+const PASSIVE_OPS = new Set(['pierce', 'directAttack', 'halvedBattleDamage', 'halvedDirectDamage', 'reflectBattleDamage', 'indestructibleByBattle', 'indestructibleByEffect', 'untargetable']);
 
 function liftPassives(effects: CardEffect[]): CardEffect[] {
   const out: CardEffect[] = [];

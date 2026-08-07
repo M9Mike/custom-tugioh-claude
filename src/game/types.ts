@@ -244,7 +244,7 @@ export type Op =
    *  Catapult Turtle throws a monster and it lands for what it was worth. */
   | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk'; to: Side }
   | { op: 'heal'; amount: number; to: Side }
-  | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField'; target: Selector; duration: Duration }
+  | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
   | { op: 'gainDef'; amount: number; target: Selector; duration: Duration }
   | { op: 'setAtk'; value: number; target: Selector }
   | { op: 'halveAtk'; target: Selector }
@@ -290,6 +290,7 @@ export type Op =
   | { op: 'attackAllMonsters' }
   | { op: 'directAttack'; duration: Duration }
   | { op: 'halvedBattleDamage'; duration: Duration }
+  | { op: 'halvedDirectDamage'; duration: Duration }
   | { op: 'reflectBattleDamage'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
   | { op: 'preventBattleDamage'; who: Side; duration: Duration }
@@ -363,6 +364,17 @@ export type EquipGrant =
    */
   | 'halvedBattleDamage'
   /**
+   * Only the *direct* swing is halved; a monster this card runs into still
+   * takes the full number.
+   *
+   * Deliberately not the same flag as `halvedBattleDamage`, which is the whole
+   * of Sky Scout's sentence and applies wherever the monster deals battle
+   * damage at all. Gaia the Dragon Champion is the other bargain — it may go
+   * around the board for half, or through it for everything — and folding the
+   * two together would quietly halve every attack the Champion makes.
+   */
+  | 'halvedDirectDamage'
+  /**
    * Attacking directly costs this monster's controller 500 Life Points per
    * attack — the Toon toll. Toon World grants it beside `directAttack`, so
    * the cartoon mischief is paid for out of Pegasus's own Life Points, which
@@ -421,6 +433,15 @@ export interface CardEffect {
       zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'field' | 'ownHand';
       /** Only count cards matching this. Omit to count everything there. */
       filter?: CardFilter;
+      /**
+       * Do not count the card whose effect this is — "for every *other* Warrior
+       * you control". Masaki is himself a Warrior standing on his own field, so
+       * without this he counts his own body and is never alone.
+       *
+       * Only meaningful on a field zone; a card cannot be in its own Graveyard
+       * or hand while it is on the field granting an aura.
+       */
+      excludeSelf?: boolean;
       atk?: number;
       def?: number;
     };
@@ -493,6 +514,8 @@ export interface CardFlags {
   attackAll?: boolean;
   /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
   halvedBattleDamage?: boolean;
+  /** Only this monster's *direct* battle damage is halved — see `EquipGrant`. */
+  halvedDirectDamage?: boolean;
   /** Attacking directly costs the controller 500 LP — see `EquipGrant`. */
   /** Cannot attack the turn it was Summoned — see `EquipGrant`. */
   summonSick?: boolean;

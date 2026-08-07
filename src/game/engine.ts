@@ -251,7 +251,8 @@ export const isEquipSpell = (slug: string) => equipOpOf(slug) !== null;
 function auraCount(
   state: DuelState,
   controller: PlayerId,
-  per: NonNullable<NonNullable<CardEffect['aura']>['per']>
+  per: NonNullable<NonNullable<CardEffect['aura']>['per']>,
+  selfUid?: string
 ): number {
   const pools: CardInstance[][] = [];
   const onField = (pid: PlayerId) => state.players[pid].monsters.filter((m): m is CardInstance => !!m);
@@ -261,7 +262,12 @@ function auraCount(
   else if (per.zone === 'ownField') pools.push(onField(controller));
   else pools.push(onField('p1'), onField('p2'));
   let n = 0;
-  for (const pool of pools) for (const c of pool) if (matchesFilter(c, per.filter)) n += 1;
+  for (const pool of pools) {
+    for (const c of pool) {
+      if (per.excludeSelf && c.uid === selfUid) continue;
+      if (matchesFilter(c, per.filter)) n += 1;
+    }
+  }
   return n;
 }
 
@@ -304,7 +310,7 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
       if (eff.aura.per) {
-        const n = auraCount(state, controller, eff.aura.per);
+        const n = auraCount(state, controller, eff.aura.per, source.uid);
         bonus.atk += n * (eff.aura.per.atk ?? 0);
         bonus.def += n * (eff.aura.per.def ?? 0);
       }
@@ -342,6 +348,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
+  if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
   if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
   return merged;
@@ -356,9 +363,25 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
  * 4 in this game by some distance. Applied wherever the monster deals battle
  * damage rather than only on a direct attack, because that is what the sentence
  * says: rounded down, the way every other halving here rounds.
+ *
+ * `halvedDirectDamage` is the narrower bargain — Gaia the Dragon Champion may
+ * go *around* the board for half or *through* it for everything — so it is
+ * charged only when `direct` says this swing hit the player. Callers that
+ * resolve a swing into a monster leave `direct` alone; the two that deal damage
+ * to a player with no defender in the way pass it, including the one where the
+ * target vanished mid-attack and the rest of the swing carries on as a direct.
  */
-function battleDamageFrom(state: DuelState, attacker: CardInstance, controller: PlayerId, raw: number): number {
-  return effFlags(state, attacker, controller).halvedBattleDamage ? Math.floor(raw / 2) : raw;
+function battleDamageFrom(
+  state: DuelState,
+  attacker: CardInstance,
+  controller: PlayerId,
+  raw: number,
+  direct = false
+): number {
+  const f = effFlags(state, attacker, controller);
+  if (f.halvedBattleDamage) return Math.floor(raw / 2);
+  if (direct && f.halvedDirectDamage) return Math.floor(raw / 2);
+  return raw;
 }
 
 export function maxAttacks(state: DuelState, c: CardInstance, controller: PlayerId): number {
@@ -658,6 +681,16 @@ interface EffectCtx {
   /** Set by negateAttack so battle resolution can be cancelled. */
   attackNegated?: boolean;
   battlePhaseEnded?: boolean;
+  /**
+   * Pips shown by the most recent `diceRoll` in this effect, for a `gainAtk`
+   * that scales with the roll.
+   *
+   * Read by an op *after* the roll rather than nested inside `perPip`, because
+   * `perPip` runs its ops once per pip: a gain of 100 written there would be
+   * six separate applications and — since `gainAtk` logs every time it moves a
+   * number — six beats reading "Garoozis gains 100 ATK" for one die.
+   */
+  lastRoll?: number;
 }
 
 function sideToPlayers(ctx: EffectCtx, side: Side): PlayerId[] {
@@ -942,6 +975,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         let amount = op.amount ?? 0;
         if (op.scale === 'perCardInGrave') amount = 200 * state.players[ctx.controller].grave.length;
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
+        /* Multiplies whatever the op already carries, so the card writes its
+           own rate: Garoozis says 100 per pip and a 4 is 400, in one beat. No
+           roll in this effect means no gain rather than a silent full amount. */
+        else if (op.scale === 'dicePips') amount = (op.amount ?? 0) * (ctx.lastRoll ?? 0);
         else if (op.scale === 'targetAtk') {
           const t = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid)?.c : null;
           amount = t ? effAtk(state, t) : 0;
@@ -1261,6 +1298,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'halvedBattleDamage':
         applyFlag(ctx.source, 'halvedBattleDamage', true, op.duration);
         break;
+      case 'halvedDirectDamage':
+        applyFlag(ctx.source, 'halvedDirectDamage', true, op.duration);
+        break;
       case 'pierce':
         applyFlag(ctx.source, 'pierce', true, op.duration);
         break;
@@ -1405,6 +1445,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         const roll = 1 + randInt(state, 6);
         log(state, `Dice roll: ${roll}!`, 'effect', ctx.controller);
         anim(state, { kind: 'activate', text: `⚄ ${roll}`, player: ctx.controller });
+        ctx.lastRoll = roll;
         for (let i = 0; i < roll; i++) runOps(ctx, op.perPip);
         break;
       }
@@ -1770,7 +1811,7 @@ function resolveBattle(state: DuelState) {
        expensive ("monsters needing lp to attack is a lot") and removed with
        the rest of that pricing pass; the flag went with it rather than
        staying behind as a branch no card can reach. */
-    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
+    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
     if (!state.winner) fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
@@ -1780,7 +1821,7 @@ function resolveBattle(state: DuelState) {
   const targetFound = findOnField(state, susp.targetUid);
   if (!targetFound) {
     // Target vanished — treat as a direct attack for the remaining swing.
-    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller));
+    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
     return;

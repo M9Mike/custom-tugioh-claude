@@ -89,7 +89,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'gaia-the-dragon-champion': {
-    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: this card can attack twice each Battle Phase and inflicts piercing battle damage.',
+    /* The rider can now go *around* the board as well as through it, and the
+       choice is the card: both of its swings pick freely between a monster for
+       full damage and the player for half. `directAttack` leaves every monster
+       on the menu (see `legalAttackTargets`), so the pair of attacks is intact
+       either way — and the halving is `halvedDirectDamage`, which is charged on
+       the direct path alone. `halvedBattleDamage` is Sky Scout's whole-sentence
+       version and would quietly halve the Champion's charges into monsters too,
+       which is the opposite of the bargain. */
+    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: draw 1 card. This card can attack twice each Battle Phase, inflicts piercing battle damage, and can attack directly — its battle damage from a direct attack is halved.',
     cry: 'Charge, my champion!',
     fusionMaterials: ['gaia-the-fierce-knight', 'curse-of-dragon'],
     effects: [
@@ -98,6 +106,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'pierce', duration: 'permanent' },
+          { op: 'directAttack', duration: 'permanent' },
+          { op: 'halvedDirectDamage', duration: 'permanent' },
+          { op: 'draw', count: 1, who: 'own' },
         ],
       },
     ],
@@ -108,7 +119,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        path, pumped, and goes straight for the face the turn it lands — the
        anime play, where the dragon leaps OVER the blockers. The rider stays
        a rider; the arrival is the payoff. */
-    text: "Fusion: Alligator's Sword + Baby Dragon. When Fusion Summoned: destroy 1 monster your opponent controls, gain 700 Life Points, and this card gains 400 ATK and can attack directly this turn.",
+    text: "Fusion: Alligator's Sword + Baby Dragon. When Fusion Summoned: destroy 1 monster your opponent controls, gain 700 Life Points, and this card gains 700 ATK and can attack directly this turn.",
     cry: 'Over their heads!',
     fusionMaterials: ["alligator-s-sword", 'baby-dragon'],
     effects: [
@@ -118,7 +129,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'heal', amount: 700, to: 'own' },
           { op: 'destroy', target: OPP_PICK },
-          { op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' },
+          { op: 'gainAtk', amount: 700, target: SELF, duration: 'turn' },
           { op: 'directAttack', duration: 'turn' },
         ],
       },
@@ -236,26 +247,37 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Said "attack twice this turn" while the engine had always granted it
        permanently — the words were wrong long before the grant became an aura;
        the trigger's mere existence was what satisfied the text check. Worded
-       like its siblings now, matching what it has always actually done. */
-    text: 'This card can attack twice each Battle Phase and inflicts piercing battle damage.',
+       like its siblings now, matching what it has always actually done.
+
+       The knight now fetches his own dragon and the card that marries them.
+       Two searches rather than one: a `search` op adds a single card, and the
+       slug list inside one is a *preference order* — "Poly or Curse of Dragon",
+       whichever it found first — which is not what "add both" means. One op per
+       card is the only way to take both, and each is a no-op when its card is
+       elsewhere, so a Curse of Dragon already in hand costs nothing. */
+    text: 'This card can attack twice each Battle Phase and inflicts piercing battle damage. When this card is summoned: draw 1 card, then add "Polymerization" and "Curse of Dragon" from your Deck to your hand.',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'pierce', duration: 'permanent' },
+          { op: 'draw', count: 1, who: 'own' },
+          { op: 'search', filter: { slugs: ['polymerization'] } },
+          { op: 'search', filter: { slugs: ['curse-of-dragon'] } },
         ],
       },
     ],
   },
 
   'curse-of-dragon': {
-    text: 'When this card is summoned: destroy 1 Spell or Trap your opponent controls. This card inflicts piercing battle damage.',
+    text: 'When this card is summoned: destroy 1 Spell or Trap your opponent controls, then draw 1 card. This card inflicts piercing battle damage.',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
           { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) },
+          { op: 'draw', count: 1, who: 'own' },
           { op: 'pierce', duration: 'permanent' },
         ],
       },
@@ -480,8 +502,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'rude-kaiser': {
-    text: 'When this card declares an attack: it gains 400 ATK until the end of the turn.',
-    effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' }] }],
+    text: 'When this card declares an attack: it gains 1000 ATK until the end of the turn.',
+    effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 1000, target: SELF, duration: 'turn' }] }],
   },
 
   'judge-man': {
@@ -492,8 +514,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'vorse-raider': {
-    text: 'When this card destroys a monster in battle: inflict 500 damage to your opponent.',
-    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 500, to: 'opp' }] }],
+    text: 'When this card destroys a monster in battle: inflict 500 damage to your opponent, then draw 1 card.',
+    effects: [
+      {
+        trigger: 'onBattleDestroy',
+        ops: [
+          { op: 'damage', amount: 500, to: 'opp' },
+          { op: 'draw', count: 1, who: 'own' },
+        ],
+      },
+    ],
   },
 
   'la-jinn-the-mystical-genie-of-the-lamp': {
@@ -510,8 +540,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'hitotsu-me-giant': {
-    text: 'This card inflicts piercing battle damage.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] }],
+    /* `stealFromGrave` reads a Graveyard and puts the card in the hand, which
+       is what "return it to your hand" is; `from: 'own'` keeps it to Kaiba's
+       own, and the slug filter means it can only ever come back with the one
+       card. Nothing there to take is simply nothing — the op leaves the rest
+       of the summon alone. */
+    text: 'This card inflicts piercing battle damage. When this card is summoned: if "Pot of Greed" is in your Graveyard, return it to your hand.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'pierce', duration: 'permanent' },
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['pot-of-greed'] } },
+        ],
+      },
+    ],
   },
 
   'ryu-kishin-powered': {
@@ -538,7 +581,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'flame-swordsman': {
-    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK. This card inflicts piercing battle damage.',
+    /* He arms himself. Deck and Graveyard are two different ops — `search`
+       reads the Deck, `stealFromGrave` the Graveyard — and running both is
+       safe rather than greedy precisely because the deck holds one Salamandra:
+       whichever pile it is in, the other op finds nothing and does nothing. */
+    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK, then add "Salamandra" from your Deck or Graveyard to your hand. This card inflicts piercing battle damage.',
     cry: 'Flame Blast!',
     effects: [
       {
@@ -546,6 +593,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'pierce', duration: 'permanent' },
           { op: 'destroy', target: sel('opp', 'all', { filter: { maxAtk: 1500 } }) },
+          { op: 'search', filter: { slugs: ['salamandra'] } },
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['salamandra'] } },
         ],
       },
     ],
@@ -571,7 +620,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'time-wizard': {
-    text: 'Once per turn: flip a coin. Heads — destroy every monster your opponent controls. Tails — destroy every monster you control and take 800 damage.',
+    /* Losing the board is the whole of the bad half now — the 800 on top was
+       a second price for one bet, and the owner's call is that the wipe pays
+       for itself. Heads and tails still cost the same to reach. */
+    text: 'Once per turn: flip a coin. Heads — destroy every monster your opponent controls. Tails — destroy every monster you control.',
     cry: 'Time Roulette!',
     effects: [
       {
@@ -582,10 +634,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           {
             op: 'coinFlip',
             heads: [{ op: 'destroy', target: OPP_ALL }],
-            tails: [
-              { op: 'destroy', target: OWN_ALL },
-              { op: 'damage', amount: 800, to: 'own' },
-            ],
+            tails: [{ op: 'destroy', target: OWN_ALL }],
           },
         ],
       },
@@ -625,14 +674,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   "alligator-s-sword": {
-    text: 'When this card is Normal Summoned: it gains 400 ATK until the end of the turn and can attack directly this turn.',
+    /* The rider stops being a body that pokes and becomes the other half of
+       the fusion, the mirror of what Baby Dragon already does: one names Time
+       Wizard or the sword, this one names the dragon or the Polymerization
+       that joins them. A single `search` with both slugs is the "or" — the
+       list is a preference order and it adds exactly one card. */
+    text: 'When this card is Normal Summoned: add "Baby Dragon" or "Polymerization" from your Deck to your hand.',
     effects: [
       {
         trigger: 'onNormalSummon',
-        ops: [
-          { op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' },
-          { op: 'directAttack', duration: 'turn' },
-        ],
+        ops: [{ op: 'search', filter: { slugs: ['baby-dragon', 'polymerization'] } }],
       },
     ],
   },
@@ -647,14 +698,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   garoozis: {
     /* The flat 400 became a die — Joey's whole deck runs on the bet, and a
        kill that rolls between 200 and 1200 (average 700) is both stronger
-       and more him than a fixed ping. */
-    text: 'When this card destroys a monster in battle: roll a die and inflict 200 damage to your opponent for each pip, then draw 1 card.',
+       and more him than a fixed ping. The same roll now feeds him too.
+
+       The ATK gain sits *after* the roll rather than inside `perPip`, reading
+       it back through `scale: 'dicePips'`: `perPip` runs its ops once per pip,
+       and `gainAtk` logs every time it moves a number, so a 100-per-pip gain
+       written there would be six beats saying "gains 100 ATK" for one die. */
+    text: 'When this card destroys a monster in battle: roll a die, inflict 200 damage to your opponent for each pip, gain 100 ATK for each pip, then draw 1 card.',
     cry: 'Lady luck, smile on me!',
     effects: [
       {
         trigger: 'onBattleDestroy',
         ops: [
           { op: 'diceRoll', perPip: [{ op: 'damage', amount: 200, to: 'opp' }] },
+          { op: 'gainAtk', amount: 100, scale: 'dicePips', target: SELF, duration: 'permanent' },
           { op: 'draw', count: 1, who: 'own' },
         ],
       },
@@ -681,25 +738,50 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        weakest tempo play in the deck. The whole board flinching sets up the
        deck's piercers — Flame Swordsman, Axe Raider, Salamandra — which is
        the synergy the card was always supposed to be. */
-    text: 'When this card is Normal Summoned: force every monster your opponent controls into face-up Defense Position.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'forceDefense', target: sel('opp', 'all') }] }],
+    text: 'When this card is Normal Summoned: force every monster your opponent controls into face-up Defense Position. When this card declares an attack: destroy 1 Spell or Trap your opponent controls.',
+    effects: [
+      { trigger: 'onNormalSummon', ops: [{ op: 'forceDefense', target: sel('opp', 'all') }] },
+      {
+        trigger: 'onDeclareAttack',
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
+      },
+    ],
   },
 
   'masaki-the-legendary-swordsman': {
-    /* "While you control another Warrior" — granted permanently on summon, it
-       held whether or not he had anyone beside him, which is the opposite of
-       what the card says. A conditional aura is read live instead, so the
-       moment his last comrade falls he is mortal again. The 800 came later:
-       an 1100 body that merely refuses to die is a wall, not a legend — with
-       his comrades he swings at 1900 and holds the line both ways. */
-    text: 'While you control another Warrior, this card gains 800 ATK and cannot be destroyed by battle.',
+    /* He counts his company instead of leaning on one comrade: a flat 800 that
+       switched on at the first Warrior and never grew again is now a rate, and
+       the fallen count too. Both halves are live auras, so a comrade dying
+       moves him from the field column into the Graveyard one in the same
+       instant rather than dropping him off a cliff.
+
+       `excludeSelf` on the field count is load-bearing — Masaki is himself a
+       Warrior standing on his own field, and without it he would count his own
+       body and never be alone. The Graveyard half needs no such guard: a card
+       cannot be in its own Graveyard while it is on the field granting this.
+
+       Two sentences, not one: `npm run text` reads a single sentence for its
+       "for each …" rule, so a combined line would have left the Graveyard rate
+       unchecked. Split, the second half is driven by the checker and the first
+       is pinned in `npm run rules`. */
+    text: 'This card gains 500 ATK for every other Warrior you control. It also gains 100 ATK for every Warrior in your Graveyard.',
     cry: 'I do not stand alone!',
     effects: [
       {
         trigger: 'continuous',
-        condition: { controlsOtherOfType: 'Warrior' },
         ops: [],
-        aura: { target: SELF, atk: 800, grants: ['indestructibleByBattle'] },
+        aura: {
+          target: SELF,
+          per: { zone: 'ownField', filter: { type: 'Warrior' }, excludeSelf: true, atk: 500 },
+        },
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          per: { zone: 'ownGrave', filter: { type: 'Warrior' }, atk: 100 },
+        },
       },
     ],
   },

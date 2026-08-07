@@ -309,12 +309,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'ring-of-destruction': {
-    /* The burn goes both ways now, as printed — and as aired: Kaiba straps the
-       ring to a monster knowing the blast reaches him too. One-sided it was
-       free removal plus a fifth of the opponent's Life Points at no stake;
-       symmetric it is a real decision with the race on the table, and the AI
-       prices both halves through the same damage op. */
-    text: "Destroy 1 monster your opponent controls and inflict damage to BOTH players equal to that monster's ATK.",
+    /* One-sided again, by the owner's call. The symmetric version was the
+       printed card and the aired one — Kaiba straps the ring on knowing the
+       blast reaches him too — but paying half a duel's Life Points to answer a
+       monster made it a card you held rather than played. The recoil is gone;
+       the removal and the burn stay. */
+    text: "Destroy 1 monster your opponent controls and inflict damage to your opponent equal to that monster's ATK.",
     cry: 'Ring of Destruction!',
     effects: [
       {
@@ -324,7 +324,6 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         targets: 1,
         ops: [
           { op: 'damage', scale: 'targetAtk', to: 'opp' },
-          { op: 'damage', scale: 'targetAtk', to: 'own' },
           { op: 'destroy', target: OPP_PICK },
         ],
       },
@@ -346,13 +345,25 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'shield-sword': {
-    text: 'Swap the ATK and DEF of every monster on the field until the end of the turn.',
-    effects: [{ trigger: 'activate', ops: [{ op: 'swapAtkDef', target: sel('both', 'all') }] }],
+    /* One-sided, by the owner's call: swapping both boards handed the trick
+       back as often as it won anything, since Joey's own bodies are the ones
+       with ATK worth keeping. Turning only their monsters inside out is the
+       play the card is picked up for. */
+    text: "Swap the ATK and DEF of every monster your opponent controls until the end of the turn.",
+    effects: [{ trigger: 'activate', ops: [{ op: 'swapAtkDef', target: OPP_ALL }] }],
   },
 
   'giant-trunade': {
-    text: 'Return every Spell and Trap on the field to their owners\' hands.',
-    effects: [{ trigger: 'activate', ops: [{ op: 'bounce', target: sel('both', 'all', { zone: 'backrow' }) }] }],
+    text: 'Return every Spell and Trap on the field to their owners\' hands, then your opponent discards 1 card.',
+    effects: [
+      {
+        trigger: 'activate',
+        ops: [
+          { op: 'bounce', target: sel('both', 'all', { zone: 'backrow' }) },
+          { op: 'discard', count: 1, who: 'opp' },
+        ],
+      },
+    ],
   },
 
   salamandra: {
