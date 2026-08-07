@@ -1925,6 +1925,12 @@ function startTurn(state: DuelState) {
   anim(state, { kind: 'phase', player: pid, text: `${p.name}'s Turn` });
 
   for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnStart', {});
+  /* A face-up card in the Spell/Trap Zone ticks too. Only the Field Zone did,
+     so a Continuous Trap could never carry a per-turn clause at all — which is
+     most of what makes one worth the single zone it occupies. Face-up only,
+     for the same reason a Set monster does nothing. */
+  if (p.spellTrap?.face === 'up') fireTriggers(state, p.spellTrap, pid, 'onOwnTurnStart', {});
+  if (p.field) fireTriggers(state, p.field, pid, 'onOwnTurnStart', {});
   if (state.winner) return;
 
   const skipDraw = state.ongoing.some((o) => o.kind === 'skipDraw' && o.target === pid);
@@ -1972,6 +1978,7 @@ function endTurn(state: DuelState) {
   state.phase = 'end';
   const p = state.players[pid];
   for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnEnd', {});
+  if (p.spellTrap?.face === 'up') fireTriggers(state, p.spellTrap, pid, 'onOwnTurnEnd', {});
   if (p.field) fireTriggers(state, p.field, pid, 'onOwnTurnEnd', {});
   if (state.winner) return;
 

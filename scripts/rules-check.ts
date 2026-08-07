@@ -3322,6 +3322,68 @@ console.log('\nRevival Jam does not stay dead');
     'and no copy is left behind in the Graveyard it came out of');
 }
 
+console.log('\nThe wheel turns for as long as it holds someone');
+{
+  /* Reported as "Nightmare Wheel is too weak for a continuous trap card" —
+     the right complaint about the wrong axis. Binding one monster is fine for
+     a card that leaves and poor for one that parks in Marik's only Spell/Trap
+     Zone forever, so it tortures now. Until this card no Spell/Trap Zone card
+     had a per-turn clause at all: only the Field Zone ticked. */
+  const s = fresh('battle');
+  s.active = FOE;
+  const wheel = card(ME, 'nightmare-wheel');
+  wheel.face = 'down';
+  wheel.summonedOnTurn = 0;
+  s.players[ME].spellTrap = wheel;
+  const attacker = card(FOE, 'summoned-skull');
+  attacker.summonedOnTurn = 0;
+  s.players[FOE].monsters = [attacker, null, null];
+  s.players[FOE].lp = 8000;
+  /* Through the real trap window, which is the only way this card fires — it
+     watches `opponentDeclareAttack`, so it is the attack that opens it. */
+  const opened = act(s, FOE, { type: 'attack', uid: attacker.uid, targetUid: null });
+  ok(!!opened.pending, 'the attack opens the window');
+  const bound = act(opened, ME, { type: 'respondTrap', uid: wheel.uid, targets: [] });
+  ok(bound.players[FOE].lp === 8000 - 500, 'the wheel bites for 500 when it catches someone', `${bound.players[FOE].lp}`);
+  const caught = bound.players[FOE].monsters.find((m) => m?.slug === 'summoned-skull')!;
+  ok(!!effFlags(bound, caught, FOE).cannotAttack, 'and the prisoner cannot attack');
+  ok(bound.players[ME].spellTrap?.slug === 'nightmare-wheel', 'and the wheel stays face-up, holding him',
+    bound.players[ME].spellTrap?.slug ?? 'gone');
+
+  // Round the table to the start of ME's turn — the wheel's own clause.
+  const turned = act(bound, FOE, { type: 'endTurn' });
+  ok(turned.active === ME, 'the turn came round', `active ${turned.active}`);
+  ok(turned.players[FOE].lp === 8000 - 500 - 800,
+    'and the wheel turns for a further 800 at the start of his turn', `${turned.players[FOE].lp}`);
+
+  /* CONTROL: the burn is the prisoner's, not the card's. An equip follows its
+     host down, so a wheel with nobody on it does not exist — and the turn the
+     prisoner leaves, the torture stops. */
+  const freed = structuredClone(bound);
+  freed.players[FOE].monsters = [null, null, null];
+  freed.players[ME].spellTrap = null;
+  const quiet = act(freed, FOE, { type: 'endTurn' });
+  ok(quiet.players[FOE].lp === bound.players[FOE].lp,
+    'CONTROL: with the prisoner gone the wheel burns nobody', `${quiet.players[FOE].lp}`);
+}
+
+console.log('\nViser Des brings his twin out as a wall');
+{
+  /* Asked for directly, and it matters more than it reads: the twin is a body
+     to Tribute towards Ra, not a 500 ATK attacker, and standing it up in
+     Attack only fed it to the first thing that swung. Face-up Defence, like
+     the Metal Reflect Slime's tokens. */
+  const s = fresh();
+  const des = card(ME, 'viser-des');
+  s.players[ME].hand = [des];
+  s.players[ME].deck = [card(ME, 'viser-des'), card(ME, 'the-winged-dragon-of-ra')];
+  const out = act(s, ME, { type: 'normalSummon', uid: des.uid, zone: 0, position: 'atk', face: 'up' });
+  const twin = out.players[ME].monsters.find((m) => m?.slug === 'viser-des' && m.uid !== des.uid);
+  ok(!!twin, 'the twin arrives', on(out, ME).map((m) => m.slug).join(',') || 'empty');
+  ok(twin?.position === 'def', 'in Defence Position', twin?.position ?? '?');
+  ok(twin?.face === 'up', 'and face-up, so its stats are on show', twin?.face ?? '?');
+}
+
 console.log('\nObelisk is the God that does not scale');
 {
   /* Three Gods, three relationships with your resources: Slifer counts your

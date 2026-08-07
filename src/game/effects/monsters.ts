@@ -2426,7 +2426,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        signature card nobody ever sees. Every other deck here searches its
        hinge (Toon Alligator finds Toon World, Baby Dragon finds Time Wizard,
        Lord of D. finds the Flute); the God deck was hoping to draw it. */
-    text: "When this card is Normal Summoned: add 1 'The Winged Dragon of Ra', 'Bowganian', 'Nightmare Wheel' or 'Coffin Seller' from your Deck to your hand, then Special Summon 1 'Viser Des' from your Deck or Graveyard.",
+    text: "When this card is Normal Summoned: add 1 'The Winged Dragon of Ra', 'Bowganian', 'Nightmare Wheel' or 'Coffin Seller' from your Deck to your hand, then Special Summon 1 'Viser Des' from your Deck or Graveyard in face-up Defence Position.",
     cry: 'Into the vise.',
     effects: [
       {
@@ -2436,7 +2436,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           /* The fetched copy arrives by *Special* Summon, so it fires
              `onSummon` and not `onNormalSummon` — it neither searches again
              nor reaches for a third. The chain is one link by construction. */
-          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['viser-des'] }, count: 1, position: 'atk' },
+          /* Face-up Defence, like the Metal Reflect Slime's tokens: the twin is
+             a body to Tribute for the God, not a 500 ATK attacker, and standing
+             it up in Attack only fed it to the first thing that swung. */
+          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['viser-des'] }, count: 1, position: 'def' },
         ],
       },
     ],

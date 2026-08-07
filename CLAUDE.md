@@ -1916,6 +1916,27 @@ actually for — two humans on two phones — so the next move is AI work (scori
 `state.ongoing`, respecting binds in `clock()`), not another card buff. Believe a
 human's report over the bench for this deck.
 
+**A Continuous Trap could not carry a clock, so it was never worth its zone.**
+Reported as "Nightmare Wheel is too weak for a continuous trap card" — the
+right complaint about the wrong axis. Binding one monster is a fine effect for
+a card that leaves and a poor one for a card that parks in Marik's *only*
+Spell/Trap Zone forever. The reason it had nothing more was structural: only
+the Field Zone ticked. `startTurn`/`endTurn` fired the turn triggers for
+monsters and for `p.field`, and never for `p.spellTrap` — so no Continuous
+Trap or Spell in the game could carry a per-turn clause at all, and none ever
+had. A face-up Spell/Trap Zone card ticks now, face-up only, for the same
+reason a Set monster does nothing.
+
+The wheel therefore tortures: 500 when it catches someone, and a further 800
+at the start of each of Marik's turns while it holds them. It needs no
+condition — an equip follows its host down, so a face-up Nightmare Wheel is by
+construction a wheel with a prisoner on it, and the turn the prisoner leaves
+the wheel goes with him. That is pinned as a CONTROL, because "burns every
+turn" and "burns every turn *while somebody is on it*" are different cards.
+
+Marik measured 73% ±11 after it, against Pegasus at 82 — the decreed top, in
+the order the decree asks for.
+
 **Three duelists arrived at once, and the third God with them.** Priest Seto
 carries Obelisk, Ishizu keeps the tombs, Odion is the shield. Notes worth
 keeping:

@@ -960,7 +960,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        the card hit the Graveyard, leaving a card whose whole sentence did
        nothing. `npm run text` cannot see that and the audit cannot either;
        only driving the attack and reading the flag afterwards can. */
-    text: 'Stays face-up. When your opponent declares an attack: negate the attack, and that monster cannot attack while this card remains face-up. Inflict 500 damage to your opponent.',
+    text:
+      'Stays face-up. When your opponent declares an attack: negate the attack, and that monster cannot attack ' +
+      'while this card remains face-up. Inflict 500 damage to your opponent. ' +
+      'At the start of each of your turns, inflict a further 800 damage to your opponent.',
     cry: 'Turn, and keep turning.',
     effects: [
       {
@@ -972,6 +975,22 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
           { op: 'equipTo', atk: 0, def: 0, grants: ['cannotAttack'], target: sel('opp', 'attacker') },
           { op: 'damage', amount: 500, to: 'opp' },
         ],
+      },
+      {
+        /* The wheel turns. Reported as "too weak for a continuous trap card",
+           and that was the right complaint about the wrong axis: binding one
+           monster is a fine effect for a card that leaves, and a poor one for
+           a card that parks in Marik's only Spell/Trap Zone forever. So it
+           tortures, which is the register of the whole deck — Bowganian
+           bleeds them on a timer, Granadora bleeds them and heals him, and
+           now the wheel bleeds them for as long as it holds someone.
+
+           It needs no condition. An equip follows its host down (`toGrave`
+           sends a Spell equipped to a monster to the Graveyard with it), so a
+           face-up Nightmare Wheel is by construction a wheel with a prisoner
+           on it — and the turn the prisoner leaves, the wheel stops. */
+        trigger: 'onOwnTurnStart',
+        ops: [{ op: 'damage', amount: 800, to: 'opp' }],
       },
     ],
   },
