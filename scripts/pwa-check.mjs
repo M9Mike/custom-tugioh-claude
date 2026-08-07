@@ -27,6 +27,18 @@ import { webkit } from 'playwright';
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 
 /**
+ * How long to wait for a screen, and 25 seconds was a localhost number.
+ *
+ * Against Paris plus a cold serverless start the board can take longer than
+ * that to appear, and this probe duly died on `waitForSelector('hand-card')`
+ * with not one overlay measured — the exact shape CLAUDE.md already records
+ * for four other probe deaths. Widened, not loosened: a screen that truly
+ * never arrives still times out, it is just given production's patience
+ * first.
+ */
+const PATIENCE = 60000;
+
+/**
  * `page.goto` with production's patience.
  *
  * Every assertion in this file had already passed and the run still exited
@@ -149,7 +161,7 @@ const main = async () => {
   await goHome(a.page);
   await a.page.waitForTimeout(900);
   await a.page.tap('text=Start a new duel');
-  await a.page.waitForURL(/\/duel\//, { timeout: 25000 });
+  await a.page.waitForURL(/\/duel\//, { timeout: PATIENCE });
   await a.page.waitForTimeout(1400);
   const code = a.page.url().split('/').pop();
 
@@ -157,7 +169,7 @@ const main = async () => {
   await b.page.waitForTimeout(900);
   await b.page.fill('input[placeholder="CODE"]', code);
   await b.page.tap('button:has-text("Join")');
-  await b.page.waitForURL(/\/duel\//, { timeout: 25000 });
+  await b.page.waitForURL(/\/duel\//, { timeout: PATIENCE });
   await b.page.waitForTimeout(1400);
 
   await a.page.tap('button:has-text("Seto Kaiba")');
@@ -167,7 +179,7 @@ const main = async () => {
   await b.page.tap('button:has-text("Mai Valentine")');
   await b.page.waitForTimeout(500);
   await b.page.tap('button:has-text("Duel as Mai")');
-  await a.page.waitForSelector('[data-testid="hand-card"]', { timeout: 25000 });
+  await a.page.waitForSelector('[data-testid="hand-card"]', { timeout: PATIENCE });
   await a.page.waitForTimeout(1800);
 
   console.log(`\noverlays, with a ${NOTCH}px notch and a ${HOME}px home indicator forced in`);
@@ -331,7 +343,7 @@ const main = async () => {
   await goHome(lp);
   await lp.waitForTimeout(900);
   await lp.tap('button:has-text("Duel the computer")');
-  await lp.waitForURL(/\/duel\//, { timeout: 25000 });
+  await lp.waitForURL(/\/duel\//, { timeout: PATIENCE });
   await lp.waitForTimeout(1200);
   await lp.tap('button:has-text("Seto Kaiba")');
   await lp.waitForTimeout(500);
@@ -357,4 +369,29 @@ const main = async () => {
   if (bad) process.exitCode = 1;
 };
 
-main().catch((e) => { console.error(e); process.exit(1); });
+/**
+ * A probe that could not look has not found anything.
+ *
+ * This exited on a bare stack trace when the board never appeared within 25s
+ * against production — before a single overlay had been measured — and a stack
+ * trace where a verdict should be reads as "the app is broken" rather than
+ * "the probe never got started". `rejoin`, `spectate` and `rules-check` all
+ * learned this separately; this one never did.
+ *
+ * So a death that is plainly the environment — a navigation or wait that timed
+ * out, a renderer that died under us — is reported as **inconclusive** and
+ * still exits non-zero, saying out loud that it proves nothing. Anything else
+ * is a real failure and keeps its trace.
+ */
+const CANNOT_LOOK = /Timeout .* exceeded|Target (page|closed)|Page crashed|browser has been closed|Navigation failed/i;
+
+main().catch((e) => {
+  const msg = String(e?.message ?? e);
+  if (CANNOT_LOOK.test(msg)) {
+    console.log(`\n⚠️  the probe never got far enough to look — this proves nothing`);
+    console.log(`   ${msg.split('\n')[0]}`);
+    process.exit(2);
+  }
+  console.error(e);
+  process.exit(1);
+});

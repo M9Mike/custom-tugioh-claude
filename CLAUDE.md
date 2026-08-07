@@ -1459,6 +1459,29 @@ positional. And a probe that names the thing it is measuring cannot drift onto
 a different element when the screen changes, which is the only reason this was
 ever intermittent.
 
+Fixing it uncovered a *second*, unrelated fault in the same probe, which is
+what a real fix usually does — the flake had been absorbing the blame for
+everything. Two more of this file's own lessons had never reached
+`pwa-check.mjs`:
+
+- Its four `waitForSelector`/`waitForURL` calls were still on **25 seconds**,
+  a localhost number, so against Paris plus a cold start the board sometimes
+  never arrived. `PATIENCE` is 60s now, next to the `goHome` retry that had
+  already learned this.
+- And it died on a **bare stack trace** with not one overlay measured, which
+  reads as "the app is broken" rather than "the probe never got started".
+  `rejoin`, `spectate` and `rules-check` each learned to classify separately;
+  this one now does too, reporting *"the probe never got far enough to look —
+  this proves nothing"* and exiting **2** rather than 1. Verified by forcing
+  `PATIENCE = 1`. A connection refusal is deliberately *not* classified: a URL
+  that nothing is listening on is a usage error and should stay loud.
+
+**And check what is deployed before blaming the probe.** One production run
+failed here with the sheet's `data-testid` simply absent from the DOM, which
+looked like the fix not working — the deploy was still `BUILDING` when the run
+started. `list_deployments` had said so and I ran anyway. Wait for `READY`, not
+for the site to answer: it answers throughout, serving the old bundle.
+
 **Thirty seconds is a localhost number.** Playwright's default navigation and
 click timeouts are generous against a local server and are *not* reliably
 enough against Paris plus a cold serverless start. Four probe deaths now, each
