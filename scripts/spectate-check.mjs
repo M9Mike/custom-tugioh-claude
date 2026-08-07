@@ -263,7 +263,17 @@ if (ended) {
   const heading = await page.getByText(/^(.+ wins|Draw)$/).first().innerText().catch(() => '');
   ok(!/victory|defeat/i.test(heading), `the end names the duelist, not a side ("${heading}")`);
   const runBack = page.getByRole('button', { name: /run it back/i }).first();
-  ok(await runBack.isVisible({ timeout: 2000 }).catch(() => false), 'the audience is offered "Run it back"');
+  /* Two seconds was a localhost number, and it reported a working feature as
+     broken against production: the win screen is deliberately *held* until the
+     queue, the damage number and the banner have all had their say, so the
+     heading can be up well before the buttons under it are.
+     The tell that this was the probe and not the app was the very next
+     assertion — `click()` auto-waits far longer than 2s, so it duly pressed
+     the button this line had just declared missing, and the second showing
+     narrated. An assertion that fails while the step depending on it succeeds
+     is never reporting the app. */
+  await runBack.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+  ok(await runBack.isVisible().catch(() => false), 'the audience is offered "Run it back"');
   await runBack.click().catch(() => {});
   await page.waitForTimeout(2500);
   const again = new Set();

@@ -1482,6 +1482,22 @@ looked like the fix not working — the deploy was still `BUILDING` when the run
 started. `list_deployments` had said so and I ran anyway. Wait for `READY`, not
 for the site to answer: it answers throughout, serving the old bundle.
 
+**An assertion that fails while the step depending on it succeeds is never
+reporting the app.** `npm run spectate` went red on production with *"the
+audience is offered 'Run it back'"* — and the very next line, which can only
+pass if that button was pressed, read *"the second showing narrates too (3
+declarations)"*. The check was `isVisible({ timeout: 2000 })`; `click()`
+auto-waits far longer, so it duly pressed the button the line above had just
+declared missing. The win screen is deliberately *held* until the queue, the
+damage number and the banner have all had their say, so on production the
+heading is up well before the buttons under it are. Two seconds was a
+localhost number, and this is the third probe in one session to carry one.
+
+That pairing is the whole diagnostic, and it is worth reaching for by reflex:
+falsified by pointing the locator at a button that does not exist, where
+**both** assertions go red (0 declarations on the rerun). One red and one
+green is a probe that could not see; two red is a feature that is not there.
+
 **Thirty seconds is a localhost number.** Playwright's default navigation and
 click timeouts are generous against a local server and are *not* reliably
 enough against Paris plus a cold serverless start. Four probe deaths now, each
