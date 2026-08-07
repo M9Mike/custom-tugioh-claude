@@ -2,6 +2,50 @@
 
 Notes for whoever picks this up next, including me.
 
+## THE ULTIMATE RULE
+
+The owner's standing instruction, verbatim and absolute:
+
+> **When adding new cards/duelists we never edit existing cards for balance —
+> we buff the new ones, never nerf the old ones.**
+
+This one outranks everything else in this file. It is not a guideline, not a
+default, and not something to weigh against a bench number. There is no
+measurement that justifies breaking it and no argument that overrides it. If a
+new duelist is too strong, the *newcomer's own* cards come down. If a new
+duelist is too weak, the *newcomer's own* cards go up. Nothing belonging to
+anybody already in the game is touched, in either direction, for any reason to
+do with balance.
+
+A card already in the game changes for exactly one reason: **the owner asks for
+it.** Not because the ladder shifted, not because a matchup looks lopsided, not
+because a card looks strong next to a newcomer. Those are all reasons to edit
+the newcomer.
+
+Three things that look like exceptions and are not:
+
+- **Other decks' bench numbers moving is not a nerf, and is not a signal.**
+  `npm run deck-bench` is round-robin and therefore zero-sum: adding three
+  competitive decks takes share from the twelve already there. Yami measured
+  **63% ±12** after one such pass against 70–72 on record, without a single
+  card of his being touched. A number moving for somebody you did not edit is a
+  measurement of the field. It is never a reason to go and edit them.
+- **Trimming a newcomer that overshot is this rule, not an exception to it.**
+  Buff hard, measure, trim the newcomer back down. Priest Seto, Ishizu and
+  Odion went 28 → 83/75/73 → 62/60/52 with nobody else's cards touched.
+- **A bug fix is not a balance edit.** A card that does not do what its text
+  says, or an engine rule that was wrong, gets fixed wherever it lives. That is
+  correctness, and it is the one thing that may touch an old card without being
+  asked — but say so plainly in the report, and never let a "fix" smuggle in a
+  number change nobody asked for.
+
+Written after I rebuilt three new duelists and the owner had no way to tell,
+from the outside, whether I had quietly weakened anything of theirs. *"Fuck now
+I don't even know what is everything that you nerfed."* That is the real cost
+of breaking this rule: not the balance, the trust. So when a change ships, the
+report says which cards moved and who owns them — and the answer for every
+existing duelist should be **none**.
+
 ## Shipping
 
 The owner's standing instruction: **test, merge, test on production, then report.**
@@ -76,6 +120,8 @@ npm run h2h      yami yamimarik 80                   # two decks against each ot
 npm run pacing   http://localhost:3100               # the computer's turn reads as beats
 npm run rematch  http://localhost:3100               # the second duel narrates too
 npm run race                                         # two requests cannot undo each other
+npm run gods                                         # a God is above everything, in both directions
+npm run winscreen http://localhost:3100              # the result never outruns the board
 npm run rejoin   http://localhost:3100               # you can walk back into your own duel
 npm run spectate http://localhost:3100               # the exhibition plays, pauses, resumes
 npm run firstturn http://localhost:3100              # the computer waits for somebody to be watching
@@ -1354,6 +1400,84 @@ printed on the card — "A God is above everything: this card's attacks and
 effects ignore your opponent's protections" — because a Toon dying through
 Toon World's shield with nothing explaining why is the bad kind of surprise.
 
+**And the defensive half was still only half written.** Reported as *"WTF
+SLIFER GOT DESTROYED BY BLACK HOLE"*, and the decree restated in full: **no
+card effect touches a God at all** — not targeted, destroyed, bounced,
+banished, negated, stolen, shrunk or turned around — and a God attacks through
+every lock in the game. The only answer to one is out-fighting it. The single
+exception is the rental clause, which is `returnBorrowedGods` calling
+`toGrave` directly and is deliberately not a destruction.
+
+It needed **two doors**, and had a hole in exactly one of them. Every
+*targeting* effect already went through `isProtectedTarget` and was already
+refused — the opponent's Dark Hole never touched Slifer, and `npm run gods`
+pins that it never did. What killed him was **his own controller's**: that
+function exempts the actor's own side, so a protection cannot stop its owner
+using their own card, and a sweep hitting both fields walked straight through
+the gap. Worse, a sweep names no target at all, so Dark Hole, Torrential
+Tribute and Raigeki reached `destroyCard` having never been asked the
+question. `isDivine` is checked in both places now.
+
+**Attacking through everything needed two levels for the same reason.** Swords
+of Revealing Light freezes the monsters, which `canAttackWith` decides;
+Nightmare's Steelcage takes the Battle Phase *itself* away one level higher —
+so exempting the God only in `canAttackWith` would have left it unable to
+reach the exemption it had. Every mortal beside it is still held down, which
+is what keeps those cards worth playing: they answer the board, not the God.
+
+`npm run gods` drives all of it through real actions — a Dark Hole really
+activated, a Battle Phase really entered — and is red on five assertions
+against the old engine. Note which of them were *green* there: the
+opponent's-sweep case and the bigger-body case both passed, so a check that
+only tested those would have proved the bug did not exist.
+
+**A condition is the same shape as a cost, and only one of them was asked.**
+Reported as "Tornado Wall activated without Umi". It did: `activatableTraps`
+checked `canPayCost` and never `conditionMet`, so the card was offered with no
+Umi anywhere, `activateTrapCard` announced it, skipped its one condition-gated
+effect, and the card was spent for nothing. The function's own comment already
+spelled out why that is wrong — "offering it would fire the window, skip the
+cost-gated effect, and waste the card" — one clause over from the bug. Both
+are asked in the same place now, in both the Spell/Trap Zone branch and the
+from-hand one, so the card is never *offered* rather than refused after the
+window has already fired.
+
+**Revival Jam and the body it drags up both arrive face-up Defense.** Two
+`position: 'atk'` that should always have been `'def'` — a wall that keeps
+coming back is the card, and it was standing up to be run over.
+
+**The win screen read a flag that was a commit too late.** Reported as
+"Victory splashes prematurely". `settled` is turned off inside the effect that
+queues fresh beats, while `state.winner` arrives in the **same commit** as the
+beats that killed you — so the render that first saw a winner still read the
+`settled: true` left over from the last quiet moment, and the modal went up
+over a board that had not said a word. It waits on `unspoken` now, which is
+derived *during render* from that very commit, so there is no ordering hole to
+lose. Exactly the lesson already written down for `playedAnims` and the Life
+Point total, in a third place: the board must not know things the player has
+not been told, and anything that has to participate in rendering has to be
+state read during render rather than a flag set from an effect. The
+three-second-silence backstop (`forceWin`) is untouched.
+
+**That one took two goes at the check, and both failures are the same
+lesson.** `npm run winscreen` watches a whole exhibition in a browser — the
+computer plays both seats, so it reaches a real ending on its own; a driver
+that only ends its own turns never attacks and the duel simply never finishes
+(942 passes, no result, on the first attempt).
+
+- **Version one polled every 500ms and passed on the broken build as happily
+  as the fixed one.** The premature splash is a *single render*: the modal
+  goes up, the queue drains behind it, and a moment later the board looks
+  correct. A timer cannot see it. An observer armed before the duel ends
+  reads at the instant the modal is inserted, which can.
+- **Version two asserted "a Life Point bar reads 0", which is a stand-in.**
+  That is only true of a duel that ended on damage — production ended one on a
+  **deck-out**, bars read 8700 / 5100, and the check went red against working
+  code. `.duel-root` carries `data-unspoken` now, which is the exact quantity
+  `winScreenUp` waits on, so damage, deck-out and Exodia are all held to the
+  same rule. Falsified on the new assertion: 4 beats unspoken on the old
+  client, 0 on the fixed one.
+
 **Take a card's identity away and you owe it one back.** Relinquished lost
 immunity to card effects to the rule above and was left with nothing in its
 place, which is a nerf rather than a redesign. The printed card's most famous
@@ -1769,30 +1893,24 @@ edges are reserved by decree: **Pegasus (the creator) and the God cards sit at
 the top**, everyone else in a band around even. When a new duelist arrives,
 build the deck to this shape and measure it into that ladder.
 
-**Never nerf an existing duelist to make room for a new one.** The owner's
-standing instruction, verbatim: *"We never nurf other duelist we just buff the
-new ones personal cards to reach ~50% !!!"* — said after Priest Seto, Ishizu
-and Odion shipped at roughly 28% and were reported as *"omega weak"*. Only the
-newcomer's own unique cards move, in either direction, until the bench puts
-them in the band. A newcomer that lands too *high* is corrected the same way,
-by trimming its own cards; that is not a nerf of anybody, it is the same
-instruction with the sign reversed. And every card the newcomer holds has to
-be above anime OP like everything else in the game — a deck reaching the band
-by being mild is the wrong deck at the right number.
+**Never nerf an existing duelist to make room for a new one.** This is THE
+ULTIMATE RULE at the top of this file, and it is absolute — read it there
+before any balance work. The short form: only the newcomer's own unique cards
+move, in either direction, until the bench puts them in the band. First said
+after Priest Seto, Ishizu and Odion shipped at roughly 28% and were reported as
+*"omega weak"*; restated in stronger terms after that pass, because from the
+outside there was no way to tell whether anything of anybody else's had been
+quietly weakened.
 
-Two consequences worth stating, because they look like exceptions and are not:
+Every card the newcomer holds still has to be above anime OP like everything
+else in the game — a deck reaching the band by being mild is the wrong deck at
+the right number.
 
-- **The other decks' bench numbers will move anyway, and that is not a nerf.**
-  The bench is round-robin and zero-sum, so three competitive newcomers take
-  share from the twelve that were already there. Yami measured **63% ±12**
-  after this pass against 70–72 on record, without one of his cards being
-  touched. Read a change to somebody you did not edit as a measurement of the
-  field, never as a reason to buff them back.
-- **Overshooting is the cheap direction.** Buff hard, measure, then trim — the
-  first pass here went 28 → 73/75/83 and came back down. That is faster and
-  safer than creeping upward, because a deck that is too strong tells you
-  *which* card is doing it (see `npm run shape`), while a deck that is too weak
-  tells you nothing at all.
+**Overshooting is the cheap direction.** Buff hard, measure, then trim the
+newcomer — that pass went 28 → 83/75/73 → 62/60/52. It is faster and safer
+than creeping upward, because a deck that is too strong tells you *which* card
+is doing it (see `npm run shape`), while a deck that is too weak tells you
+nothing at all.
 
 The shape every deck follows:
 
