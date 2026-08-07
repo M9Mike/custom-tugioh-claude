@@ -1239,6 +1239,229 @@
         ]
       ],
       "extra": []
+    },
+    {
+      "id": "priestseto",
+      "name": "Priest Seto",
+      "epithet": "The Pharaoh's High Priest",
+      "quote": "Yours were never yours to begin with.",
+      "accent": "#3f6fa8",
+      "accent2": "#c9b27a",
+      "emblem": "obelisk-the-tormentor",
+      "strategy": "Bodies are currency: his multiply, yours are taken, and both are spent on the Tormentor and the fist that clears your field.",
+      "deck": [
+        [
+          "obelisk-the-tormentor",
+          1
+        ],
+        [
+          "millennium-seeker",
+          2
+        ],
+        [
+          "double-coston",
+          2
+        ],
+        [
+          "pharaoh-s-servant",
+          3
+        ],
+        [
+          "newdoria",
+          2
+        ],
+        [
+          "aswan-apparition",
+          2
+        ],
+        [
+          "possessed-dark-soul",
+          2
+        ],
+        [
+          "mound-of-the-bound-creator",
+          2
+        ],
+        [
+          "millennium-ankh",
+          2
+        ],
+        [
+          "soul-exchange",
+          1
+        ],
+        [
+          "snatch-steal",
+          1
+        ],
+        [
+          "monster-reborn",
+          1
+        ],
+        [
+          "pot-of-greed",
+          1
+        ],
+        [
+          "trap-hole",
+          1
+        ],
+        [
+          "negate-attack",
+          1
+        ],
+        [
+          "just-desserts",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "ishizu",
+      "name": "Ishizu Ishtar",
+      "epithet": "Keeper of the Tombs",
+      "quote": "I have already seen how this duel ends.",
+      "accent": "#c8a24a",
+      "accent2": "#4a7f86",
+      "emblem": "mystical-knight-of-jackal",
+      "strategy": "Tomb guardians who grow with every monster laid to rest, and a future she has already read.",
+      "deck": [
+        [
+          "mystical-knight-of-jackal",
+          2
+        ],
+        [
+          "mudora",
+          3
+        ],
+        [
+          "keldo",
+          3
+        ],
+        [
+          "kelbek",
+          2
+        ],
+        [
+          "agido",
+          3
+        ],
+        [
+          "zolga",
+          2
+        ],
+        [
+          "necrovalley",
+          2
+        ],
+        [
+          "royal-tribute",
+          1
+        ],
+        [
+          "monster-reborn",
+          1
+        ],
+        [
+          "pot-of-greed",
+          1
+        ],
+        [
+          "dark-hole",
+          1
+        ],
+        [
+          "exchange-of-the-spirit",
+          1
+        ],
+        [
+          "blast-held-by-a-tribute",
+          1
+        ],
+        [
+          "trap-hole",
+          1
+        ],
+        [
+          "just-desserts",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "odion",
+      "name": "Odion",
+      "epithet": "The Loyal Shield",
+      "quote": "Strike at me all you like. That is what a shield is for.",
+      "accent": "#8a6a3a",
+      "accent2": "#2f4f4a",
+      "emblem": "embodiment-of-apophis",
+      "strategy": "Traps that stop being traps and start being bodies -- his backrow stands up and becomes the board.",
+      "deck": [
+        [
+          "embodiment-of-apophis",
+          2
+        ],
+        [
+          "apophis-the-swamp-deity",
+          1
+        ],
+        [
+          "ra-s-disciple",
+          3
+        ],
+        [
+          "mystical-beast-of-serket",
+          2
+        ],
+        [
+          "gravekeeper-s-spy",
+          3
+        ],
+        [
+          "mask-of-darkness",
+          2
+        ],
+        [
+          "wall-of-illusion",
+          2
+        ],
+        [
+          "guardian-sphinx",
+          2
+        ],
+        [
+          "temple-of-the-kings",
+          2
+        ],
+        [
+          "statue-of-the-wicked",
+          1
+        ],
+        [
+          "judgment-of-anubis",
+          1
+        ],
+        [
+          "fake-trap",
+          1
+        ],
+        [
+          "monster-reborn",
+          1
+        ],
+        [
+          "pot-of-greed",
+          1
+        ],
+        [
+          "dark-hole",
+          1
+        ]
+      ],
+      "extra": []
     }
   ]
 }

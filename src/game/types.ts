@@ -273,7 +273,15 @@ export type Op =
    * in by name rather than the guard being loosened for everybody.
    */
   | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face; includeSelf?: boolean }
-  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string }
+  /**
+   * `position` defaults to Defence, which is what every token in the game was
+   * before it existed — Kuriboh's, Multiply's, the Metal Reflect Slime's are
+   * all walls and must stay walls. It is opt-in for the tokens that are meant
+   * to fight, because the AI's `clock()` returns the maximum race penalty for
+   * a player holding nothing in Attack Position: a deck whose whole board
+   * arrives face-up in Defence reads to the pilot as one that cannot win.
+   */
+  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def' }
   | { op: 'transformInto'; slug: string }
   | { op: 'addCounter'; amount: number }
   | { op: 'negateAttack' }

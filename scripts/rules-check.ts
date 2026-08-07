@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -3320,6 +3320,135 @@ console.log('\nRevival Jam does not stay dead');
   ok(on(broken, ME).length === 2, 'two bodies out of one destruction — it revived *itself*, not merely a Jam', back);
   ok(!broken.players[ME].grave.some((c) => c.slug === 'revival-jam'),
     'and no copy is left behind in the Graveyard it came out of');
+}
+
+console.log('\nObelisk is the God that does not scale');
+{
+  /* Three Gods, three relationships with your resources: Slifer counts your
+     HAND and shrinks as you develop, Ra counts your GRAVEYARD and grows as you
+     are ground down, and Obelisk counts nothing at all. Pinned because the
+     third God's whole reason to exist is being a different axis — the first
+     draft's Fist of Fate was byte-for-byte Ra's God Phoenix. */
+  const s = fresh();
+  const god = card(ME, 'obelisk-the-tormentor');
+  s.players[ME].monsters = [god, null, null];
+  const flat = effAtk(s, god, ME);
+  ok(flat === 4000, 'Obelisk is a flat 4000', `${flat}`);
+
+  const rich = structuredClone(s);
+  rich.players[ME].hand = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  rich.players[ME].grave = [card(ME, 'summoned-skull'), card(ME, 'battle-ox'), card(ME, 'baby-dragon')];
+  ok(effAtk(rich, rich.players[ME].monsters[0]!, ME) === 4000,
+    'and neither a full hand nor a full Graveyard moves it — unlike the other two Gods',
+    `${effAtk(rich, rich.players[ME].monsters[0]!, ME)}`);
+
+  ok(tributesRequired('obelisk-the-tormentor') === 3, 'it costs three bodies like any Divine-Beast');
+
+  /* The Fist of Fate: two souls spent, their field erased, and the souls come
+     out the other side as damage. The burn is what separates it from Ra. */
+  const fist = fresh();
+  const ob = card(ME, 'obelisk-the-tormentor');
+  ob.summonedOnTurn = 0;
+  const fodderA = card(ME, 'summoned-skull'); // 2500
+  const fodderB = card(ME, 'battle-ox');      // 1700
+  fist.players[ME].monsters = [ob, fodderA, fodderB];
+  fist.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), card(FOE, 'kuriboh'), null];
+  // The real pool, because 2500 + 1700 through a 4000 test pool floors at zero
+  // and the assertion would be measuring the floor rather than the burn.
+  fist.players[FOE].lp = 8000;
+  const foeLp = fist.players[FOE].lp;
+  const blown = act(fist, ME, { type: 'ignition', uid: ob.uid, targets: [fodderA.uid, fodderB.uid] });
+  ok(on(blown, FOE).length === 0, 'the Fist erases their whole field',
+    on(blown, FOE).map((m) => m.slug).join(',') || 'empty');
+  ok(blown.players[FOE].lp === foeLp - (2500 + 1700),
+    'and burns them for exactly what the two souls were worth',
+    `${foeLp} -> ${blown.players[FOE].lp}`);
+  ok(!!blown.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor'),
+    'CONTROL: the God itself is still standing');
+
+  /* A God is not fodder for another God's fist. */
+  const greedy = fresh();
+  const ob2 = card(ME, 'obelisk-the-tormentor');
+  ob2.summonedOnTurn = 0;
+  const slifer = card(ME, 'slifer-the-sky-dragon');
+  greedy.players[ME].monsters = [ob2, slifer, card(ME, 'kuriboh')];
+  greedy.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  const refused = applyAction(greedy, ME, { type: 'ignition', uid: ob2.uid, targets: [slifer.uid, greedy.players[ME].monsters[2]!.uid] });
+  ok(!!refused.error || !!refused.state.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon'),
+    'a Divine-Beast cannot be spent to pay for the Fist');
+
+  /* The same clock Ra carries: the turn it lands is the turn they get to
+     answer it. Asserted in the Battle Phase, because `canAttackWith` is false
+     in Main Phase anyway and the check would pass on a deleted flag. */
+  const fresh2 = fresh('battle');
+  const justLanded = card(ME, 'obelisk-the-tormentor');
+  justLanded.summonedOnTurn = fresh2.turn;
+  fresh2.players[ME].monsters = [justLanded, null, null];
+  ok(!canAttackWith(fresh2, ME, justLanded), 'and it cannot attack the turn it arrives');
+  const rested = structuredClone(fresh2);
+  rested.players[ME].monsters[0]!.summonedOnTurn = rested.turn - 1;
+  ok(canAttackWith(rested, ME, rested.players[ME].monsters[0]!), 'CONTROL: a turn later it swings');
+}
+
+console.log('\nThe valley pays every guardian, including the one that is not a Fairy');
+{
+  /* Her ace is a Beast-Warrior, and the first draft wrote Necrovalley's aura
+     for Fairies — so the one card the deck exists to land was the one card the
+     field did not pay. A deck whose ace does not benefit from its own hinge
+     has two themes. */
+  const s = fresh();
+  s.players[ME].field = { ...card(ME, 'necrovalley'), face: 'up' as const };
+  const jackal = card(ME, 'mystical-knight-of-jackal');
+  const mudora = card(ME, 'mudora');
+  s.players[ME].monsters = [jackal, mudora, null];
+  s.players[ME].grave = [];
+  const bareJackal = effAtk(s, jackal, ME);
+  ok(bareJackal === baseAtkOf('mystical-knight-of-jackal'), 'an empty tomb pays nothing', `${bareJackal}`);
+
+  const buried = structuredClone(s);
+  buried.players[ME].grave = [card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+  const j2 = buried.players[ME].monsters[0]!;
+  ok(effAtk(buried, j2, ME) === bareJackal + 300,
+    'two in the tomb is +300 to the Jackal — the aura reaches a Beast-Warrior',
+    `${bareJackal} -> ${effAtk(buried, j2, ME)}`);
+  const m2 = buried.players[ME].monsters[1]!;
+  ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 300 + 400,
+    'and Mudora takes the valley\'s 300 on top of her own 200 a body',
+    `${effAtk(buried, m2, ME)}`);
+}
+
+console.log('\nOdion: the backrow stands up, and the forgery is only a forgery');
+{
+  /* The scorpion is gated on the Temple exactly as a Toon is on Toon World —
+     one place decides, and taking the Temple away is the counterplay. */
+  const s = fresh();
+  s.players[ME].hand = [card(ME, 'mystical-beast-of-serket')];
+  ok(!!summonBlocked(s, ME, 'mystical-beast-of-serket'), 'no Temple, no Serket',
+    String(summonBlocked(s, ME, 'mystical-beast-of-serket')));
+  const open = structuredClone(s);
+  open.players[ME].field = { ...card(ME, 'temple-of-the-kings'), face: 'up' as const };
+  ok(!summonBlocked(open, ME, 'mystical-beast-of-serket'), 'CONTROL: with the Temple down it walks out',
+    String(summonBlocked(open, ME, 'mystical-beast-of-serket')));
+
+  /* Fake Trap: a 3000 body that everybody will believe is a God, and is not
+     one. If this ever resolves as a Divine-Beast it inherits untargetability,
+     divine supremacy and the three-Tribute price — none of which a forgery
+     has any business having. */
+  /* Flipped up in his own Main Phase, which is what `canActivateSetCard`
+     allows for a trap watching `anyOpponentTurn` — the window names what it
+     watches, not when the keeper may turn it over. */
+  const forged = fresh();
+  const fake = card(ME, 'fake-trap');
+  fake.face = 'down';
+  fake.summonedOnTurn = 0;
+  forged.players[ME].spellTrap = fake;
+  const lp = forged.players[ME].lp;
+  const revealed = act(forged, ME, { type: 'activateSetCard', uid: fake.uid, targets: [] });
+  const token = revealed.players[ME].monsters.find((m) => m?.isToken);
+  ok(!!token, 'the forgery puts a body on the board', on(revealed, ME).map((m) => m.slug).join(',') || 'empty');
+  ok(revealed.players[ME].lp === lp - 2000, 'and it costs its 2000 Life Points', `${revealed.players[ME].lp}`);
+  ok(!!token && CARDS[token.slug]?.type !== 'Divine-Beast',
+    'but it is not a Divine-Beast — a forgery is above nothing', token ? String(CARDS[token.slug]?.type) : '?');
 }
 
 console.log('\nOnly the duelist who goes first sits out the Battle Phase');

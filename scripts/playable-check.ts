@@ -59,6 +59,13 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   p.monsters = [spare(1), spare(2, 'harpie-lady'), null];
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];
+  /* And something already buried. A card conditioned on the Graveyard —
+     Millennium Ankh pays 1000 Life Points to bring two bodies back — is
+     perfectly playable in any real duel and completely dead from an empty
+     Graveyard, which is the same fault as probing from an empty field, two
+     clauses over. Two monsters, because the cards that read the Graveyard
+     tend to want more than one. */
+  p.grave = [spare(5, 'summoned-skull'), spare(6, 'battle-ox')];
 
   /* Something to aim at. Two monsters rather than one because a couple of
      cards want a choice, and an Insect among them because Weevil's Eradicating

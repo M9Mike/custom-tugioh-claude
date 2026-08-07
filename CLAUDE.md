@@ -1916,6 +1916,69 @@ actually for — two humans on two phones — so the next move is AI work (scori
 `state.ongoing`, respecting binds in `clock()`), not another card buff. Believe a
 human's report over the bench for this deck.
 
+**Three duelists arrived at once, and the third God with them.** Priest Seto
+carries Obelisk, Ishizu keeps the tombs, Odion is the shield. Notes worth
+keeping:
+
+**Obelisk is the God that does not scale.** Slifer counts your *hand* and
+shrinks as you develop; Ra counts your *Graveyard* and grows as you are ground
+down; Obelisk counts nothing — a flat 4000, and the only God whose printed
+stats are real numbers rather than a "?" (no `atkOverride`). Its axis is what
+it *spends*: the Fist of Fate eats two of your own monsters, erases their
+field, and burns for the two souls' combined ATK. The first draft's Fist was
+byte-for-byte Ra's God Phoenix — same trigger, same `destroy → OPP_ALL`, only
+the cost currency differing — and an adversarial reviewer caught it. `scale:
+'tributedAtk'` is what makes *which* two you spend the play, and it is pinned
+both ways.
+
+**Necrovalley is the only scaling aura in the game that is not `pick: 'self'`,
+and the audit could not see it.** The scaling measurement read the stat on the
+card carrying the aura, which for a Field Spell is 0 → 0, so a working card
+reported as doing nothing. It reads a card the aura actually *reaches* now.
+Two more harness gaps came out of the same run: `stockGraveFor` never stocked
+for `stealFromGrave` (so Mask of Darkness reached for a Trap that was never
+there), and `satisfy()` never paid a **Tribute cost**, so Obelisk's whole
+button went unverified for want of two spare bodies. All three were the audit's
+own gaps, and all three are the shape this file already records for Slifer.
+
+**A deck whose ace is not its own tribe.** Ishizu's ace is Mystical Knight of
+Jackal, a Beast-Warrior among Fairies, and Necrovalley's aura was first written
+`type: 'Fairy'` — so the one card the deck exists to land was the one card its
+own field did not pay. A deck whose ace does not benefit from its hinge has two
+themes. The aura reads "monsters you control" and the Jackal is pinned by name.
+
+**Every token in the game arrived in Defence, and it cost a deck twelve
+points.** `summonToken` hardcoded `position = 'def'`, and `clock()` in `ai.ts`
+returns **99** — the maximum race penalty — for a player holding nothing in
+Attack Position. Odion's entire engine manufactures bodies, so the pilot read
+his board as one that could not win and he benched **28%**. Trimming his traps
+first changed the number by *nothing*, which is what proved it was not the deck:
+standing the fighting tokens up took him 28 → **37% ±12**. `position` is opt-in
+and defaults to Defence, because Kuriboh's token, Multiply's and the Metal
+Reflect Slime's are all walls and must stay walls.
+
+The same op announced summons that never happened: its `log()` sat *outside*
+its own loop, so a board with one free zone printed "Special Summons 2 Swamp
+Serpents" having summoned one. It reports what actually landed now.
+
+**Odion is the fifth member of the attrition family, and the bench is the
+pilot.** At 37% he is under the band's floor, and the standing rule applies:
+his theme is pure defence, which is exactly what `evaluate()` scores worst, and
+tuning his cards until the bench says 50 would make him oppressive against a
+human. Believe a real duel over the bench for this deck. The card-side fix that
+*was* real — the token positions — is done; the rest is AI work.
+
+**And re-bench the incumbents, not only the newcomers.** Pegasus measured
+**82%** on the fifteen-deck ladder against 77 on the twelve-deck one without a
+card of his changing: the round-robin is zero-sum, and a deck that benches low
+feeds the whole field. Do not trim the top on a number that is mostly a
+measurement of the floor.
+
+**A card that names a Field Spell is now the format's most common hinge.**
+Four of the fifteen decks live or die on one, and eight carry no answer to a
+Field Spell at all. That is a property of the format rather than of any one
+deck, and it is worth choosing on purpose before the next duelist lands.
+
 **A God costs three bodies.** `tributesRequired` gives any `Divine-Beast` three
 tributes, written against the type rather than a per-card override so Obelisk
 and Ra cost the same the day they arrive. Tokens are bodies, so Kuriboh and

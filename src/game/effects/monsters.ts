@@ -2564,4 +2564,343 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       { trigger: 'onSentToGrave', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
     ],
   },
+
+  /* ================================================================ */
+  /* Priest Seto                                                       */
+  /* ================================================================ */
+
+  'obelisk-the-tormentor': {
+    /* The third God, and the one that does not scale at all.
+     *
+     * Slifer is worth whatever is still in your *hand*, so he shrinks as you
+     * develop. Ra is worth whatever you put on the board and then spent, so he
+     * grows as you are ground down. Obelisk is the constant: a flat 4000 that
+     * neither swells nor withers, and the only God whose printed stats are real
+     * numbers rather than a "?" — no override, unlike the other two.
+     *
+     * Its power is not in the body, it is in what the body will spend. The Fist
+     * of Fate eats two of your own monsters and erases their field, and the
+     * souls it ate come out the other side as damage. That is what keeps it
+     * from being a re-skin of Ra's God Phoenix, which is the one thing a third
+     * God had to avoid: Ra pays Life Points and sweeps, Obelisk pays BODIES and
+     * sweeps *and* burns for exactly what those bodies were worth. The deck
+     * around it therefore wants a wide, cheap board rather than a full hand or
+     * a full Graveyard — a third shape for a third God.
+     */
+    text:
+      'Requires 3 Tributes. ' +
+      'Once per turn: Tribute 2 monsters you control, except a Divine-Beast; ' +
+      'destroy every monster your opponent controls and inflict damage equal to their combined ATK. ' +
+      "This card cannot be targeted by your opponent's card effects. " +
+      "A God is above everything: this card's attacks and effects ignore your opponent's protections. " +
+      'This card cannot attack the turn it is Summoned. ' +
+      'If this card is Special Summoned, it returns to the Graveyard at the end of that turn.',
+    cry: 'Obelisk — Fist of Fate!',
+    effects: [
+      {
+        /* The God privilege, and the same clock Ra carries. `summonSick` is
+           deliberate and copied on purpose: a 4000 body that swings the turn it
+           lands is a two-turn kill, and the lesson already written down here is
+           to nerf the clock rather than the number. The turn it arrives is the
+           turn the other player is given to find an answer to something they
+           cannot target. No pierce — a God does not pierce, so putting a body
+           in the way is a real answer, which is what the Fist exists to punish. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['untargetable', 'summonSick'] },
+      },
+      {
+        /* Soul energy MAX. The printed Fist of Fate is "Tribute 2 monsters:
+           destroy all monsters your opponent controls"; the burn is this game's
+           addition and it is what makes the button worth pressing over simply
+           attacking. `scale: 'tributedAtk'` sums what was paid, so feeding it
+           the fat bodies hurts more than feeding it tokens — the choice of
+           *which* two to spend is the play. */
+        trigger: 'ignition',
+        label: 'Fist of Fate — spend two souls, clear the field',
+        oncePerTurn: true,
+        cost: { tribute: 2, tributeFilter: { excludeType: 'Divine-Beast' } },
+        ops: [
+          { op: 'destroy', target: OPP_ALL },
+          { op: 'damage', scale: 'tributedAtk', to: 'opp' },
+        ],
+      },
+    ],
+  },
+
+  'millennium-seeker': {
+    /* The enabler that finds itself, which every deck here has: a 1000 body
+       whose whole job is to make the next step visible — to the player, and to
+       the AI's enumeration, which can only plan with what it can see in hand. */
+    text:
+      'When this card is Normal Summoned: add 1 "Obelisk the Tormentor" or "Mound of the Bound Creator" ' +
+      'from your Deck to your hand, then Special Summon 1 "Millennium Seeker" from your Deck.',
+    cry: 'The Rod shows me where it sleeps.',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          { op: 'search', filter: { slugs: ['obelisk-the-tormentor', 'mound-of-the-bound-creator'] } },
+          /* The fetched twin arrives by Special Summon, so it fires `onSummon`
+             and not `onNormalSummon` — one link, by construction, the same way
+             Viser Des is built. Two bodies off one Normal Summon is how three
+             Tributes ever become payable. */
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['millennium-seeker'] }, count: 1, position: 'atk' },
+        ],
+      },
+    ],
+  },
+
+  'double-coston': {
+    /* The printed card counts as two Tributes for a DARK monster; a God is
+       DIVINE, so here it counts as two for the God itself. That is the line
+       that makes Obelisk reachable without a perfect board: Normal Summon the
+       Coston, add one more body, and the three Tributes are paid. */
+    text:
+      'When this card is Tributed for the Tribute Summon of a Divine-Beast monster, it counts as 2 Tributes. ' +
+      'While you control another Zombie monster, this card gains 500 ATK.',
+    cry: 'Two souls, one body.',
+    effects: [
+      {
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Zombie' },
+        ops: [],
+        aura: { target: SELF, atk: 500 },
+      },
+    ],
+  },
+
+  'pharaoh-s-servant': {
+    /* A 900 body that is worth more spent than standing, which is the whole
+       deck in one card. It pays on the way out however it leaves — tributed
+       for the God, eaten by the Fist, or destroyed — because `onSentToGrave`
+       fires for every departure from the field, which is exactly right for a
+       card whose text says "sent to the Graveyard". */
+    text: 'When this card is sent to the Graveyard from the field: inflict 600 damage to your opponent.',
+    cry: 'My life is his to spend.',
+    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 600, to: 'opp' }] }],
+  },
+
+  'newdoria': {
+    /* Sacrifice converted into removal, and the reason spending bodies is a
+       play rather than a cost. Deliberately `onSentToGrave` and not
+       `onDestroyed`: being Tributed for the God is the *intended* way to cash
+       it, so it has to pay out on a tribute too. */
+    text: 'When this card is sent to the Graveyard from the field: destroy 1 monster your opponent controls.',
+    cry: 'I take one with me.',
+    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'destroy', target: OPP_PICK }] }],
+  },
+
+  'aswan-apparition': {
+    /* The renewable body. Once per turn, so the Fist cannot be fed from an
+       infinite well — the same limit Revival Jam carries, and for the same
+       reason: a card that answers its own destruction needs its own ceiling
+       rather than relying on the engine's depth backstop. */
+    text: 'Once per turn, when this card is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard.',
+    cry: 'The tomb is not empty yet.',
+    effects: [
+      {
+        trigger: 'onDestroyed',
+        oncePerTurn: true,
+        ops: [{ op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['aswan-apparition'] }, count: 1, position: 'atk' }],
+      },
+    ],
+  },
+
+  'possessed-dark-soul': {
+    /* Ka hunting, printed almost as it stands. `tributeSelf` is what makes it
+       work at all: the cost is paid before the ops run, so the zone this card
+       vacates is the zone the stolen monster lands in — on a full board every
+       other theft in the deck silently fizzles, and this one cannot. */
+    text: 'Tribute this card: take control of 1 monster your opponent controls with 1500 or less ATK.',
+    cry: 'Your ka answers to me now.',
+    effects: [
+      {
+        trigger: 'ignition',
+        label: 'Tear out their ka',
+        cost: { tributeSelf: true },
+        ops: [{ op: 'takeControl', target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 1500 } }), duration: 'permanent' }],
+      },
+    ],
+  },
+
+  /* ================================================================ */
+  /* Ishizu                                                            */
+  /* ================================================================ */
+
+  'mystical-knight-of-jackal': {
+    /* Anubis, who weighs what is left. Her ace, and the reason Necrovalley's
+       aura is written for every monster she controls rather than for Fairies:
+       the Jackal is a Beast-Warrior, so a Fairy-typed aura would have skipped
+       the one card the deck is built to land. A deck whose ace does not
+       benefit from its own field is a deck with two themes. */
+    text:
+      'When this card destroys a monster by battle: send the top 3 cards of your opponent\'s Deck to the Graveyard. ' +
+      'While you control another Fairy monster, this card cannot be destroyed by battle.',
+    cry: 'Anubis has already weighed you.',
+    effects: [
+      { trigger: 'onBattleDestroy', ops: [{ op: 'mill', count: 3, who: 'opp' }] },
+      {
+        /* "Another Fairy" rather than "another monster": every tomb guardian
+           in the deck is a Fairy, so the sentence is the same promise with a
+           condition the DSL can actually read — and it says out loud that the
+           Jackal is protected by the guard around him, not by himself. */
+        trigger: 'continuous',
+        condition: { controlsOtherOfType: 'Fairy' },
+        ops: [],
+        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+      },
+    ],
+  },
+
+  'mudora': {
+    /* The guardian who counts the dead. Read live through `aura.per`, so the
+       tomb filling up is ATK on the board in the same instant rather than
+       stored value — which is the one thing that makes this theme visible to
+       an AI that scores stats and is blind to Graveyards. */
+    text: 'This card gains 200 ATK for each monster in your Graveyard. When this card is Normal Summoned: send the top 2 cards of your Deck to the Graveyard.',
+    cry: 'The dead are counted, and they answer to me.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 200 } },
+      },
+      { trigger: 'onNormalSummon', ops: [{ op: 'mill', count: 2, who: 'own' }] },
+    ],
+  },
+
+  'keldo': {
+    /* The enabler that finds itself: the deck hinges on Necrovalley and cannot
+       be left hoping to draw it. */
+    text: 'When this card is Normal Summoned: add "Necrovalley" from your Deck to your hand.',
+    cry: 'The valley remembers.',
+    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['necrovalley'] } }] }],
+  },
+
+  'kelbek': {
+    /* The foretold attack: she has seen the swing coming and the attacker is
+       simply sent home. Once per turn on purpose — an unconditional free
+       bounce on every attack is an unlimited lock, invisible to the AI's
+       evaluate(), and the kind of thing this file already refuses to ship. */
+    text: 'Once per turn, when this card is attacked: return the attacking monster to its owner\'s hand.',
+    cry: 'That attack was never going to land.',
+    effects: [
+      {
+        trigger: 'onAttacked',
+        oncePerTurn: true,
+        ops: [{ op: 'bounce', target: sel('opp', 'attacker') }],
+      },
+    ],
+  },
+
+  'agido': {
+    /* Body income out of the tomb, and the second half of the mill engine:
+       every guardian that dies makes the next one bigger, so the deck is paid
+       for losing as well as for winning. */
+    text: 'When this card is sent to the Graveyard from the field: Special Summon 1 "Agido" or "Keldo" from your Deck.',
+    cry: 'One falls, another rises.',
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        oncePerTurn: true,
+        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['agido', 'keldo'] }, count: 1, position: 'atk' }],
+      },
+    ],
+  },
+
+  'zolga': {
+    /* The offering. Her biggest guardian, and worth more spent than standing —
+       `onSentToGrave` so it pays whether it is Tributed for the Jackal or
+       simply destroyed. */
+    text: 'When this card is sent to the Graveyard from the field: gain 1500 Life Points.',
+    cry: 'Take what is left of me.',
+    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'heal', amount: 1500, to: 'own' }] }],
+  },
+
+  /* ================================================================ */
+  /* Odion                                                             */
+  /* ================================================================ */
+
+  'ra-s-disciple': {
+    /* The enabler that finds itself. Odion's whole deck wants the Temple down,
+       and a deck that hopes to draw its hinge is a deck that loses to its own
+       shuffle. */
+    text: 'When this card is Normal Summoned: add "Temple of the Kings" from your Deck to your hand, then Special Summon 1 "Ra\'s Disciple" from your Deck.',
+    cry: 'I keep the forgery, and the faith.',
+    effects: [
+      {
+        trigger: 'onNormalSummon',
+        ops: [
+          { op: 'search', filter: { slugs: ['temple-of-the-kings'] } },
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['ra-s-disciple'] }, count: 1, position: 'def' },
+        ],
+      },
+    ],
+  },
+
+  'mystical-beast-of-serket': {
+    /* The captured ka, and the one card in the deck that actually kills.
+       Gated on the Temple exactly as the Toons are gated on Toon World —
+       `summonRequires` is the one place that decides, and the player, the AI
+       and both test drivers all ask it. Take the Temple away and Odion is
+       back to being only a wall, which is the counterplay. */
+    summonRequires: 'temple-of-the-kings',
+    text: 'Requires "Temple of the Kings". Each time this card destroys a monster by battle, it gains 500 ATK permanently.',
+    cry: 'The scorpion feeds.',
+    effects: [
+      {
+        trigger: 'onBattleDestroy',
+        ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }],
+      },
+    ],
+  },
+
+  'gravekeeper-s-spy': {
+    /* A face-down card that turns out to be a threat — the shape of the whole
+       deck, in monster form. */
+    text: 'FLIP: Special Summon 1 "Gravekeeper\'s Spy" from your Deck in Defense Position.',
+    cry: 'You were watched the whole time.',
+    effects: [
+      {
+        trigger: 'onFlip',
+        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['gravekeeper-s-spy'] }, count: 1, position: 'def' }],
+      },
+    ],
+  },
+
+  'mask-of-darkness': {
+    /* Trap recursion. In this deck the traps ARE the bodies, so getting one
+       back is getting a monster back. */
+    text: 'FLIP: add 1 Trap Card from your Graveyard to your hand.',
+    cry: 'Nothing is ever really spent.',
+    effects: [
+      {
+        trigger: 'onFlip',
+        ops: [{ op: 'stealFromGrave', from: 'own', filter: { kind: 'trap' } }],
+      },
+    ],
+  },
+
+  'wall-of-illusion': {
+    /* The shield's shield: anything that hits it is sent home. Odion does not
+       open, he answers, and this is the cheapest answer in the deck. */
+    text: 'When this card is attacked: return the attacking monster to its owner\'s hand after the damage step.',
+    cry: 'A shield does not need to strike back.',
+    effects: [
+      { trigger: 'onAttacked', ops: [{ op: 'bounce', target: sel('opp', 'attacker') }] },
+    ],
+  },
+
+  'guardian-sphinx': {
+    /* The trap clog, answered with a monster. Seven traps through a single
+       Spell/Trap Zone is the Yami Marik shape and it benched Odion at 28 —
+       a face-down trap cannot fire the turn it is Set, so the honest ceiling
+       is one per turn cycle and the rest sit in hand. Two of those slots are
+       this instead: a card that is face-down like a trap, answers like a trap,
+       and is a 2400 wall in the meantime. */
+    text: 'FLIP: return every monster your opponent controls to their hand.',
+    cry: 'The sphinx wakes, and the field is swept.',
+    effects: [{ trigger: 'onFlip', ops: [{ op: 'bounce', target: OPP_ALL }] }],
+  },
 };

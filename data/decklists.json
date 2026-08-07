@@ -783,7 +783,7 @@
           1
         ],
         [
-          "Kuwagata α",
+          "Kuwagata \u03b1",
           1
         ],
         [
@@ -1235,6 +1235,229 @@
         ],
         [
           "Masked Beast Des Gardius",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "priestseto",
+      "name": "Priest Seto",
+      "epithet": "The Pharaoh's High Priest",
+      "quote": "Yours were never yours to begin with.",
+      "accent": "#3f6fa8",
+      "accent2": "#c9b27a",
+      "emblem": "Obelisk the Tormentor",
+      "strategy": "Bodies are currency: his multiply, yours are taken, and both are spent on the Tormentor and the fist that clears your field.",
+      "deck": [
+        [
+          "Obelisk the Tormentor",
+          1
+        ],
+        [
+          "Millennium Seeker",
+          2
+        ],
+        [
+          "Double Coston",
+          2
+        ],
+        [
+          "Pharaoh's Servant",
+          3
+        ],
+        [
+          "Newdoria",
+          2
+        ],
+        [
+          "Aswan Apparition",
+          2
+        ],
+        [
+          "Possessed Dark Soul",
+          2
+        ],
+        [
+          "Mound of the Bound Creator",
+          2
+        ],
+        [
+          "Millennium Ankh",
+          2
+        ],
+        [
+          "Soul Exchange",
+          1
+        ],
+        [
+          "Snatch Steal",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "ishizu",
+      "name": "Ishizu Ishtar",
+      "epithet": "Keeper of the Tombs",
+      "quote": "I have already seen how this duel ends.",
+      "accent": "#c8a24a",
+      "accent2": "#4a7f86",
+      "emblem": "Mystical Knight of Jackal",
+      "strategy": "Tomb guardians who grow with every monster laid to rest, and a future she has already read.",
+      "deck": [
+        [
+          "Mystical Knight of Jackal",
+          2
+        ],
+        [
+          "Mudora",
+          3
+        ],
+        [
+          "Keldo",
+          3
+        ],
+        [
+          "Kelbek",
+          2
+        ],
+        [
+          "Agido",
+          3
+        ],
+        [
+          "Zolga",
+          2
+        ],
+        [
+          "Necrovalley",
+          2
+        ],
+        [
+          "Royal Tribute",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Exchange of the Spirit",
+          1
+        ],
+        [
+          "Blast Held by a Tribute",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ]
+      ],
+      "extra": []
+    },
+    {
+      "id": "odion",
+      "name": "Odion",
+      "epithet": "The Loyal Shield",
+      "quote": "Strike at me all you like. That is what a shield is for.",
+      "accent": "#8a6a3a",
+      "accent2": "#2f4f4a",
+      "emblem": "Embodiment of Apophis",
+      "strategy": "Traps that stop being traps and start being bodies -- his backrow stands up and becomes the board.",
+      "deck": [
+        [
+          "Embodiment of Apophis",
+          2
+        ],
+        [
+          "Apophis the Swamp Deity",
+          1
+        ],
+        [
+          "Ra's Disciple",
+          3
+        ],
+        [
+          "Mystical Beast of Serket",
+          2
+        ],
+        [
+          "Gravekeeper's Spy",
+          3
+        ],
+        [
+          "Mask of Darkness",
+          2
+        ],
+        [
+          "Wall of Illusion",
+          2
+        ],
+        [
+          "Guardian Sphinx",
+          2
+        ],
+        [
+          "Temple of the Kings",
+          2
+        ],
+        [
+          "Statue of the Wicked",
+          1
+        ],
+        [
+          "Judgment of Anubis",
+          1
+        ],
+        [
+          "Fake Trap",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Dark Hole",
           1
         ]
       ],

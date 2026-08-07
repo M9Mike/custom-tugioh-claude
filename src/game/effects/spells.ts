@@ -1022,6 +1022,273 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       },
     ],
   },
+
+  /* ---------------------------------------------------------------- */
+  /* Priest Seto                                                       */
+  /* ---------------------------------------------------------------- */
+
+  'mound-of-the-bound-creator': {
+    /* The place the God sleeps. A Field Spell, so it never touches the single
+       Spell/Trap Zone — the same reasoning that put Toon World in the Field
+       Zone, and the reason a deck can hinge on a card at all here.
+
+       The aura deliberately excludes Divine-Beasts: a God buffed by its own
+       shrine stands at 4500, untargetable, wiping the board every turn, and
+       there is no honest answer to that. The mound feeds the *servants* who
+       will be spent for the God, which is the right way round for this deck. */
+    subKindOverride: 'Field',
+    text:
+      'Field Spell: your monsters other than Divine-Beast monsters gain 400 ATK. ' +
+      'Once per turn, at the start of your turn: Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 400/DEF 400).',
+    cry: 'The mound remembers every soul it swallowed.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster', excludeType: 'Divine-Beast' } }), atk: 400 },
+      },
+      {
+        /* The body engine, and the one income source that is not a card out of
+           hand: three Tributes are only payable if the board refills itself. */
+        trigger: 'onOwnTurnStart',
+        ops: [{ op: 'summonToken', name: 'Ka Token', atk: 400, def: 400, count: 1, artSlug: 'aswan-apparition' }],
+      },
+    ],
+  },
+
+  'millennium-ankh': {
+    /* What makes the Fist repeatable: the two bodies it ate last turn are
+       exactly the two this brings back. Conditioned on a Graveyard that can
+       actually pay, because `specialSummon` is neither a targeting op nor a
+       rider, so `activationIsDead` would never refuse it and the card would
+       cheerfully cost 1000 Life Points for nothing. */
+    text: 'Pay 1000 Life Points: Special Summon 2 monsters from your Graveyard, except Divine-Beast monsters.',
+    cry: 'Rise. You are not finished serving me.',
+    effects: [
+      {
+        trigger: 'activate',
+        condition: { graveAtLeast: 2 },
+        cost: { lp: 1000 },
+        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', excludeType: 'Divine-Beast' }, count: 2, position: 'atk' }],
+      },
+    ],
+  },
+
+  'soul-exchange': {
+    /* Borrow one of theirs to pay for the God. Conditioned on them actually
+       having a monster: conditions on an `activate` effect ARE enforced, and
+       without it the card is playable into an empty board for nothing. */
+    text: 'Select 1 monster your opponent controls. Take control of it until the End Phase; it may be Tributed this turn.',
+    cry: 'Your soul will pay for this.',
+    effects: [
+      {
+        trigger: 'activate',
+        condition: { opponentHasMonster: true },
+        ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
+      },
+    ],
+  },
+
+  'snatch-steal': {
+    /* The same theft, kept. The signature line of the deck, and the reason
+       "yours were never yours" is on the card back. */
+    text: 'Take control of 1 monster your opponent controls. At the start of each of your turns, your opponent gains 1000 Life Points.',
+    cry: 'Mine now.',
+    effects: [
+      {
+        trigger: 'activate',
+        condition: { opponentHasMonster: true },
+        ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }],
+      },
+    ],
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* Ishizu                                                            */
+  /* ---------------------------------------------------------------- */
+
+  'necrovalley': {
+    /* The hinge, and a Field Spell so the whole roster's backrow removal can
+       still reach it — the counterplay rule, satisfied by the zone rather than
+       by an exception.
+
+       The aura is written for every monster she controls rather than for
+       Fairies, because her ace is a Beast-Warrior: a Fairy-typed aura would
+       have skipped the one card the deck exists to land. Read live, so the
+       tomb filling up is ATK on the board in the same instant — the one thing
+       that makes this theme visible to an AI blind to Graveyards. */
+    text: 'Field Spell: monsters you control gain 150 ATK for each monster in your Graveyard.',
+    cry: 'The valley has been waiting for you.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: sel('own', 'all', { filter: { kind: 'monster' } }),
+          per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 150 },
+        },
+      },
+    ],
+  },
+
+  'royal-tribute': {
+    /* The offering, and the deck's engine in one card: what she buries is what
+       her guardians are paid for. Conditioned so it is never a blank — a mill
+       into an empty board is the state the design is built for, but paying a
+       card for nothing is not. */
+    text: 'Send the top 3 cards of your Deck to the Graveyard, then each guardian you control is worth what they are worth.',
+    cry: 'The tomb takes its due.',
+    effects: [{ trigger: 'activate', ops: [{ op: 'mill', count: 3, who: 'own' }] }],
+  },
+
+  'exchange-of-the-spirit': {
+    /* Her signature, and the one card that says "I have already seen this".
+       A one-shot rather than the printed Graveyard swap, which this engine has
+       no way to express and which would be a deck-out win condition the AI
+       cannot see coming. */
+    subKindOverride: 'Normal',
+    text: 'Trap: when your opponent declares an attack — negate the attack, and each guardian you control gains 500 ATK until the end of the turn.',
+    cry: 'I saw this before you drew it.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Exchange of the Spirit',
+        ops: [
+          { op: 'negateAttack' },
+          { op: 'gainAtk', amount: 500, target: sel('own', 'all', { filter: { kind: 'monster' } }), duration: 'turn' },
+        ],
+      },
+    ],
+  },
+
+  'blast-held-by-a-tribute': {
+    /* Pre-emption that lands as removal AND damage, so the AI can see it. */
+    text: 'Trap: when your opponent declares an attack — destroy the attacking monster and inflict 1000 damage to your opponent.',
+    cry: 'The blast was set long before you came.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Blast Held by a Tribute',
+        ops: [
+          { op: 'destroy', target: sel('opp', 'attacker') },
+          { op: 'damage', amount: 1000, to: 'opp' },
+        ],
+      },
+    ],
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* Odion                                                             */
+  /* ---------------------------------------------------------------- */
+
+  'temple-of-the-kings': {
+    /* Odion's engine, moved to the Field Zone for the same reason Toon World
+       was: his deck is the one deck in the game that genuinely wants its
+       single Spell/Trap Zone free, because his traps are his monsters. A
+       Continuous Spell here would have been the deck strangling itself. */
+    subKindOverride: 'Field',
+    text: 'Field Spell: monsters you control gain 400 ATK and inflict piercing battle damage. Required to Summon "Mystical Beast of Serket".',
+    cry: 'The temple opens for its keeper.',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 400, grants: ['pierce'] },
+      },
+    ],
+  },
+
+  'embodiment-of-apophis': {
+    /* The thesis of the whole deck in one card: a trap that answers the attack
+       and then STAYS, as a body. It leaves the Spell/Trap Zone the moment it
+       resolves, which is what stops a trap deck strangling itself on a single
+       zone — the backrow becomes the board. */
+    subKindOverride: 'Normal',
+    text: 'Trap: when your opponent declares an attack — negate the attack and Special Summon this card as a 1600/1800 Serpent monster.',
+    cry: 'The serpent was always coiled here.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Embodiment of Apophis',
+        ops: [
+          { op: 'negateAttack' },
+          { op: 'summonToken', name: 'Embodiment of Apophis', atk: 1600, def: 1800, count: 1, artSlug: 'embodiment-of-apophis', position: 'atk' },
+        ],
+      },
+    ],
+  },
+
+  'apophis-the-swamp-deity': {
+    /* The width version of the same idea: two bodies instead of one, and no
+       attack needed to trigger it. */
+    subKindOverride: 'Normal',
+    text: 'Trap: when your opponent Summons a monster — Special Summon 2 "Swamp Serpent" Tokens (1200/1200).',
+    cry: 'The swamp rises to meet you.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentSummon',
+        label: 'Apophis the Swamp Deity',
+        ops: [{ op: 'summonToken', name: 'Swamp Serpent', atk: 1200, def: 1200, count: 2, artSlug: 'apophis-the-swamp-deity' }],
+      },
+    ],
+  },
+
+  'statue-of-the-wicked': {
+    /* Removal becomes income: killing one of his leaves two behind. */
+    text: 'Trap: when a monster you control is destroyed — Special Summon 2 "Wicked Tokens" (1000/1000).',
+    cry: 'Break one, and two stand up.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'monsterDestroyed',
+        label: 'Statue of the Wicked',
+        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 1000, def: 1000, count: 2, artSlug: 'statue-of-the-wicked', position: 'atk' }],
+      },
+    ],
+  },
+
+  'judgment-of-anubis': {
+    /* The single clean answer: the attack is refused and the attacker is
+       destroyed. One copy, because a deck this wide does not also need to be
+       this safe. */
+    text: 'Trap: when your opponent declares an attack — negate the attack, destroy the attacking monster and gain 1000 Life Points.',
+    cry: 'Anubis judges you unworthy.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Judgment of Anubis',
+        ops: [
+          { op: 'negateAttack' },
+          { op: 'destroy', target: sel('opp', 'attacker') },
+          { op: 'heal', amount: 1000, to: 'own' },
+        ],
+      },
+    ],
+  },
+
+  'fake-trap': {
+    /* The forgery. Odion plays a Ra that is not Ra, and the counterfeit is
+       worth exactly as much as the faith people put in it: a 3000/3000 body
+       that costs 2000 Life Points and is, in the end, only a token. It is not
+       a Divine-Beast, it is not untargetable, and nothing about it is above
+       anything — which is the whole point of a forgery. */
+    text: 'Trap: pay 2000 Life Points; Special Summon 1 "Forged God Token" (Winged Beast/DIVINE/ATK 3000/DEF 3000). It is not a Divine-Beast.',
+    cry: 'They will believe it is a god. That is enough.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'anyOpponentTurn',
+        label: 'Fake Trap — reveal the forgery',
+        cost: { lp: 2000 },
+        ops: [{ op: 'summonToken', name: 'Forged God Token', atk: 3000, def: 3000, count: 1, artSlug: 'fake-trap', position: 'atk' }],
+      },
+    ],
+  },
 };
 
 /** Cards whose "chosen" target is on the controller's own side of the field. */

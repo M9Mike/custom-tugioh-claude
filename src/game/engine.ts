@@ -1148,6 +1148,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       }
       case 'summonToken': {
+        let made = 0;
         for (let i = 0; i < op.count; i++) {
           const zone = state.players[ctx.controller].monsters.findIndex((m) => !m);
           if (zone < 0) break;
@@ -1156,9 +1157,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.tokenName = op.name;
           t.tokenAtk = op.atk;
           t.tokenDef = op.def;
-          t.position = 'def';
+          t.position = op.position ?? 'def';
           t.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = t;
+          made += 1;
           /* `as` because the Token's art comes from the card that made it and
              its name does not. Without it the board announced "Mihail summons
              Kuriboh" for the Token as well as for Kuriboh itself, so a second
@@ -1170,14 +1172,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           // have, and three 300 ATK bodies are exactly what a God is for.
           if (!state.winner) fireOpponentSummon(state, ctx.controller, t.uid);
         }
-        log(
-          state,
-          op.count === 1
-            ? `${state.players[ctx.controller].name} Special Summons a ${op.name}.`
-            : `${state.players[ctx.controller].name} Special Summons ${op.count} ${op.name}s.`,
-          'summon',
-          ctx.controller
-        );
+        /* What actually landed, not what was asked for. The loop breaks when
+           the board is full, and this line sat outside it reading `op.count` —
+           so a three-zone board already holding two monsters announced
+           "Special Summons 2 Swamp Serpents" having summoned one, or none.
+           The board must never say a thing happened that did not. */
+        if (made > 0) {
+          log(
+            state,
+            made === 1
+              ? `${state.players[ctx.controller].name} Special Summons a ${op.name}.`
+              : `${state.players[ctx.controller].name} Special Summons ${made} ${op.name}s.`,
+            'summon',
+            ctx.controller
+          );
+        }
         break;
       }
       case 'transformInto': {

@@ -412,8 +412,16 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
 /** Puts a legal revival target in the Graveyard for `specialSummon from grave`. */
 function stockGraveFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
-    if (op.op !== 'specialSummon' || !summonsFrom(op, 'grave')) continue;
-    const match = matchCard(op.filter);
+    /* `stealFromGrave` reads the Graveyard too, and was not stocked for — the
+       filler is five monsters and one Spell, so Mask of Darkness, which recurs
+       a *Trap*, reached for something that was never there and the audit
+       reported the card as doing nothing. Same shape as the hand-stocking gap
+       one function down. */
+    const reads = op.op === 'specialSummon' ? summonsFrom(op, 'grave') : op.op === 'stealFromGrave';
+    if (!reads) continue;
+    /* 'any', not the default 'monster': the Graveyard holds Spells and Traps
+       too, and a card that recurs one needs the harness to find one. */
+    const match = matchCard('filter' in op ? op.filter : undefined, 'any');
     if (match) s.players[ME].grave.push(mint(s, ME, match.slug));
   }
 }
@@ -452,6 +460,25 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
       if (free < 0) s.players[ME].monsters[2] = null;
     }
   }
+  /* A cost of Tributes needs bodies to pay with. Obelisk's Fist of Fate spends
+     two monsters that are not Divine-Beasts, and the audit board gives ME one
+     spare — so `canIgnite` refused it for want of fodder and the God's whole
+     button went unverified. The cost is the card working, not the card being
+     unavailable, so the harness pays it. */
+  const trib = eff.cost?.tribute ?? 0;
+  if (trib > 0) {
+    const usable = () =>
+      s.players[ME].monsters.filter(
+        (m) => m && m.uid !== self?.uid && matchesLoosely(m.slug, eff.cost?.tributeFilter)
+      ).length;
+    const fodder = matchCard(eff.cost?.tributeFilter, 'monster') ?? CARDS['baby-dragon'];
+    for (let guard = 0; usable() < trib && guard < 3; guard++) {
+      const z = s.players[ME].monsters.findIndex((m) => !m);
+      if (z < 0) break;
+      place(s, ME, z, fodder.slug);
+    }
+  }
+
   const cond = eff.condition;
   if (!cond) return;
   if (cond.ownLpBelow != null) s.players[ME].lp = Math.max(1, cond.ownLpBelow - 100);
@@ -971,7 +998,21 @@ for (const def of Object.values(CARDS)) {
         const per = aura.per;
         const feed = matchCard(per.filter, per.zone.endsWith('Grave') || per.zone === 'ownHand' ? 'any' : 'monster');
         const step = (per.atk ?? 0) || (per.def ?? 0);
-        const read = () => (per.atk ? effAtk(s, selfCard!, ME) : effDef(s, selfCard!, ME));
+        /* Read the stat on a card the aura actually reaches. Every scaling aura
+           until now buffed its own body (Ra, Mudora, Two-Headed King Rex), so
+           reading `selfCard` was the same thing — until Necrovalley, a Field
+           Spell that scales every monster its controller owns and has no ATK of
+           its own to read. Measured on the Field Spell it was 0 → 0, and the
+           card reported as doing nothing while working perfectly. */
+        const scaled = (): CardInstance | undefined => {
+          if ((aura.target?.pick ?? 'self') === 'self') return selfCard;
+          return s.players[ME].monsters.find((m) => m && m.uid !== selfCard?.uid) ?? selfCard;
+        };
+        const read = () => {
+          const on = scaled();
+          if (!on) return 0;
+          return per.atk ? effAtk(s, on, ME) : effDef(s, on, ME);
+        };
         const emptyPool = () => {
           if (per.zone === 'ownHand') s.players[ME].hand = [];
           else if (per.zone === 'ownGrave') s.players[ME].grave = [];
