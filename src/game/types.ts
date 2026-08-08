@@ -364,8 +364,11 @@ export type EquipGrant =
    */
   | 'halvedBattleDamage'
   /**
-   * Only the *direct* swing is halved; a monster this card runs into still
-   * takes the full number.
+   * The price of going *over* a guard: a direct swing made while the opponent
+   * still controls a monster is halved. A monster this card runs into takes the
+   * full number, and so does the player when there is nothing in the way at all
+   * — with an empty board there is nobody to fly over, so it is an ordinary
+   * direct attack.
    *
    * Deliberately not the same flag as `halvedBattleDamage`, which is the whole
    * of Sky Scout's sentence and applies wherever the monster deals battle
@@ -514,7 +517,7 @@ export interface CardFlags {
   attackAll?: boolean;
   /** Battle damage this monster inflicts is halved — see `EquipGrant`. */
   halvedBattleDamage?: boolean;
-  /** Only this monster's *direct* battle damage is halved — see `EquipGrant`. */
+  /** Direct damage halved, but only over a guarded board — see `EquipGrant`. */
   halvedDirectDamage?: boolean;
   /** Attacking directly costs the controller 500 LP — see `EquipGrant`. */
   /** Cannot attack the turn it was Summoned — see `EquipGrant`. */

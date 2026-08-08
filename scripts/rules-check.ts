@@ -3673,11 +3673,37 @@ console.log("\nYugi: the knight fetches his dragon, and the Champion goes around
   champOnField.summonedOnTurn = 0;
   champOnField.attacksUsed = 0;
   const base = effAtk(swing, champOnField, ME);
-  const direct = act(swing, ME, { type: 'attack', uid: champOnField.uid, targetUid: null });
+
+  /* An OPEN board is an ordinary direct attack at full ATK. The half is the
+     toll for flying over a guard, and with nothing standing there is nobody to
+     fly over — charging it here would make the Champion hit softer than a
+     vanilla body exactly when the defence is gone. */
+  const openField = act(swing, ME, { type: 'attack', uid: champOnField.uid, targetUid: null });
   ok(
-    direct.players[FOE].lp === 4000 - Math.floor(base / 2),
-    'a direct swing lands for exactly half',
-    `LP ${direct.players[FOE].lp} of ${4000 - Math.floor(base / 2)}`
+    openField.players[FOE].lp === 4000 - base,
+    'a direct swing at an EMPTY board lands for everything',
+    `LP ${openField.players[FOE].lp} of ${4000 - base}`
+  );
+
+  /* A guarded board is the flyover, and that is the half. */
+  const guarded = structuredClone(fused);
+  guarded.phase = 'battle';
+  guarded.turn = 8;
+  const champGuarded = guarded.players[ME].monsters.find((m) => m?.slug === 'gaia-the-dragon-champion')!;
+  champGuarded.summonedOnTurn = 0;
+  champGuarded.attacksUsed = 0;
+  const blocker = card(FOE, 'battle-ox');
+  blocker.summonedOnTurn = 0;
+  guarded.players[FOE].monsters = [blocker, null, null];
+  const flyover = act(guarded, ME, { type: 'attack', uid: champGuarded.uid, targetUid: null });
+  ok(
+    flyover.players[FOE].lp === 4000 - Math.floor(base / 2),
+    'and OVER a blocker for exactly half',
+    `LP ${flyover.players[FOE].lp} of ${4000 - Math.floor(base / 2)}`
+  );
+  ok(
+    flyover.players[FOE].monsters.some((m) => m?.uid === blocker.uid),
+    'with the blocker left standing — he went around it, not through it'
   );
 
   const intoMonster = structuredClone(fused);

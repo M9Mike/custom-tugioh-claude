@@ -364,12 +364,21 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
  * damage rather than only on a direct attack, because that is what the sentence
  * says: rounded down, the way every other halving here rounds.
  *
- * `halvedDirectDamage` is the narrower bargain — Gaia the Dragon Champion may
- * go *around* the board for half or *through* it for everything — so it is
- * charged only when `direct` says this swing hit the player. Callers that
- * resolve a swing into a monster leave `direct` alone; the two that deal damage
- * to a player with no defender in the way pass it, including the one where the
- * target vanished mid-attack and the rest of the swing carries on as a direct.
+ * `halvedDirectDamage` is the narrower bargain, and narrower again than it
+ * first shipped: it is the price of going *over* a guard, not the price of
+ * attacking directly. Gaia the Dragon Champion charges past blockers for half
+ * or through one of them for everything — but with nothing in front of him
+ * there is nobody to fly over, so an open field is an ordinary direct attack at
+ * full ATK, exactly like any other monster's.
+ *
+ * That is why the defender's board is read here rather than the flag being
+ * trusted on its own. Charging it on an empty field made the Champion strictly
+ * worse than a vanilla body against no defence, which is the opposite of what a
+ * card that says "can attack directly" is for.
+ *
+ * Read at damage time, so the swing whose target vanished mid-attack is judged
+ * by what is actually left standing: other blockers still cost him half, an
+ * emptied board does not.
  */
 function battleDamageFrom(
   state: DuelState,
@@ -380,7 +389,10 @@ function battleDamageFrom(
 ): number {
   const f = effFlags(state, attacker, controller);
   if (f.halvedBattleDamage) return Math.floor(raw / 2);
-  if (direct && f.halvedDirectDamage) return Math.floor(raw / 2);
+  if (direct && f.halvedDirectDamage) {
+    const guarded = state.players[other(controller)].monsters.some((m) => !!m);
+    if (guarded) return Math.floor(raw / 2);
+  }
   return raw;
 }
 

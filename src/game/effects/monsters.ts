@@ -96,8 +96,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        either way — and the halving is `halvedDirectDamage`, which is charged on
        the direct path alone. `halvedBattleDamage` is Sky Scout's whole-sentence
        version and would quietly halve the Champion's charges into monsters too,
-       which is the opposite of the bargain. */
-    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: draw 1 card. This card can attack twice each Battle Phase, inflicts piercing battle damage, and can attack directly — its battle damage from a direct attack is halved.',
+       which is the opposite of the bargain.
+
+       The half is the toll for *flying over a guard*, so it is charged only
+       while the opponent actually controls one. Against an empty board he is an
+       ordinary attacker hitting for everything — anything else would have made
+       the Champion worse than a vanilla body precisely when there is no defence
+       left, which is not what "can attack directly" is for. */
+    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: draw 1 card. This card can attack twice each Battle Phase, inflicts piercing battle damage, and can attack directly. While your opponent controls a monster, its battle damage from a direct attack is halved.',
     cry: 'Charge, my champion!',
     fusionMaterials: ['gaia-the-fierce-knight', 'curse-of-dragon'],
     effects: [
