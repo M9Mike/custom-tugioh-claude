@@ -20,7 +20,7 @@ function fallbackEffect(card: GeneratedCard): EffectDef {
     const atk = card.atk ?? 0;
     if (atk >= 2000) {
       return {
-        text: 'When this card is Normal Summoned: inflict 500 damage to your opponent. This card inflicts piercing battle damage.',
+        text: 'When this monster is Summoned: inflict 500 damage to your opponent. This monster inflicts piercing battle damage.',
         effects: [
           {
             trigger: 'onSummon',
@@ -34,14 +34,14 @@ function fallbackEffect(card: GeneratedCard): EffectDef {
     }
     if (atk >= 1400) {
       return {
-        text: 'When this card destroys a monster in battle: it gains 300 ATK permanently.',
+        text: 'When this monster destroys a monster in battle: it gains 300 ATK permanently.',
         effects: [
           { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 300, target: { side: 'own', pick: 'self' }, duration: 'permanent' }] },
         ],
       };
     }
     return {
-      text: 'When this card is Normal Summoned: draw 1 card.',
+      text: 'When this monster is Summoned: draw 1 card.',
       effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
     };
   }

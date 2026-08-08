@@ -27,20 +27,20 @@ import type { CardDef, CardEffect, CardFilter, Trigger } from '../src/game/types
 /** A phrase in the rules text, and the triggers that would satisfy it. */
 const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
   { phrase: /\bFLIP:/i, needs: ['onFlip'], label: 'FLIP:' },
-  { phrase: /when (this card|it) attacks|each time (this card|it) attacks|when it declares an attack/i,
+  { phrase: /when (this card|this monster|it) attacks|each time (this card|this monster|it) attacks|when it declares an attack/i,
     needs: ['onDeclareAttack'], label: 'when it attacks' },
-  { phrase: /when (this card|it) destroys (a|1) monster (by|in) battle/i,
+  { phrase: /when (this card|this monster|it) destroys (a|1) monster (by|in) battle/i,
     needs: ['onBattleDestroy'], label: 'when it destroys a monster in battle' },
-  { phrase: /when (this card|it) is destroyed by battle/i,
+  { phrase: /when (this card|this monster|it) is destroyed by battle/i,
     needs: ['onDestroyedByBattle', 'onSentToGrave'], label: 'when destroyed by battle' },
   /* "Destroyed" with no qualifier. The lookahead keeps the stricter
      by-battle clause above owning its own case rather than both matching.
      Nothing checked this before, which is how Chimera's "when this card is
      destroyed" shipped as `onSentToGrave` — a trigger that also fires on a
      tribute, so it revived two monsters in the middle of paying for a God. */
-  { phrase: /when (this card|it) is destroyed(?! by battle)/i,
+  { phrase: /when (this card|this monster|it) is destroyed(?! by battle)/i,
     needs: ['onDestroyed', 'onDestroyedByBattle', 'onSentToGrave'], label: 'when destroyed' },
-  { phrase: /when (this card|it) is (normal )?summoned|when summoned/i,
+  { phrase: /when (this card|this monster|it) is (normal )?summoned|when summoned/i,
     needs: ['onSummon', 'onNormalSummon'], label: 'when summoned' },
   { phrase: /once per turn:/i, needs: ['ignition'], label: 'once per turn:' },
   /* A Trap is the usual way to answer the opponent, and was the only way until
@@ -51,7 +51,7 @@ const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
 ];
 
 /** Wording that promises the effect only applies sometimes. */
-const CONDITIONAL = /\bwhile you control\b|\bif you control\b|\bas long as\b|\bwhile this card is face-up\b/i;
+const CONDITIONAL = /\bwhile you control\b|\bif you control\b|\bas long as\b|\bwhile this (?:card|monster) is face-up\b/i;
 
 /**
  * An ATK threshold in the text is fine when it lands in a card *filter*, which
@@ -99,7 +99,7 @@ function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
  * card is judged.
  */
 const PER_EACH = /gains? (\d+) ATK for (?:each|every) ([A-Za-z"' -]*?) ?(?:in|on) /i;
-const SNAPSHOT = /\bwhen (?:this card is |it is )?(?:normal |fusion |flip )?summoned\b/i;
+const SNAPSHOT = /\bwhen (?:this card is |this monster is |it is )?(?:normal |fusion |flip )?summoned\b/i;
 
 /**
  * A price the card names for what it can do.
@@ -114,7 +114,7 @@ const SNAPSHOT = /\bwhen (?:this card is |it is )?(?:normal |fusion |flip )?summ
  */
 const COSTS: { phrase: RegExp; needs: (def: CardDef) => boolean; label: string }[] = [
   {
-    phrase: /\bbattle damage (?:it inflicts |this card inflicts )?is halved\b|\bhalve[sd]? (?:its |the )?battle damage\b/i,
+    phrase: /\bbattle damage (?:it inflicts |this card inflicts |this monster inflicts )?is halved\b|\bhalve[sd]? (?:its |the )?battle damage\b/i,
     label: 'its battle damage is halved',
     needs: (def) =>
       def.effects.some(
