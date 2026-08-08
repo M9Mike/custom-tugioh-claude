@@ -4407,6 +4407,54 @@ console.log('\nJoey: one banner per roll, a dragon off heads, and a chosen grave
   ok(baseAtkOf('thousand-dragon') === 2400, 'Thousand Dragon is a 2400 body', `${baseAtkOf('thousand-dragon')}`);
   ok(CARDS['thousand-dragon'].effects.length === 0, 'and carries no effect at all — vanilla, as asked');
 
+  /* Its text says it comes back out of the Graveyard, so that is pinned rather
+     than assumed. The first wording claimed the opposite — "cannot be Special
+     Summoned by other ways" — while Monster Reborn had been reviving it the
+     whole time; `npm run text` cannot see a negative claim, so only a pin can
+     hold this one honest. */
+  const dead = fresh();
+  const td = card(ME, 'thousand-dragon');
+  dead.players[ME].grave = [td, card(ME, 'baby-dragon')];
+  const reborn2 = card(ME, 'monster-reborn');
+  dead.players[ME].hand = [reborn2];
+  const rebornSpec2 = targetSpecFor('monster-reborn', 'activate')!;
+  ok(
+    targetCandidates(dead, ME, rebornSpec2).some((c) => c.slug === 'thousand-dragon'),
+    'and the board offers it to Monster Reborn out of the Graveyard'
+  );
+  const raised = act(dead, ME, { type: 'activateSpell', uid: reborn2.uid, targets: [td.uid] });
+  ok(
+    raised.players[ME].monsters.some((m) => m?.slug === 'thousand-dragon'),
+    'and it really comes back to the field'
+  );
+
+  /* The half that must stay true: an Extra Deck body still cannot be Normal
+     Summoned, which is what "Cannot be Normal Summoned or Set" means. */
+  const handful = fresh();
+  const td2 = card(ME, 'thousand-dragon');
+  handful.players[ME].hand = [td2];
+  handful.players[ME].monsters = [card(ME, 'mystical-elf'), card(ME, 'mystical-elf'), null];
+  ok(
+    !!applyAction(handful, ME, {
+      type: 'normalSummon', uid: td2.uid, zone: 2, position: 'atk', face: 'up',
+      tributes: handful.players[ME].monsters.filter(Boolean).map((m) => m!.uid),
+    }).error,
+    'CONTROL: it still cannot be Normal Summoned'
+  );
+
+  // And when it dies it lands in the Graveyard, which is what makes that reachable.
+  const dying = fresh();
+  const td3 = card(ME, 'thousand-dragon');
+  td3.summonedOnTurn = 0;
+  dying.players[ME].monsters = [td3, null, null];
+  const hole = card(ME, 'dark-hole');
+  dying.players[ME].hand = [hole];
+  const swept = act(dying, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  ok(
+    swept.players[ME].grave.some((c) => c.slug === 'thousand-dragon'),
+    'and a destroyed Thousand Dragon lands in the Graveyard, not back in the Extra Deck'
+  );
+
   /* Graverobber asks which card, the way Monster Reborn asks which monster. */
   const spec = targetSpecFor('graverobber', 'trap');
   ok(!!spec, 'Graverobber declares a target spec at all');

@@ -185,7 +185,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        No `fusionMaterials`, so it is never offered to Polymerization. Time
        Wizard's heads is the only way it reaches the field, which is what makes
        the gamble worth taking. */
-    text: 'Cannot be Normal Summoned or Set. Must be Special Summoned by the effect of "Time Wizard", and cannot be Special Summoned by other ways. A thousand years pass in an instant, and the Baby Dragon that answers is not the one that left.',
+    /* The revival clause is not a new rule — it is the text catching up with
+       the engine. The first wording said "cannot be Special Summoned by other
+       ways", and that was simply false: a destroyed Extra Deck monster lands in
+       the Graveyard here, and Monster Reborn was already picking it up and
+       putting it back on the field. `npm run text` has no rule that can see a
+       *negative* claim, so nothing caught it. The owner's call is that reviving
+       it is right — it has already entered the duel — so the sentence now says
+       what the engine has been doing all along. Pinned both ways in
+       `npm run rules`. */
+    text: 'Cannot be Normal Summoned or Set. Special Summon this card from your Extra Deck by the effect of "Time Wizard", or from your Graveyard. More than a thousand years of passing time is what summons this dragon — age itself, given wings and breath.',
     effects: [],
   },
 

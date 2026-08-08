@@ -17,6 +17,7 @@ import {
   canActivateFromHand,
   canActivateSetCard,
   createDuel,
+  isExtraDeckCard,
   summonBlocked,
   tributesRequired,
 } from '../src/game/engine';
@@ -120,7 +121,10 @@ for (const [slug, owners] of inDecks) {
   if (def.kind === 'monster') {
     // A monster is reachable if it can be Normal Summoned with the tributes it
     // asks for, or if it lives in an Extra Deck and is fusion-summoned.
-    if (def.isFusion) continue;
+    /* Extra Deck cards are validated by the Extra Deck pass above, and cannot
+       be Normal Summoned at all — `isFusion` was standing in for that and got
+       Valkyrion wrong, which the database does not flag as a Fusion. */
+    if (isExtraDeckCard(slug)) continue;
     const { state } = stateHolding(slug);
     /* Some monsters are deliberately not Normal Summonable — a Ritual comes out
        through its Ritual Spell, a Toon needs Toon World down first. Those are

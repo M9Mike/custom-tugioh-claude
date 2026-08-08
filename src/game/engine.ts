@@ -6,7 +6,7 @@
  * this as the single source of truth; the client runs the same code to predict
  * what its buttons should do.
  */
-import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, isToon } from './cards';
+import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToon } from './cards';
 import {
   MONSTER_ZONES,
   OPENING_HAND,
@@ -2271,11 +2271,56 @@ function faceUpOnSide(state: DuelState, pid: PlayerId, slug: string): boolean {
  * there, sat unused. The same hole let a Toon be Summoned with no Toon World,
  * which is the one thing the whole Toon deck is built around.
  */
+/**
+ * Every card that belongs to somebody's Extra Deck.
+ *
+ * The decklists are the authority here, not the card database's `isFusion`
+ * flag: Flame Swordsman and Bickuribox are printed Fusions that this game puts
+ * in main decks and expects to be Normal Summoned.
+ */
+const EXTRA_DECK_SLUGS = new Set<string>(DUELISTS.flatMap((d) => d.extra ?? []));
+
+/**
+ * Does this card belong to an Extra Deck?
+ *
+ * Exported because three harnesses were each using `def.isFusion` as their own
+ * private answer to this question, and it is the wrong answer twice over:
+ * Flame Swordsman and Bickuribox are printed Fusions sitting in main decks,
+ * and Valkyrion the Magna Warrior is an Extra Deck card the database does not
+ * flag as a Fusion at all. One rule, asked by the engine and the checks alike —
+ * the lesson `summonBlocked` itself carries three comments about.
+ */
+export const isExtraDeckCard = (slug: string): boolean => EXTRA_DECK_SLUGS.has(slug);
+
 export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): string | null {
   const def = CARDS[slug];
   if (!def) return null;
-  if (def.isFusion && state.players[pid].extra.some((e) => e.slug === slug)) {
-    return 'Fusion monsters must be Fusion Summoned.';
+  /* An Extra Deck card can never be Normal Summoned, wherever it happens to be
+     sitting right now.
+   *
+   * This used to ask whether the card was still *in* the Extra Deck, which held
+   * only for one that had never left. A Fusion that reached a hand could then
+   * be Normal Summoned for two Tributes, skipping its materials entirely — and
+   * six cards put a monster into its owner's hand (Amazon of the Seas,
+   * Jellyfish, Crab Turtle, Kelbek, Wall of Illusion, Guardian Sphinx), every
+   * one of them aimed at the opponent. Answering a Blue-Eyes Ultimate Dragon
+   * was all it took. Found by the pin for Thousand Dragon's "Cannot be Normal
+   * Summoned or Set", and it was never only about Thousand Dragon.
+   *
+   * Keyed off the decklists rather than `isFusion`, because that flag is the
+   * card database's and not this game's: Flame Swordsman and Bickuribox are
+   * printed Fusions that sit in main decks here and are meant to be Normal
+   * Summoned. Blocking on the flag alone broke both — caught by the regression
+   * that drives Flame Swordsman's own search.
+   *
+   * Safe to widen: every caller gates the Normal-Summon-from-hand path — the
+   * board, the AI, autoplay, the simulator, the playability check and the
+   * `normalSummon` case itself. Fusion Summoning goes through `fusionSummon`,
+   * which never asks. */
+  if (EXTRA_DECK_SLUGS.has(slug)) {
+    return def.fusionMaterials?.length
+      ? 'Fusion monsters must be Fusion Summoned.'
+      : `${def.name} can only be Special Summoned from the Extra Deck.`;
   }
   if (def.isRitual) return `${def.name} can only be Ritual Summoned.`;
   if (def.summonRequires && !faceUpOnSide(state, pid, def.summonRequires)) {

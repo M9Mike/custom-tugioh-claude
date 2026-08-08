@@ -15,7 +15,7 @@
  *   npx tsx scripts/card-audit.ts            # audit everything
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
-import { applyAction, createDuel, effAtk, effDef, effFlags, tributesRequired } from '../src/game/engine';
+import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, tributesRequired } from '../src/game/engine';
 import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,
@@ -767,7 +767,12 @@ for (const def of Object.values(CARDS)) {
 
     /* ---- Monsters summoned from the hand ---- */
     if (eff.trigger === 'onSummon' || eff.trigger === 'onNormalSummon') {
-      if (def.isFusion && (def.fusionMaterials ?? []).length) {
+      /* `isExtraDeckCard`, not `def.isFusion`. Valkyrion the Magna Warrior
+         lives in Yami's Extra Deck and the card database does not flag it as a
+         Fusion at all, so the flag sent it down the Normal Summon path — which
+         the engine now correctly refuses, because an Extra Deck card cannot be
+         Normal Summoned. */
+      if (isExtraDeckCard(def.slug) && (def.fusionMaterials ?? []).length) {
         /* Driven through a real Fusion Summon. This used to be skipped with a
            note claiming another path covered it — nothing did, and every
            Fusion monster in the game shipped with its effect never verified
