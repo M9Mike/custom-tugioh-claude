@@ -186,6 +186,7 @@ npm run rules    # targeted regressions for rules that were wrong once and must 
 npm run audit    # resolve every card's effect in a built position and check what it did
 npm run picker   # the layer the player touches: every card the rules allow, the board can point at
 npm run banner   # read every banner the board prints and insist a line naming a card shows it
+npm run nudge    # drop the computer's own requests on the floor; the duel must still finish
 npm run e2e      # drive two HTTP clients through full duels against a running server
 npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled   # whole brackets

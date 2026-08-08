@@ -982,7 +982,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'sky-scout': {
-    text: 'This card can attack your opponent directly, but its battle damage is halved.',
+    /* The half is the toll for going *around* a guard, not a tax on the bird.
+       It shipped as `halvedBattleDamage` — the whole-sentence version — which
+       charged it on every swing it ever made: into a monster, and against an
+       empty board where there was nothing to fly past. An open field is an
+       ordinary direct attack, and every other monster in the game hits an empty
+       board for everything, so the one card whose text says it *can* attack
+       directly was the only one being made worse for it.
+
+       Same bargain as Gaia the Dragon Champion, same flag, same sentence. */
+    text: 'This card can attack your opponent directly; while your opponent controls a monster, its battle damage from a direct attack is halved.',
     effects: [
       {
         trigger: 'onSummon',
@@ -990,7 +999,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'directAttack', duration: 'permanent' },
           // The price for it. Only the first op existed, so this was an
           // unblockable 1800 every turn for one Normal Summon.
-          { op: 'halvedBattleDamage', duration: 'permanent' },
+          { op: 'halvedDirectDamage', duration: 'permanent' },
         ],
       },
     ],

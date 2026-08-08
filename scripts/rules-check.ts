@@ -1004,26 +1004,56 @@ console.log('\nA Trap announces itself on the field');
   ok(!on(sprung, ME).length, 'and the summoned monster is destroyed');
 }
 
-console.log('\nSky Scout pays for going round the blockers');
+console.log('\nSky Scout pays for going round the blockers, and for nothing else');
 {
   /* "Can attack your opponent directly, but its battle damage is halved" — and
-     only the first half of that sentence existed, so it was an unblockable 1800
-     every turn for one Normal Summon. */
-  const direct = fresh('battle');
-  const scout = card(ME, 'sky-scout'); // 1800 ATK
-  direct.players[ME].monsters[0] = scout;
-  direct.players[FOE].monsters[0] = card(FOE, 'mystical-elf'); // a blocker it walks past
-  const swung = act(direct, ME, { type: 'attack', uid: scout.uid, targetUid: null });
-  ok(swung.players[FOE].lp === 4000 - 900, 'the direct attack lands for half', `LP ${swung.players[FOE].lp}`);
+     at first only the first half of that sentence existed, so it was an
+     unblockable 1800 every turn for one Normal Summon. The fix for that was
+     `halvedBattleDamage`, the whole-sentence version, and it overshot: every
+     swing the bird ever made was halved, including into a monster and including
+     an open board where there was nothing to fly past. Reported by the owner
+     from a duel — an empty field is an ordinary direct attack, and this was the
+     one card in the game being made *worse* for having "can attack directly"
+     written on it.
+     Same bargain as Gaia the Dragon Champion now: the half is the toll for
+     going over a guard, charged only while a guard is standing. */
+  const scoutFlags = fresh('battle');
+  const probe = card(ME, 'sky-scout');
+  scoutFlags.players[ME].monsters[0] = probe;
+  const sf = effFlags(scoutFlags, probe, ME);
+  ok(sf.directAttack === true, 'Sky Scout can attack directly');
+  ok(sf.halvedDirectDamage === true, 'and pays half for going around a guard');
+  ok(sf.halvedBattleDamage !== true, 'but is no longer halved across the board');
 
-  // Halved wherever it inflicts battle damage, which is what the sentence says.
+  /* By the effect: a guard is standing, so the flyover costs half. */
   const over = fresh('battle');
+  const scout = card(ME, 'sky-scout'); // 1800 ATK
+  over.players[ME].monsters[0] = scout;
+  const wall = card(FOE, 'mystical-elf'); // a blocker it walks past
+  over.players[FOE].monsters[0] = wall;
+  const flown = act(over, ME, { type: 'attack', uid: scout.uid, targetUid: null });
+  ok(flown.players[FOE].lp === 4000 - 900, 'going OVER a blocker lands for half', `LP ${flown.players[FOE].lp}`);
+  ok(
+    flown.players[FOE].monsters.some((m) => m?.uid === wall.uid),
+    'with the blocker left standing — it went around, not through'
+  );
+
+  /* Naturally: nothing to fly over, so it is an ordinary direct attack. This is
+     the one the owner reported, and it used to land for 900. */
+  const openBoard = fresh('battle');
   const scout2 = card(ME, 'sky-scout');
-  over.players[ME].monsters[0] = scout2;
+  openBoard.players[ME].monsters[0] = scout2;
+  const open = act(openBoard, ME, { type: 'attack', uid: scout2.uid, targetUid: null });
+  ok(open.players[FOE].lp === 4000 - 1800, 'an EMPTY board takes the whole 1800', `LP ${open.players[FOE].lp}`);
+
+  /* Through a monster is an ordinary battle, and was being halved too. */
+  const into = fresh('battle');
+  const scout3 = card(ME, 'sky-scout');
+  into.players[ME].monsters[0] = scout3;
   const chick = card(FOE, 'kuriboh'); // 300 ATK
-  over.players[FOE].monsters[0] = chick;
-  const through = act(over, ME, { type: 'attack', uid: scout2.uid, targetUid: chick.uid });
-  ok(through.players[FOE].lp === 4000 - 750, 'and so does the damage over a body it beats', `LP ${through.players[FOE].lp}`);
+  into.players[FOE].monsters[0] = chick;
+  const through = act(into, ME, { type: 'attack', uid: scout3.uid, targetUid: chick.uid });
+  ok(through.players[FOE].lp === 4000 - 1500, 'and a swing THROUGH a monster is not halved', `LP ${through.players[FOE].lp}`);
 
   // CONTROL: nobody else's battle damage moved.
   const plain = fresh('battle');

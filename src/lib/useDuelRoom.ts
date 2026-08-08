@@ -224,9 +224,17 @@ export function useDuelRoom(code: string | null) {
     };
 
     setStatus('connecting');
-    void connect().then(() => {
-      if (aliveRef.current) timer = setTimeout(poll, nextDelay());
-    });
+    /* The poll loop starts either way. `connect` swallows a failed fetch and
+       returns a verdict, but the `res.json()` inside it can still throw on a
+       body that arrives truncated — and a rejection here used to skip the
+       `.then` and leave the loop unstarted, so the room went quiet for good
+       over one malformed reply. The loop is the thing that recovers from that:
+       two misses and it reconnects by itself. */
+    void connect()
+      .catch(() => setStatus('reconnecting'))
+      .finally(() => {
+        if (aliveRef.current) timer = setTimeout(poll, nextDelay());
+      });
 
     // Coming back to the tab should refresh immediately, not on the next tick.
     const onVisible = () => {
@@ -282,16 +290,30 @@ export function useDuelRoom(code: string | null) {
     const owed = (view?.aiToMove && watching) || view?.bracketBusy;
     if (!code || paused || !owed) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    /* Grows across consecutive *failed* attempts only, and dies with the effect
+       — the moment one lands, the new view rebuilds this closure from 1500. */
+    let backoff = 1500;
+
+    const attempt = async () => {
+      if (cancelled) return;
       /* Hold while the board is still narrating. The computer used to be asked
          for its next action every 750ms whatever was on screen, so a turn of
          six actions was six requests deep before the first one had finished
          announcing itself — the board raced ahead and the declarations piled
          up behind it. Asking only once the last beat has played is what makes
          a turn read as one thing after another. */
-      if (busyRef.current && !cancelled) return;
+      if (busyRef.current) {
+        timer = setTimeout(attempt, 750);
+        return;
+      }
+      /* No token yet is a race with `connect`, not a reason to stop asking. */
       const token = tokenRef.current;
-      if (cancelled || !token) return;
+      if (!token) {
+        timer = setTimeout(attempt, backoff);
+        return;
+      }
+      let moved = false;
       try {
         const res = await fetch(`/api/room/${code}/ai`, {
           method: 'POST',
@@ -302,14 +324,35 @@ export function useDuelRoom(code: string | null) {
         if (cancelled) return;
         const data = (await res.json()) as { moved?: boolean; view?: RoomView };
         // Re-running this effect on the new view is what continues the turn.
-        // When the server did not move, deliberately leave the view alone: a
-        // fresh object would retrigger this effect and spin, so the slower poll
-        // loop takes over instead.
-        if (data.moved && data.view) applyView(data.view);
+        // When the server did not move, deliberately leave the view alone —
+        // a fresh object here would retrigger the effect immediately and spin.
+        if (data.moved && data.view) {
+          moved = true;
+          applyView(data.view);
+        }
       } catch {
-        /* the poll loop will pick the duel back up */
+        /* Dropped on the way out, or on the way back. Falls through to the
+           retry below, which is the whole point of this rewrite. */
       }
-    }, 750);
+      if (cancelled || moved) return;
+      /* Ask again.
+         This used to return here and leave it to the poll loop — and the poll
+         loop cannot help, because it only ever hands back a view when the
+         room's revision has moved, and the only thing that would have moved it
+         is the nudge that just failed. So one dropped request stopped the duel
+         for good: no reply, no new view, no re-run of this effect, nothing left
+         to ask again. The poll went on succeeding against an unchanged room, so
+         the connection still read as live while the Life Points sat still.
+         Reported as an exhibition frozen for ten minutes on production; it was
+         frozen permanently, and it could never happen on a local server because
+         a fetch to your own machine does not fail.
+         Backed off rather than immediate, so a server that answers "nothing
+         moved" every time is asked at the poll loop's pace and no faster. */
+      timer = setTimeout(attempt, backoff);
+      backoff = Math.min(backoff * 2, 6000);
+    };
+
+    timer = setTimeout(attempt, 750);
     return () => {
       cancelled = true;
       clearTimeout(timer);
