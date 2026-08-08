@@ -10,7 +10,7 @@
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
-import { targetCandidates, targetSpecFor } from '../src/game/ui';
+import { pickerSides, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
@@ -4626,6 +4626,91 @@ console.log('\nFive bugs reported from a real duel');
     wasted.state.players[ME].grave.some((c) => c.slug === 'blue-eyes-white-dragon'),
     'so the Blue-Eyes is never spent for nothing'
   );
+}
+
+console.log("\nThree more from a real duel: an empty modal and banners with no art");
+{
+  /* 1. The Graveyard picker must lay out the pile the spec actually names.
+        "Graverobber opens a modal but it's empty, there are cards in the
+        opponent's graveyard." The modal read "both ? [me, foe] : [me]", so an
+        opponent-only picker listed MY pile and filtered it against THEIR
+        cards. The rule lives in `ui.ts` now so it can be asked directly. */
+  const robSpec = targetSpecFor('graverobber', 'trap')!;
+  ok(robSpec.side === 'opp' && robSpec.zone === 'grave', "Graverobber's spec names the opponent's Graveyard", `${robSpec.side}/${robSpec.zone}`);
+  ok(
+    pickerSides(robSpec, ME, FOE).length === 1 && pickerSides(robSpec, ME, FOE)[0] === FOE,
+    'and the picker lays out THEIR pile, not mine',
+    pickerSides(robSpec, ME, FOE).join(',')
+  );
+  const rebornSpec = targetSpecFor('monster-reborn', 'activate')!;
+  ok(
+    pickerSides(rebornSpec, ME, FOE).length === 2,
+    'CONTROL: Monster Reborn reads either Graveyard and still lays out both',
+    pickerSides(rebornSpec, ME, FOE).join(',')
+  );
+  ok(
+    pickerSides({ side: 'own', zone: 'grave', count: 1, prompt: '' }, ME, FOE)[0] === ME,
+    'CONTROL: an own-side picker still lays out mine'
+  );
+
+  /* And end to end: the cards the modal would draw are theirs and are real. */
+  const pile = fresh();
+  pile.players[FOE].grave = [card(FOE, 'dark-hole'), card(FOE, 'mirror-force')];
+  pile.players[ME].grave = [card(ME, 'summoned-skull')];
+  const shown = pickerSides(robSpec, ME, FOE).flatMap((pid) =>
+    pile.players[pid].grave.filter((c) => targetCandidates(pile, ME, robSpec).some((t) => t.uid === c.uid))
+  );
+  ok(shown.length === 2, 'so the modal has two cards to draw, not none', `${shown.length}`);
+
+  /* 2. A line that names a card carries that card, so the beat announcing it
+        has a face to draw. Reported as art missing from some banners: the line
+        was written with no beat of its own, and the one it was given had
+        nothing to show. */
+  const atk = fresh('battle');
+  const ox = card(ME, 'battle-ox');
+  ox.summonedOnTurn = 0;
+  atk.players[ME].monsters = [ox, null, null];
+  const prey = card(FOE, 'kuriboh');
+  prey.summonedOnTurn = 0;
+  atk.players[FOE].monsters = [prey, null, null];
+  const beforeLog = atk.log.length;
+  const swung = act(atk, ME, { type: 'attack', uid: ox.uid, targetUid: prey.uid });
+  const named = swung.log.slice(beforeLog).filter((l) => /Battle Ox|Kuriboh/.test(l.text));
+  ok(named.length > 0, 'CONTROL: the swing wrote lines naming cards', `${named.length}`);
+  ok(
+    named.every((l) => !!l.slug),
+    'every line naming a card carries that card',
+    named.filter((l) => !l.slug).map((l) => l.text).join(' | ')
+  );
+
+  /* The beat built for an orphan line inherits it, which is the half that
+     reaches the screen. */
+  const pos = fresh();
+  const ox2 = card(ME, 'battle-ox');
+  pos.players[ME].monsters = [ox2, null, null];
+  const beforeAnims = pos.anims.length;
+  const turned = act(pos, ME, { type: 'changePosition', uid: ox2.uid });
+  const notes = turned.anims.slice(beforeAnims).filter((a) => a.kind === 'note');
+  ok(notes.length > 0, 'CONTROL: switching position makes a note beat', `${notes.length}`);
+  ok(
+    notes.every((a) => !!a.slug),
+    'and a note beat about a card carries its art',
+    notes.map((a) => `${a.note} [slug=${a.slug ?? 'NONE'}]`).join(' | ')
+  );
+
+  /* 3. A discard names its card too — the beat added for it is separate, but
+        the line behind it must still know what it is about. */
+  const disc = fresh();
+  const trunade = card(ME, 'giant-trunade');
+  disc.players[ME].hand = [trunade];
+  const theirSet = card(FOE, 'mirror-force');
+  theirSet.face = 'down';
+  disc.players[FOE].spellTrap = theirSet;
+  disc.players[FOE].hand = [card(FOE, 'kuriboh')];
+  const beforeD = disc.log.length;
+  const blown = act(disc, ME, { type: 'activateSpell', uid: trunade.uid, targets: [] });
+  const discardLines = blown.log.slice(beforeD).filter((l) => /discards/.test(l.text));
+  ok(discardLines.length === 1 && !!discardLines[0].slug, 'the discard line names the card it discarded', discardLines.map((l) => `${l.text} [${l.slug ?? 'NONE'}]`).join(' | '));
 }
 
 /* The summary goes LAST, and there is nothing after it.

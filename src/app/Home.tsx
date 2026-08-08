@@ -304,8 +304,10 @@ export default function Home() {
   return (
     <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center gap-6 p-5">
       <div className="text-center">
-        <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
-        <h1 className="mt-2 font-display text-5xl leading-none tracking-wide text-brassbright sm:text-7xl">
+        {/* The "Duelist Kingdom" eyebrow above the title is gone by the owner's
+            request. The two other places it appears — over the duelist picker
+            and on the bracket — are different screens and are left alone. */}
+        <h1 className="font-display text-5xl leading-none tracking-wide text-brassbright sm:text-7xl">
           Shadow Duel
         </h1>
         <div className="brass-rule mx-auto my-4 w-56" />

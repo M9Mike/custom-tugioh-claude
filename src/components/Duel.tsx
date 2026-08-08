@@ -23,7 +23,7 @@ import {
   summonBlocked,
   tributesRequired,
 } from '@/game/engine';
-import { effectLabel, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, pickerSides, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -1979,7 +1979,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 naming exactly which cards it takes laid out the whole
                 Graveyard and asked you to find them. */}
             <div className="mt-3 flex flex-wrap gap-2">
-              {(mode.spec.side === 'both' ? [me, foe] : [me]).flatMap((pid) =>
+              {/* One rule, in `ui.ts`, asked by the modal and by the regressions
+                  alike — see `pickerSides`. Written inline here it read
+                  "both ? [me, foe] : [me]", so Graverobber's opponent-only pile
+                  listed my own Graveyard and opened empty. */}
+              {pickerSides(mode.spec, me, foe).flatMap((pid) =>
                 state.players[pid].grave
                   .filter((c) => targetableSet.has(c.uid))
                   .map((c) => (

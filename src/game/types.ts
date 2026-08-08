@@ -734,6 +734,16 @@ export interface LogEntry {
   player?: PlayerId;
   text: string;
   tone?: 'normal' | 'attack' | 'effect' | 'damage' | 'summon' | 'system';
+  /**
+   * The card this line is about, so the beat announcing it can show its face.
+   *
+   * A line with no beat of its own gets one — see `speakRemainingLog` — and
+   * that beat had nothing to draw, so the board printed "Battle Ox gains 300
+   * ATK" over empty space. Reported as art missing from some banners. The
+   * writer of the line is the only thing that knows which card it means, so it
+   * says so here rather than the board guessing from the words.
+   */
+  slug?: string;
 }
 
 export interface DuelState {

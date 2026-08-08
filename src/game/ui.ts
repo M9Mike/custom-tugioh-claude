@@ -226,6 +226,23 @@ export function summonTargetSpec(slug: string): TargetSpec | null {
   return targetSpecFor(slug, 'onSummon') ?? targetSpecFor(slug, 'onNormalSummon');
 }
 
+/**
+ * Whose piles a picker should lay out, from the picking player's side.
+ *
+ * Lives here rather than inside the modal for the reason this file already
+ * learned once: a rule written as a closure in `Duel.tsx` can only be tested by
+ * re-implementing it, and a test that re-implements a rule agrees with its bug.
+ * The Graveyard picker read `both ? [me, foe] : [me]` — correct while Monster
+ * Reborn and Call of the Haunted were the only cards looking in a Graveyard,
+ * and wrong the moment Graverobber read *theirs alone*: the modal listed my own
+ * pile, filtered it against their cards, and opened empty.
+ */
+export function pickerSides(spec: TargetSpec, me: PlayerId, foe: PlayerId): PlayerId[] {
+  if (spec.side === 'both') return [me, foe];
+  if (spec.side === 'opp') return [foe];
+  return [me];
+}
+
 export const KIND_LABEL: Record<string, string> = {
   monster: 'Monster',
   spell: 'Spell',
