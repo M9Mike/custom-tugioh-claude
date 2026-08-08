@@ -3,6 +3,11 @@
  *
  * These are deliberately more powerful than the printed cards — the goal is the
  * feel of the season 1 anime, where every monster did something spectacular.
+ *
+ * On voice: a monster in here says "this monster", never "this card". The text
+ * is the only voice these monsters get, and "this card" is rulebook language
+ * about a piece of cardboard — Spells and Traps use it because they really are
+ * cards. `text-check` enforces it, so this is a reminder rather than a request.
  */
 import type { CardEffect, Pick, Selector, Side } from '../types';
 

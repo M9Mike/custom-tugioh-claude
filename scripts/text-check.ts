@@ -201,9 +201,42 @@ const hasCondition = (def: CardDef) =>
 const problems: string[] = [];
 let checked = 0;
 
+/**
+ * HOUSE RULE — a monster calls itself a monster.
+ *
+ * "This card" is how a rulebook talks about a piece of cardboard. On a board
+ * where Summoned Skull is standing there it reads like paperwork, and this
+ * game's card text is the only voice the monsters get. So a monster's text says
+ * "this monster", every time, and the exceptions are not exceptions: a Spell or
+ * a Trap says "this card" because a Spell or a Trap really is one.
+ *
+ * Written as a check rather than a note because a note is advice and this is a
+ * rule — one card authored the old way would put paperwork back on the board,
+ * and nobody would notice until it was in front of a player. The sweep that
+ * established it converted 139 cards; keeping them that way is not something to
+ * remember.
+ *
+ * The reverse is deliberately not policed. A Spell that says "this monster"
+ * would usually be sloppy — *which* monster? — but an equip talking about the
+ * body it is attached to could reasonably word it that way, and inventing a
+ * constraint to lock in today's zero instances would cost a future card more
+ * than it is worth.
+ */
+function checkSelfReference(def: CardDef): string[] {
+  if (def.kind !== 'monster') return [];
+  const said = def.text!.match(/[Tt]his card/g);
+  if (!said) return [];
+  return [
+    `${def.name} (${def.slug}) — a monster says "this monster", not "this card" ` +
+      `(${said.length} time${said.length > 1 ? 's' : ''}); "this card" is for Spells and Traps, which are cards`,
+  ];
+}
+
 for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown' || !def.text) continue;
   checked += 1;
+
+  problems.push(...checkSelfReference(def));
 
   for (const { phrase, needs, label } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;
