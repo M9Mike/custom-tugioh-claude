@@ -242,7 +242,14 @@ export type Duration = 'permanent' | 'turn' | 'opponentTurn';
 export type Op =
   /** `tributedAtk` is the ATK of what this effect's own cost just tributed —
    *  Catapult Turtle throws a monster and it lands for what it was worth. */
-  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk'; to: Side }
+  /**
+   * `perDestroyed` multiplies `amount` by how many cards this same effect has
+   * destroyed so far — "destroy up to 2 monsters, then inflict 500 damage for
+   * each". Counted from what actually died rather than from what was aimed at,
+   * so a card that was protected, or a second target that was never chosen,
+   * does not get billed for.
+   */
+  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed'; to: Side }
   | { op: 'heal'; amount: number; to: Side }
   | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
   | { op: 'gainDef'; amount: number; target: Selector; duration: Duration }
@@ -511,6 +518,14 @@ export interface EffectCondition {
   countersAtLeast?: number;
   /** Requires opponent controls at least one monster. */
   opponentHasMonster?: boolean;
+  /**
+   * Requires the controller to have a monster on the field — any monster.
+   *
+   * `controlsOtherOfType` is the type-scoped version and reads "*another*",
+   * which a Spell has no self to be other than. Phoenix Formation is flown by
+   * whatever Mai has standing, so it wants this one.
+   */
+  controlsMonster?: boolean;
   /**
    * Requires the opponent to control a Spell, Trap or Field card.
    *

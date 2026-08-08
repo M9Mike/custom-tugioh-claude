@@ -489,14 +489,18 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'harpies-hunting-ground': {
-    text: 'Field Spell: all Winged Beast monsters gain 300 ATK and 300 DEF. When activated: destroy 1 Spell or Trap your opponent controls.',
+    text: 'Field Spell: all monsters gain 300 ATK and 300 DEF. When activated: destroy 1 Spell or Trap your opponent controls.',
     effects: [
       { trigger: 'activate', targets: 1, ops: [{ op: 'destroy', target: OPP_ONE_BACKROW }] },
       {
         trigger: 'continuous',
         ops: [],
-        // "All Winged Beast monsters" — the weather again, both sides of it.
-        aura: { target: sel('both', 'all', { filter: { type: 'Winged Beast' } }), atk: 300, def: 300 },
+        /* Every monster, by the owner's rule for Mai's cards — and still both
+           sides of the field, because that is what a Field Spell is and the
+           card has always said "all". Worth knowing that widening the type
+           without narrowing the side hands the same 300 to the opponent's
+           board; the side was not part of the request, so it has not moved. */
+        aura: { target: sel('both', 'all'), atk: 300, def: 300 },
       },
     ],
   },
@@ -531,18 +535,24 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'harpie-lady-phoenix-formation': {
-    /* It is a Harpie manoeuvre, so it needs Harpies flying it. Condition-free
-       it was generic removal that won duels the flock never appeared in. */
-    text: 'If you control a Winged Beast monster: destroy up to 2 monsters your opponent controls, then inflict 500 damage to them.',
+    /* It is a formation, so it needs somebody flying it — but by the owner's
+       rule for Mai's cards that is any monster she controls, not only a Winged
+       Beast. Condition-free it was generic removal that won duels the flock
+       never appeared in, so the gate stays; only the type goes.
+
+       "500 for each" is priced per kill rather than a flat 500: one monster
+       destroyed bills 500, two bills 1000, and a target that survived — a God,
+       or anything standing beyond reach — is not charged for at all. */
+    text: 'If you control a monster: destroy up to 2 monsters your opponent controls, then inflict 500 damage to them for each monster destroyed this way.',
     cry: 'Phoenix Formation!',
     effects: [
       {
         trigger: 'activate',
         targets: 2,
-        condition: { controlsOtherOfType: 'Winged Beast' },
+        condition: { controlsMonster: true },
         ops: [
           { op: 'destroy', target: sel('opp', 'chosen', { count: 2 }) },
-          { op: 'damage', amount: 500, to: 'opp' },
+          { op: 'damage', amount: 500, scale: 'perDestroyed', to: 'opp' },
         ],
       },
     ],

@@ -4761,6 +4761,194 @@ console.log("\nThree more from a real duel: an empty modal and banners with no a
   ok(discardLines.length === 1 && !!discardLines[0].slug, 'the discard line names the card it discarded', discardLines.map((l) => `${l.text} [${l.slug ?? 'NONE'}]`).join(' | '));
 }
 
+console.log("\nMai Valentine: the flock stops being the only thing her cards can see");
+{
+  /* An equip follows its monster off the field, however the monster leaves.
+     Reported of Malevolent Nuzzler: the host was bounced to the hand and the
+     Spell sat in the only Spell/Trap Zone there is, attached to nothing. */
+  const eq = fresh();
+  const host = card(ME, 'harpie-lady');
+  host.summonedOnTurn = 0;
+  eq.players[ME].monsters = [host, null, null];
+  const nuzzler = card(ME, 'malevolent-nuzzler');
+  eq.players[ME].hand = [nuzzler];
+  const equipped = act(eq, ME, { type: 'activateSpell', uid: nuzzler.uid, targets: [host.uid] });
+  ok(equipped.players[ME].spellTrap?.slug === 'malevolent-nuzzler', 'CONTROL: the Nuzzler is on the field holding the Harpie');
+  ok(effAtk(equipped, equipped.players[ME].monsters[0]!, ME) === 1300 + 300 + 700, 'CONTROL: and it is worth its 700', `${effAtk(equipped, equipped.players[ME].monsters[0]!, ME)}`);
+
+  const bouncing = structuredClone(equipped);
+  bouncing.active = FOE;
+  bouncing.players[FOE].normalSummonUsed = false;
+  const amazon = card(FOE, 'amazon-of-the-seas');
+  bouncing.players[FOE].hand = [amazon];
+  const bounced = act(bouncing, FOE, {
+    type: 'normalSummon', uid: amazon.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [host.uid],
+  });
+  ok(bounced.players[ME].hand.some((c) => c.slug === 'harpie-lady'), 'the Harpie is bounced back to the hand');
+  ok(bounced.players[ME].spellTrap === null, 'and the Nuzzler leaves the field with it', bounced.players[ME].spellTrap?.slug ?? '');
+  ok(
+    bounced.players[ME].grave.some((c) => c.slug === 'malevolent-nuzzler'),
+    'landing in the Graveyard rather than vanishing'
+  );
+
+  /* `bounce` is the reachable case and the one that was reported; `banish` and
+     `shuffleIntoDeck` lifted a card out the same way and now share the one
+     `releaseEquips` call, so fixing this fixed all three at once. */
+
+  // Harpie Lady lifts every monster, not only the flock, and by 300.
+  const buff = fresh();
+  const hl = card(ME, 'harpie-lady');
+  const dragon = card(ME, 'harpie-s-pet-dragon'); // a Dragon, never a Winged Beast
+  buff.players[ME].monsters = [hl, dragon, null];
+  ok(
+    effAtk(buff, dragon, ME) === baseAtkOf('harpie-s-pet-dragon') + 300 + 600,
+    'Harpie Lady gives 300 to a Dragon standing beside her, and the Pet Dragon counts the board',
+    `${effAtk(buff, dragon, ME)}`
+  );
+
+  /* The Pet Dragon is a live count now, both halves of it: the board, and the
+     fallen Harpies. It used to be a snapshot taken once on summon. */
+  const pet = fresh();
+  const pd = card(ME, 'harpie-s-pet-dragon');
+  pet.players[ME].monsters = [pd, null, null];
+  const alone = effAtk(pet, pd, ME);
+  ok(alone === baseAtkOf('harpie-s-pet-dragon') + 300, 'the Pet Dragon counts itself as a monster you control', `${alone}`);
+
+  const withGrave = fresh();
+  const pd2 = card(ME, 'harpie-s-pet-dragon');
+  withGrave.players[ME].monsters = [pd2, null, null];
+  withGrave.players[ME].grave = [
+    card(ME, 'harpie-lady'),
+    card(ME, 'cyber-harpie-lady'),
+    card(ME, 'harpie-lady-sisters'),
+    card(ME, 'baby-dragon'), // not a Harpie — must not count
+  ];
+  ok(
+    effAtk(withGrave, pd2, ME) === baseAtkOf('harpie-s-pet-dragon') + 300 + 900,
+    'and 300 for each of the three Harpie Lady cards in the Graveyard, and nothing for the Baby Dragon',
+    `${effAtk(withGrave, pd2, ME)}`
+  );
+  // Live, not frozen: bury one more and the number moves.
+  const grown = structuredClone(withGrave);
+  grown.players[ME].grave.push(card(ME, 'harpie-lady'));
+  ok(
+    effAtk(grown, grown.players[ME].monsters[0]!, ME) === baseAtkOf('harpie-s-pet-dragon') + 300 + 1200,
+    'and it rises again the moment another one falls'
+  );
+
+  /* Phoenix Formation: any monster flies it, and it bills 500 a kill. */
+  const pf = fresh();
+  const flyer = card(ME, 'sonic-maid'); // a Warrior, not a Winged Beast
+  pf.players[ME].monsters = [flyer, null, null];
+  const form = card(ME, 'harpie-lady-phoenix-formation');
+  pf.players[ME].hand = [form];
+  const t1 = card(FOE, 'battle-ox');
+  const t2 = card(FOE, 'kuriboh');
+  pf.players[FOE].monsters = [t1, t2, null];
+  const pfBefore = pf.players[FOE].lp;
+  const blasted = act(pf, ME, { type: 'activateSpell', uid: form.uid, targets: [t1.uid, t2.uid] });
+  ok(blasted.players[FOE].monsters.every((m) => !m), 'Phoenix Formation flies off a Warrior and clears two monsters');
+  ok(blasted.players[FOE].lp === pfBefore - 1000, 'and bills 500 for each of them', `LP ${blasted.players[FOE].lp} of ${pfBefore - 1000}`);
+
+  // One kill is one charge, not two.
+  const one = fresh();
+  const flyer2 = card(ME, 'sonic-maid');
+  one.players[ME].monsters = [flyer2, null, null];
+  const form2 = card(ME, 'harpie-lady-phoenix-formation');
+  one.players[ME].hand = [form2];
+  const solo = card(FOE, 'battle-ox');
+  one.players[FOE].monsters = [solo, null, null];
+  const oneBefore = one.players[FOE].lp;
+  const once = act(one, ME, { type: 'activateSpell', uid: form2.uid, targets: [solo.uid] });
+  ok(once.players[FOE].lp === oneBefore - 500, 'and only 500 when only one monster dies', `LP ${once.players[FOE].lp} of ${oneBefore - 500}`);
+
+  // Nothing on my side and the formation cannot be flown at all.
+  const bare = fresh();
+  const form3 = card(ME, 'harpie-lady-phoenix-formation');
+  bare.players[ME].hand = [form3];
+  bare.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  ok(
+    !canActivateFromHand(bare, ME, form3),
+    'CONTROL: with no monster of her own it is not offered'
+  );
+
+  /* Harpies' Hunting Ground lifts every monster now. Both sides, as it always
+     has — the type widened, the side did not. */
+  const ground = fresh();
+  const hg = card(ME, 'harpies-hunting-ground');
+  ground.players[ME].hand = [hg];
+  const mine = card(ME, 'sonic-maid');
+  ground.players[ME].monsters = [mine, null, null];
+  const theirs = card(FOE, 'battle-ox');
+  ground.players[FOE].monsters = [theirs, null, null];
+  ground.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+  const laid = act(ground, ME, { type: 'activateSpell', uid: hg.uid, targets: [ground.players[FOE].spellTrap!.uid] });
+  ok(
+    effAtk(laid, laid.players[ME].monsters[0]!, ME) === baseAtkOf('sonic-maid') + 300,
+    'the Hunting Ground lifts a Warrior of hers',
+    `${effAtk(laid, laid.players[ME].monsters[0]!, ME)}`
+  );
+  ok(
+    effAtk(laid, laid.players[FOE].monsters[0]!, FOE) === baseAtkOf('battle-ox') + 300,
+    "and still lifts the opponent's board too — the card says 'all'",
+    `${effAtk(laid, laid.players[FOE].monsters[0]!, FOE)}`
+  );
+
+  // Harpie Lady Sisters fetch the Pet Dragon, Deck before Graveyard.
+  const sis = fresh();
+  const sisters = card(ME, 'harpie-lady-sisters');
+  sis.players[ME].hand = [sisters];
+  sis.players[ME].monsters = [card(ME, 'mystical-elf'), card(ME, 'mystical-elf'), null];
+  sis.players[ME].deck = [card(ME, 'harpie-s-pet-dragon'), card(ME, 'kuriboh')];
+  const flew = act(sis, ME, {
+    type: 'normalSummon', uid: sisters.uid, zone: 2, position: 'atk', face: 'up',
+    tributes: sis.players[ME].monsters.filter(Boolean).map((m) => m!.uid),
+  });
+  ok(flew.players[ME].hand.some((c) => c.slug === 'harpie-s-pet-dragon'), 'Harpie Lady Sisters fetch the Pet Dragon from the Deck');
+
+  const sisGrave = fresh();
+  const sisters2 = card(ME, 'harpie-lady-sisters');
+  sisGrave.players[ME].hand = [sisters2];
+  sisGrave.players[ME].monsters = [card(ME, 'mystical-elf'), card(ME, 'mystical-elf'), null];
+  sisGrave.players[ME].deck = [card(ME, 'kuriboh')];
+  sisGrave.players[ME].grave = [card(ME, 'harpie-s-pet-dragon')];
+  const flew2 = act(sisGrave, ME, {
+    type: 'normalSummon', uid: sisters2.uid, zone: 2, position: 'atk', face: 'up',
+    tributes: sisGrave.players[ME].monsters.filter(Boolean).map((m) => m!.uid),
+  });
+  ok(flew2.players[ME].hand.some((c) => c.slug === 'harpie-s-pet-dragon'), 'and out of the Graveyard when the Deck has none');
+
+  /* Sonic Maid draws on the way out; Happy Lover leaves the Hunting Ground. */
+  const dying = fresh('battle');
+  const maid = card(ME, 'sonic-maid');
+  maid.summonedOnTurn = 0;
+  dying.players[ME].monsters = [maid, null, null];
+  dying.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const killer = card(FOE, 'summoned-skull');
+  killer.summonedOnTurn = 0;
+  dying.players[FOE].monsters = [killer, null, null];
+  dying.active = FOE;
+  const struck = act(dying, FOE, { type: 'attack', uid: killer.uid, targetUid: maid.uid });
+  ok(!struck.players[ME].monsters.some((m) => m?.slug === 'sonic-maid'), 'CONTROL: Sonic Maid dies to the swing');
+  ok(struck.players[ME].hand.length === 1, 'and draws a card on the way out', `hand ${struck.players[ME].hand.length}`);
+
+  const lover = fresh('battle');
+  const happy = card(ME, 'happy-lover');
+  happy.summonedOnTurn = 0;
+  lover.players[ME].monsters = [happy, null, null];
+  lover.players[ME].deck = [card(ME, 'harpies-hunting-ground'), card(ME, 'kuriboh')];
+  const killer2 = card(FOE, 'summoned-skull');
+  killer2.summonedOnTurn = 0;
+  lover.players[FOE].monsters = [killer2, null, null];
+  lover.active = FOE;
+  const fell = act(lover, FOE, { type: 'attack', uid: killer2.uid, targetUid: happy.uid });
+  ok(
+    fell.players[ME].hand.some((c) => c.slug === 'harpies-hunting-ground'),
+    'Happy Lover leaves the Hunting Ground behind when it dies',
+    fell.players[ME].hand.map((c) => c.slug).join(',') || '(empty)'
+  );
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

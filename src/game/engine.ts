@@ -605,21 +605,32 @@ function resetInstance(c: CardInstance) {
  * a missed site means a destruction effect does not fire, which is far less
  * damaging than one firing while you are paying a Tribute Summon.
  */
-function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false) {
-  const found = fromField ? findOnField(state, uid) : null;
-  const controller = found?.controller;
-  const c = removeFromAnywhere(state, uid);
-  if (!c) return;
-
-  // An Equip Spell has nothing left to hold, so it follows its monster down.
-  // These are the real cards sitting in a Spell/Trap Zone — recursing through
-  // toGrave is what takes them off the field.
+/**
+ * Cut a card free of whatever it was equipped to, in both directions.
+ *
+ * An Equip Spell has nothing left to hold once its monster leaves, so it
+ * follows the monster down; and an equip leaving the field stops being listed
+ * on the monster it was buffing.
+ *
+ * This used to live inside `toGrave` alone, which meant it ran when the host
+ * was *destroyed* and not when it left the field any other way. `bounce`,
+ * `banish` and `shuffleIntoDeck` all lift a card out with
+ * `removeFromAnywhere` and never went past it — so returning an equipped
+ * monster to the hand left the Equip Spell sitting in the Spell/Trap Zone,
+ * holding the only zone there is, attached to a card that was no longer on the
+ * field. Reported of Malevolent Nuzzler; it was true of every equip in the
+ * game and of all three removals.
+ *
+ * Called from the four places a card can leave the field.
+ */
+function releaseEquips(state: DuelState, c: CardInstance) {
+  // Anything equipped TO this card goes to the Graveyard with it. These are
+  // real cards in a Spell/Trap Zone, so `toGrave` is what takes them off.
   for (const pid of ['p1', 'p2'] as PlayerId[]) {
     const st = state.players[pid].spellTrap;
     if (st?.equippedTo === c.uid) toGrave(state, st.uid, true);
   }
-  // Going the other way: an equip leaving the field stops being listed on the
-  // monster it was buffing.
+  // And if this card IS an equip, the host stops listing it.
   if (c.equippedTo) {
     const host = findOnField(state, c.equippedTo)?.c;
     if (host) {
@@ -628,6 +639,15 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
     }
     c.equippedTo = undefined;
   }
+}
+
+function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false) {
+  const found = fromField ? findOnField(state, uid) : null;
+  const controller = found?.controller;
+  const c = removeFromAnywhere(state, uid);
+  if (!c) return;
+
+  releaseEquips(state, c);
   // Absorbed monsters are released to their owner's graveyard.
   for (const abSlug of c.absorbed) {
     const ab = newInstance(state, abSlug, other(c.owner));
@@ -757,6 +777,14 @@ interface EffectCtx {
    * number — six beats reading "Garoozis gains 100 ATK" for one die.
    */
   lastRoll?: number;
+  /**
+   * How many cards this effect has actually destroyed, for a `damage` that is
+   * priced per kill — "destroy up to 2, then 500 damage for each".
+   *
+   * Counted from what died rather than from what was aimed at: a protected
+   * card, or a second target the player never picked, must not be billed for.
+   */
+  destroyedCount?: number;
 }
 
 function sideToPlayers(ctx: EffectCtx, side: Side): PlayerId[] {
@@ -1072,7 +1100,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
     switch (op.op) {
       case 'damage': {
         let amount = op.amount ?? 0;
-        if (op.scale === 'targetAtk' || op.scale === 'halfTargetAtk') {
+        if (op.scale === 'perDestroyed') amount = (op.amount ?? 0) * (ctx.destroyedCount ?? 0);
+        else if (op.scale === 'targetAtk' || op.scale === 'halfTargetAtk') {
           const peek = ctx.targets[ctx.cursor];
           const t =
             (peek && findOnField(state, peek)?.c) ||
@@ -1145,11 +1174,19 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       case 'destroy':
-        for (const t of resolveTargets(ctx, op.target)) destroyCard(state, t, false, ctx);
+        for (const t of resolveTargets(ctx, op.target)) {
+          /* Counted from the board, not from the list: `destroyCard` refuses a
+             God and anything else standing beyond reach, and a card that
+             survived must not be charged for by a `perDestroyed` damage. */
+          const before = findOnField(state, t.uid);
+          destroyCard(state, t, false, ctx);
+          if (before && !findOnField(state, t.uid)) ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
+        }
         break;
       case 'banish':
         for (const t of resolveTargets(ctx, op.target)) {
           const owner = t.owner;
+          releaseEquips(state, t);
           const removed = removeFromAnywhere(state, t.uid);
           if (removed && !removed.isToken) {
             resetInstance(removed);
@@ -1161,6 +1198,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'bounce':
         for (const t of resolveTargets(ctx, op.target)) {
           const owner = t.owner;
+          releaseEquips(state, t);
           const removed = removeFromAnywhere(state, t.uid);
           if (removed && !removed.isToken) {
             resetInstance(removed);
@@ -1563,6 +1601,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'shuffleIntoDeck':
         for (const t of resolveTargets(ctx, op.target)) {
           const owner = t.owner;
+          releaseEquips(state, t);
           const removed = removeFromAnywhere(state, t.uid);
           if (removed && !removed.isToken) {
             resetInstance(removed);
@@ -1742,6 +1781,7 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   if (cond.graveHasSlug) {
     if (!p.grave.some((g) => g.slug === cond.graveHasSlug)) return false;
   }
+  if (cond.controlsMonster && p.monsters.every((m) => !m)) return false;
   if (cond.opponentHasBackrow) {
     const them = state.players[other(controller)];
     if (!them.spellTrap && !them.field) return false;

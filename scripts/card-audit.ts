@@ -535,6 +535,7 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   if (cond.countersAtLeast != null && self) self.counters = cond.countersAtLeast;
   if (cond.turnAtLeast != null) s.turn = Math.max(s.turn, cond.turnAtLeast);
   if (cond.opponentHasMonster && s.players[FOE].monsters.every((m) => !m)) place(s, FOE, 0, 'harpie-lady');
+  if (cond.controlsMonster && s.players[ME].monsters.every((m) => !m)) place(s, ME, 0, 'baby-dragon');
   if (cond.opponentHasBackrow && !s.players[FOE].spellTrap && !s.players[FOE].field) {
     s.players[FOE].spellTrap = mint(s, FOE, 'mirror-force');
   }

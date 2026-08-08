@@ -914,16 +914,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'harpie-lady': {
-    text: 'All Winged Beast monsters you control gain 200 ATK. When this card is summoned: destroy 1 Spell or Trap your opponent controls.',
+    /* Every monster, not only the flock. The owner's rule for Mai's own
+       cards: her support reads "monster", so it covers the Dragon, the Fish,
+       the Fairies and the Warrior she actually plays beside the Harpies. */
+    text: 'All monsters you control gain 300 ATK. When this card is summoned: destroy 1 Spell or Trap your opponent controls.',
     cry: 'Sisters, take flight!',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Winged Beast' } }), atk: 200 } },
+      { trigger: 'continuous', ops: [], aura: { target: OWN_ALL, atk: 300 } },
       { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }] },
     ],
   },
 
   'harpie-lady-sisters': {
-    text: 'This card can attack all monsters your opponent controls once each. When summoned: destroy every Spell and Trap your opponent controls.',
+    text: 'This card can attack all monsters your opponent controls once each. When summoned: destroy every Spell and Trap your opponent controls, then add "Harpie\'s Pet Dragon" from your Deck or Graveyard to your hand.',
     cry: 'Triple attack!',
     effects: [
       {
@@ -931,6 +934,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'attackAllMonsters' },
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'search', filter: { slugs: ['harpie-s-pet-dragon'] }, orGrave: true },
         ],
       },
     ],
@@ -945,16 +949,34 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'harpie-s-pet-dragon': {
-    text: 'Gains 300 ATK and DEF for each Winged Beast you control. When summoned: destroy 1 monster your opponent controls.',
+    /* Two live counts rather than one snapshot. It was a `gainAtk` taken once
+       on summon, which is not what "gains 300 for each" means — the quantity
+       keeps moving, and a Harpie arriving later did nothing for it. Both halves
+       are auras now, so the number rises and falls with the board.
+
+       Any monster on the field, by the owner's rule for Mai's cards, and the
+       Harpies in the Graveyard on top: `nameIncludes` catches all three of
+       them — Harpie Lady, Harpie Lady Sisters and Cyber Harpie Lady. */
+    text: 'This card gains 300 ATK and DEF for each monster you control. It also gains 300 ATK and DEF for each "Harpie Lady" card in your Graveyard. When summoned: destroy 1 monster your opponent controls.',
     cry: 'Feed on their fear!',
     effects: [
       {
         trigger: 'onSummon',
         targets: 1,
-        ops: [
-          { op: 'gainAtk', scale: 'perMonsterOnField', target: SELF, duration: 'permanent' },
-          { op: 'destroy', target: OPP_PICK },
-        ],
+        ops: [{ op: 'destroy', target: OPP_PICK }],
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownField', atk: 300, def: 300 } },
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          per: { zone: 'ownGrave', filter: { nameIncludes: 'Harpie Lady' }, atk: 300, def: 300 },
+        },
       },
     ],
   },
@@ -1004,13 +1026,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'sonic-maid': {
-    text: 'When this card is summoned: draw 1 card.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'When this card is summoned: draw 1 card. When this card is destroyed: draw 1 card.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      { trigger: 'onDestroyed', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+    ],
   },
 
   'happy-lover': {
-    text: 'When this card is summoned: gain 1000 Life Points.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
+    text: 'When this card is summoned: gain 1000 Life Points. When this card is destroyed: add "Harpies\' Hunting Ground" from your Deck or Graveyard to your hand.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
+      { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['harpies-hunting-ground'] }, orGrave: true }] },
+    ],
   },
 
   /* ================================================================ */
