@@ -12,7 +12,7 @@ import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, cr
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
-import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
+import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
 const FOE: PlayerId = 'p2';
@@ -125,7 +125,17 @@ console.log('Rules regressions\n');
   ok(on(after, ME).length === 0, 'Man-Eater Bug flipped by Stop Defense still eats a monster', `${on(after, ME).length} left`);
 }
 
-/* 2. A revived monster does not re-collect its Normal Summon bonus. ------- */
+/* 2. A summon is a summon, however the monster got there. -----------------
+ *
+ * This pin used to assert the opposite — that a revived monster collected
+ * nothing — and it was right about the engine and wrong about the game. The
+ * owner's rule: a card that says "when Normal Summoned" should pay out
+ * whenever it arrives face-up, Special Summons included. A face-down Set is
+ * still not a summon and still pays nothing.
+ *
+ * Lady of Faith is the canonical case, so she is the one pinned in all three
+ * directions.
+ */
 {
   // Normal Summon: the bonus applies.
   const a = fresh();
@@ -134,7 +144,7 @@ console.log('Rules regressions\n');
   const summoned = act(a, ME, { type: 'normalSummon', uid: lady.uid, zone: 0, position: 'atk', face: 'up' });
   ok(summoned.players[ME].lp > 4000, 'Lady of Faith pays out when Normal Summoned', `LP ${summoned.players[ME].lp}`);
 
-  // Monster Reborn: it must not.
+  // Monster Reborn: it must too, now.
   const b = fresh();
   const dead = card(ME, 'lady-of-faith');
   b.players[ME].grave.push(dead);
@@ -142,7 +152,16 @@ console.log('Rules regressions\n');
   b.players[ME].hand.push(reborn);
   const revived = act(b, ME, { type: 'activateSpell', uid: reborn.uid, targets: [dead.uid] });
   ok(on(revived, ME).length === 1, 'Monster Reborn puts Lady of Faith on the field');
-  ok(revived.players[ME].lp === 4000, 'Lady of Faith pays nothing when Special Summoned', `LP ${revived.players[ME].lp}`);
+  ok(revived.players[ME].lp > 4000, 'and she pays out when Special Summoned as well', `LP ${revived.players[ME].lp}`);
+
+  /* Setting one face-down is still not a summon. This is the half of the rule
+     that is easy to lose: `onSummon` fires from the Normal Summon path only
+     when the card lands face-up, and nothing should reward hiding it. */
+  const c = fresh();
+  const hidden = card(ME, 'lady-of-faith');
+  c.players[ME].hand.push(hidden);
+  const set = act(c, ME, { type: 'normalSummon', uid: hidden.uid, zone: 0, position: 'def', face: 'down' });
+  ok(set.players[ME].lp === 4000, 'CONTROL: a face-down Set pays nothing at all', `LP ${set.players[ME].lp}`);
 }
 
 /* 3. A monster's death frees the zone its own effect needs. --------------- */
@@ -4184,6 +4203,233 @@ console.log('\nKaiser Sea Horse fetches the dragon he pays for — Deck first, G
     'Flame Swordsman also takes exactly one Salamandra with a copy in both piles',
     `hand ${armed.players[ME].hand.map((c) => c.slug).join(',')}`
   );
+}
+
+console.log('\nThe summon rule, and the seven cards it must NOT reach');
+{
+  /* Alligator's Sword is the owner's own example: "when Normal Summoned: add
+     Baby Dragon or Polymerization" should work however he arrives. */
+  const revive = fresh();
+  const gator = card(ME, "alligator-s-sword");
+  revive.players[ME].grave = [gator];
+  const reborn = card(ME, 'monster-reborn');
+  revive.players[ME].hand = [reborn];
+  revive.players[ME].deck = [card(ME, 'baby-dragon'), card(ME, 'kuriboh')];
+  const back = act(revive, ME, { type: 'activateSpell', uid: reborn.uid, targets: [gator.uid] });
+  ok(
+    back.players[ME].hand.some((c) => c.slug === 'baby-dragon'),
+    "Alligator's Sword searches when Special Summoned, not only when Normal Summoned"
+  );
+
+  /* The seven exceptions. Each Special Summons a copy of ITSELF, and their
+     `onNormalSummon` is a deliberate recursion guard with measured balance
+     behind it — "the chain is one link long by construction rather than by
+     counting the deck". Converting them would have let one summon fill the
+     board off the Deck. The guard is pinned so the next sweep cannot quietly
+     remove it. */
+  const GUARDED = [
+    'bowganian',
+    'viser-des',
+    'millennium-seeker',
+    'mudora',
+    'keldo',
+    'ra-s-disciple',
+    'giant-red-seasnake',
+  ];
+  /* "Summons a copy of itself" is two different shapes: six name their own
+     slug, and Giant Red Seasnake reaches for any WATER monster of 1850 ATK or
+     less — which he is. Both are self-chains and both need the guard. */
+  const summonsSelf = (slug: string, o: Op): boolean => {
+    if (o.op !== 'specialSummon') return false;
+    if ((o.filter?.slugs ?? []).includes(slug)) return true;
+    const me = CARDS[slug];
+    const f = o.filter;
+    if (!f || f.slugs) return false;
+    if (f.type && f.type !== me.type) return false;
+    if (f.attribute && f.attribute !== me.attribute) return false;
+    if (f.maxAtk != null && (me.atk ?? 0) > f.maxAtk) return false;
+    if (f.minAtk != null && (me.atk ?? 0) < f.minAtk) return false;
+    return !!(f.type || f.attribute || f.maxAtk != null || f.minAtk != null);
+  };
+  for (const slug of GUARDED) {
+    const def = CARDS[slug];
+    const selfSummons = def.effects.some((e) => e.ops.some((o) => summonsSelf(slug, o)));
+    const guarded = def.effects.every(
+      (e) => e.trigger !== 'onSummon' || !e.ops.some((o) => summonsSelf(slug, o))
+    );
+    ok(selfSummons && guarded, `${def.name} still summons its twin on onNormalSummon only`);
+  }
+
+  /* And the guard actually holds: Normal Summon Mudora and exactly ONE twin
+     joins him, not a full board. This is the assertion the type-level check
+     above cannot make. */
+  const m = fresh();
+  const mudora = card(ME, 'mudora');
+  m.players[ME].hand = [mudora];
+    /* Fillers on top: Mudora's own mill takes two off the Deck BEFORE the twin
+     is fetched, and with the copies on top it buried them and then found
+     nothing — the test's deck order, not the card. */
+  m.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'mudora'), card(ME, 'mudora')];
+  const twinned = act(m, ME, { type: 'normalSummon', uid: mudora.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(
+    twinned.players[ME].monsters.filter((x) => x?.slug === 'mudora').length === 2,
+    'Mudora brings exactly one twin — the chain is one link, not a full board',
+    `${twinned.players[ME].monsters.filter((x) => x?.slug === 'mudora').length} on the field`
+  );
+}
+
+console.log('\nKaiba: the Ultimate Dragon spends a brother, and the Sea Horse finally counts double');
+{
+  /* Blue-Eyes Ultimate Dragon: feed a Blue-Eyes back into the Deck, shatter a
+     backrow. Placed on the field rather than Fusion Summoned, so the ignition
+     is tested on its own without the arrival sweep clearing the board first. */
+  const s = fresh();
+  const ult = card(ME, 'blue-eyes-ultimate-dragon');
+  ult.summonedOnTurn = 0;
+  s.players[ME].monsters = [ult, null, null];
+  s.players[ME].grave = [card(ME, 'blue-eyes-white-dragon'), card(ME, 'dark-hole')];
+  s.players[ME].deck = [card(ME, 'kuriboh')];
+  const set = card(FOE, 'mirror-force');
+  set.face = 'down';
+  s.players[FOE].spellTrap = set;
+  const fired = act(s, ME, { type: 'ignition', uid: ult.uid, targets: [set.uid] });
+  ok(fired.players[FOE].spellTrap === null, 'the Ultimate Dragon shatters a Spell or Trap');
+  ok(
+    !fired.players[ME].grave.some((c) => c.slug === 'blue-eyes-white-dragon'),
+    'and the Blue-Eyes it spent has left the Graveyard'
+  );
+  ok(
+    fired.players[ME].deck.some((c) => c.slug === 'blue-eyes-white-dragon'),
+    'and gone back into the Deck, not anywhere else'
+  );
+
+  // No Blue-Eyes down there and the effect is not on offer at all.
+  const empty = fresh();
+  const ult2 = card(ME, 'blue-eyes-ultimate-dragon');
+  ult2.summonedOnTurn = 0;
+  empty.players[ME].monsters = [ult2, null, null];
+  empty.players[ME].grave = [card(ME, 'dark-hole')];
+  const setB = card(FOE, 'mirror-force');
+  setB.face = 'down';
+  empty.players[FOE].spellTrap = setB;
+  ok(
+    !!applyAction(empty, ME, { type: 'ignition', uid: ult2.uid, targets: [setB.uid] }).error,
+    'CONTROL: with no Blue-Eyes in the Graveyard the ignition is refused'
+  );
+
+  /* Kaiser Sea Horse counts as two Tributes for a LIGHT monster. Reported as
+     broken from a real duel — the sentence had never been implemented. */
+  const light = 'blue-eyes-white-dragon'; // Level 8 LIGHT — two Tributes
+  ok(CARDS[light].attribute === 'LIGHT', 'CONTROL: Blue-Eyes is the LIGHT monster this is about');
+  const board = fresh();
+  const horse = card(ME, 'kaiser-sea-horse');
+  board.players[ME].monsters = [horse, null, null];
+  ok(
+    tributesRequired(light, board, ME) === 1,
+    'with Kaiser Sea Horse standing, a LIGHT Level 8 needs only one Tribute',
+    `needs ${tributesRequired(light, board, ME)}`
+  );
+
+  const bare = fresh();
+  bare.players[ME].monsters = [card(ME, 'battle-ox'), null, null];
+  ok(
+    tributesRequired(light, bare, ME) === 2,
+    'CONTROL: without him it is still two',
+    `needs ${tributesRequired(bare ? light : light, bare, ME)}`
+  );
+
+  // And it is LIGHT only — a DARK Level 7 pays full price.
+  const dark = fresh();
+  dark.players[ME].monsters = [card(ME, 'kaiser-sea-horse'), null, null];
+  ok(
+    CARDS['gaia-the-fierce-knight'].attribute !== 'LIGHT' &&
+      tributesRequired('gaia-the-fierce-knight', dark, ME) === 2,
+    'CONTROL: he does nothing for a non-LIGHT monster',
+    `needs ${tributesRequired('gaia-the-fierce-knight', dark, ME)}`
+  );
+
+  // Saggi finds the virus.
+  const clown = fresh();
+  const saggi = card(ME, 'saggi-the-dark-clown');
+  clown.players[ME].hand = [saggi];
+  clown.players[ME].deck = [card(ME, 'crush-card-virus'), card(ME, 'kuriboh')];
+  const found = act(clown, ME, { type: 'normalSummon', uid: saggi.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(found.players[ME].hand.some((c) => c.slug === 'crush-card-virus'), 'Saggi the Dark Clown fetches Crush Card Virus');
+}
+
+console.log('\nJoey: one banner per roll, a dragon off heads, and a chosen grave');
+{
+  /* The dice say their total once. `gainAtk` writes a line every time it moves
+     a number, so running it inside `perPip` printed six banners for a six. */
+  let sawRoll = false;
+  for (let seed = 1; seed < 40 && !sawRoll; seed++) {
+    const s = fresh();
+    s.seed = seed;
+    const grace = card(ME, 'graceful-dice');
+    s.players[ME].hand = [grace];
+    const ox = card(ME, 'battle-ox'); // 1700
+    s.players[ME].monsters = [ox, null, null];
+    const before = s.log.length;
+    const rolled = act(s, ME, { type: 'activateSpell', uid: grace.uid, targets: [] });
+    const gained = effAtk(rolled, rolled.players[ME].monsters[0]!, ME) - 1700;
+    if (gained <= 0) continue;
+    sawRoll = true;
+    const lines = rolled.log.slice(before).filter((l) => /gains \d+ ATK/.test(l.text));
+    ok(lines.length === 1, 'Graceful Dice announces its total in ONE line', `${lines.length} lines: ${lines.map((l) => l.text).join(' | ')}`);
+    ok(gained % 200 === 0 && gained >= 200 && gained <= 1200, 'and the total is 200 a pip', `gained ${gained}`);
+    ok(new RegExp(`gains ${gained} ATK`).test(lines[0]?.text ?? ''), 'and that line carries the summed number', lines[0]?.text ?? '(none)');
+  }
+  ok(sawRoll, 'CONTROL: a roll was actually observed');
+
+  /* Time Wizard on heads clears their board AND brings the dragon out. */
+  let sawHeads = false;
+  for (let seed = 1; seed < 60 && !sawHeads; seed++) {
+    const t = fresh();
+    t.seed = seed;
+    const wizard = card(ME, 'time-wizard');
+    wizard.summonedOnTurn = 0;
+    t.players[ME].monsters = [wizard, null, null];
+    t.players[ME].extra = [card(ME, 'thousand-dragon')];
+    t.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+    const rolled = act(t, ME, { type: 'ignition', uid: wizard.uid, targets: [] });
+    const theirsGone = !rolled.players[FOE].monsters.some((m) => m?.slug === 'battle-ox');
+    if (!theirsGone) continue; // tails
+    sawHeads = true;
+    ok(
+      rolled.players[ME].monsters.some((m) => m?.slug === 'thousand-dragon'),
+      'Time Wizard on heads Special Summons Thousand Dragon from the Extra Deck'
+    );
+    ok(rolled.players[ME].extra.every((c) => c.slug !== 'thousand-dragon'), 'and it really left the Extra Deck');
+  }
+  ok(sawHeads, 'CONTROL: heads was actually reached');
+
+  // A 2400 vanilla body, deliberately — no rider from the generic fallback.
+  ok(baseAtkOf('thousand-dragon') === 2400, 'Thousand Dragon is a 2400 body', `${baseAtkOf('thousand-dragon')}`);
+  ok(CARDS['thousand-dragon'].effects.length === 0, 'and carries no effect at all — vanilla, as asked');
+
+  /* Graverobber asks which card, the way Monster Reborn asks which monster. */
+  const spec = targetSpecFor('graverobber', 'trap');
+  ok(!!spec, 'Graverobber declares a target spec at all');
+  ok(spec?.zone === 'grave' && spec?.side === 'opp', "and it points at the opponent's Graveyard", `${spec?.side}/${spec?.zone}`);
+
+  const g = fresh();
+  const robber = card(ME, 'graverobber');
+  robber.face = 'down';
+  robber.summonedOnTurn = 1;
+  g.players[ME].spellTrap = robber;
+  const wanted = card(FOE, 'dark-hole');
+  g.players[FOE].grave = [card(FOE, 'monster-reborn'), wanted, card(FOE, 'kuriboh')];
+  const taken = act(g, ME, { type: 'activateSetCard', uid: robber.uid, targets: [wanted.uid] });
+  ok(
+    taken.players[ME].hand.some((c) => c.uid === wanted.uid),
+    'and it takes the card that was actually chosen, not the strongest',
+    taken.players[ME].hand.map((c) => c.slug).join(',')
+  );
+
+  /* CONTROL: the mid-resolution steals must NOT have grown a prompt. Nobody is
+     there to answer one when a summon resolves. */
+  ok(!targetSpecFor('hitotsu-me-giant', 'onSummon'), 'CONTROL: Hitotsu-Me Giant still asks nothing');
+  ok(!targetSpecFor('lady-of-faith', 'onSummon'), 'CONTROL: Lady of Faith still asks nothing');
 }
 
 /* The summary goes LAST, and there is nothing after it.

@@ -22,7 +22,7 @@ import {
 } from '../src/game/engine';
 import { CARDS, DUELISTS } from '../src/game/cards';
 import { MONSTER_ZONES } from '../src/game/types';
-import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
+import type { CardInstance, DuelState, Op, PlayerId } from '../src/game/types';
 
 /**
  * A duel parked in Main Phase holding the card, with a board and a hand behind
@@ -209,10 +209,34 @@ for (const du of DUELISTS) {
       dead.push(`${slug} is in ${du.name}'s Extra Deck but is not a card`);
       continue;
     }
+    /* A Fusion recipe is not the only way out of the Extra Deck. Thousand
+       Dragon has none on purpose — Time Wizard's heads Special Summons it from
+       there, which is the whole reward for taking the coin flip. So before
+       calling an Extra Deck card unreachable, ask whether anything in the same
+       main deck names it in a `specialSummon ... from: 'extra'`. */
+    const calledOut = du.deck.some(([mainSlug]) =>
+      (CARDS[mainSlug]?.effects ?? []).some(function reaches(eff): boolean {
+        const scan = (ops: readonly Op[]): boolean =>
+          ops.some((o) => {
+            if (o.op === 'coinFlip') return scan(o.heads) || scan(o.tails);
+            if (o.op === 'diceRoll') return scan(o.perPip);
+            if (o.op !== 'specialSummon') return false;
+            const from = Array.isArray(o.from) ? o.from : [o.from];
+            return from.includes('extra') && !!o.filter?.slugs?.includes(slug);
+          });
+        return scan(eff.ops);
+      })
+    );
+
     const recipe = def.fusionMaterials ?? [];
     if (!recipe.length) {
+      if (calledOut) {
+        summonable.push(slug);
+        continue;
+      }
       dead.push(
-        `${def.name} (${slug}) sits in ${du.name}'s Extra Deck with no Fusion recipe, so it can never be summoned`
+        `${def.name} (${slug}) sits in ${du.name}'s Extra Deck with no Fusion recipe and nothing in the deck ` +
+          'Special Summons it from there, so it can never be summoned'
       );
       continue;
     }

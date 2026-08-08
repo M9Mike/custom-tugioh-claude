@@ -1071,6 +1071,22 @@
     "isEffect": false,
     "artId": 3366982
   },
+  "thousand-dragon": {
+    "slug": "thousand-dragon",
+    "name": "Thousand Dragon",
+    "kind": "monster",
+    "subKind": null,
+    "type": "Dragon",
+    "attribute": "WIND",
+    "level": 7,
+    "atk": 2400,
+    "def": 2000,
+    "frameType": "fusion",
+    "isFusion": true,
+    "isRitual": false,
+    "isEffect": false,
+    "artId": 41462083
+  },
   "harpie-lady": {
     "slug": "harpie-lady",
     "name": "Harpie Lady",

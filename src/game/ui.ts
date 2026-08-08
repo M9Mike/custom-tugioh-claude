@@ -94,6 +94,28 @@ function specFromEffect(eff: CardEffect): TargetSpec | null {
       filter: eff.cost.tributeFilter,
     };
   }
+  /* Taking a card out of a Graveyard is a choice only when the card says so.
+     Graverobber is activated by a player who is standing right there, so it
+     asks — the owner's report, and the same shape Monster Reborn already has.
+     Every other `stealFromGrave` in the game fires mid-resolution off a summon
+     or a flip, where there is nobody to ask and the engine takes the strongest
+     legal card by design.
+     So the gate is the effect's own `targets`, deliberately, rather than the
+     presence of the op: handling it inside `scanOps` would have started
+     prompting for Hitotsu-Me Giant and Lady of Faith too, neither of which was
+     asked for and neither of which has a player to answer. */
+  if (eff.targets && eff.ops.some((o) => o.op === 'stealFromGrave')) {
+    const steal = eff.ops.find((o) => o.op === 'stealFromGrave');
+    if (steal && steal.op === 'stealFromGrave') {
+      return {
+        side: steal.from === 'own' ? 'own' : steal.from === 'either' ? 'both' : 'opp',
+        zone: 'grave',
+        count: eff.targets,
+        prompt: 'Choose a card to take from the Graveyard',
+        filter: steal.filter,
+      };
+    }
+  }
   return null;
 }
 

@@ -1621,6 +1621,9 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
       p.field?.slug === slug;
     if (!cond.requiresOnFieldAll.every(onField)) return false;
   }
+  if (cond.graveHasSlug) {
+    if (!p.grave.some((g) => g.slug === cond.graveHasSlug)) return false;
+  }
   if (cond.controlsOtherOfType) {
     const has = p.monsters.some(
       (m) => m && m.uid !== c.uid && m.face === 'up' && CARDS[m.slug]?.type === cond.controlsOtherOfType
@@ -2181,6 +2184,19 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
      longest-running lesson is what happens when one rule is copied into
      several places: `summonBlocked` had already drifted in two of them. */
   if (need > 1 && state && pid && faceUpOnSide(state, pid, 'double-coston')) need -= 1;
+  /* Kaiser Sea Horse is the same bargain one attribute over — "counts as two
+     tributes for the Tribute Summon of a LIGHT monster" — and it had never
+     been implemented at all. Reported from a real duel: tributing him towards
+     a two-tribute monster still asked for a second body, so the only sentence
+     on the card that does anything did nothing.
+
+     A discount for the same reason Double Coston is one, and the reason is
+     written above: five separate places pick the tributes to pay, and a
+     tribute that counted double would have to be understood by every one of
+     them. LIGHT is read off the monster being Summoned, not off him. */
+  if (need > 1 && state && pid && def?.attribute === 'LIGHT' && faceUpOnSide(state, pid, 'kaiser-sea-horse')) {
+    need -= 1;
+  }
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
   // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World
@@ -2413,6 +2429,12 @@ export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boo
   const eff = def?.effects.find((e) => e.trigger === 'ignition');
   if (!eff) return false;
   if (!canPayCost(state, pid, eff, c.uid)) return false;
+  /* A condition is as much a gate as a cost, and this never asked. No ignition
+     carried one until the Ultimate Dragon — which spends a Blue-Eyes out of
+     the Graveyard — so an empty pile would have let the button be pressed for
+     free removal with nothing paid. Offering an effect that cannot honour its
+     own first half is the "card looks inert" trap from the other direction. */
+  if (!conditionMet(state, eff, c, pid)) return false;
   return c.effectUsedOnTurn !== state.turn;
 }
 

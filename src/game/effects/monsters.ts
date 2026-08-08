@@ -44,7 +44,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'blue-eyes-ultimate-dragon': {
-    text: 'Fusion: 3 × Blue-Eyes White Dragon. When Fusion Summoned: destroy every Spell, Trap and Field card your opponent controls. This card attacks every monster your opponent controls once each and inflicts piercing battle damage.',
+    text: 'Fusion: 3 × Blue-Eyes White Dragon. When Fusion Summoned: destroy every Spell, Trap and Field card your opponent controls. This card attacks every monster your opponent controls once each and inflicts piercing battle damage. Once per turn: shuffle 1 "Blue-Eyes White Dragon" from your Graveyard into your Deck, then destroy 1 Spell or Trap your opponent controls.',
     cry: 'Neutron Blast!',
     fusionMaterials: ['blue-eyes-white-dragon', 'blue-eyes-white-dragon', 'blue-eyes-white-dragon'],
     effects: [
@@ -55,6 +55,34 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
           { op: 'attackAllMonsters' },
           { op: 'pierce', duration: 'permanent' },
+        ],
+      },
+      /* The three dragons it was built from are its ammunition: feed one back
+         into the Deck and it shatters a card across the table. Modelled on
+         Dark Paladin's ignition, with the Graveyard cost in front of the
+         payoff.
+
+         `condition.graveHasSlug` gates it, so the button is only offered while
+         there is actually a dragon down there to spend — an ignition that
+         resolves into nothing is the "card looks inert" trap this file keeps
+         relearning. The cost is written first and targets the Graveyard
+         directly; `shuffleIntoDeck` sends a card to its owner's Deck from
+         wherever it is. */
+      {
+        trigger: 'ignition',
+        label: 'Return a Blue-Eyes, shatter a Spell/Trap',
+        oncePerTurn: true,
+        condition: { graveHasSlug: 'blue-eyes-white-dragon' },
+        targets: 1,
+        ops: [
+          {
+            op: 'shuffleIntoDeck',
+            /* `strongest` rather than a player choice: every Blue-Eyes in the
+               pile is the same 3000-ATK card, so there is nothing to choose
+               between them and nobody should be asked. */
+            target: sel('own', 'strongest', { zone: 'grave', filter: { slugs: ['blue-eyes-white-dragon'] }, count: 1 }),
+          },
+          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) },
         ],
       },
     ],
@@ -142,6 +170,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ],
       },
     ],
+  },
+
+  'thousand-dragon': {
+    /* Deliberately vanilla — the owner asked for a plain body, and without an
+       entry here `fallbackEffect` would have handed a 2400 ATK monster the
+       stock "500 damage and piercing" package. A 2400 beater arriving free off
+       a coin flip is the whole reward; it does not need a rider.
+
+       No `fusionMaterials`, so it is never offered to Polymerization. Time
+       Wizard's heads is the only way it reaches the field, which is what makes
+       the gamble worth taking. */
+    text: 'A dragon aged a thousand years by the magic of Time Wizard. Its roar is the sound of centuries.',
+    effects: [],
   },
 
   'thousand-eyes-restrict': {
@@ -238,11 +279,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'summoned-skull': {
-    text: 'When this card is Normal Summoned: inflict 600 damage to your opponent. This card inflicts piercing battle damage.',
+    text: 'When this card is summoned: inflict 600 damage to your opponent. This card inflicts piercing battle damage.',
     cry: 'Lightning Strike!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'damage', amount: 600, to: 'opp' },
           { op: 'pierce', duration: 'permanent' },
@@ -418,25 +459,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'exodia-the-forbidden-one': {
-    text: 'If you have all five pieces of the Forbidden One in your hand or on your field, you win the Duel immediately. When Normal Summoned: draw 2 cards.',
+    text: 'If you have all five pieces of the Forbidden One in your hand or on your field, you win the Duel immediately. When summoned: draw 2 cards.',
     cry: 'EXODIA! OBLITERATE!',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] }],
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] }],
   },
   'left-arm-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When summoned: draw 1 card.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-arm-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When summoned: draw 1 card.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'left-leg-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When summoned: draw 1 card.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-leg-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When summoned: draw 1 card.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
 
   /* ================================================================ */
@@ -476,11 +517,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        backwards for the card whose art is holding the instrument that calls
        them. Summon him, fetch the Flute, and next turn the shield arrives
        with the dragons it shields. */
-    text: 'When this card is Normal Summoned: add "The Flute of Summoning Dragon" from your Deck to your hand. While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects. This card gains 400 ATK for each Dragon on the field.',
+    text: 'When this card is summoned: add "The Flute of Summoning Dragon" from your Deck to your hand. While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects. This card gains 400 ATK for each Dragon on the field.',
     cry: 'Dragons, heed my call!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'search', filter: { slugs: ['the-flute-of-summoning-dragon'] } }],
       },
       {
@@ -508,7 +549,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        `search` with `orGrave` rather than a search beside a `stealFromGrave`,
        because Kaiba runs three Blue-Eyes and those two ops are independent:
        one in the Deck and one in the pile would have handed over both. */
-    text: 'This card counts as two tributes for the Tribute Summon of a LIGHT monster. When summoned: gain 500 Life Points, then add 1 "Blue-Eyes White Dragon" from your Deck to your hand, or from your Graveyard if there is none in your Deck.',
+    text: 'This card counts as two tributes for the Tribute Summon of a LIGHT monster. When summoned: gain 500 Life Points, then add 1 "Blue-Eyes White Dragon" from your Deck or Graveyard to your hand.',
     effects: [
       {
         trigger: 'onSummon',
@@ -526,9 +567,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'saggi-the-dark-clown': {
-    text: 'While face-up, your opponent\'s monsters lose 400 ATK. When this card is destroyed by battle: inflict 800 damage to your opponent.',
+    text: 'While face-up, your opponent\'s monsters lose 400 ATK. When this card is summoned: add "Crush Card Virus" from your Deck to your hand. When this card is destroyed by battle: inflict 800 damage to your opponent.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
+      /* The clown finds the virus he is famous for carrying. Kaiba's own
+         combo: a 600 ATK body nobody fears, holding the card that empties a
+         board. */
+      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['crush-card-virus'] } }] },
       { trigger: 'onDestroyedByBattle', ops: [{ op: 'damage', amount: 800, to: 'opp' }] },
     ],
   },
@@ -539,9 +584,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'judge-man': {
-    text: 'When this card is Normal Summoned: destroy all face-down monsters your opponent controls.',
+    text: 'When this card is summoned: destroy all face-down monsters your opponent controls.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }] },
+      { trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }] },
     ],
   },
 
@@ -559,10 +604,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'la-jinn-the-mystical-genie-of-the-lamp': {
-    text: 'When this card is Normal Summoned: draw 1 card, then discard 1 card at random.',
+    text: 'When this card is summoned: draw 1 card, then discard 1 card at random.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'draw', count: 1, who: 'own' },
           { op: 'discard', count: 1, who: 'own' },
@@ -590,8 +635,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'ryu-kishin-powered': {
-    text: 'When this card is Normal Summoned: destroy 1 Spell or Trap your opponent controls.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }] }],
+    text: 'When this card is summoned: destroy 1 Spell or Trap your opponent controls.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }] }],
   },
 
   /* ================================================================ */
@@ -619,7 +664,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        because Joey runs exactly one Salamandra: the two ops are independent
        and both fire, so a second copy would have been fetched twice. Same
        behaviour today, no longer a trap for whoever adds the second copy. */
-    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK, then add "Salamandra" from your Deck to your hand, or from your Graveyard if there is none in your Deck. This card inflicts piercing battle damage.',
+    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK, then add "Salamandra" from your Deck or Graveyard to your hand. This card inflicts piercing battle damage.',
     cry: 'Flame Blast!',
     effects: [
       {
@@ -656,7 +701,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Losing the board is the whole of the bad half now — the 800 on top was
        a second price for one bet, and the owner's call is that the wipe pays
        for itself. Heads and tails still cost the same to reach. */
-    text: 'Once per turn: flip a coin. Heads — destroy every monster your opponent controls. Tails — destroy every monster you control.',
+    text: 'Once per turn: flip a coin. Heads — destroy every monster your opponent controls and Special Summon "Thousand Dragon" from your Extra Deck. Tails — destroy every monster you control.',
     cry: 'Time Roulette!',
     effects: [
       {
@@ -666,7 +711,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           {
             op: 'coinFlip',
-            heads: [{ op: 'destroy', target: OPP_ALL }],
+            /* The sweep first, then the dragon — the board is clear by the time
+               it arrives, so there is a free zone for it even on a full field.
+               The other order would have the Extra Deck summon fail against
+               three blockers, which is exactly the turn heads is for. */
+            heads: [
+              { op: 'destroy', target: OPP_ALL },
+              {
+                op: 'specialSummon',
+                from: 'extra',
+                side: 'own',
+                filter: { slugs: ['thousand-dragon'] },
+                count: 1,
+                position: 'atk',
+              },
+            ],
             tails: [{ op: 'destroy', target: OWN_ALL }],
           },
         ],
@@ -712,10 +771,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Wizard or the sword, this one names the dragon or the Polymerization
        that joins them. A single `search` with both slugs is the "or" — the
        list is a preference order and it adds exactly one card. */
-    text: 'When this card is Normal Summoned: add "Baby Dragon" or "Polymerization" from your Deck to your hand.',
+    text: 'When this card is summoned: add "Baby Dragon" or "Polymerization" from your Deck to your hand.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'search', filter: { slugs: ['baby-dragon', 'polymerization'] } }],
       },
     ],
@@ -771,9 +830,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        weakest tempo play in the deck. The whole board flinching sets up the
        deck's piercers — Flame Swordsman, Axe Raider, Salamandra — which is
        the synergy the card was always supposed to be. */
-    text: 'When this card is Normal Summoned: force every monster your opponent controls into face-up Defense Position. When this card declares an attack: destroy 1 Spell or Trap your opponent controls.',
+    text: 'When this card is summoned: force every monster your opponent controls into face-up Defense Position. When this card declares an attack: destroy 1 Spell or Trap your opponent controls.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'forceDefense', target: sel('opp', 'all') }] },
+      { trigger: 'onSummon', ops: [{ op: 'forceDefense', target: sel('opp', 'all') }] },
       {
         trigger: 'onDeclareAttack',
         ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
@@ -825,10 +884,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   kojikocy: {
-    text: 'When this card is Normal Summoned: your opponent discards 1 random card and you draw 1 card.',
+    text: 'When this card is summoned: your opponent discards 1 random card and you draw 1 card.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'discard', count: 1, who: 'opp' },
           { op: 'draw', count: 1, who: 'own' },
@@ -903,10 +962,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dunames-dark-witch': {
-    text: 'When this card is Normal Summoned: gain 700 Life Points and inflict 400 damage to your opponent.',
+    text: 'When this card is summoned: gain 700 Life Points and inflict 400 damage to your opponent.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'heal', amount: 700, to: 'own' },
           { op: 'damage', amount: 400, to: 'opp' },
@@ -932,13 +991,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'sonic-maid': {
-    text: 'When this card is Normal Summoned: draw 1 card.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
+    text: 'When this card is summoned: draw 1 card.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
 
   'happy-lover': {
-    text: 'When this card is Normal Summoned: gain 1000 Life Points.',
-    effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
+    text: 'When this card is summoned: gain 1000 Life Points.',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 1000, to: 'own' }] }],
   },
 
   /* ================================================================ */
@@ -1002,14 +1061,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-alligator': {
-    text: 'Can attack your opponent directly. When this card is Normal Summoned: add "Toon World" from your Deck to your hand.',
+    text: 'Can attack your opponent directly. When this card is summoned: add "Toon World" from your Deck to your hand.',
     cry: 'Snap to it!',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
       // Pegasus's deck does nothing until Toon World is down, and drawing into
       // one of two copies is not something to leave to luck. The cheapest body
       // in the deck is the one that goes and fetches it.
-      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['toon-world'] } }] },
+      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['toon-world'] } }] },
     ],
   },
 
@@ -1155,10 +1214,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The draw became a séance: she reaches into the Graveyard the deck spends
        the whole duel filling and hands a Fiend back. On-theme card advantage
        — the horror returns to the hand to be Set again. */
-    text: 'When this card is Normal Summoned: gain 600 Life Points and add 1 Fiend monster from your Graveyard to your hand.',
+    text: 'When this card is summoned: gain 600 Life Points and add 1 Fiend monster from your Graveyard to your hand.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'heal', amount: 600, to: 'own' },
           { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', type: 'Fiend' } },
@@ -1232,12 +1291,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'the-earl-of-demise': {
-    text: 'When this card is Normal Summoned: destroy 1 set card your opponent controls.',
+    text: 'When this card is summoned: destroy 1 set card your opponent controls.',
     /* The filter is the whole point: it said "face-down" and did not check,
        so summoning this blew up a Spell the opponent had already played. */
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap', filter: { face: 'down' } }) }],
       },
     ],
@@ -1373,10 +1432,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The way in — the Toon Alligator pattern. Umi is the hinge of the whole
        deck and used to be a single copy nothing could find; the fish that
        leaps OUT of the sea is the one that goes and gets it. */
-    text: 'This card can attack your opponent directly. When it is Normal Summoned: add "Umi" from your Deck to your hand.',
+    text: 'This card can attack your opponent directly. When it is summoned: add "Umi" from your Deck to your hand.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
-      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['umi'] } }] },
+      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['umi'] } }] },
     ],
   },
 
@@ -1491,11 +1550,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* One search was never the magnetism. Alpha finds the whole set — and the
        two cards it puts in hand are also 2000 ATK on a Slifer, which is the
        quiet reason this deck wants its hand full. */
-    text: 'When this card is Normal Summoned: add 2 Magnet Warriors from your Deck to your hand.',
+    text: 'When this card is summoned: add 2 Magnet Warriors from your Deck to your hand.',
     cry: 'Magnet Warriors, assemble!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'search', filter: { nameIncludes: 'Magnet Warrior' }, count: 2 }],
       },
     ],
@@ -1623,11 +1682,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        which fetches Jack's. One Normal Summon stands the whole court up: three
        bodies, which is three Tributes, which is a God on the same turn. That
        chain is the deck. */
-    text: "When this card is Normal Summoned: Special Summon King's Knight from your Deck.",
+    text: "When this card is summoned: Special Summon King's Knight from your Deck.",
     cry: 'My King, to me!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           {
             op: 'specialSummon',
@@ -1695,11 +1754,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        of them keep swapping in for each other, which is exactly how they read
        on the page. */
     text:
-      'When this card is Normal Summoned: add Berfomet from your Deck to your hand. ' +
+      'When this card is summoned: add Berfomet from your Deck to your hand. ' +
       'While you control Berfomet, this card and your other Beast monsters gain 600 ATK.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'search', filter: { slugs: ['berfomet'] } }],
       },
       {
@@ -1871,10 +1930,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* It fetches its own shell. A 300/200 body asked to survive two End
        Phases naked never reached rung two in real play; summoning it now
        puts the Cocoon in hand, and the Cocoon shields it while it climbs. */
-    text: 'When this card is Normal Summoned: add "Cocoon of Evolution" from your Deck to your hand. Gains 1 Evolution Counter during each of your End Phases. At 2 counters it becomes Larvae Moth, at 3 Great Moth, and at 4 the Perfectly Ultimate Great Moth.',
+    text: 'When this card is summoned: add "Cocoon of Evolution" from your Deck to your hand. Gains 1 Evolution Counter during each of your End Phases. At 2 counters it becomes Larvae Moth, at 3 Great Moth, and at 4 the Perfectly Ultimate Great Moth.',
     cry: 'My insect will evolve!',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'search', filter: { slugs: ['cocoon-of-evolution'] } }] },
+      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['cocoon-of-evolution'] } }] },
       { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
     ],
   },
@@ -1971,10 +2030,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   kuwagata: {
-    text: 'When this card is Normal Summoned: draw 1 card. This card inflicts piercing battle damage.',
+    text: 'When this card is summoned: draw 1 card. This card inflicts piercing battle damage.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'draw', count: 1, who: 'own' },
           { op: 'pierce', duration: 'permanent' },
@@ -1989,11 +2048,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'parasite-paracide': {
-    text: 'When this card is Normal Summoned: your opponent sends the top 3 cards of their Deck to the Graveyard and discards 1 random card.',
+    text: 'When this card is summoned: your opponent sends the top 3 cards of their Deck to the Graveyard and discards 1 random card.',
     cry: 'My parasite is inside your deck!',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'mill', count: 3, who: 'opp' },
           { op: 'discard', count: 1, who: 'opp' },
@@ -2085,9 +2144,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* 1600 reaches the herd the reviver exists for — Two-Headed King Rex and
        Uraby are both 1500-1600 printed, and both were just out of reach. In
        Attack Position, because a revived King Rex is there to swing. */
-    text: 'When this card is Normal Summoned: Special Summon 1 Dinosaur with 1600 or less ATK from your Graveyard in Attack Position.',
+    text: 'When this card is summoned: Special Summon 1 Dinosaur with 1600 or less ATK from your Graveyard in Attack Position.',
     effects: [
-      { trigger: 'onNormalSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1600 }, count: 1, position: 'atk' }] },
+      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1600 }, count: 1, position: 'atk' }] },
     ],
   },
 
@@ -2127,7 +2186,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text: 'When this card is summoned: destroy every face-down monster your opponent controls.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }],
       },
     ],
@@ -2137,10 +2196,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The fossil pile is the deck's mana, and nothing was filling it on
        purpose. Trakodon buries three of its own on arrival — every Dinosaur
        among them is +300 on a standing King Rex immediately, read live. */
-    text: 'When this card is Normal Summoned: send the top 3 cards of your Deck to the Graveyard and inflict 400 damage to your opponent.',
+    text: 'When this card is summoned: send the top 3 cards of your Deck to the Graveyard and inflict 400 damage to your opponent.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
         ops: [
           { op: 'mill', count: 3, who: 'own' },
           { op: 'damage', amount: 400, to: 'opp' },

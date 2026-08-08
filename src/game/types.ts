@@ -491,6 +491,14 @@ export interface EffectCondition {
   ownLpBelow?: number;
   /** Requires at least this many cards in own Graveyard. */
   graveAtLeast?: number;
+  /**
+   * Requires a named card in the controller's own Graveyard — the Ultimate
+   * Dragon spends a Blue-Eyes to shatter a backrow, and an ignition offered
+   * with nothing to spend resolves into nothing. A button that does nothing is
+   * the "card looks inert" report this file keeps relearning, so the gate is
+   * part of the condition rather than left to the ops to discover.
+   */
+  graveHasSlug?: string;
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
   /**

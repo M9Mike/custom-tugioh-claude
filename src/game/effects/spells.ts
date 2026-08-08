@@ -396,18 +396,30 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   graverobber: {
+    /* You pick the card now, the way Monster Reborn picks its monster.
+       `stealFromGrave` already honours an explicit choice — it only falls back
+       to "take the strongest" for the effects that fire mid-resolution with
+       nobody to ask. This one is activated by a player who is right there, so
+       `targets: 1` puts the pile in front of them. */
     text: "Add 1 card from your opponent's Graveyard to your hand.",
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Graverobber',
+        targets: 1,
         // Theirs, and only theirs — the card is named for it.
         ops: [{ op: 'stealFromGrave', from: 'opp' }],
       },
     ],
   },
 
+  /* Both dice used to apply their swing once per pip, and `gainAtk` writes a
+     log line every time it moves a number — so a roll of 6 was six banners
+     reading "loses 200 ATK" instead of one reading the total. Reported by the
+     owner. The roll is read back afterwards through `scale: 'dicePips'`, which
+     lands the whole amount in a single beat; `perPip` is left empty because the
+     die itself already announces what it rolled. */
   'skull-dice': {
     text: "Roll a die: every monster your opponent controls loses 200 ATK for each pip until the end of the turn.",
     cry: 'Roll them bones!',
@@ -416,7 +428,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Skull Dice',
-        ops: [{ op: 'diceRoll', perPip: [{ op: 'gainAtk', amount: -200, target: OPP_ALL, duration: 'turn' }] }],
+        ops: [
+          { op: 'diceRoll', perPip: [] },
+          { op: 'gainAtk', amount: -200, scale: 'dicePips', target: OPP_ALL, duration: 'turn' },
+        ],
       },
     ],
   },
@@ -426,7 +441,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'activate',
-        ops: [{ op: 'diceRoll', perPip: [{ op: 'gainAtk', amount: 200, target: sel('own', 'all'), duration: 'turn' }] }],
+        ops: [
+          { op: 'diceRoll', perPip: [] },
+          { op: 'gainAtk', amount: 200, scale: 'dicePips', target: sel('own', 'all'), duration: 'turn' },
+        ],
       },
     ],
   },

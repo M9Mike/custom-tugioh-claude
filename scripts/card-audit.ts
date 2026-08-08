@@ -524,6 +524,14 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   if (cond.graveAtLeast != null) {
     while (s.players[ME].grave.length < cond.graveAtLeast) s.players[ME].grave.push(mint(s, ME, 'baby-dragon'));
   }
+  /* A named card in the pile, for an effect that spends one — the Ultimate
+     Dragon feeds a Blue-Eyes back into the Deck to shatter a backrow, and with
+     an empty Graveyard there was nothing to spend, so the cost half of the
+     effect was reported as not happening. Same shape as the seeding above:
+     build the position the card actually needs. */
+  if (cond.graveHasSlug && !s.players[ME].grave.some((g) => g.slug === cond.graveHasSlug)) {
+    s.players[ME].grave.push(mint(s, ME, cond.graveHasSlug));
+  }
   if (cond.countersAtLeast != null && self) self.counters = cond.countersAtLeast;
   if (cond.turnAtLeast != null) s.turn = Math.max(s.turn, cond.turnAtLeast);
   if (cond.opponentHasMonster && s.players[FOE].monsters.every((m) => !m)) place(s, FOE, 0, 'harpie-lady');
