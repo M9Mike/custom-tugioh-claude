@@ -127,9 +127,17 @@ const COSTS: { phrase: RegExp; needs: (def: CardDef) => boolean; label: string }
      the direct swing carries `halvedDirectDamage`, which the clause above does
      not accept — and the clause above's phrase does not reach this sentence
      either, so without this one Gaia the Dragon Champion could promise the
-     price and never be charged it. */
+     price and never be charged it.
+
+     Three phrasings, because the sentence has been rewritten twice and a reword
+     that lands outside this pattern switches the rule off in silence — which is
+     worse than never having written it, since the suite goes on reporting all
+     clear. Both cards now use the third, Konami's own "when it does so using
+     this effect"; the first two stay so that a card written in the older voice
+     is still charged. */
   {
-    phrase: /\bbattle damage from a direct attack is halved\b|\bdirect attacks? (?:deals?|inflicts?) half\b/i,
+    phrase:
+      /\bbattle damage from a direct attack is halved\b|\bdirect attacks? (?:deals?|inflicts?) half\b|\bwhen it does so using this effect\b[^.]*\bbattle damage\b[^.]*\bis halved\b/i,
     label: 'its battle damage from a direct attack is halved',
     needs: (def) =>
       def.effects.some(

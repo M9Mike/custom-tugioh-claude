@@ -138,11 +138,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        the Champion worse than a vanilla body precisely when there is no defence
        left, which is not what "can attack directly" is for.
 
-       That last part is deliberately not written on the card. "Can attack
-       directly" is already a licence to go past a guard, so the price for it can
-       only fall due when there is a guard to go past, and saying so outright
-       spent a clause explaining what an empty board plainly means. */
-    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When this card is Fusion Summoned: draw 1 card. This card can attack twice during each Battle Phase and inflicts piercing battle damage. This card can attack your opponent directly, but a direct attack inflicts half damage.',
+       That condition is not spelled out on the card. "When it does so using this
+       effect" carries it: an empty board needs no effect to be attacked
+       directly, so the swing that pays is the swing that used the licence. It is
+       Konami's own wording for the ability, and it is exact here. */
+    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: draw 1 card. This card can attack twice during each Battle Phase and inflicts piercing battle damage. This card can attack your opponent directly. When it does so using this effect, the battle damage this card inflicts to your opponent is halved.',
     cry: 'Charge, my champion!',
     fusionMaterials: ['gaia-the-fierce-knight', 'curse-of-dragon'],
     effects: [
@@ -995,12 +995,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        board for everything, so the one card whose text says it *can* attack
        directly was the only one being made worse for it.
 
-       The empty board goes unsaid on purpose. "Can attack directly" is a licence
-       to go past a guard, so the half that pays for it only ever comes up when
-       there is a guard to go past — spelling that out cost a line of text to
-       state what not having a blocker already means. Same bargain as Gaia the
-       Dragon Champion, same flag, same sentence. */
-    text: 'This card can attack your opponent directly, but a direct attack inflicts half damage.',
+       "Using this effect" is Konami's own template for exactly this ability, and
+       it happens to say precisely what the engine does: an empty board needs no
+       effect to be attacked directly — every monster in the game may do that —
+       so the price is only charged on the swing that actually used the licence
+       to go past a guard. The condition that used to be spelled out is carried
+       by those three words. Same bargain as Gaia the Dragon Champion, same flag,
+       same sentence. */
+    text: 'This card can attack your opponent directly. When it does so using this effect, the battle damage this card inflicts to your opponent is halved.',
     effects: [
       {
         trigger: 'onSummon',
