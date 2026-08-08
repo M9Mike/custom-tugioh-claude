@@ -763,16 +763,57 @@ function zoneCards(state: DuelState, pid: PlayerId, zone: Selector['zone']): Car
  * with the activation gate, which needs to know whether an effect has anything
  * to work on without actually resolving it.
  */
+/**
+ * An ATK threshold aimed at the field reads the monster's *live* ATK.
+ *
+ * Reported from a real duel: Crush Card Virus destroys "1500 or more ATK" and
+ * left a Lord of D. standing who was sitting on 2800, because `matchesFilter`
+ * only ever reads printed data — his card says 1200. Every threshold aimed at a
+ * board is about the monster in front of you, not the number on the card.
+ *
+ * Deliberately here and not in `matchesFilter`. That function is also called
+ * from inside aura evaluation, and The Dark Door's aura selects on `minAtk:
+ * 2000` — so reading effective stats there would send `effAtk` back through
+ * `aurasFor` and into itself. Doing it at the pool means the cards that point
+ * at a board get live numbers while the aura pass keeps the printed ones it
+ * needs to terminate.
+ *
+ * Only the Monster Zones. A card in a Graveyard, hand or Deck has no effective
+ * stats to read, and every op that bounds ATK there — Sangan's search, Revival
+ * Jam, Giant Red Seasnake — means the printed number.
+ */
+function passesLiveAtk(state: DuelState, c: CardInstance, zone: Selector['zone'], f?: CardFilter): boolean {
+  if (!f || (f.minAtk == null && f.maxAtk == null)) return true;
+  if ((zone ?? 'monster') !== 'monster') return true;
+  const owner = controllerOf(state, c.uid);
+  const live = effAtk(state, c, owner ?? undefined);
+  if (f.minAtk != null && live < f.minAtk) return false;
+  if (f.maxAtk != null && live > f.maxAtk) return false;
+  return true;
+}
+
 function targetPool(ctx: EffectCtx, s: Selector): CardInstance[] {
   const zone = s.zone ?? 'monster';
   const pool: CardInstance[] = [];
   for (const pid of sideToPlayers(ctx, s.side)) {
     for (const c of zoneCards(ctx.state, pid, zone)) {
       if (s.excludeSelf && c.uid === ctx.source.uid) continue;
-      if (matchesFilter(c, s.filter)) pool.push(c);
+      /* The printed pass first, minus the ATK bounds, then the live one — so a
+         filter's type/attribute/level clauses still apply exactly as before and
+         only the ATK question is asked of the board. */
+      if (!matchesFilter(c, stripAtkBounds(s.filter))) continue;
+      if (!passesLiveAtk(ctx.state, c, zone, s.filter)) continue;
+      pool.push(c);
     }
   }
   return pool;
+}
+
+/** The same filter with its ATK bounds removed — they are asked live instead. */
+function stripAtkBounds(f?: CardFilter): CardFilter | undefined {
+  if (!f || (f.minAtk == null && f.maxAtk == null)) return f;
+  const { minAtk: _min, maxAtk: _max, ...rest } = f;
+  return rest;
 }
 
 function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
@@ -823,12 +864,31 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
         ctx.cursor += 1;
       }
     }
-    // If the player supplied nothing usable, fall back to the strongest legal
-    // option so the effect still does something rather than silently fizzling.
-    if (picked.length === 0 && pool.length > 0 && zone === 'monster') {
-      picked.push(pool.reduce((a, b) => (effAtk(state, a) >= effAtk(state, b) ? a : b)));
-    } else if (picked.length === 0 && pool.length > 0) {
-      picked.push(pool[0]);
+    /* Nobody supplied a target — a monster arriving by Special Summon fires its
+       effect mid-resolution, where there is no moment to ask. The house answer
+       everywhere else is "take the strongest", the same as `search` and
+       `stealFromGrave`, so it is the answer here.
+
+       Strongest *legal*, and that word is the whole bug. Protection was only
+       applied on the way out, so the auto-pick reached for the biggest body on
+       the board, and if that one happened to be untargetable the filter below
+       threw it away and the effect did nothing at all — with a perfectly good
+       target standing right beside it.
+
+       Reported from a real duel: two Blue-Eyes brought out by the Flute against
+       a Lord of D. and their own Blue-Eyes. Lord of D. makes their Dragons
+       untargetable, so both of mine reached for the 3000 they could not touch
+       and neither destroyed anything. Lord of D. himself is a Spellcaster and
+       was legal the whole time. */
+    if (picked.length === 0) {
+      const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
+      if (legal.length) {
+        picked.push(
+          zone === 'monster'
+            ? legal.reduce((a, b) => (effAtk(state, a) >= effAtk(state, b) ? a : b))
+            : legal[0]
+        );
+      }
     }
     return picked.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
   }
@@ -1106,7 +1166,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             const idx = randInt(state, p.hand.length);
             const c = p.hand.splice(idx, 1)[0];
             p.grave.push(c);
+            /* Log, then animate — so the beat that shows the card carries the
+               line about *that* card. Without a beat of its own the line was
+               adopted by whatever was already on screen, which is why a
+               discarded card looked like it had simply vanished. */
             log(state, `${p.name} discards ${displayName(c)}.`, 'effect', pid);
+            anim(state, { kind: 'discard', uid: c.uid, slug: c.slug, player: pid });
           }
         }
         break;
@@ -1436,8 +1501,23 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       }
       case 'drawTo':
+        /* One line and one beat for the whole refill, not one per card. Card of
+           Sanctity fills both hands to six, which is five or six separate
+           "draws a card" banners each — the owner reported reading the same
+           sentence over and over while the duel stood still. `drawCard` is told
+           to stay quiet and the total is announced once.
+
+           Counted from what actually arrived rather than from the arithmetic:
+           a Deck with fewer cards left than the gap gives out what it has, and
+           the announcement has to match the cards. */
         for (const who of sideToPlayers(ctx, op.who)) {
-          for (let i = state.players[who].hand.length; i < op.count; i++) drawCard(state, who);
+          const before = state.players[who].hand.length;
+          for (let i = before; i < op.count; i++) if (!drawCard(state, who, true)) break;
+          const drawn = state.players[who].hand.length - before;
+          if (drawn > 0) {
+            log(state, `${state.players[who].name} draws ${drawn} card${drawn === 1 ? '' : 's'}.`, 'normal', who);
+            anim(state, { kind: 'draw', player: who, amount: drawn });
+          }
         }
         break;
       case 'revealHand':
@@ -1623,6 +1703,10 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   }
   if (cond.graveHasSlug) {
     if (!p.grave.some((g) => g.slug === cond.graveHasSlug)) return false;
+  }
+  if (cond.opponentHasBackrow) {
+    const them = state.players[other(controller)];
+    if (!them.spellTrap && !them.field) return false;
   }
   if (cond.controlsOtherOfType) {
     const has = p.monsters.some(

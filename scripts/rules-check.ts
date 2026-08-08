@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -4481,6 +4481,151 @@ console.log('\nJoey: one banner per roll, a dragon off heads, and a chosen grave
       fluteOffers.join(',') || '(none)'
     );
   }
+}
+
+console.log('\nFive bugs reported from a real duel');
+{
+  /* 1. An ATK threshold aimed at the board reads the LIVE number.
+        "Lord of d was not destroyed by crush card virus but with its effect it
+        had 2800atk at the moment I activated my trap." `matchesFilter` only
+        ever reads printed data, and his card says 1200. */
+  const ccv = fresh();
+  const lord = card(FOE, 'lord-of-d'); // printed 1200, +400 per Dragon on the field
+  ccv.players[FOE].monsters = [lord, card(FOE, 'blue-eyes-white-dragon'), card(FOE, 'baby-dragon')];
+  ccv.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'dark-hole')];
+  ok(effAtk(ccv, lord, FOE) === 2000, 'Lord of D. is live 2000 beside two Dragons, printed 1200', `${effAtk(ccv, lord, FOE)}`);
+  const virus = card(ME, 'crush-card-virus');
+  virus.face = 'down';
+  virus.summonedOnTurn = 1;
+  ccv.players[ME].spellTrap = virus;
+  const crushed = act(ccv, ME, { type: 'activateSetCard', uid: virus.uid, targets: [] });
+  ok(
+    !crushed.players[FOE].monsters.some((m) => m?.slug === 'lord-of-d'),
+    'Crush Card Virus destroys him on his live ATK, not his printed one'
+  );
+
+  /* CONTROL: a threshold aimed at a Graveyard still reads the printed number,
+     because a card down there has no live stats — and this is also what keeps
+     `effAtk` from recursing through the aura pass. */
+  const grave = fresh();
+  const snake = card(ME, 'giant-red-seasnake'); // revives WATER with 1850 ATK or less
+  grave.players[ME].hand = [snake];
+  grave.players[ME].grave = [card(ME, '7-colored-fish')];
+  const revived = act(grave, ME, { type: 'normalSummon', uid: snake.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(
+    revived.players[ME].monsters.filter(Boolean).length === 2,
+    'CONTROL: a Graveyard threshold still reads printed ATK and revives',
+    `${revived.players[ME].monsters.filter(Boolean).length} on the field`
+  );
+
+  /* 2. A monster brought out by a Spell must still fire its own effect, and
+        must aim at something it can actually touch.
+        "Blue-Eyes White Dragon's effect did not activate when I special
+        summoned 2 with the flute. The enemy had lord of d and their own 2 blue
+        eyes." Lord of D. makes their Dragons untargetable, so the auto-pick
+        reached for the 3000 it could not touch and the filter threw it away —
+        with Lord of D., a Spellcaster, legal the whole time. */
+  const flute = fresh();
+  const f = card(ME, 'the-flute-of-summoning-dragon');
+  const d1 = card(ME, 'blue-eyes-white-dragon');
+  const d2 = card(ME, 'blue-eyes-white-dragon');
+  flute.players[ME].hand = [f, d1, d2];
+  flute.players[FOE].monsters = [card(FOE, 'lord-of-d'), card(FOE, 'blue-eyes-white-dragon'), null];
+  const blown = act(flute, ME, { type: 'activateSpell', uid: f.uid, targets: [d1.uid, d2.uid] });
+  ok(blown.players[ME].monsters.filter((m) => m?.slug === 'blue-eyes-white-dragon').length === 2, 'the Flute brings out both dragons');
+  ok(
+    !blown.players[FOE].monsters.some((m) => m?.slug === 'lord-of-d'),
+    'the first Blue-Eyes destroys the one it CAN target — Lord of D.'
+  );
+  ok(
+    blown.players[FOE].monsters.every((m) => !m),
+    'and the second takes their Blue-Eyes once the shield is gone',
+    blown.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || '(empty)'
+  );
+
+  /* CONTROL: an explicit choice still wins over the auto-pick, and a protected
+     card is still protected when the player points at it by hand. */
+  const shielded = fresh();
+  const solo = card(ME, 'blue-eyes-white-dragon'); // Level 8 — two Tributes
+  shielded.players[ME].hand = [solo];
+  const f1 = card(ME, 'mystical-elf');
+  const f2 = card(ME, 'mystical-elf');
+  shielded.players[ME].monsters = [f1, f2, null];
+  const theirLord = card(FOE, 'lord-of-d');
+  const theirDragon = card(FOE, 'blue-eyes-white-dragon');
+  shielded.players[FOE].monsters = [theirLord, theirDragon, null];
+  const aimed = act(shielded, ME, {
+    type: 'normalSummon', uid: solo.uid, zone: 0, position: 'atk', face: 'up',
+    tributes: [f1.uid, f2.uid], targets: [theirDragon.uid],
+  });
+  ok(
+    aimed.players[FOE].monsters.some((m) => m?.uid === theirDragon.uid),
+    'CONTROL: pointing at a Lord-of-D-shielded Dragon still destroys nothing'
+  );
+
+  /* 3. A discarded card must be SHOWN going. Nothing was ever lost — the op
+        logged without a beat, so the line was adopted by whatever was on
+        screen and the card simply disappeared from the hand. */
+  const tr = fresh();
+  const trunade = card(ME, 'giant-trunade');
+  tr.players[ME].hand = [trunade];
+  const theirSet = card(FOE, 'mirror-force');
+  theirSet.face = 'down';
+  tr.players[FOE].spellTrap = theirSet;
+  tr.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'dark-hole')];
+  const before = tr.anims.length;
+  const swept = act(tr, ME, { type: 'activateSpell', uid: trunade.uid, targets: [] });
+  const beats = swept.anims.slice(before);
+  ok(swept.players[FOE].grave.length === 1, 'Giant Trunade puts the discarded card in the Graveyard', `grave ${swept.players[FOE].grave.length}`);
+  ok(
+    beats.some((b) => b.kind === 'discard' && !!b.slug),
+    'and the board shows a discard beat naming the card',
+    beats.map((b) => b.kind).join(',')
+  );
+  ok(
+    beats.filter((b) => b.kind === 'discard').every((b) => !!b.note),
+    'and that beat carries its own line rather than borrowing one'
+  );
+
+  /* 4. Card of Sanctity says the total once. */
+  const sanc = fresh();
+  const cos = card(ME, 'card-of-sanctity');
+  sanc.players[ME].hand = [cos];
+  for (let i = 0; i < 8; i++) sanc.players[ME].deck.push(card(ME, 'kuriboh'));
+  for (let i = 0; i < 8; i++) sanc.players[FOE].deck.push(card(FOE, 'kuriboh'));
+  const beforeLog = sanc.log.length;
+  const drew = act(sanc, ME, { type: 'activateSpell', uid: cos.uid, targets: [] });
+  const drawLines = drew.log.slice(beforeLog).filter((l) => /draws/.test(l.text));
+  ok(drawLines.length === 2, 'Card of Sanctity announces once per player, not once per card', `${drawLines.length} lines: ${drawLines.map((l) => l.text).join(' | ')}`);
+  ok(drawLines.every((l) => /draws \d+ cards?\./.test(l.text)), 'and each line carries the count', drawLines.map((l) => l.text).join(' | '));
+  ok(drew.players[ME].hand.length === 6 && drew.players[FOE].hand.length === 6, 'and both hands really reach 6',
+    `${drew.players[ME].hand.length}/${drew.players[FOE].hand.length}`);
+
+  // Singular reads "1 card", not "1 cards".
+  const one = fresh();
+  const cos2 = card(ME, 'card-of-sanctity');
+  one.players[ME].hand = [cos2];
+  for (let i = 0; i < 5; i++) one.players[ME].hand.push(card(ME, 'kuriboh')); // 6 with the spell; 5 after playing it
+  for (let i = 0; i < 8; i++) one.players[ME].deck.push(card(ME, 'kuriboh'));
+  for (let i = 0; i < 8; i++) one.players[FOE].deck.push(card(FOE, 'kuriboh'));
+  const mineBefore = one.log.length;
+  const drewOne = act(one, ME, { type: 'activateSpell', uid: cos2.uid, targets: [] });
+  const mine = drewOne.log.slice(mineBefore).filter((l) => /Me draws/.test(l.text));
+  ok(mine.some((l) => /draws 1 card\./.test(l.text)), 'and a single card is "1 card", not "1 cards"', mine.map((l) => l.text).join(' | '));
+
+  /* 5. The Ultimate Dragon's cost cannot be paid into an empty board. */
+  const bare = fresh();
+  const ult = card(ME, 'blue-eyes-ultimate-dragon');
+  ult.summonedOnTurn = 0;
+  bare.players[ME].monsters = [ult, null, null];
+  bare.players[ME].grave = [card(ME, 'blue-eyes-white-dragon')];
+  ok(!canIgnite(bare, ME, ult), 'the Ultimate Dragon is not offered against an empty backrow');
+  const wasted = applyAction(bare, ME, { type: 'ignition', uid: ult.uid, targets: [] });
+  ok(!!wasted.error, 'and the engine refuses it too');
+  ok(
+    wasted.state.players[ME].grave.some((c) => c.slug === 'blue-eyes-white-dragon'),
+    'so the Blue-Eyes is never spent for nothing'
+  );
 }
 
 /* The summary goes LAST, and there is nothing after it.

@@ -585,6 +585,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         case 'draw':
           sfx.draw();
           break;
+        case 'discard':
+          sfx.destroy();
+          break;
         case 'summon': {
           const big = a.slug ? (CARDS[a.slug]?.atk ?? 0) >= 2400 : false;
           if (big) sfx.bigSummon();

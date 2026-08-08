@@ -535,6 +535,9 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   if (cond.countersAtLeast != null && self) self.counters = cond.countersAtLeast;
   if (cond.turnAtLeast != null) s.turn = Math.max(s.turn, cond.turnAtLeast);
   if (cond.opponentHasMonster && s.players[FOE].monsters.every((m) => !m)) place(s, FOE, 0, 'harpie-lady');
+  if (cond.opponentHasBackrow && !s.players[FOE].spellTrap && !s.players[FOE].field) {
+    s.players[FOE].spellTrap = mint(s, FOE, 'mirror-force');
+  }
   if (cond.controlsOtherOfType && self) {
     const mate = Object.values(CARDS).find((c) => c.type === cond.controlsOtherOfType && c.slug !== self.slug);
     const z = s.players[ME].monsters.findIndex((m) => !m || m.uid !== self.uid);

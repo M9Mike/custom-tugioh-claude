@@ -72,7 +72,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'ignition',
         label: 'Return a Blue-Eyes, shatter a Spell/Trap',
         oncePerTurn: true,
-        condition: { graveHasSlug: 'blue-eyes-white-dragon' },
+        /* Both halves gated. The Graveyard has to hold the dragon it spends,
+           and the opponent has to control something worth shattering — without
+           the second the cost was paid into an empty board, which is the one
+           thing the interface already refused to let a player do. */
+        condition: { graveHasSlug: 'blue-eyes-white-dragon', opponentHasBackrow: true },
         targets: 1,
         ops: [
           {
@@ -133,7 +137,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        ordinary attacker hitting for everything — anything else would have made
        the Champion worse than a vanilla body precisely when there is no defence
        left, which is not what "can attack directly" is for. */
-    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When Fusion Summoned: draw 1 card. This card can attack twice each Battle Phase, inflicts piercing battle damage, and can attack directly. While your opponent controls a monster, its battle damage from a direct attack is halved.',
+    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When this card is Fusion Summoned: draw 1 card. This card can attack twice during each Battle Phase and inflicts piercing battle damage. This card can attack your opponent directly; while your opponent controls a monster, its battle damage from a direct attack is halved.',
     cry: 'Charge, my champion!',
     fusionMaterials: ['gaia-the-fierce-knight', 'curse-of-dragon'],
     effects: [
@@ -181,7 +185,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        No `fusionMaterials`, so it is never offered to Polymerization. Time
        Wizard's heads is the only way it reaches the field, which is what makes
        the gamble worth taking. */
-    text: 'A dragon aged a thousand years by the magic of Time Wizard. Its roar is the sound of centuries.',
+    text: 'Cannot be Normal Summoned or Set. Must be Special Summoned by the effect of "Time Wizard", and cannot be Special Summoned by other ways. A thousand years pass in an instant, and the Baby Dragon that answers is not the one that left.',
     effects: [],
   },
 

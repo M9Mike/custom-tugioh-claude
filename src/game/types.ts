@@ -511,6 +511,16 @@ export interface EffectCondition {
   countersAtLeast?: number;
   /** Requires opponent controls at least one monster. */
   opponentHasMonster?: boolean;
+  /**
+   * Requires the opponent to control a Spell, Trap or Field card.
+   *
+   * For an effect that pays a cost before it can point at one. The Ultimate
+   * Dragon feeds a Blue-Eyes back into the Deck "then destroys 1 Spell or
+   * Trap" — against an empty backrow that spent the dragon and destroyed
+   * nothing. The board already refused it ("nothing it can legally point at"),
+   * so this is the engine agreeing with the interface rather than a new rule.
+   */
+  opponentHasBackrow?: boolean;
   /** Requires the named field spell to be active for either player. */
   requiresField?: string;
   /** You control at least one *other* face-up monster of this type. */
@@ -665,6 +675,16 @@ export type AnimKind =
   | 'heal'
   | 'activate'
   | 'draw'
+  /**
+   * A card leaving a hand for a Graveyard.
+   *
+   * `discard` logged and did not animate, so its line was picked up by whatever
+   * beat happened to be on screen — the Spell that caused it — and the card
+   * itself was never shown going anywhere. Reported of Giant Trunade as "the
+   * discarded card did not go in the graveyard, it's gone". Nothing was lost;
+   * the board simply never said it had happened.
+   */
+  | 'discard'
   | 'flip'
   | 'trap'
   | 'fusion'
