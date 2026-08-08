@@ -4888,10 +4888,14 @@ console.log("\nMai Valentine: the flock stops being the only thing her cards can
     'the Hunting Ground lifts a Warrior of hers',
     `${effAtk(laid, laid.players[ME].monsters[0]!, ME)}`
   );
+  /* And nobody else's. This asserted the opposite one commit ago — the card
+     read "all monsters" on both sides, which was harmless while it only ever
+     reached Winged Beasts and became a gift to the opponent's whole board the
+     moment the type clause came off. The owner's call: hers alone. */
   ok(
-    effAtk(laid, laid.players[FOE].monsters[0]!, FOE) === baseAtkOf('battle-ox') + 300,
-    "and still lifts the opponent's board too — the card says 'all'",
-    `${effAtk(laid, laid.players[FOE].monsters[0]!, FOE)}`
+    effAtk(laid, laid.players[FOE].monsters[0]!, FOE) === baseAtkOf('battle-ox'),
+    "and leaves the opponent's board exactly where it was",
+    `${effAtk(laid, laid.players[FOE].monsters[0]!, FOE)} of ${baseAtkOf('battle-ox')}`
   );
 
   // Harpie Lady Sisters fetch the Pet Dragon, Deck before Graveyard.

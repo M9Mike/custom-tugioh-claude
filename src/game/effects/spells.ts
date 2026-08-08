@@ -489,18 +489,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'harpies-hunting-ground': {
-    text: 'Field Spell: all monsters gain 300 ATK and 300 DEF. When activated: destroy 1 Spell or Trap your opponent controls.',
+    text: 'Field Spell: all monsters you control gain 300 ATK and 300 DEF. When activated: destroy 1 Spell or Trap your opponent controls.',
     effects: [
       { trigger: 'activate', targets: 1, ops: [{ op: 'destroy', target: OPP_ONE_BACKROW }] },
       {
         trigger: 'continuous',
         ops: [],
-        /* Every monster, by the owner's rule for Mai's cards — and still both
-           sides of the field, because that is what a Field Spell is and the
-           card has always said "all". Worth knowing that widening the type
-           without narrowing the side hands the same 300 to the opponent's
-           board; the side was not part of the request, so it has not moved. */
-        aura: { target: sel('both', 'all'), atk: 300, def: 300 },
+        /* Hers alone, by the owner's call. It read "all monsters" on both sides
+           of the field — the weather, which is what a Field Spell usually is —
+           and once the Winged Beast clause came off, that generosity stopped
+           being a flavour note and started handing the opponent's whole board
+           the same 300. `own` is the controller of the Field Spell, so the
+           ground only ever favours the duelist who laid it. */
+        aura: { target: sel('own', 'all'), atk: 300, def: 300 },
       },
     ],
   },
