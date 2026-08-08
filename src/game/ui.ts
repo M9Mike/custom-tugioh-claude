@@ -37,7 +37,15 @@ function scanOps(ops: Op[]): TargetSpec | null {
            the moment the first was picked and chose the second itself. */
         count: op.count ?? 1,
         prompt: 'Choose a monster to Special Summon',
-        filter: op.filter,
+        /* "Monsters only" belongs to the *op*, not to the Graveyard.
+           `targetCandidates` used to hardcode it into the grave branch, which
+           was invisible while Monster Reborn and Call of the Haunted were the
+           only cards that looked in there — and wrong the moment Graverobber
+           did, because it takes any card and the pile in front of it held
+           nothing but Spells and Traps. Reported from a real duel as "there is
+           nothing it can target". Carried on the spec, each picker states its
+           own rule and the zone stops guessing. */
+        filter: { ...(op.filter ?? {}), kind: 'monster' },
       };
     }
     if (op.op === 'search') {
@@ -168,7 +176,10 @@ export function targetCandidates(
          player pointing at a card nothing would destroy. */
       if (spec.zone === 'backrow' && p.field) out.push(p.field);
     } else if (spec.zone === 'grave') {
-      out.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster' && keep(c)));
+      /* Whatever the spec asks for. The monster restriction that used to live
+         here is now carried by the specs that actually want it — see the
+         `specialSummon` branch above. */
+      out.push(...p.grave.filter(keep));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
     } else if (spec.zone === 'hand' && pid === viewer) {

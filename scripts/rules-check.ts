@@ -4430,6 +4430,57 @@ console.log('\nJoey: one banner per roll, a dragon off heads, and a chosen grave
      there to answer one when a summon resolves. */
   ok(!targetSpecFor('hitotsu-me-giant', 'onSummon'), 'CONTROL: Hitotsu-Me Giant still asks nothing');
   ok(!targetSpecFor('lady-of-faith', 'onSummon'), 'CONTROL: Lady of Faith still asks nothing');
+
+  /* Reported from a real duel: "Graverobber says there is nothing it can
+     target but the enemy has cards in their graveyard" — a pile holding only
+     Spells and Traps. `targetCandidates` hardcoded "monsters only" into the
+     Graveyard branch, which was invisible while Monster Reborn was the only
+     card looking in there. Graverobber takes ANY card. */
+  const spellsOnly = fresh();
+  spellsOnly.players[FOE].grave = [card(FOE, 'dark-hole'), card(FOE, 'mirror-force'), card(FOE, 'pot-of-greed')];
+  const robSpec = targetSpecFor('graverobber', 'trap')!;
+  const offered = targetCandidates(spellsOnly, ME, robSpec).map((c) => c.slug);
+  ok(offered.length === 3, 'Graverobber offers a Graveyard of nothing but Spells and Traps', offered.join(',') || '(none)');
+
+  // And it can actually be activated against that pile, end to end.
+  const rob = fresh();
+  const trap2 = card(ME, 'graverobber');
+  trap2.face = 'down';
+  trap2.summonedOnTurn = 1;
+  rob.players[ME].spellTrap = trap2;
+  const wantedSpell = card(FOE, 'dark-hole');
+  rob.players[FOE].grave = [card(FOE, 'mirror-force'), wantedSpell];
+  const stolen = act(rob, ME, { type: 'activateSetCard', uid: trap2.uid, targets: [wantedSpell.uid] });
+  ok(
+    stolen.players[ME].hand.some((c) => c.uid === wantedSpell.uid),
+    'and takes the Spell that was chosen out of it'
+  );
+
+  /* CONTROL, and the reason the restriction moved onto the spec rather than
+     being deleted: Monster Reborn must still refuse to offer a Spell. */
+  const rebornSpec = targetSpecFor('monster-reborn', 'activate')!;
+  const mixed = fresh();
+  mixed.players[ME].grave = [card(ME, 'dark-hole'), card(ME, 'summoned-skull'), card(ME, 'pot-of-greed')];
+  const rebornOffers = targetCandidates(mixed, ME, rebornSpec).map((c) => c.slug);
+  ok(
+    rebornOffers.length === 1 && rebornOffers[0] === 'summoned-skull',
+    'CONTROL: Monster Reborn still offers only the monster',
+    rebornOffers.join(',') || '(none)'
+  );
+
+  /* The same latent hole one zone over: a Special Summon from the HAND had no
+     monster restriction either, so it would have offered Spells. */
+  const flute = targetSpecFor('the-flute-of-summoning-dragon', 'activate');
+  if (flute && flute.zone === 'hand') {
+    const h = fresh();
+    h.players[ME].hand = [card(ME, 'dark-hole'), card(ME, 'blue-eyes-white-dragon'), card(ME, 'pot-of-greed')];
+    const fluteOffers = targetCandidates(h, ME, flute).map((c) => c.slug);
+    ok(
+      !fluteOffers.includes('dark-hole') && !fluteOffers.includes('pot-of-greed'),
+      'CONTROL: a Special Summon from the hand offers no Spells either',
+      fluteOffers.join(',') || '(none)'
+    );
+  }
 }
 
 /* The summary goes LAST, and there is nothing after it.
