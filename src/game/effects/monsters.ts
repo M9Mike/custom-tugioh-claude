@@ -128,16 +128,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        full damage and the player for half. `directAttack` leaves every monster
        on the menu (see `legalAttackTargets`), so the pair of attacks is intact
        either way — and the halving is `halvedDirectDamage`, which is charged on
-       the direct path alone. `halvedBattleDamage` is Sky Scout's whole-sentence
-       version and would quietly halve the Champion's charges into monsters too,
-       which is the opposite of the bargain.
+       the direct path alone. `halvedBattleDamage` is the whole-sentence version
+       and would quietly halve the Champion's charges into monsters too, which is
+       the opposite of the bargain.
 
        The half is the toll for *flying over a guard*, so it is charged only
        while the opponent actually controls one. Against an empty board he is an
        ordinary attacker hitting for everything — anything else would have made
        the Champion worse than a vanilla body precisely when there is no defence
-       left, which is not what "can attack directly" is for. */
-    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When this card is Fusion Summoned: draw 1 card. This card can attack twice during each Battle Phase and inflicts piercing battle damage. This card can attack your opponent directly; while your opponent controls a monster, its battle damage from a direct attack is halved.',
+       left, which is not what "can attack directly" is for.
+
+       That last part is deliberately not written on the card. "Can attack
+       directly" is already a licence to go past a guard, so the price for it can
+       only fall due when there is a guard to go past, and saying so outright
+       spent a clause explaining what an empty board plainly means. */
+    text: 'Fusion: Gaia The Fierce Knight + Curse of Dragon. When this card is Fusion Summoned: draw 1 card. This card can attack twice during each Battle Phase and inflicts piercing battle damage. This card can attack your opponent directly, but a direct attack inflicts half damage.',
     cry: 'Charge, my champion!',
     fusionMaterials: ['gaia-the-fierce-knight', 'curse-of-dragon'],
     effects: [
@@ -990,8 +995,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        board for everything, so the one card whose text says it *can* attack
        directly was the only one being made worse for it.
 
-       Same bargain as Gaia the Dragon Champion, same flag, same sentence. */
-    text: 'This card can attack your opponent directly; while your opponent controls a monster, its battle damage from a direct attack is halved.',
+       The empty board goes unsaid on purpose. "Can attack directly" is a licence
+       to go past a guard, so the half that pays for it only ever comes up when
+       there is a guard to go past — spelling that out cost a line of text to
+       state what not having a blocker already means. Same bargain as Gaia the
+       Dragon Champion, same flag, same sentence. */
+    text: 'This card can attack your opponent directly, but a direct attack inflicts half damage.',
     effects: [
       {
         trigger: 'onSummon',
