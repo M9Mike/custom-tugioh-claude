@@ -1167,7 +1167,37 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               idx = best;
             }
           }
-          if (idx < 0) break;
+          if (idx < 0) {
+            /* The Deck came up empty. `orGrave` sends the same lookup to the
+               controller's own Graveyard rather than giving up — the Deck is
+               always asked first, so a card that is in both places is taken
+               from the Deck and the Graveyard copy stays buried.
+               Named order applies here too, then the strongest, which is how
+               `stealFromGrave` picks with nobody to ask. */
+            if (!op.orGrave) break;
+            let gi = -1;
+            const named2 = op.filter?.slugs;
+            if (named2?.length) {
+              for (const slug of named2) {
+                const at = p.grave.findIndex((c) => c.slug === slug && matchesFilter(c, op.filter));
+                if (at >= 0) {
+                  gi = at;
+                  break;
+                }
+              }
+            }
+            if (gi < 0) {
+              for (let k = 0; k < p.grave.length; k++) {
+                if (!matchesFilter(p.grave[k], op.filter)) continue;
+                if (gi < 0 || (CARDS[p.grave[k].slug]?.atk ?? 0) > (CARDS[p.grave[gi].slug]?.atk ?? 0)) gi = k;
+              }
+            }
+            if (gi < 0) break;
+            const g = p.grave.splice(gi, 1)[0];
+            p.hand.push(g);
+            log(state, `${p.name} takes ${displayName(g)} from the Graveyard.`, 'effect', ctx.controller);
+            continue;
+          }
           const c = p.deck.splice(idx, 1)[0];
           p.hand.push(c);
           log(state, `${p.name} adds ${displayName(c)} from their Deck to their hand.`, 'effect', ctx.controller);

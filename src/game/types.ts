@@ -262,7 +262,18 @@ export type Op =
   | { op: 'drawTo'; count: number; who: Side }
   | { op: 'discard'; count: number; who: Side }
   | { op: 'mill'; count: number; who: Side }
-  | { op: 'search'; filter: CardFilter; count?: number }
+  /**
+   * Add a card from the Deck to the hand.
+   *
+   * `orGrave` adds a fallback: nothing matching in the Deck, look in the
+   * controller's own Graveyard instead. One op rather than a `search` followed
+   * by a `stealFromGrave`, because those two are independent and both fire —
+   * fine for a card the deck holds one of, and wrong the moment it holds three.
+   * Kaiser Sea Horse fetches a Blue-Eyes and Kaiba runs three, so "one from the
+   * Deck or the Graveyard" has to be a single lookup that can only ever yield
+   * one card.
+   */
+  | { op: 'search'; filter: CardFilter; count?: number; orGrave?: boolean }
   /** `from` may list several zones, searched in order — a Ritual Spell has to
    *  reach the monster whether it was drawn or is still in the Deck. */
   /**

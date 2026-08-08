@@ -502,8 +502,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'kaiser-sea-horse': {
-    text: 'This card counts as two tributes for the Tribute Summon of a LIGHT monster. When summoned: gain 500 Life Points.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'heal', amount: 500, to: 'own' }] }],
+    /* He fetches the dragon he is worth two tributes towards, which is the
+       whole point of the body: two of him is a Blue-Eyes, and now one of him
+       finds one. Deck first and the Graveyard only as a fallback — a single
+       `search` with `orGrave` rather than a search beside a `stealFromGrave`,
+       because Kaiba runs three Blue-Eyes and those two ops are independent:
+       one in the Deck and one in the pile would have handed over both. */
+    text: 'This card counts as two tributes for the Tribute Summon of a LIGHT monster. When summoned: gain 500 Life Points, then add 1 "Blue-Eyes White Dragon" from your Deck to your hand, or from your Graveyard if there is none in your Deck.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'heal', amount: 500, to: 'own' },
+          { op: 'search', filter: { slugs: ['blue-eyes-white-dragon'] }, orGrave: true },
+        ],
+      },
+    ],
   },
 
   'battle-ox': {
@@ -599,11 +613,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'flame-swordsman': {
-    /* He arms himself. Deck and Graveyard are two different ops — `search`
-       reads the Deck, `stealFromGrave` the Graveyard — and running both is
-       safe rather than greedy precisely because the deck holds one Salamandra:
-       whichever pile it is in, the other op finds nothing and does nothing. */
-    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK, then add "Salamandra" from your Deck or Graveyard to your hand. This card inflicts piercing battle damage.',
+    /* He arms himself, Deck before Graveyard.
+
+       This was a `search` beside a `stealFromGrave`, which was safe only
+       because Joey runs exactly one Salamandra: the two ops are independent
+       and both fire, so a second copy would have been fetched twice. Same
+       behaviour today, no longer a trap for whoever adds the second copy. */
+    text: 'When this card is summoned: destroy all monsters your opponent controls with 1500 or less ATK, then add "Salamandra" from your Deck to your hand, or from your Graveyard if there is none in your Deck. This card inflicts piercing battle damage.',
     cry: 'Flame Blast!',
     effects: [
       {
@@ -611,8 +627,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'pierce', duration: 'permanent' },
           { op: 'destroy', target: sel('opp', 'all', { filter: { maxAtk: 1500 } }) },
-          { op: 'search', filter: { slugs: ['salamandra'] } },
-          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['salamandra'] } },
+          { op: 'search', filter: { slugs: ['salamandra'] }, orGrave: true },
         ],
       },
     ],

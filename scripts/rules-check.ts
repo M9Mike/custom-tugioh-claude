@@ -4100,6 +4100,92 @@ console.log('\nThe Forbidden One assembles on the field too, and two magicians g
   ok(swung.players[FOE].lp < 4000, 'and the attack still lands', `LP ${swung.players[FOE].lp}`);
 }
 
+console.log('\nKaiser Sea Horse fetches the dragon he pays for — Deck first, Graveyard second');
+{
+  // In the Deck: taken from there, and the Graveyard copy stays buried.
+  const inDeck = fresh();
+  const horse = card(ME, 'kaiser-sea-horse'); // Level 4, no tribute
+  inDeck.players[ME].hand = [horse];
+  inDeck.players[ME].deck = [card(ME, 'blue-eyes-white-dragon'), card(ME, 'kuriboh')];
+  const fetched = act(inDeck, ME, {
+    type: 'normalSummon', uid: horse.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(
+    fetched.players[ME].hand.filter((c) => c.slug === 'blue-eyes-white-dragon').length === 1,
+    'takes Blue-Eyes out of the Deck',
+    fetched.players[ME].hand.map((c) => c.slug).join(',')
+  );
+  ok(fetched.players[ME].lp === 4000 + 500, 'and still pays the 500 Life Points', `LP ${fetched.players[ME].lp}`);
+
+  // Nothing in the Deck: the Graveyard is the fallback.
+  const inGrave = fresh();
+  const horse2 = card(ME, 'kaiser-sea-horse');
+  inGrave.players[ME].hand = [horse2];
+  inGrave.players[ME].deck = [card(ME, 'kuriboh')];
+  inGrave.players[ME].grave = [card(ME, 'dark-hole'), card(ME, 'blue-eyes-white-dragon')];
+  const raised = act(inGrave, ME, {
+    type: 'normalSummon', uid: horse2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(
+    raised.players[ME].hand.filter((c) => c.slug === 'blue-eyes-white-dragon').length === 1,
+    'and out of the Graveyard when the Deck has none'
+  );
+  ok(
+    !raised.players[ME].grave.some((c) => c.slug === 'blue-eyes-white-dragon'),
+    'and it really left the Graveyard'
+  );
+
+  /* THE reason this is one op instead of two. Kaiba runs three Blue-Eyes, so
+     mid-duel one sits in the Deck and another in the pile — a `search` beside
+     a `stealFromGrave` fires both and hands over TWO dragons. Exactly one. */
+  const bothPlaces = fresh();
+  const horse3 = card(ME, 'kaiser-sea-horse');
+  bothPlaces.players[ME].hand = [horse3];
+  bothPlaces.players[ME].deck = [card(ME, 'blue-eyes-white-dragon'), card(ME, 'kuriboh')];
+  bothPlaces.players[ME].grave = [card(ME, 'blue-eyes-white-dragon')];
+  const once = act(bothPlaces, ME, {
+    type: 'normalSummon', uid: horse3.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(
+    once.players[ME].hand.filter((c) => c.slug === 'blue-eyes-white-dragon').length === 1,
+    'with a copy in BOTH piles he still takes exactly one',
+    `hand ${once.players[ME].hand.map((c) => c.slug).join(',')}`
+  );
+  ok(
+    once.players[ME].grave.filter((c) => c.slug === 'blue-eyes-white-dragon').length === 1,
+    'and the one he did not take is the Graveyard copy — the Deck is asked first'
+  );
+
+  // Neither pile has one: the summon simply happens.
+  const neither = fresh();
+  const horse4 = card(ME, 'kaiser-sea-horse');
+  neither.players[ME].hand = [horse4];
+  neither.players[ME].deck = [card(ME, 'kuriboh')];
+  const quiet = act(neither, ME, {
+    type: 'normalSummon', uid: horse4.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(quiet.players[ME].hand.length === 0, 'CONTROL: no Blue-Eyes anywhere and he takes nothing', `hand ${quiet.players[ME].hand.length}`);
+  ok(!!quiet.players[ME].monsters.find((m) => m?.uid === horse4.uid), 'and he is still summoned');
+
+  /* Flame Swordsman moved onto the same op. Same behaviour with one
+     Salamandra, and no longer a trap if a second copy is ever added. */
+  const fs = fresh();
+  const sword = card(ME, 'flame-swordsman'); // Level 5 — one tribute
+  fs.players[ME].hand = [sword];
+  const fodder = card(ME, 'mystical-elf');
+  fs.players[ME].monsters = [fodder, null, null];
+  fs.players[ME].deck = [card(ME, 'salamandra'), card(ME, 'kuriboh')];
+  fs.players[ME].grave = [card(ME, 'salamandra')];
+  const armed = act(fs, ME, {
+    type: 'normalSummon', uid: sword.uid, zone: 1, position: 'atk', face: 'up', tributes: [fodder.uid],
+  });
+  ok(
+    armed.players[ME].hand.filter((c) => c.slug === 'salamandra').length === 1,
+    'Flame Swordsman also takes exactly one Salamandra with a copy in both piles',
+    `hand ${armed.players[ME].hand.map((c) => c.slug).join(',')}`
+  );
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it
