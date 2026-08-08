@@ -659,10 +659,31 @@ function checkLifePoints(state: DuelState) {
   if (state.winner) anim(state, { kind: 'win' });
 }
 
+/**
+ * The Forbidden One assembles in the hand *or* on the field.
+ *
+ * Hand-only was the printed rule and it made the five pieces unplayable in a
+ * literal sense: each one is a real monster with a Normal Summon and a draw
+ * effect, and using any of them threw the duel's win condition away. Now a
+ * piece standing in a Monster Zone still counts as gathered, so summoning one
+ * for its draw is a tempo choice rather than a forfeit.
+ *
+ * Face-down counts. A set piece is still a piece you have; hiding it should not
+ * cost the assembly, and the alternative would make the win depend on which way
+ * up a card happens to be sitting.
+ *
+ * Tokens never count. A Sheep Token carries an art slug rather than a card, and
+ * a copy of something is not the thing.
+ *
+ * The Graveyard is not included, deliberately: a destroyed piece is lost, which
+ * is what keeps holding them safer than parading them.
+ */
 function checkExodia(state: DuelState) {
   if (state.winner) return;
   for (const pid of ['p1', 'p2'] as PlayerId[]) {
-    const held = new Set(state.players[pid].hand.map((c) => c.slug));
+    const p = state.players[pid];
+    const held = new Set(p.hand.map((c) => c.slug));
+    for (const m of p.monsters) if (m && !m.isToken) held.add(m.slug);
     if (EXODIA_PIECES.every((s) => held.has(s))) {
       state.winner = pid;
       state.winReason = `${state.players[pid].name} assembled Exodia the Forbidden One!`;
@@ -2473,7 +2494,17 @@ const ANIM_HISTORY = 48;
  */
 export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction): { state: DuelState; error?: string } {
   const res = applyActionInner(prev, pid, action);
-  if (!res.error) speakRemainingLog(res.state);
+  if (!res.error) {
+    /* The last word on the Forbidden One, and the only place that can be.
+       Now that a piece counts from a Monster Zone, the fifth one can arrive by
+       Normal Summon, Special Summon, Fusion material returning, a flip, a
+       change of control — and the scattered `checkExodia` calls inside the
+       resolver cover the draws and searches they were written for, not those.
+       Rather than chase every arrival, every completed action ends here.
+       It is idempotent: the first line returns if the duel is already won. */
+    checkExodia(res.state);
+    speakRemainingLog(res.state);
+  }
   return res;
 }
 

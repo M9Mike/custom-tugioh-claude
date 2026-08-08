@@ -3983,6 +3983,123 @@ console.log('\nJoey, the spells: one-sided swaps and a wind that costs them a ca
   );
 }
 
+console.log('\nThe Forbidden One assembles on the field too, and two magicians get their due');
+{
+  const PIECES = [
+    'exodia-the-forbidden-one',
+    'left-arm-of-the-forbidden-one',
+    'right-arm-of-the-forbidden-one',
+    'left-leg-of-the-forbidden-one',
+    'right-leg-of-the-forbidden-one',
+  ];
+
+  /* Three in hand and two standing is still the Forbidden One. The win has to
+     land the instant the last piece arrives, which is why `applyAction` checks
+     on every completed action rather than only where a card is drawn. */
+  const split = fresh();
+  split.players[ME].monsters = [card(ME, PIECES[0]), card(ME, PIECES[1]), null];
+  split.players[ME].hand = [card(ME, PIECES[2]), card(ME, PIECES[3]), card(ME, PIECES[4])];
+  const settled = act(split, ME, { type: 'toPhase', phase: 'battle' });
+  ok(settled.winner === ME, 'three in hand and two on the field wins the duel', `winner ${settled.winner}`);
+
+  // The classic five-in-hand still wins, untouched.
+  const allHand = fresh();
+  allHand.players[ME].hand = PIECES.map((s) => card(ME, s));
+  const classic = act(allHand, ME, { type: 'toPhase', phase: 'battle' });
+  ok(classic.winner === ME, 'and all five in hand still does', `winner ${classic.winner}`);
+
+  // All five standing wins as well — the other end of the same rule.
+  const allField = fresh();
+  allField.players[ME].monsters = [card(ME, PIECES[0]), card(ME, PIECES[1]), card(ME, PIECES[2])];
+  allField.players[ME].hand = [card(ME, PIECES[3]), card(ME, PIECES[4])];
+  const board = act(allField, ME, { type: 'toPhase', phase: 'battle' });
+  ok(board.winner === ME, 'and three standing with two held', `winner ${board.winner}`);
+
+  /* A set piece counts. Hiding one should not cost the assembly, and the text
+     says "on your field" without qualifying which way up. */
+  const hidden = fresh();
+  const setPiece = card(ME, PIECES[0]);
+  setPiece.face = 'down';
+  setPiece.position = 'def';
+  hidden.players[ME].monsters = [setPiece, null, null];
+  hidden.players[ME].hand = PIECES.slice(1).map((s) => card(ME, s));
+  const stillWon = act(hidden, ME, { type: 'toPhase', phase: 'battle' });
+  ok(stillWon.winner === ME, 'and a face-down piece counts too', `winner ${stillWon.winner}`);
+
+  /* The Graveyard does NOT assemble — a destroyed piece is lost, which is what
+     keeps holding them safer than parading them. */
+  const buriedPiece = fresh();
+  buriedPiece.players[ME].grave = [card(ME, PIECES[0])];
+  buriedPiece.players[ME].hand = PIECES.slice(1).map((s) => card(ME, s));
+  const noWin = act(buriedPiece, ME, { type: 'toPhase', phase: 'battle' });
+  ok(!noWin.winner, 'CONTROL: a piece in the Graveyard does not assemble', `winner ${noWin.winner}`);
+
+  // Four of five is not five.
+  const four = fresh();
+  four.players[ME].monsters = [card(ME, PIECES[0]), null, null];
+  four.players[ME].hand = [card(ME, PIECES[1]), card(ME, PIECES[2]), card(ME, PIECES[3])];
+  const notYet = act(four, ME, { type: 'toPhase', phase: 'battle' });
+  ok(!notYet.winner, 'CONTROL: four pieces across both is not a win', `winner ${notYet.winner}`);
+
+  /* Summoning the fifth piece wins on the spot — the arrival the scattered
+     draw-side checks could never have seen. */
+  const lastOne = fresh();
+  const fifth = card(ME, PIECES[0]); // Level 3, no tribute
+  lastOne.players[ME].hand = [fifth];
+  lastOne.players[ME].monsters = [card(ME, PIECES[1]), card(ME, PIECES[2]), null];
+  lastOne.players[ME].deck = [card(ME, PIECES[3]), card(ME, PIECES[4]), card(ME, 'kuriboh')];
+  // The two it draws on summon are the remaining limbs, sitting on top.
+  const summonedIn = act(lastOne, ME, {
+    type: 'normalSummon', uid: fifth.uid, zone: 2, position: 'atk', face: 'up', tributes: [],
+  });
+  ok(summonedIn.winner === ME, 'and Summoning the last piece wins on the spot', `winner ${summonedIn.winner}`);
+
+  /* Lord of D. reads EVERY Dragon on the field, both sides of it — the literal
+     text, and the flavour: he is the Lord of Dragons, not of his own. He is a
+     Spellcaster, so he never counts himself. */
+  const lord = fresh();
+  const lod = card(ME, 'lord-of-d'); // 1200
+  lord.players[ME].monsters = [lod, null, null];
+  ok(effAtk(lord, lod, ME) === 1200, 'Lord of D. with no Dragons is his printed 1200', `ATK ${effAtk(lord, lod, ME)}`);
+
+  const oneDragon = fresh();
+  const lod2 = card(ME, 'lord-of-d');
+  oneDragon.players[ME].monsters = [lod2, card(ME, 'baby-dragon'), null];
+  ok(effAtk(oneDragon, lod2, ME) === 1200 + 400, 'one of his own Dragons is +400', `ATK ${effAtk(oneDragon, lod2, ME)}`);
+
+  const bothSides = fresh();
+  const lod3 = card(ME, 'lord-of-d');
+  bothSides.players[ME].monsters = [lod3, card(ME, 'baby-dragon'), null];
+  bothSides.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), card(FOE, 'curse-of-dragon'), null];
+  ok(
+    effAtk(bothSides, lod3, ME) === 1200 + 1200,
+    "and the opponent's Dragons count too — every Dragon on the field",
+    `ATK ${effAtk(bothSides, lod3, ME)}`
+  );
+
+  const notDragons = fresh();
+  const lod4 = card(ME, 'lord-of-d');
+  notDragons.players[ME].monsters = [lod4, card(ME, 'battle-ox'), null];
+  notDragons.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+  ok(effAtk(notDragons, lod4, ME) === 1200, 'CONTROL: nothing else on the field feeds him', `ATK ${effAtk(notDragons, lod4, ME)}`);
+
+  // Read live: the Dragon dies, the bonus goes with it.
+  const lost = structuredClone(oneDragon);
+  lost.players[ME].monsters[1] = null;
+  const lodLost = lost.players[ME].monsters[0]!;
+  ok(effAtk(lost, lodLost, ME) === 1200, 'and it falls again the moment the Dragon leaves', `ATK ${effAtk(lost, lodLost, ME)}`);
+
+  /* Dark Paladin draws on every swing, not once a turn. */
+  const dp = fresh('battle');
+  const paladin = card(ME, 'dark-paladin');
+  paladin.summonedOnTurn = 0;
+  dp.players[ME].monsters = [paladin, null, null];
+  dp.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'mystical-elf'), card(ME, 'baby-dragon')];
+  const swung = act(dp, ME, { type: 'attack', uid: paladin.uid, targetUid: null });
+  ok(swung.players[ME].hand.length === 1, 'Dark Paladin draws when it declares an attack', `hand ${swung.players[ME].hand.length}`);
+  ok(swung.players[FOE].lp < 4000, 'and the attack still lands', `LP ${swung.players[FOE].lp}`);
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

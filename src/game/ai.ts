@@ -307,8 +307,14 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   if (my.deck.length < 6) score -= (6 - my.deck.length) * 380;
   if (their.deck.length < 6) score += (6 - their.deck.length) * 380;
 
-  // Exodia: holding pieces is real progress towards an instant win.
-  const pieces = my.hand.filter((c) => EXODIA.has(c.slug)).length;
+  /* Exodia: gathered pieces are real progress towards an instant win, and a
+     piece standing in a Monster Zone counts towards the assembly exactly like
+     one in hand — so the evaluation has to see both, or the AI is blind to a
+     board it is one summon away from winning on. Only its own zones: the
+     Graveyard does not assemble. */
+  const pieces =
+    my.hand.filter((c) => EXODIA.has(c.slug)).length +
+    my.monsters.filter((m) => !!m && !m.isToken && EXODIA.has(m.slug)).length;
   if (pieces) score += pieces * pieces * 260;
 
   // The race. Whoever needs fewer turns to finish the other off is winning,

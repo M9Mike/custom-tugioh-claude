@@ -34,7 +34,10 @@ twist: **Toon monsters need no tribute while their controller has Toon World fac
 which is what makes Pegasus's deck function.
 
 Winning: reduce your opponent to 0 Life Points, make them run out of cards to draw, or
-assemble all five pieces of Exodia in your hand.
+assemble all five pieces of Exodia — **in your hand, on your field, or split between the
+two**. Each piece is a real monster with a Normal Summon and a draw effect, and the
+hand-only rule meant playing one threw the assembly away; a piece standing in a Monster
+Zone counts. The Graveyard does not, so a destroyed piece is still lost.
 
 ## The duelists
 

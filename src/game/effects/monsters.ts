@@ -61,7 +61,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-paladin': {
-    text: 'Fusion: Dark Magician + Dark Magician Girl. When Fusion Summoned: negate the effects of every monster your opponent controls. Gains 200 ATK for each card in your Graveyard. Once per turn: destroy 1 Spell or Trap your opponent controls.',
+    text: 'Fusion: Dark Magician + Dark Magician Girl. When Fusion Summoned: negate the effects of every monster your opponent controls. Gains 200 ATK for each card in your Graveyard. When this card declares an attack: draw 1 card. Once per turn: destroy 1 Spell or Trap your opponent controls.',
     cry: 'Knight of Dark Magic!',
     fusionMaterials: ['dark-magician', 'dark-magician-girl'],
     effects: [
@@ -78,6 +78,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 200 } },
       },
+      // Every swing refills the hand that fused him.
+      { trigger: 'onDeclareAttack', ops: [{ op: 'draw', count: 1, who: 'own' }] },
       {
         trigger: 'ignition',
         label: 'Shatter a Spell/Trap',
@@ -416,24 +418,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'exodia-the-forbidden-one': {
-    text: 'If you have all five pieces of the Forbidden One in your hand, you win the Duel immediately. When Normal Summoned: draw 2 cards.',
+    text: 'If you have all five pieces of the Forbidden One in your hand or on your field, you win the Duel immediately. When Normal Summoned: draw 2 cards.',
     cry: 'EXODIA! OBLITERATE!',
     effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] }],
   },
   'left-arm-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
     effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-arm-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
     effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'left-leg-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
     effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
   'right-leg-of-the-forbidden-one': {
-    text: 'A piece of the Forbidden One. Gather all five in your hand to win the Duel. When Normal Summoned: draw 1 card.',
+    text: 'A piece of the Forbidden One. Gather all five in your hand or on your field to win the Duel. When Normal Summoned: draw 1 card.',
     effects: [{ trigger: 'onNormalSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] }],
   },
 
@@ -474,7 +476,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        backwards for the card whose art is holding the instrument that calls
        them. Summon him, fetch the Flute, and next turn the shield arrives
        with the dragons it shields. */
-    text: 'When this card is Normal Summoned: add "The Flute of Summoning Dragon" from your Deck to your hand. While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects.',
+    text: 'When this card is Normal Summoned: add "The Flute of Summoning Dragon" from your Deck to your hand. While this card is face-up, Dragon monsters you control cannot be targeted or destroyed by your opponent\'s card effects. This card gains 400 ATK for each Dragon on the field.',
     cry: 'Dragons, heed my call!',
     effects: [
       {
@@ -485,6 +487,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'continuous',
         ops: [],
         aura: { target: sel('own', 'all', { filter: { type: 'Dragon' } }), grants: ['untargetable'] },
+      },
+      /* "Each Dragon on the field" — both sides of it, which is the literal
+         reading and the flavour: he is the Lord of *Dragons*, not the lord of
+         his own. `zone: 'field'` is the both-sides count. No `excludeSelf`
+         needed and none would do anything: Lord of D. is a Spellcaster, so he
+         never counts himself. Read live, so the number falls with the board. */
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'field', filter: { type: 'Dragon' }, atk: 400 } },
       },
     ],
   },
