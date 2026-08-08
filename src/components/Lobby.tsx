@@ -75,7 +75,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl tracking-wide text-brassbright sm:text-3xl">Shadow Duel</h1>
-            <p className="text-xs text-ptextdim">Duelist Kingdom · choose your duelist</p>
+            <p className="text-xs text-ptextdim">Choose your duelist</p>
           </div>
           <div className="flex items-center gap-2">
             <Link className="btn rounded px-2.5 py-1 text-[11px]" href="/" title="Back to the arena">

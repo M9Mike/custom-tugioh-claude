@@ -162,8 +162,18 @@ function speakRemainingLog(state: DuelState) {
        line belongs to the beat that is already there — giving it one of its own
        made Kuriboh's token announce itself twice, once as the summon and again
        as the line describing it. Only a line with no beat to attach to gets a
-       beat of its own. */
-    const orphan = [...state.anims].reverse().find((a) => a.id.startsWith(prefix) && !a.note);
+       beat of its own.
+
+       The victory flourish is the one beat that may never adopt. It carries no
+       slug — `declare` says as much: only Exodia's win beat names a card — so a
+       line it swallows is printed over empty space. That is how "Battle Ox holds
+       firm." lost its picture: the recoil that killed its attacker ended the
+       duel, the win beat went up note-less, and the line written a moment later
+       had nowhere else to go. Adopting is also wrong on its own terms, since a
+       win beat that gained a slug would announce the defender as *assembled*. */
+    const orphan = [...state.anims]
+      .reverse()
+      .find((a) => a.id.startsWith(prefix) && !a.note && a.kind !== 'win');
     if (orphan) {
       orphan.note = entry.text;
       orphan.tone = entry.tone;
@@ -173,14 +183,20 @@ function speakRemainingLog(state: DuelState) {
     const n = state.anims.reduce((k, a) => (a.id.startsWith(prefix) ? k + 1 : k), 0);
     /* The card the line was written about, so the beat has a face to show.
        Without it a line that earns its own beat is printed over empty space. */
-    state.anims.push({
+    const beat: AnimEvent = {
       id: `${prefix}${n}`,
       kind: 'note',
       note: entry.text,
       tone: entry.tone,
       player: entry.player,
       ...(entry.slug ? { slug: entry.slug } : {}),
-    });
+    };
+    /* In front of the victory flourish, which is the last thing the board does.
+       The queue plays in array order, so appending would have the duel end and
+       *then* report the blow that ended it. */
+    const flourish = state.anims.findIndex((a) => a.id.startsWith(prefix) && a.kind === 'win');
+    if (flourish >= 0) state.anims.splice(flourish, 0, beat);
+    else state.anims.push(beat);
   }
   state.logShown = state.log.length;
 }
@@ -1439,13 +1455,20 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            "Special Summons 2 Swamp Serpents" having summoned one, or none.
            The board must never say a thing happened that did not. */
         if (made > 0) {
+          /* "a Apophis Serpent" was the only Token on the roster that needed the
+             other article, and it read as a typo every time it landed. */
+          const article = /^[aeiou]/i.test(op.name) ? 'an' : 'a';
           log(
             state,
             made === 1
-              ? `${state.players[ctx.controller].name} Special Summons a ${op.name}.`
+              ? `${state.players[ctx.controller].name} Special Summons ${article} ${op.name}.`
               : `${state.players[ctx.controller].name} Special Summons ${made} ${op.name}s.`,
             'summon',
-            ctx.controller
+            ctx.controller,
+            /* The Token's borrowed art. Safe here for the reason `logSlug` gives:
+               the line names the Token itself, so the picture beside it is a
+               likeness and never a claim about which card this is. */
+            op.artSlug ?? ctx.source.slug
           );
         }
         break;

@@ -16,9 +16,9 @@ const body = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Shadow Duel — Duelist Kingdom',
+  title: 'Shadow Duel',
   description:
-    'A two-player online duel between the original Duelist Kingdom duelists, with 25-card anime decks and overpowered custom effects.',
+    'A two-player online duel between the original anime duelists, with 25-card decks and overpowered custom effects.',
   applicationName: 'Shadow Duel',
   appleWebApp: {
     capable: true,

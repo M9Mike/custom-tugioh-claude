@@ -4953,6 +4953,47 @@ console.log("\nMai Valentine: the flock stops being the only thing her cards can
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* A line written after the duel ends keeps its own beat, and its face   */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\n— the last word of a duel —');
+  /* Reported as "in some banner texts the card art is missing". The shape was
+     always the same: a monster survives a hopeless attack, the recoil finishes
+     the attacker, and the recoil is lethal. The engine logged "holds firm"
+     *after* the damage, so by then the victory beat was already up — note-less,
+     because nothing was pending when it went up — and `speakRemainingLog` gave
+     it the line. A win beat carries no slug, so the line was printed over
+     nothing. `banner-check` is the wide net; this is the exact position. */
+  const last = fresh('battle');
+  const wall = card(FOE, 'battle-ox'); // 1700 ATK / 1000 DEF
+  wall.position = 'def';
+  wall.summonedOnTurn = 0;
+  last.players[FOE].monsters = [wall, null, null];
+  const doomed = card(ME, 'kuriboh'); // 300 ATK, into 1000 DEF — 700 recoil
+  doomed.summonedOnTurn = 0;
+  last.players[ME].monsters = [doomed, null, null];
+  last.players[ME].lp = 700; // exactly lethal, so the duel ends on this swing
+
+  const over = act(last, ME, { type: 'attack', uid: doomed.uid, targetUid: wall.uid });
+  const beats = over.anims.filter((a) => a.id.startsWith(`a${over.version}_`));
+  const held = beats.find((a) => a.note === 'Battle Ox holds firm.');
+
+  ok(over.winner === FOE, 'the recoil off a hopeless attack ends the duel', String(over.winner));
+  ok(!!held, 'and the defender is still credited out loud', beats.map((b) => b.kind).join(','));
+  ok(held?.slug === 'battle-ox', 'with its own face beside the line', held?.slug ?? '(no art)');
+  ok(
+    !beats.some((a) => a.kind === 'win' && a.note),
+    'while the victory flourish stays silent rather than swallowing it',
+    beats.filter((a) => a.kind === 'win').map((a) => a.note ?? '—').join(' | ')
+  );
+  ok(
+    beats.findIndex((a) => a === held) < beats.findIndex((a) => a.kind === 'win'),
+    'and the blow is reported before the duel is declared over',
+    beats.map((b) => b.kind).join(',')
+  );
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it

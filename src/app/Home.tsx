@@ -166,8 +166,7 @@ export default function Home() {
     return (
       <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col justify-center gap-4 p-5">
         <div className="text-center">
-          <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
-          <h1 className="mt-2 font-display text-3xl tracking-wide text-brassbright">
+          <h1 className="font-display text-3xl tracking-wide text-brassbright">
             {picking === 'tournament'
               ? 'Choose your duelist'
               : picking === 'watchA'
@@ -304,9 +303,9 @@ export default function Home() {
   return (
     <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center gap-6 p-5">
       <div className="text-center">
-        {/* The "Duelist Kingdom" eyebrow above the title is gone by the owner's
-            request. The two other places it appears — over the duelist picker
-            and on the bracket — are different screens and are left alone. */}
+        {/* The "Duelist Kingdom" eyebrow is gone by the owner's request — here,
+            over the duelist picker, on the bracket, in the lobby subtitle, and
+            in the page and app metadata. The game is called Shadow Duel. */}
         <h1 className="font-display text-5xl leading-none tracking-wide text-brassbright sm:text-7xl">
           Shadow Duel
         </h1>

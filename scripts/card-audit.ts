@@ -1215,8 +1215,17 @@ for (const def of Object.values(CARDS)) {
  */
 const dead: string[] = [];
 for (const def of Object.values(CARDS)) {
-  if (def.slug === 'facedown' || def.slug === 'polymerization') continue;
-  if (!def.effects.length) dead.push(`${def.slug}: no effects at all`);
+  /* A card with *no* effects is not judged here, and used to be: the rule was
+     "nothing at all is a defect", with `facedown` and `polymerization` named as
+     the two exceptions. Thousand Dragon then arrived as a deliberate vanilla —
+     a plain 2400 body, by request — and turned the battery red while this same
+     script was already recording it two hundred lines up as "no effects by
+     design". One fact, two verdicts, and the loser was the exit code.
+     Whether an effectless card *should* have had one is a question about its
+     rules text, which is text-check's job and three of its founding cases:
+     Rocket Warrior shipped with "when it attacks…" and no effect behind it.
+     What is left here is the failure text alone cannot see — an effect that
+     fires perfectly and does nothing, because its numbers are zero. */
   for (const eff of def.effects) {
     const a = eff.aura;
     const perAny = (a?.per?.atk ?? 0) || (a?.per?.def ?? 0);

@@ -96,8 +96,7 @@ export default function Bracket({ t, busy, onContinue }: Props) {
   return (
     <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col justify-center gap-3 p-4">
       <div className="text-center">
-        <p className="font-display text-[11px] uppercase tracking-[0.45em] text-brass">Duelist Kingdom</p>
-        <h1 className="mt-1 font-display text-2xl tracking-wide text-brassbright sm:text-3xl">
+        <h1 className="font-display text-2xl tracking-wide text-brassbright sm:text-3xl">
           {t.status === 'won'
             ? '👑 Champion of the Kingdom'
             : t.status === 'eliminated'

@@ -4,9 +4,9 @@ import type { MetadataRoute } from 'next';
  *  fullscreen, without Safari's chrome eating the board. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Shadow Duel — Duelist Kingdom',
+    name: 'Shadow Duel',
     short_name: 'Shadow Duel',
-    description: 'A two-player online duel between the original Duelist Kingdom duelists.',
+    description: 'A two-player online duel between the original anime duelists.',
     start_url: '/',
     display: 'standalone',
     orientation: 'portrait',

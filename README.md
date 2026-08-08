@@ -1,4 +1,4 @@
-# Shadow Duel — Duelist Kingdom
+# Shadow Duel
 
 A private, two-player online duel game built around the original season 1 cast of
 Yu-Gi-Oh!. Ten hand-built 25-card decks, real card artwork, and **every single card
@@ -185,6 +185,7 @@ npm run sim 800  # play 800 random duels offline; reports rule errors + win rate
 npm run rules    # targeted regressions for rules that were wrong once and must stay right
 npm run audit    # resolve every card's effect in a built position and check what it did
 npm run picker   # the layer the player touches: every card the rules allow, the board can point at
+npm run banner   # read every banner the board prints and insist a line naming a card shows it
 npm run e2e      # drive two HTTP clients through full duels against a running server
 npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled   # whole brackets
