@@ -39,7 +39,8 @@
     "spectate": "node scripts/spectate-check.mjs",
     "firstturn": "node scripts/first-turn-check.mjs",
     "gods": "tsx scripts/gods-check.ts",
-    "winscreen": "node scripts/winscreen-check.mjs"
+    "winscreen": "node scripts/winscreen-check.mjs",
+    "picker": "tsx scripts/picker-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
