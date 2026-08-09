@@ -9,7 +9,7 @@
  *   npx tsx scripts/rules-check.ts
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired, wastedWithoutTarget } from '../src/game/engine';
-import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
+import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
@@ -5079,6 +5079,62 @@ console.log('\nPegasus: the book, the drawings and the eye');
   mine.players[FOE].monsters = [theirToon, null, null];
   ok(effFlags(mine, myToon, ME).indestructibleByBattle === true, 'your Toon cannot be destroyed by battle under your book');
   ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
+}
+
+console.log('\nWho the book animates, and what they are called');
+{
+  /* Ryu-Ran is not a Toon. It fetches the book and can be thrown away for one,
+     and caring about a card is not being part of it — no protection, no direct
+     attack, and it pays its Tributes with the book wide open. */
+  const open = fresh();
+  open.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const ryu = card(ME, 'ryu-ran');
+  open.players[ME].monsters = [ryu, null, null];
+  ok(!isToon('ryu-ran'), 'Ryu-Ran is not on the Toon roster');
+  ok(tributesRequired('ryu-ran', open, ME) === 2, 'and pays its 2 Tributes under the book', `${tributesRequired('ryu-ran', open, ME)}`);
+  const rf = effFlags(open, ryu, ME);
+  ok(!rf.directAttack && !rf.indestructibleByBattle, 'and the book lends it nothing');
+  ok(displayName(open, ryu) === 'Ryu-Ran', 'and it is never renamed', displayName(open, ryu));
+
+  /* Dark Rabbit's mischief is gated on the book itself, not on company. */
+  const alone = fresh();
+  alone.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const rabbit = card(ME, 'dark-rabbit');
+  alone.players[ME].hand = [rabbit];
+  alone.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'battle-ox')];
+  const hopped = act(alone, ME, { type: 'normalSummon', uid: rabbit.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(hopped.players[FOE].hand.length === 1, 'Dark Rabbit picks a pocket with only the book for company',
+    `${hopped.players[FOE].hand.length} left`);
+
+  const shut = fresh();
+  const rabbit2 = card(ME, 'dark-rabbit');
+  shut.players[ME].hand = [rabbit2];
+  shut.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'battle-ox')];
+  const quiet = act(shut, ME, { type: 'normalSummon', uid: rabbit2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(quiet.players[FOE].hand.length === 2, 'and takes nothing with the book shut',
+    `${quiet.players[FOE].hand.length} left`);
+
+  /* The rename says it once. Toon Alligator is already called that. */
+  const named = fresh();
+  named.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const gator = card(ME, 'toon-alligator');
+  const bunny = card(ME, 'dark-rabbit');
+  named.players[ME].monsters = [gator, bunny, null];
+  ok(displayName(named, gator) === 'Toon Alligator', 'Toon Alligator is not Toon Toon Alligator', displayName(named, gator));
+  ok(displayName(named, bunny) === 'Toon Dark Rabbit', 'and Dark Rabbit does gain the word', displayName(named, bunny));
+
+  /* And the name does not depend on whose turn it is. */
+  for (const active of [ME, FOE] as PlayerId[]) {
+    const turn = structuredClone(named);
+    turn.active = active;
+    const g = turn.players[ME].monsters[0]!;
+    const b = turn.players[ME].monsters[1]!;
+    ok(
+      displayName(turn, g) === 'Toon Alligator' && displayName(turn, b) === 'Toon Dark Rabbit',
+      `named the same on ${active === ME ? 'your' : "their"} turn`,
+      `${displayName(turn, g)} / ${displayName(turn, b)}`
+    );
+  }
 }
 
 console.log('\nThe eye eats what you point at');

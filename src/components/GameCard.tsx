@@ -40,6 +40,14 @@ interface Props {
   title?: string;
   /** Hides the name/stat chrome, for very small thumbnails. */
   compact?: boolean;
+  /**
+   * What the board is calling this card right now.
+   *
+   * A drawing under Toon World is a Toon and reads as one; the printed name
+   * cannot know that, and the caller holds the state. Without it the banners
+   * said "Toon Dark Rabbit" while the card in front of you said "Dark Rabbit".
+   */
+  displayName?: string;
 }
 
 /**
@@ -68,11 +76,12 @@ export default function GameCard({
   onPointerEnter,
   title,
   compact,
+  displayName,
 }: Props) {
   const hidden = faceDown || card.slug === 'facedown';
   const cardDef = CARDS[card.slug];
   const isToken = !!card.isToken;
-  const name = isToken ? (card.tokenName ?? 'Token') : (cardDef?.name ?? 'Card');
+  const name = isToken ? (card.tokenName ?? 'Token') : (displayName ?? cardDef?.name ?? 'Card');
   const isMonster = isToken || cardDef?.kind === 'monster';
 
   return (

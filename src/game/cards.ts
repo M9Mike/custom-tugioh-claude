@@ -276,11 +276,14 @@ export function artUrl(slug: string): string {
  * Ryu-Ran and friends — Toons every bit as much in the anime — so half his
  * deck stayed stranded behind two tributes with no payoff.
  *
- * Parrot Dragon is off the list by the owner's ruling: it never was a Toon and
- * only ever rode in on this set, which is also most of why the book's search
- * felt like it was offering the whole deck.
+ * Parrot Dragon and Ryu-Ran are off the list by the owner's ruling: neither was
+ * ever a Toon. Ryu-Ran is an ordinary effect monster that happens to care about
+ * the book — it fetches one and can be thrown away for one — and caring about a
+ * card is not being part of it. It gets no protection, no direct attack, and
+ * pays its Tributes with the book wide open. Their membership is also most of
+ * why the book's search felt like it was offering the whole deck.
  */
-const TOON_EXTRA = new Set(['ryu-ran', 'manga-ryu-ran', 'bickuribox', 'dark-rabbit']);
+const TOON_EXTRA = new Set(['manga-ryu-ran', 'bickuribox', 'dark-rabbit']);
 
 /**
  * A monster the book can make a Toon of.
@@ -331,5 +334,8 @@ export function isToonWhenBookOpen(slug: string): boolean {
  */
 export function toonDisplayName(slug: string, bookIsOpen: boolean): string {
   const name = CARDS[slug]?.name ?? slug;
-  return bookIsOpen && TOON_ONLY_WITH_BOOK.has(slug) ? `Toon ${name}` : name;
+  if (!bookIsOpen || !TOON_ONLY_WITH_BOOK.has(slug)) return name;
+  /* Toon Alligator is already called that. Prefixing regardless gave "Toon Toon
+     Alligator", which reads as a bug because it is one. */
+  return name.startsWith('Toon ') ? name : `Toon ${name}`;
 }

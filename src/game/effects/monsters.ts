@@ -1297,12 +1297,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        pickpocketing only happens when there is already another cartoon on the
        field for it to work the crowd with. */
     text:
-      'While "Toon World" is face-up on your field, this monster is a Toon monster. ' +
-      'When it is summoned while you control another Toon monster: your opponent discards 1 random card.',
+      'While "Toon World" is face-up on your field, this monster is a Toon monster ' +
+      'and, when it is summoned, your opponent discards 1 random card.',
     effects: [
       {
         trigger: 'onSummon',
-        condition: { controlsOtherToon: true },
+        /* The book, not company. It read "while you control another Toon
+           monster" and the owner's ruling is simpler: the Field Spell being
+           open is the whole condition, exactly as it is for its Toon-ness. */
+        condition: { requiresOnField: 'toon-world' },
         ops: [{ op: 'discard', count: 1, who: 'opp' }],
       },
     ],

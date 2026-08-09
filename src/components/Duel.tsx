@@ -1206,6 +1206,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 card={c}
                 {...statsOf(c, owner)}
                 faceDown={c.face === 'down'}
+                displayName={shownName(c)}
                 compact
               />
               </div>
