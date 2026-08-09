@@ -41,7 +41,7 @@
  *   npx tsx scripts/picker-check.ts            # every card
  *   npx tsx scripts/picker-check.ts graverobber  # one card, verbose
  */
-import { canActivateFromHand, canActivateSetCard, canIgnite, createDuel } from '../src/game/engine';
+import { canActivateFromHand, canActivateSetCard, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor, type TargetSpec } from '../src/game/ui';
 import type { CardDef, CardFilter, CardInstance, DuelState, PlayerId, Trigger } from '../src/game/types';
@@ -142,18 +142,14 @@ function stocked(): DuelState {
 function cardMatching(f: CardFilter | undefined, self: string): string | null {
   if (!f) return PLAIN_MONSTERS.find((sl) => sl !== self) ?? null;
   if (f.slugs?.length) return f.slugs.find((sl) => sl !== self) ?? null;
+  /* The engine's own filter, not a third copy of it. This was a copy, and like
+     the client's it did not know about `toon` — so for Toon World's "add 1 Toon
+     monster" it seeded the Deck with something that was not a Toon, the picker
+     correctly refused to offer it, and the harness reported the card as broken.
+     Three readings of one rule, and two of them wrong. */
   for (const def of Object.values(CARDS)) {
     if (def.slug === 'facedown' || def.slug === self) continue;
-    if (f.kind && def.kind !== f.kind) continue;
-    if (f.type && def.type !== f.type) continue;
-    if (f.excludeType && def.type === f.excludeType) continue;
-    if (f.attribute && def.attribute !== f.attribute) continue;
-    if (f.minLevel != null && (def.level ?? 0) < f.minLevel) continue;
-    if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) continue;
-    if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) continue;
-    if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) continue;
-    if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) continue;
-    return def.slug;
+    if (matchesFilter(mint(ME, def.slug), f)) return def.slug;
   }
   return null;
 }

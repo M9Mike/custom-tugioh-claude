@@ -254,8 +254,17 @@ function findOnField(state: DuelState, uid: string): { c: CardInstance; controll
   return null;
 }
 
-/** Matches a card against a filter using base stats (never aura-adjusted, to avoid recursion). */
-function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
+/**
+ * Matches a card against a filter using base stats (never aura-adjusted, to
+ * avoid recursion).
+ *
+ * Exported because the picker needs the same answer. It used to keep its own
+ * copy and the two had already drifted: the client's knew nothing about `toon`,
+ * so Toon World's "add 1 Toon monster" offered every monster in the Deck —
+ * reported as the modal showing the whole deck. One rule, one place, and the
+ * drift cannot happen again.
+ */
+export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (!f) return true;
   if (c.isToken) {
     // Tokens only satisfy the loosest filters.

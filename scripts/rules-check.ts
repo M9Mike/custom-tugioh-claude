@@ -5046,6 +5046,29 @@ console.log('\nPegasus: the book, the drawings and the eye');
   ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
 }
 
+console.log('\nThe picker and the engine read one filter');
+{
+  /* Two copies of the filter had drifted: the client's knew nothing about
+     `toon`, so Toon World's "add 1 Toon monster" offered every monster in the
+     Deck. Reported as the modal showing the whole deck, and it survived a first
+     look because `kind: 'monster'` was doing enough filtering to seem right. */
+  const s = fresh();
+  s.players[ME].hand = [card(ME, 'toon-world')];
+  s.players[ME].deck = [
+    card(ME, 'toon-mermaid'),
+    card(ME, 'dark-hole'),
+    card(ME, 'parrot-dragon'),
+    card(ME, 'relinquished'),
+    card(ME, 'bickuribox'),
+  ];
+  const offered = targetCandidates(s, ME, targetSpecFor('toon-world', 'activate')!).map((c) => c.slug);
+  ok(offered.includes('toon-mermaid'), 'the book offers a Toon', offered.join(',') || 'nothing');
+  ok(offered.includes('bickuribox'), 'and a drawing it can bring to life');
+  ok(!offered.includes('parrot-dragon'), 'not the bird that was never one');
+  ok(!offered.includes('relinquished'), 'not a Ritual monster');
+  ok(!offered.includes('dark-hole'), 'and not a Spell');
+}
+
 console.log('\nRyu-Ran throws itself away for the book');
 {
   /* The panic button, priced like one: it finds Toon World from the Deck and
