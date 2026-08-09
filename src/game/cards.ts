@@ -274,9 +274,61 @@ export function artUrl(slug: string): string {
  * used to find them by looking for "Toon" in the name. That quietly left out
  * Ryu-Ran and friends — Toons every bit as much in the anime — so half his
  * deck stayed stranded behind two tributes with no payoff.
+ *
+ * Parrot Dragon is off the list by the owner's ruling: it never was a Toon and
+ * only ever rode in on this set, which is also most of why the book's search
+ * felt like it was offering the whole deck.
  */
-const TOON_EXTRA = new Set(['ryu-ran', 'manga-ryu-ran', 'bickuribox', 'parrot-dragon', 'dark-rabbit']);
+const TOON_EXTRA = new Set(['ryu-ran', 'manga-ryu-ran', 'bickuribox', 'dark-rabbit']);
 
+/**
+ * A monster the book can make a Toon of.
+ *
+ * Membership alone is not Toon-ness — see `toonActive`. This is the roster the
+ * book *recruits from*, which is what a Deck search means when it says "add 1
+ * Toon monster": you are looking for a card that will be a Toon once the book
+ * is open, and the card sitting in the Deck is not one yet.
+ */
 export function isToon(slug: string): boolean {
   return CARDS[slug]?.name.includes('Toon') || TOON_EXTRA.has(slug);
+}
+
+/**
+ * Monsters that are only *drawings* until somebody opens the book.
+ *
+ * These four are ordinary monsters in the hand and on the field — printed
+ * stats, no effect, no protection, and their full Tribute cost — and become
+ * Toons the moment their controller has Toon World face-up. That is the
+ * owner's ruling and it is what makes them playable at all in a deck whose
+ * enabler is a single card: a dead draw before the book is now just a monster.
+ *
+ * The three the name gives away (Toon Summoned Skull, Toon Mermaid, Blue-Eyes
+ * Toon Dragon) are not here. They are Toons always, and carry
+ * `summonRequires: 'toon-world'` for it — a Toon Summoned Skull without the
+ * book is not a plain Summoned Skull, it is a card that cannot come out.
+ */
+const TOON_ONLY_WITH_BOOK = new Set(['dark-rabbit', 'bickuribox', 'manga-ryu-ran', 'toon-alligator']);
+
+/** True while this card, in this player's hands, is actually a Toon. */
+export function toonActive(slug: string, bookIsOpen: boolean): boolean {
+  if (!isToon(slug)) return false;
+  return TOON_ONLY_WITH_BOOK.has(slug) ? bookIsOpen : true;
+}
+
+/** Whether a monster is one of the drawings that needs the book to come alive. */
+export function isToonWhenBookOpen(slug: string): boolean {
+  return TOON_ONLY_WITH_BOOK.has(slug);
+}
+
+/**
+ * The name to print, which for these four depends on the board.
+ *
+ * Bickuribox with the book open is Toon Bickuribox, and that rename is the only
+ * warning a player gets that Dark Hole is about to sweep the field and leave it
+ * standing. Without it the protection looks like the board cheating; with it,
+ * the reason is written on the card.
+ */
+export function toonDisplayName(slug: string, bookIsOpen: boolean): string {
+  const name = CARDS[slug]?.name ?? slug;
+  return bookIsOpen && TOON_ONLY_WITH_BOOK.has(slug) ? `Toon ${name}` : name;
 }

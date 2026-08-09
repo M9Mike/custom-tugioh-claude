@@ -524,7 +524,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'blue-eyes-toon-dragon': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: your opponent discards 1 random card.',
+    text: 'Requires "Toon World". When summoned: your opponent discards 1 random card.',
     cry: 'Toon power!',
     effects: [
       {
@@ -1106,7 +1106,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Toon World. Owning it outright meant destroying Toon World took the 600
        ATK and left the Toon still walking past blockers, which is the opposite
        of "when the toon world is gone they just can't attack directly". */
-    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: inflict 600 damage to your opponent.',
+    text: 'Requires "Toon World". When summoned: inflict 600 damage to your opponent.',
     effects: [
       {
         trigger: 'onSummon',
@@ -1117,7 +1117,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'toon-mermaid': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: draw 1 card.',
+    text: 'Requires "Toon World". When summoned: draw 1 card.',
     effects: [
       {
         trigger: 'onSummon',
@@ -1140,7 +1140,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'manga-ryu-ran': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World", and attacks directly only while it is face-up. Cannot be targeted by your opponent\'s effects.',
+    text: 'Requires "Toon World". Cannot be targeted by your opponent\'s effects.',
     effects: [
       {
         trigger: 'onSummon',
@@ -1155,14 +1155,30 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-eyes-illusionist': {
-    text: 'When this monster is summoned: your opponent\'s monsters cannot attack or change position during their next turn.',
+    text:
+      'When this monster is summoned: your opponent\'s monsters cannot attack or change position during their next turn, ' +
+      'and add "Black Illusion Ritual" or "Relinquished" from your Deck to your hand.',
     cry: 'Look into my eyes...',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'freezeMonsters', who: 'opp', turns: 1 }] }],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'freezeMonsters', who: 'opp', turns: 1 },
+          /* The eye that finds the ritual. Relinquished is the deck's payoff and
+             needed both halves drawn naturally; this is the other half. */
+          { op: 'search', filter: { slugs: ['black-illusion-ritual', 'relinquished'] } },
+        ],
+      },
+    ],
   },
 
   'illusionist-faceless-mage': {
-    text: 'FLIP: take control of 1 monster your opponent controls until the end of your turn.',
-    effects: [{ trigger: 'onFlip', targets: 1, ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }] }],
+    /* Not a Toon and never becomes one, whatever the book is doing — it is a
+       Spellcaster that happens to share a deck with them, and half of
+       Thousand-Eyes Restrict. Unsaid on the card: nothing on it claims to be a
+       Toon, so nothing needs to deny it. */
+    text: 'FLIP: take control of 1 monster your opponent controls.',
+    effects: [{ trigger: 'onFlip', targets: 1, ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }] }],
   },
 
   'parrot-dragon': {
@@ -1171,8 +1187,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dragon-piper': {
-    text: 'FLIP: take control of every Dragon your opponent controls until the end of your turn.',
-    effects: [{ trigger: 'onFlip', ops: [{ op: 'takeControl', target: sel('opp', 'all', { filter: { type: 'Dragon' } }), duration: 'turn' }] }],
+    text: 'FLIP: take control of every Dragon your opponent controls for 2 turns.',
+    effects: [{ trigger: 'onFlip', ops: [{ op: 'takeControl', target: sel('opp', 'all', { filter: { type: 'Dragon' } }), duration: 'turn', turns: 2 }] }],
   },
 
   'doma-the-angel-of-silence': {
@@ -1181,14 +1197,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   bickuribox: {
-    text: 'When this monster is summoned: destroy 1 monster your opponent controls. This monster can attack twice each Battle Phase.',
+    /* A jack-in-the-box is a toy that has not been wound yet. Off the field, and
+       on a field with no book open, this is an ordinary Level 7 body with
+       nothing to say — every one of its effects is gated on Toon World, and it
+       pays its two Tributes either way (see `tributesRequired`): the cartoon
+       reaches the field, not the hand. Once the book is open it answers to
+       "Toon Bickuribox", which is the warning that Dark Hole will walk past it. */
+    text:
+      'While "Toon World" is face-up on your field, this monster is a Toon monster and, when it is summoned, ' +
+      'destroys 1 monster and 1 Spell or Trap your opponent controls and can attack twice each Battle Phase. ' +
+      'It always requires 2 Tributes to Summon.',
     effects: [
       {
         trigger: 'onSummon',
         targets: 1,
+        condition: { requiresOnField: 'toon-world' },
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'destroy', target: OPP_PICK },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
         ],
       },
     ],
@@ -1196,7 +1223,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'dark-rabbit': {
     summonRequires: 'toon-world',
-    text: 'Requires "Toon World", and attacks directly only while it is face-up. When summoned: your opponent discards 1 random card.',
+    text: 'Requires "Toon World". When summoned: your opponent discards 1 random card.',
     effects: [
       {
         trigger: 'onSummon',

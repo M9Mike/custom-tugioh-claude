@@ -617,10 +617,14 @@ console.log('\nToon World sits in the Field Zone and still powers the Toons');
   withToon.players[ME].monsters[0] = card(ME, 'toon-mermaid');
   const toon = withToon.players[ME].monsters[0]!;
   const flags = effFlags(withToon, toon, ME);
-  ok(effAtk(withToon, toon, ME) === 1400 + 600, 'and gains 600 ATK', `ATK ${effAtk(withToon, toon, ME)}`);
-  /* Effect-indestructible since the 8000-LP pass, not untargetable: nothing
-     may DESTROY a Toon while the book is open, but binds and debuffs land. */
-  ok(flags.directAttack === true && flags.indestructibleByEffect === true && flags.pierce === true, 'with direct attack, effect-indestructibility and piercing');
+  /* The book stopped lending ATK by the owner's ruling. What it lends instead
+     is survival — a cartoon is flattened and walks off the next panel — so the
+     Toons are small bodies that do not die rather than big ones that do. */
+  ok(effAtk(withToon, toon, ME) === 1400, 'and is left at its printed ATK', `ATK ${effAtk(withToon, toon, ME)}`);
+  ok(
+    flags.directAttack === true && flags.indestructibleByEffect === true && flags.indestructibleByBattle === true && flags.pierce === true,
+    'with direct attack, piercing, and indestructibility by effect AND by battle'
+  );
   ok(!flags.untargetable, 'and it can be targeted — Mirror Wall may halve it, Skull Dice may shrink it');
 }
 
@@ -1940,34 +1944,46 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   ok(open.players[ME].field?.slug === 'toon-world', 'Toon World opens in the Field Zone');
   ok(open.players[ME].hand.some((h) => h.slug === 'toon-mermaid'), 'and fetches a Toon');
   ok(open.players[ME].deck.length === deckBefore - 1, 'and draws nothing beyond the search', `deck ${open.players[ME].deck.length}`);
-  ok(open.players[ME].lp === 4000 - 1000, 'and costs its printed 1000 Life Points', `LP ${open.players[ME].lp}`);
+  /* Free to open, by the owner's ruling: the toll fell on the one card the
+     whole deck has to land, and Pegasus already pays for it every time it is
+     answered. */
+  ok(open.players[ME].lp === 4000, 'and costs nothing to open', `LP ${open.players[ME].lp}`);
 
-  /* Closing the book takes what the book was giving, and nothing more.
-     Reported as "Toon world is too weak now … destroying all monsters when
-     the toon world is a lot": the Toons used to be destroyed outright when it
-     left, which made a single De-Spell a one-card sweep of everything Pegasus
-     had committed. Losing the 600 ATK and the direct attack is already an
-     answer the whole roster can reach — that is the counterplay, and it is
-     enough. The bodies stay. */
+  /* Closing the book, which the owner has made expensive again — but not the
+     old way. It used to destroy the Toons outright, which made one De-Spell a
+     sweep of everything Pegasus had committed; then it did nothing but take
+     the buff back, which made answering the card that holds the whole deck up
+     barely worth the card it cost. It now flattens *every* monster the
+     controller has by 1000 — Toon or not — and the ones with nothing left to
+     give are destroyed. The big bodies live and limp; the small ones do not. */
   const doom = fresh();
   doom.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
-  const toon = card(FOE, 'toon-summoned-skull');
-  const plain = card(FOE, 'ryu-kishin-powered');
-  doom.players[FOE].monsters = [toon, plain, null];
-  const buffed = effAtk(doom, toon, FOE);
+  const toon = card(FOE, 'toon-summoned-skull'); // 2500 — survives at 1500
+  const plain = card(FOE, 'ryu-kishin-powered'); // never a Toon, and hit anyway
+  const tiny = card(FOE, 'kuriboh'); // 300 — nothing left to lose
+  doom.players[FOE].monsters = [toon, plain, tiny];
+  const skullBefore = effAtk(doom, toon, FOE);
+  const plainBefore = effAtk(doom, plain, FOE);
   const despell = card(ME, 'de-spell');
   doom.players[ME].hand = [despell];
   const popped = act(doom, ME, { type: 'activateSpell', uid: despell.uid, targets: [doom.players[FOE].field!.uid] });
   ok(!popped.players[FOE].field, 'destroying Toon World empties the Field Zone');
   const survivor = popped.players[FOE].monsters.find((m) => m?.slug === 'toon-summoned-skull');
-  ok(!!survivor, 'the Toons outlive the book', popped.players[FOE].monsters.map((m) => m?.slug).join(','));
-  ok(!!survivor && effAtk(popped, survivor, FOE) === buffed - 600,
-    'and lose exactly the 600 the book was lending them',
-    survivor ? `${buffed} -> ${effAtk(popped, survivor, FOE)}` : 'gone');
+  ok(!!survivor, 'a big enough Toon outlives the book', popped.players[FOE].monsters.map((m) => m?.slug).join(','));
+  ok(!!survivor && effAtk(popped, survivor, FOE) === skullBefore - 1000,
+    'flattened by exactly 1000',
+    survivor ? `${skullBefore} -> ${effAtk(popped, survivor, FOE)}` : 'gone');
   ok(!!survivor && !effFlags(popped, survivor, FOE).directAttack,
     'and can no longer walk past a blocker');
-  ok(popped.players[FOE].monsters.some((m) => m?.slug === 'ryu-kishin-powered'),
-    'CONTROL: the monster that was never a Toon is untouched either way');
+  const bystander = popped.players[FOE].monsters.find((m) => m?.slug === 'ryu-kishin-powered');
+  ok(!!bystander && effAtk(popped, bystander, FOE) === plainBefore - 1000,
+    'the monster that was never a Toon is flattened too — the book held the whole board up',
+    bystander ? `${plainBefore} -> ${effAtk(popped, bystander, FOE)}` : 'gone');
+  ok(!popped.players[FOE].monsters.some((m) => m?.slug === 'kuriboh'),
+    'and anything left with nothing is destroyed',
+    popped.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(popped.players[ME].monsters.every((m) => !m),
+    "CONTROL: the other duelist's board is not touched — it was not their book");
 
   /* Dark Magician: the full wipe is his arrival, the ignition takes one. */
   const dm = fresh();
@@ -2079,14 +2095,16 @@ console.log('\nThe balance pass, second turn of the wheel');
   ok(swung.players[ME].lp === lpBefore, 'a Toon direct attack costs its duelist nothing', `LP ${swung.players[ME].lp}`);
   ok(swung.players[FOE].lp < foeLp, 'and the blow lands', `foe LP ${swung.players[FOE].lp}`);
 
-  /* And the pause: a Toon summoned this turn waits — the other printed Toon
-     rule, and the turn the opponent is given to answer a free 3800. */
+  /* And no pause any more. The wait was the other printed Toon rule and the
+     owner has cut it: with the +600 gone a fresh Toon is a small body, and
+     making it stand still for a turn on top of that was charging twice for a
+     card that is already answered by removing one Field Spell. */
   const sick = fresh('battle');
   sick.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
   const freshToon = card(ME, 'toon-mermaid');
   freshToon.summonedOnTurn = sick.turn;
   sick.players[ME].monsters = [freshToon, null, null];
-  ok(!canAttackWith(sick, ME, freshToon), 'a Toon summoned this turn cannot attack yet');
+  ok(canAttackWith(sick, ME, freshToon), 'a Toon may swing the turn it arrives');
   const rested = structuredClone(sick);
   rested.players[ME].monsters[0]!.summonedOnTurn = rested.turn - 1;
   ok(canAttackWith(rested, ME, rested.players[ME].monsters[0]!), 'and swings freely a turn later');
@@ -2202,13 +2220,13 @@ console.log('\nGOD CARDS ARE ABOVE EVERYTHING');
   book.active = FOE;
   book.players[ME].monsters[0] = card(ME, 'slifer-the-sky-dragon');
   book.players[FOE].field = { ...card(FOE, 'toon-world'), face: 'up' as const };
-  const toon = card(FOE, 'toon-summoned-skull'); // 2500 + 600 book = 3100, drained to 1100 — still standing
+  const toon = card(FOE, 'toon-summoned-skull'); // 2500 printed, drained by 2000 to 500 — still standing
   book.players[FOE].hand = [toon];
   const drawn = act(book, FOE, {
     type: 'normalSummon', uid: toon.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
   });
   const inked = drawn.players[FOE].monsters.find((m) => m?.slug === 'toon-summoned-skull');
-  ok(!!inked && effAtk(drawn, inked, FOE) === 1100,
+  ok(!!inked && effAtk(drawn, inked, FOE) === 500,
     "the drain lands on a Toon, and one left above zero stands", inked ? `ATK ${effAtk(drawn, inked, FOE)}` : 'destroyed');
 
   /* ...while one drained below zero dies through the book's protection. Dark
@@ -3318,7 +3336,7 @@ console.log('\nThe book gives the mischief, and takes it back');
   mermaid.summonedOnTurn = 0;
   open.players[ME].monsters = [mermaid, null, null];
   ok(!!effFlags(open, mermaid, ME).directAttack, 'under the book a Toon attacks directly');
-  ok(effAtk(open, mermaid, ME) === baseAtkOf('toon-mermaid') + 600, 'and carries the 600', `${effAtk(open, mermaid, ME)}`);
+  ok(effAtk(open, mermaid, ME) === baseAtkOf('toon-mermaid'), 'at its printed ATK — the book lends none', `${effAtk(open, mermaid, ME)}`);
 
   const shut = structuredClone(open);
   shut.players[ME].field = null;

@@ -259,7 +259,9 @@ export type Op =
   | { op: 'destroy'; target: Selector }
   | { op: 'banish'; target: Selector }
   | { op: 'bounce'; target: Selector }
-  | { op: 'takeControl'; target: Selector; duration: Duration }
+  /** `turns` is how many turns a non-permanent borrowing lasts; 1 by default,
+   *  which is the end of the turn it was taken on. */
+  | { op: 'takeControl'; target: Selector; duration: Duration; turns?: number }
   | { op: 'draw'; count: number; who: Side }
   /**
    * Draws up to a hand size rather than a fixed number — "each player draws

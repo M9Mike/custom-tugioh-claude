@@ -6,7 +6,7 @@
  * this as the single source of truth; the client runs the same code to predict
  * what its buttons should do.
  */
-import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToon } from './cards';
+import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToon, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
 import {
   MONSTER_ZONES,
   OPENING_HAND,
@@ -201,8 +201,23 @@ function speakRemainingLog(state: DuelState) {
   state.logShown = state.log.length;
 }
 
-export function displayName(c: CardInstance): string {
-  return c.isToken ? (c.tokenName ?? 'Token') : card(c.slug).name;
+/**
+ * What to call a card out loud.
+ *
+ * A Toon that is only a Toon while the book is open is announced as one, and
+ * announced as its plain self when it is not: Bickuribox on an empty field,
+ * Toon Bickuribox once Toon World is down. It is the only signal a player gets
+ * that Dark Hole is about to walk past it, and without it the protection reads
+ * as the board cheating.
+ *
+ * The state is needed for that and only that — a Token still borrows its own
+ * name, and everything else is the printed one.
+ */
+export function displayName(state: DuelState, c: CardInstance): string {
+  if (c.isToken) return c.tokenName ?? 'Token';
+  if (!isToonWhenBookOpen(c.slug)) return card(c.slug).name;
+  const holder = findOnField(state, c.uid)?.controller ?? c.owner;
+  return toonDisplayName(c.slug, faceUpOnSide(state, holder, 'toon-world'));
 }
 
 /** Every face-up card on the field, both players, for aura scanning. */
@@ -914,7 +929,7 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
     if (!c) return [];
     if (isProtectedTarget(state, c, ctx.controller, ctx)) {
       const ctrl = controllerOf(state, c.uid);
-      if (ctrl) log(state, `${displayName(c)} stands beyond that effect's reach.`, 'effect', ctrl, logSlug(c));
+      if (ctrl) log(state, `${displayName(state, c)} stands beyond that effect's reach.`, 'effect', ctrl, logSlug(c));
       return [];
     }
     return [c];
@@ -1055,22 +1070,22 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
      Slifer was destroyed by a Dark Hole. Both doors, or the rule has a hole in
      it. Another God is still above this one. */
   if (!byBattle && isDivine(c.slug) && !divine) {
-    log(state, `${displayName(c)} is a God — no card effect may destroy it.`, 'effect', found.controller, logSlug(c));
+    log(state, `${displayName(state, c)} is a God — no card effect may destroy it.`, 'effect', found.controller, logSlug(c));
     return;
   }
   if (byBattle && flags.indestructibleByBattle && !divine) {
-    log(state, `${displayName(c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
+    log(state, `${displayName(state, c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
     return;
   }
   if (!byBattle && flags.indestructibleByEffect && !divine) {
-    log(state, `${displayName(c)} is immune to that effect.`, 'effect', found.controller, logSlug(c));
+    log(state, `${displayName(state, c)} is immune to that effect.`, 'effect', found.controller, logSlug(c));
     return;
   }
   if (divine && (flags.indestructibleByBattle || flags.indestructibleByEffect || flags.untargetable)) {
     /* Its own beat, rather than riding on the destroy below. A beat carries one
        line, so two lines about the same card need two beats — and this one is
        the reason the next one happens. */
-    log(state, `No protection stands before a God — ${displayName(c)} is swept aside.`, 'effect', found.controller, logSlug(c));
+    log(state, `No protection stands before a God — ${displayName(state, c)} is swept aside.`, 'effect', found.controller, logSlug(c));
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
   }
   /* Logged before it is animated, which is the whole of the pairing rule: a
@@ -1079,7 +1094,7 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
      beside its own picture, and the first beat got the last monster's name
      off `speakRemainingLog`. One monster on the board hid it completely,
      which is why it read as "sometimes". */
-  log(state, `${displayName(c)} is destroyed.`, 'effect', found.controller, logSlug(c));
+  log(state, `${displayName(state, c)} is destroyed.`, 'effect', found.controller, logSlug(c));
   anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
   // The card leaves the field *before* its own destruction effect resolves.
   // Otherwise it is still sitting in its Monster Zone, and an effect like
@@ -1160,7 +1175,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (op.duration === 'permanent') t.atkMod += amount;
           else t.turnAtkMod += amount;
           if (amount !== 0) {
-            log(state, `${displayName(t)} ${amount > 0 ? 'gains' : 'loses'} ${Math.abs(amount)} ATK.`, 'effect', undefined, logSlug(t));
+            log(state, `${displayName(state, t)} ${amount > 0 ? 'gains' : 'loses'} ${Math.abs(amount)} ATK.`, 'effect', undefined, logSlug(t));
           }
         }
         break;
@@ -1178,7 +1193,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         for (const t of resolveTargets(ctx, op.target)) {
           const cur = effAtk(state, t);
           t.atkMod -= Math.floor(cur / 2);
-          log(state, `${displayName(t)}'s ATK is halved.`, 'effect', undefined, logSlug(t));
+          log(state, `${displayName(state, t)}'s ATK is halved.`, 'effect', undefined, logSlug(t));
         }
         break;
       case 'swapAtkDef':
@@ -1207,7 +1222,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (removed && !removed.isToken) {
             resetInstance(removed);
             state.players[owner].banished.push(removed);
-            log(state, `${displayName(removed)} is banished.`, 'effect', undefined, logSlug(removed));
+            log(state, `${displayName(state, removed)} is banished.`, 'effect', undefined, logSlug(removed));
           }
         }
         break;
@@ -1219,7 +1234,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (removed && !removed.isToken) {
             resetInstance(removed);
             state.players[owner].hand.push(removed);
-            log(state, `${displayName(removed)} returns to the hand.`, 'effect', undefined, logSlug(removed));
+            log(state, `${displayName(state, removed)} returns to the hand.`, 'effect', undefined, logSlug(removed));
           }
         }
         checkExodia(state);
@@ -1235,9 +1250,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.face = 'up';
           t.attacksUsed = 0;
           t.attacked = [];
-          if (op.duration !== 'permanent') t.controlRevertsOnTurn = state.turn;
+          /* One turn is the default and the old behaviour; Dragon Piper asks
+             for two, so the borrowing outlives the turn it was taken on. */
+          if (op.duration !== 'permanent') t.controlRevertsOnTurn = state.turn + ((op.turns ?? 1) - 1);
           state.players[ctx.controller].monsters[dest] = t;
-          log(state, `${state.players[ctx.controller].name} takes control of ${displayName(t)}!`, 'effect', ctx.controller, logSlug(t));
+          log(state, `${state.players[ctx.controller].name} takes control of ${displayName(state, t)}!`, 'effect', ctx.controller, logSlug(t));
         }
         break;
       }
@@ -1259,7 +1276,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
                line about *that* card. Without a beat of its own the line was
                adopted by whatever was already on screen, which is why a
                discarded card looked like it had simply vanished. */
-            log(state, `${p.name} discards ${displayName(c)}.`, 'effect', pid, logSlug(c));
+            log(state, `${p.name} discards ${displayName(state, c)}.`, 'effect', pid, logSlug(c));
             anim(state, { kind: 'discard', uid: c.uid, slug: c.slug, player: pid });
           }
         }
@@ -1349,12 +1366,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             if (gi < 0) break;
             const g = p.grave.splice(gi, 1)[0];
             p.hand.push(g);
-            log(state, `${p.name} takes ${displayName(g)} from the Graveyard.`, 'effect', ctx.controller, logSlug(g));
+            log(state, `${p.name} takes ${displayName(state, g)} from the Graveyard.`, 'effect', ctx.controller, logSlug(g));
             continue;
           }
           const c = p.deck.splice(idx, 1)[0];
           p.hand.push(c);
-          log(state, `${p.name} adds ${displayName(c)} from their Deck to their hand.`, 'effect', ctx.controller, logSlug(c));
+          log(state, `${p.name} adds ${displayName(state, c)} from their Deck to their hand.`, 'effect', ctx.controller, logSlug(c));
         }
         shuffle(state, p.deck);
         checkExodia(state);
@@ -1408,7 +1425,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           picked.specialSummonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = picked;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
-          log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(picked)}!`, 'summon', ctx.controller);
+          log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(state, picked)}!`, 'summon', ctx.controller);
           anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
           if (picked.face === 'up') fireTriggers(state, picked, ctx.controller, 'onSummon', {});
           /* A Special Summon is a Summon, and Slifer's second mouth was only
@@ -1476,7 +1493,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'transformInto': {
         const found = findOnField(state, ctx.source.uid);
         if (!found) break;
-        const old = displayName(ctx.source);
+        const old = displayName(state, ctx.source);
         ctx.source.slug = op.slug;
         /* The new form starts on its own rung, not at zero — a Petit Moth
            that evolved into Larvae Moth used to restart the climb from
@@ -1489,7 +1506,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       }
       case 'addCounter':
         ctx.source.counters += op.amount;
-        log(state, `${displayName(ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
+        log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
         applyEvolution(state, ctx.source, ctx.controller);
         break;
       case 'negateAttack':
@@ -1558,7 +1575,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'negateEffects':
         for (const t of resolveTargets(ctx, op.target)) {
           t.flags.negated = true;
-          log(state, `${displayName(t)}'s effects are negated.`, 'effect', undefined, logSlug(t));
+          log(state, `${displayName(state, t)}'s effects are negated.`, 'effect', undefined, logSlug(t));
         }
         break;
       case 'absorb':
@@ -1566,7 +1583,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const removed = removeFromAnywhere(state, t.uid);
           if (!removed || removed.isToken) continue;
           ctx.source.absorbed.push(removed.slug);
-          log(state, `${displayName(ctx.source)} absorbs ${displayName(removed)}!`, 'effect', ctx.controller, logSlug(ctx.source));
+          log(state, `${displayName(state, ctx.source)} absorbs ${displayName(state, removed)}!`, 'effect', ctx.controller, logSlug(ctx.source));
         }
         break;
       case 'equipTo': {
@@ -1590,7 +1607,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         // 700 off, and "(+-700 ATK)" is not a sentence.
         log(
           state,
-          `${displayName(t)} is equipped with ${card(ctx.source.slug).name} (${op.atk < 0 ? '' : '+'}${op.atk} ATK).`,
+          `${displayName(state, t)} is equipped with ${card(ctx.source.slug).name} (${op.atk < 0 ? '' : '+'}${op.atk} ATK).`,
           'effect',
           ctx.controller,
           /* The Equip Spell, not the monster: the line is about the card that
@@ -1673,7 +1690,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         if (!pool || i2 < 0) break;
         const c = pool.splice(i2, 1)[0];
         state.players[ctx.controller].hand.push(c);
-        log(state, `${state.players[ctx.controller].name} takes ${displayName(c)} from the Graveyard.`, 'effect', ctx.controller, logSlug(c));
+        log(state, `${state.players[ctx.controller].name} takes ${displayName(state, c)} from the Graveyard.`, 'effect', ctx.controller, logSlug(c));
         checkExodia(state);
         break;
       }
@@ -1710,7 +1727,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (wasDown) {
             const ctrl = controllerOf(state, t.uid);
             if (ctrl) {
-              log(state, `${displayName(t)} is flipped face-up!`, 'effect', ctrl, logSlug(t));
+              log(state, `${displayName(state, t)} is flipped face-up!`, 'effect', ctrl, logSlug(t));
               anim(state, { kind: 'flip', uid: t.uid, slug: t.slug, player: ctrl });
               fireTriggers(state, t, ctrl, 'onFlip', {});
             }
@@ -1771,7 +1788,7 @@ function applyEvolution(state: DuelState, c: CardInstance, controller: PlayerId)
   if (!step) return;
   const [needed, next] = step;
   if (c.counters < needed) return;
-  const old = displayName(c);
+  const old = displayName(state, c);
   c.slug = next;
   log(state, `${old} evolves into ${card(next).name}!`, 'summon', controller);
   anim(state, { kind: 'fusion', uid: c.uid, slug: next, player: controller });
@@ -2032,11 +2049,11 @@ function beginAttack(state: DuelState, attackerUid: string, targetUid: string | 
   fireTriggers(state, attacker, controller, 'onDeclareAttack', { attackerUid, targetUid: targetUid ?? undefined });
   if (state.winner) return;
 
-  const targetName = targetUid ? displayName(findOnField(state, targetUid)?.c ?? attacker) : state.players[defender].name;
-  log(state, `${displayName(attacker)} attacks ${targetName}!`, 'attack', controller, logSlug(attacker));
+  const targetName = targetUid ? displayName(state, findOnField(state, targetUid)?.c ?? attacker) : state.players[defender].name;
+  log(state, `${displayName(state, attacker)} attacks ${targetName}!`, 'attack', controller, logSlug(attacker));
 
   state.suspendedAttack = { attackerUid, targetUid };
-  const opened = openTrapWindow(state, defender, 'opponentDeclareAttack', `${displayName(attacker)} is attacking!`, {
+  const opened = openTrapWindow(state, defender, 'opponentDeclareAttack', `${displayName(state, attacker)} is attacking!`, {
     attackerUid,
     targetUid: targetUid ?? undefined,
   });
@@ -2090,7 +2107,7 @@ function resolveBattle(state: DuelState) {
   const flipped = target.face === 'down';
   if (flipped) {
     target.face = 'up';
-    log(state, `${displayName(target)} is flipped face-up!`, 'effect', defender, logSlug(target));
+    log(state, `${displayName(state, target)} is flipped face-up!`, 'effect', defender, logSlug(target));
     anim(state, { kind: 'flip', uid: target.uid, slug: target.slug, player: defender });
   }
 
@@ -2114,7 +2131,7 @@ function resolveBattle(state: DuelState) {
     uid: attacker.uid,
     slug: attacker.slug,
     targetUid: target.uid,
-    text: displayName(target),
+    text: displayName(state, target),
     player: controller,
   });
 
@@ -2135,7 +2152,7 @@ function resolveBattle(state: DuelState) {
     dealDamage(state, who, amount, true);
     if (state.winner || amount <= 0) return;
     if (!effFlags(state, theirMonster, who).reflectBattleDamage) return;
-    log(state, `${displayName(theirMonster)} throws the blow back.`, 'effect', who, logSlug(theirMonster));
+    log(state, `${displayName(state, theirMonster)} throws the blow back.`, 'effect', who, logSlug(theirMonster));
     dealDamage(state, other(who), amount, true);
   };
 
@@ -2164,9 +2181,9 @@ function resolveBattle(state: DuelState) {
       if (!state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
     } else if (atk < tDef) {
       battleHit(controller, tDef - atk, attacker);
-      log(state, `${displayName(target)} holds firm.`, 'attack', defender, logSlug(target));
+      log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));
     } else {
-      log(state, `${displayName(target)} holds firm.`, 'attack', defender, logSlug(target));
+      log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));
     }
   }
 
@@ -2200,7 +2217,7 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
         if (free >= 0) {
           p.monsters[i] = null;
           home.monsters[free] = m;
-          log(state, `${displayName(m)} returns to ${home.name}.`, 'effect', undefined, logSlug(m));
+          log(state, `${displayName(state, m)} returns to ${home.name}.`, 'effect', undefined, logSlug(m));
         }
       }
     });
@@ -2288,7 +2305,7 @@ function returnBorrowedGods(state: DuelState) {
     for (const m of [...state.players[pid].monsters]) {
       if (!m || m.specialSummonedOnTurn !== state.turn) continue;
       if (CARDS[m.slug]?.type !== 'Divine-Beast') continue;
-      log(state, `${displayName(m)} cannot be borrowed — it returns to the Graveyard.`, 'effect', pid, logSlug(m));
+      log(state, `${displayName(state, m)} cannot be borrowed — it returns to the Graveyard.`, 'effect', pid, logSlug(m));
       anim(state, { kind: 'destroy', uid: m.uid, slug: m.slug, player: pid });
       toGrave(state, m.uid, true);
     }
@@ -2432,7 +2449,14 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
   // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World
   // is a Field Spell in this game, so looking only where it used to sit would
   // have quietly reinstated the tribute cost it exists to remove.
-  if (need > 0 && state && pid && isToon(slug) && faceUpOnSide(state, pid, 'toon-world')) need = 0;
+  /* Bickuribox pays anyway. It is an ordinary monster in the hand and only
+     becomes a Toon once it is standing on a field the book is open on, so the
+     price of getting it there is the price a Level 7 costs — the cartoon does
+     not reach back into your hand. The owner's ruling, and the reason it is
+     the one monster on the roster the book does not make free. */
+  if (need > 0 && state && pid && slug !== 'bickuribox' && toonActive(slug, faceUpOnSide(state, pid, 'toon-world'))) {
+    need = 0;
+  }
   return need;
 }
 
@@ -2865,7 +2889,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       }
       for (const tu of tributes) {
         const paid = p.monsters.find((m) => m?.uid === tu)!;
-        log(state, `${p.name} tributes ${displayName(paid)}.`, 'summon', pid, logSlug(paid));
+        log(state, `${p.name} tributes ${displayName(state, paid)}.`, 'summon', pid, logSlug(paid));
         toGrave(state, tu, true);
       }
       /* Paying the tributes can put something back on the board — a Chimera
@@ -2928,7 +2952,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (c.face === 'down') {
         c.face = 'up';
         c.position = 'atk';
-        log(state, `${p.name} Flip Summons ${displayName(c)}!`, 'summon', pid, logSlug(c));
+        log(state, `${p.name} Flip Summons ${displayName(state, c)}!`, 'summon', pid, logSlug(c));
         anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: pid });
         fireTriggers(state, c, pid, 'onFlip', {});
         fireTriggers(state, c, pid, 'onSummon', {});
@@ -2936,7 +2960,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         fireTriggers(state, c, pid, 'onNormalSummon', {});
       } else {
         c.position = c.position === 'atk' ? 'def' : 'atk';
-        log(state, `${displayName(c)} switches to ${c.position === 'atk' ? 'Attack' : 'Defense'} Position.`, 'normal', pid, logSlug(c));
+        log(state, `${displayName(state, c)} switches to ${c.position === 'atk' ? 'Attack' : 'Defense'} Position.`, 'normal', pid, logSlug(c));
       }
       return { state };
     }

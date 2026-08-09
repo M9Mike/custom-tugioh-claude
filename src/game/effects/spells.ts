@@ -570,7 +570,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a Trap, and the deck that most needs its enabler was the deck least able
        to afford it. The Field Zone is separate, so it costs him nothing now. */
     subKindOverride: 'Field',
-    text: 'Field Spell: pay 1000 Life Points and add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, gain 600 ATK, inflict piercing battle damage, cannot be destroyed by your opponent\'s card effects, and can attack your opponent directly — but cannot attack the turn they are Summoned.',
+    text:
+      'Field Spell: add 1 Toon monster from your Deck to your hand. While this card is face-up, your Toon monsters need no Tribute to Summon, ' +
+      'inflict piercing battle damage, cannot be destroyed by battle or by card effects, and can attack your opponent directly. ' +
+      'When this card is destroyed: your monsters lose 1000 ATK, and any left with 0 ATK are destroyed.',
     cry: 'Welcome to my Toon World!',
     effects: [
       {
@@ -581,7 +584,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
            he benched 75. The search alone; the draw-2 rider died earlier,
            because a deck's engine card must not also be its best
            card-advantage card. */
-        cost: { lp: 1000 },
+        /* Free to open, by the owner's ruling. The 1000 was the printed cost and
+           it was charged twice over: Pegasus pays for this card again every time
+           it is answered, because the whole deck stops until another copy shows
+           up. A toll on the one card that has to land is a toll on being allowed
+           to play at all. */
         ops: [{ op: 'search', filter: { kind: 'monster', toon: true } }],
       },
       {
@@ -593,8 +600,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              Pegasus's whole deck depends on could not be destroyed by anything
              that targets, sitting in a zone nothing could reach either.
              Reported as "Toon World as a field spell should be destroyable". */
+          /* `sel('own', …)` and not `both`: the book is Pegasus's, and a mirror
+             where the other seat's Toons drank from it too was never the deal.
+             Deliberately unsaid on the card — "your Toon monsters" already says
+             whose, and a clause explaining that the opponent's are not yours
+             would be explaining the word "your". */
           target: sel('own', 'all', { filter: { toon: true, kind: 'monster' } }),
-          atk: 600,
           /* Effect-indestructible, NOT untargetable, since the 8000 pool:
              this engine's `untargetable` skips every opposing effect, so
              Mirror Wall could not halve a Toon and Skull Dice could not
@@ -604,19 +615,41 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              the cartoon promise — but binds, debuffs and borrowings land,
              and half the roster carries one.
 
-             Two prices came off this card, both reported at once: "Toon
-             world is too weak now, monsters needing lp to attack is a lot
-             and destroying all monsters when the toon world is a lot".
-             The 500-a-swing toll is gone, and so is the clause that killed
-             the Toons when the book closed — closing it already takes the
-             600 ATK and the direct attack with it, and *that* is the
-             counterplay. Losing the buff is an answer the whole roster can
-             reach; losing the board as well was the same answer twice, and
-             it made a De-Spell into a one-card sweep of everything Pegasus
-             had committed. The book still gates the summon, so a Pegasus
-             without it is a Pegasus who cannot deploy. */
-          grants: ['directAttack', 'indestructibleByEffect', 'pierce', 'summonSick'],
+             Battle now too, by the owner's ruling. A cartoon does not lose a
+             fight — it gets flattened and walks off the next panel — and with
+             the +600 gone the Toons are small bodies, so surviving the swing
+             is what they have instead of winning it. The answer is no longer
+             a bigger monster, it is the book.
+
+             Three prices have come off this card, all reported. The 500-a-swing
+             toll and the clause that killed the Toons the moment the book shut
+             went first; the +600 ATK and the 1000 Life Points to open it went
+             now. What is left is a card that costs nothing and does everything
+             — which is the point, because answering it answers the whole deck,
+             and the cascade below is what that answer is worth. */
+          grants: ['directAttack', 'indestructibleByEffect', 'indestructibleByBattle', 'pierce'],
         },
+      },
+      /* Closing the book.
+         The Toons do not die with it — that clause came off earlier and stays
+         off — but the drawings stop being drawings: the aura vanishes with the
+         card, so protection, piercing and the direct attack all go at once, and
+         the four that are only Toons while it is open go back to being ordinary
+         monsters. This is the part that hurts: every monster the controller has
+         is flattened by 1000, and the ones that had nothing left to give are
+         destroyed.
+         Deliberately all their monsters, not just the Toons. The book is what
+         holds Pegasus's whole board up, and answering it is meant to be worth
+         the card it cost — the whole roster carries something that says
+         "destroy 1 Spell or Trap", and this is what they get for it. */
+      {
+        trigger: 'onDestroyed',
+        ops: [
+          { op: 'gainAtk', amount: -1000, target: sel('own', 'all'), duration: 'permanent' },
+          /* Reads live ATK, not printed — see `passesLiveAtk`. A 1000 ATK body
+             is at 0 by the line above and is exactly what this is for. */
+          { op: 'destroy', target: sel('own', 'all', { filter: { maxAtk: 0 } }) },
+        ],
       },
     ],
   },

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import GameCard, { statTint } from './GameCard';
 import { previewInstances } from './deckPreview';
 import CardDetail from './CardDetail';
-import { CARDS, DUELIST_BY_ID, DUELISTS, artUrl, baseAtk, baseDef } from '@/game/cards';
+import { CARDS, DUELIST_BY_ID, DUELISTS, artUrl, baseAtk, baseDef, toonDisplayName } from '@/game/cards';
 import {
   canActivateFromHand,
   canActivateSetCard,
@@ -495,6 +495,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   };
 
   /**
+   * Whose Toon World is open, and therefore what a drawing is called.
+   *
+   * A card in a Monster Zone is named for the side standing it; anywhere else
+   * it answers to its owner. Only the four that the book brings to life care,
+   * and for everything else this is the printed name.
+   */
+  const bookOpenFor = (pid: PlayerId) => state.players[pid].field?.slug === 'toon-world';
+  const shownName = (c: CardInstance | null | undefined): string | undefined => {
+    if (!c) return undefined;
+    const holder = state.players[me].monsters.some((m) => m?.uid === c.uid)
+      ? me
+      : state.players[foe].monsters.some((m) => m?.uid === c.uid)
+        ? foe
+        : c.owner;
+    return toonDisplayName(c.slug, bookOpenFor(holder));
+  };
+
+  /**
    * `form: 'actor'` reads "Kaiba activates Dark Hole"; `form: 'card'` reads
    * "Blue-Eyes White Dragon's effect activates" — a monster already on the
    * field going off is not the same sentence as a Spell being played, and
@@ -508,7 +526,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     // `as` when the beat is not about the card its art comes from — a Kuriboh
     // Token wears Kuriboh's face and is not Kuriboh, and announcing it as such
     // meant a second body arrived carrying the first one's line.
-    const name = a.as ?? CARDS[a.slug]?.name ?? a.slug;
+    const name = a.as ?? (CARDS[a.slug] ? toonDisplayName(a.slug, bookOpenFor(a.player)) : a.slug);
     const actor = { name, slug: a.slug, who: a.player, form: 'actor' as const };
     switch (a.kind) {
       case 'activate':
@@ -1470,6 +1488,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         <div className="hidden w-[210px] shrink-0 lg:block">
           <CardDetail
             card={inspect}
+            displayName={shownName(inspect)}
             {...(inspect ? statsOf(inspect, mine.monsters.some((m) => m?.uid === inspect.uid) ? me : foe) : {})}
           />
         </div>
@@ -2063,6 +2082,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               <div className="mt-3">
                 <CardDetail
                   card={graveInspect}
+                  displayName={shownName(graveInspect)}
                   layout="row"
                   onClose={() => setGraveInspect(null)}
                   {...statsOf(graveInspect, graveOpen)}
@@ -2149,6 +2169,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <CardDetail
               card={inspect}
+              displayName={shownName(inspect)}
               layout="row"
               onClose={() => setInspect(null)}
               {...statsOf(inspect, mine.monsters.some((m) => m?.uid === inspect.uid) ? me : foe)}

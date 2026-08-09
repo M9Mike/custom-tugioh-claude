@@ -11,15 +11,19 @@ interface Props {
   onClose?: () => void;
   /** 'row' is the compact horizontal form used on small screens. */
   layout?: 'column' | 'row';
+  /* What the board is calling this card right now. Bickuribox reads as Toon
+     Bickuribox while its controller's Toon World is open, and the printed name
+     cannot know that — the caller holds the state, so the caller decides. */
+  displayName?: string;
 }
 
-export default function CardDetail({ card, atk, def, onClose, layout = 'column' }: Props) {
+export default function CardDetail({ card, atk, def, onClose, layout = 'column', displayName }: Props) {
   if (layout === 'row') {
     if (!card) return null;
     const hidden = card.slug === 'facedown';
     const d = CARDS[card.slug];
     const isToken = !!card.isToken;
-    const name = isToken ? (card.tokenName ?? 'Token') : hidden ? 'Face-down Card' : d?.name;
+    const name = isToken ? (card.tokenName ?? 'Token') : hidden ? 'Face-down Card' : (displayName ?? d?.name);
     return (
       <div className="panel grain flex gap-2 rounded p-2">
         <div className="w-[54px] shrink-0">
@@ -64,7 +68,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column' 
   const hidden = card.slug === 'facedown';
   const def0 = CARDS[card.slug];
   const isToken = !!card.isToken;
-  const name = isToken ? (card.tokenName ?? 'Token') : hidden ? 'Face-down Card' : def0?.name;
+  const name = isToken ? (card.tokenName ?? 'Token') : hidden ? 'Face-down Card' : (displayName ?? def0?.name);
 
   return (
     <div className="panel grain relative flex h-full flex-col gap-3 overflow-hidden rounded p-3">
