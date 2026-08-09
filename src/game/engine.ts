@@ -2932,7 +2932,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       }
       const need = tributesRequired(c.slug, state, pid);
       const tributes = (action.tributes ?? []).slice(0, need);
-      if (tributes.length < need) return { state: prev, error: `This monster requires ${need} tribute(s).` };
+      /* Parrot Dragon's bargain: come out now for none of the price and half of
+         the body. Only the whole cost may be skipped — paying one of two and
+         keeping full stats is not on offer — and only by a card that says so. */
+      const forgoing = need > 0 && tributes.length === 0 && !!def.mayForgoTributes;
+      if (tributes.length < need && !forgoing) {
+        return { state: prev, error: `This monster requires ${need} tribute(s).` };
+      }
       for (const tu of tributes) {
         const t = p.monsters.find((m) => m?.uid === tu);
         if (!t) return { state: prev, error: 'Invalid tribute.' };
@@ -2985,6 +2991,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (def.statsFromTributes) {
         c.atkMod = paidAtk;
         c.defMod = paidDef;
+      }
+      /* Half the body, permanently, and only on the summon that skipped the
+         price. A modifier rather than an aura, because the halving is a fact
+         about how this one arrived and must not follow the card back out. */
+      if (forgoing) {
+        c.atkMod -= Math.floor(baseAtk(c.slug) / 2);
+        c.defMod -= Math.floor(baseDef(c.slug) / 2);
       }
       p.monsters[dest] = c;
       p.normalSummonUsed = true;
@@ -3159,6 +3172,26 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       return { state };
     }
 
+    case 'discardForEffect': {
+      /* Spent from the hand, not summoned. The card never touches the field:
+         it goes to the Graveyard and its effect resolves from there, which is
+         why the ops run against a source that is already gone. */
+      if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
+      const hi = p.hand.findIndex((h) => h.uid === action.uid);
+      if (hi < 0) return { state: prev, error: 'Card is not in your hand.' };
+      const c = p.hand[hi];
+      const eff = CARDS[c.slug]?.effects.find((e) => e.trigger === 'handDiscard');
+      if (!eff) return { state: prev, error: 'That card cannot be discarded for an effect.' };
+      if (eff.condition && !conditionMet(state, eff, c, pid)) return { state: prev, error: 'Its condition is not met.' };
+
+      p.hand.splice(hi, 1);
+      log(state, `${p.name} discards ${displayName(state, c)}.`, 'effect', pid, logSlug(c));
+      anim(state, { kind: 'discard', uid: c.uid, slug: c.slug, player: pid });
+      p.grave.push(c);
+      runOps({ state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} }, eff.ops);
+      checkExodia(state);
+      return { state };
+    }
     case 'ignition': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const c = p.monsters.find((m) => m?.uid === action.uid) ?? (p.field?.uid === action.uid ? p.field : null);

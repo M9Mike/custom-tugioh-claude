@@ -5046,6 +5046,70 @@ console.log('\nPegasus: the book, the drawings and the eye');
   ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
 }
 
+console.log('\nRyu-Ran throws itself away for the book');
+{
+  /* The panic button, priced like one: it finds Toon World from the Deck and
+     takes everything already committed with it. */
+  const panic = fresh();
+  const ryu = card(ME, 'ryu-ran');
+  panic.players[ME].hand = [ryu, card(ME, 'kuriboh')];
+  panic.players[ME].monsters = [card(ME, 'summoned-skull'), card(ME, 'battle-ox'), null];
+  panic.players[ME].spellTrap = card(ME, 'trap-hole');
+  panic.players[ME].deck = [card(ME, 'toon-world'), card(ME, 'mystical-elf')];
+  const theirs = card(FOE, 'battle-ox');
+  panic.players[FOE].monsters = [theirs, null, null];
+
+  const spent = act(panic, ME, { type: 'discardForEffect', uid: ryu.uid });
+  ok(spent.players[ME].grave.some((g) => g.slug === 'ryu-ran'), 'Ryu-Ran goes to the Graveyard');
+  ok(!spent.players[ME].hand.some((h) => h.slug === 'ryu-ran'), 'and leaves the hand');
+  ok(spent.players[ME].hand.some((h) => h.slug === 'toon-world'), 'the book is dug out of the Deck',
+    spent.players[ME].hand.map((h) => h.slug).join(',') || 'empty');
+  ok(spent.players[ME].monsters.every((m) => !m), 'and every monster you had is destroyed',
+    spent.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!spent.players[ME].spellTrap, 'along with your backrow');
+  ok(spent.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
+    "CONTROL: the other duelist's board is untouched — it is your field it costs");
+
+  /* And it is not a summon: no Normal Summon is spent on it. */
+  ok(!spent.players[ME].normalSummonUsed, 'and it does not spend your Normal Summon');
+}
+
+console.log('\nParrot Dragon comes out cheap, or whole');
+{
+  /* Its own bargain: no Tributes, half a body — and only the whole price may be
+     skipped, so this is a choice rather than a discount. */
+  const cheap = fresh();
+  const bird = card(ME, 'parrot-dragon'); // Level 5, 2000/1300
+  cheap.players[ME].hand = [bird];
+  cheap.players[ME].deck = [card(ME, 'kuriboh')];
+  ok(tributesRequired('parrot-dragon', cheap, ME) === 1, 'Parrot Dragon normally costs a Tribute');
+  const rushed = act(cheap, ME, { type: 'normalSummon', uid: bird.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const onField = rushed.players[ME].monsters.find((m) => m?.slug === 'parrot-dragon');
+  ok(!!onField, 'and may skip it entirely', rushed.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!!onField && effAtk(rushed, onField, ME) === Math.floor(baseAtkOf('parrot-dragon') / 2),
+    'for half its ATK', onField ? `${effAtk(rushed, onField, ME)} of ${Math.floor(baseAtkOf('parrot-dragon') / 2)}` : 'gone');
+  ok(rushed.players[ME].hand.some((h) => h.slug === 'kuriboh'), 'and still draws its card on arrival');
+
+  /* Paid for properly, it is the whole bird. */
+  const paid = fresh();
+  const bird2 = card(ME, 'parrot-dragon');
+  const fodder = card(ME, 'kuriboh');
+  paid.players[ME].hand = [bird2];
+  paid.players[ME].monsters = [fodder, null, null];
+  paid.players[ME].deck = [card(ME, 'mystical-elf')];
+  const full = act(paid, ME, { type: 'normalSummon', uid: bird2.uid, zone: 1, position: 'atk', face: 'up', tributes: [fodder.uid] });
+  const whole = full.players[ME].monsters.find((m) => m?.slug === 'parrot-dragon');
+  ok(!!whole && effAtk(full, whole, ME) === baseAtkOf('parrot-dragon'),
+    'CONTROL: pay the Tribute and it arrives at full strength', whole ? `${effAtk(full, whole, ME)}` : 'gone');
+
+  /* Nobody else gets the bargain. */
+  const other = fresh();
+  const skull = card(ME, 'summoned-skull');
+  other.players[ME].hand = [skull];
+  const refused = applyAction(other, ME, { type: 'normalSummon', uid: skull.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(!!refused.error, 'CONTROL: a monster that never offered it still pays', refused.error ?? 'allowed');
+}
+
 console.log('\nThe eye swallows, stares, and pays for its own destruction');
 {
   /* Absorbed monsters go home to their *owner's* Graveyard.

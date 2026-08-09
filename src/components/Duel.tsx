@@ -1278,6 +1278,31 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             : undefined),
         run: () => startSummon(handCard.uid, 'atk', 'up'),
       });
+      /* The cheap way in. Only offered when there is a price to skip and the
+         card says it may — one button rather than a second modal, because the
+         choice is the whole of it and the label states what it costs. */
+      if (!gate && need > 0 && handDef.mayForgoTributes) {
+        acts.push({
+          label: 'Summon untributed (half ATK/DEF)',
+          disabled: !(myTurn && state.phase === 'main' && !mine.normalSummonUsed && freeZone),
+          hint: !freeZone ? 'No free Monster Zone' : mine.normalSummonUsed ? 'Already summoned this turn' : undefined,
+          run: () => finishSummon(handCard.uid, 'atk', 'up', []),
+        });
+      }
+      /* Spent from the hand rather than played onto the field. Offered on the
+         monster itself, because that is where the player is looking when they
+         are holding a card they cannot afford to summon. */
+      if (handDef.effects.some((e) => e.trigger === 'handDiscard')) {
+        acts.push({
+          label: 'Discard for its effect',
+          disabled: !(myTurn && state.phase === 'main'),
+          hint: !myTurn ? 'Not your turn' : state.phase !== 'main' ? 'Main Phase only' : undefined,
+          run: () => {
+            sfx.click();
+            void run({ type: 'discardForEffect', uid: handCard.uid });
+          },
+        });
+      }
       if (!gate) {
         acts.push({
           label: 'Set (face-down)',

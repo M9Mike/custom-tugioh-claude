@@ -66,6 +66,8 @@ export interface CardDef extends GeneratedCard {
    * their rules text either way; this is what makes the engine agree.
    */
   summonRequires?: string;
+  /** See `EffectDef.mayForgoTributes`. */
+  mayForgoTributes?: boolean;
   /** Our version of the card sits in a different zone than the printed one. */
   subKindOverride?: string;
   /**
@@ -93,6 +95,14 @@ export type Trigger =
    * a revived monster re-trigger its summon bonus.
    */
   | 'onNormalSummon'
+  /**
+   * Discarded from the hand, on purpose, to make something happen.
+   *
+   * The card is not summoned and never reaches the field — it is spent from the
+   * hand and goes straight to the Graveyard. Ryu-Ran throws itself away to dig
+   * Toon World out of the Deck, and pays for it by taking your board with it.
+   */
+  | 'handDiscard'
   /** Monster was flipped face-up (from a face-down defence position). */
   | 'onFlip'
   /**
@@ -844,6 +854,8 @@ export type DuelAction =
   | { type: 'setSpellTrap'; uid: string }
   | { type: 'activateSetCard'; uid: string; targets?: string[] }
   | { type: 'ignition'; uid: string; targets?: string[] }
+  /** Spend a card out of the hand for its `handDiscard` effect. */
+  | { type: 'discardForEffect'; uid: string; targets?: string[] }
   | { type: 'fusionSummon'; extraUid: string; materials: string[]; zone: number; position: Position; targets?: string[] }
   | { type: 'attack'; uid: string; targetUid: string | null }
   | { type: 'respondTrap'; uid: string | null; targets?: string[] }

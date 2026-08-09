@@ -22,6 +22,12 @@ export interface EffectDef {
   defOverride?: number;
   /** Must be face-up on your side before this monster can be Summoned. */
   summonRequires?: string;
+  /**
+   * May be Normal Summoned with no Tributes at all, at half its printed ATK
+   * and DEF — permanently, and only on the summon that skipped the price.
+   * Parrot Dragon: a Level 5 body you can have now for less of it.
+   */
+  mayForgoTributes?: boolean;
   /** Our version of the card sits in a different zone than the printed one. */
   subKindOverride?: string;
   /**
@@ -1181,7 +1187,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'ryu-ran': {
     text:
       'When this monster is summoned: destroy 1 monster your opponent controls with 1600 or less ATK, ' +
-      'and return 1 "Toon World" from your Graveyard to your hand.',
+      'and return 1 "Toon World" from your Graveyard to your hand. ' +
+      'You can discard this monster from your hand: destroy every card you control, then add "Toon World" from your Deck to your hand.',
     effects: [
       {
         trigger: 'onSummon',
@@ -1192,6 +1199,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
              it — no target prompt, because there is only ever one thing it can
              mean. */
           { op: 'stealFromGrave', from: 'own', filter: { slugs: ['toon-world'] } },
+        ],
+      },
+      /* The panic button, and it is priced like one. A Pegasus with no book has
+         no deck; this finds one from the hand at the cost of everything already
+         committed, which makes it the play you make when there is nothing left
+         to lose rather than a free tutor. */
+      {
+        trigger: 'handDiscard',
+        ops: [
+          { op: 'destroy', target: sel('own', 'all') },
+          { op: 'destroy', target: sel('own', 'all', { zone: 'backrow' }) },
+          { op: 'search', filter: { slugs: ['toon-world'] } },
         ],
       },
     ],
@@ -1225,12 +1244,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'parrot-dragon': {
+    mayForgoTributes: true,
     /* Off the Toon roster by the owner's ruling — it never was one, and riding
        along on it was most of why the book's search read as the whole deck. It
        gets paid for the loss: a card on arrival. */
     text:
-      'When this monster is summoned: draw 1 card. ' +
-      'When this monster destroys a monster in battle: it may attack once more this turn.',
+      'When this monster is summoned: draw 1 card. This monster may be Normal Summoned without Tributes; ' +
+      'if it is, its ATK and DEF are halved. When this monster destroys a monster in battle: it may attack once more this turn.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
       { trigger: 'onBattleDestroy', ops: [{ op: 'extraAttacks', count: 1, duration: 'turn' }] },
