@@ -12,6 +12,7 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  displayName,
   effAtk,
   effDef,
   effFlags,
@@ -499,23 +500,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     );
   };
 
+  /* Whose Toon World is open — for the beats, which carry a slug and a duelist
+     rather than a card. A beat that names nobody claims nobody's field spell. */
+  const bookOpenFor = (pid: PlayerId | undefined) => !!pid && state.players[pid].field?.slug === 'toon-world';
+
   /**
-   * Whose Toon World is open, and therefore what a drawing is called.
+   * What the board is calling this card right now.
    *
    * A card in a Monster Zone is named for the side standing it; anywhere else
    * it answers to its owner. Only the four that the book brings to life care,
    * and for everything else this is the printed name.
+   *
+   * The rule itself lives in the engine, which is the side that writes the log
+   * lines. This used to be a second copy of it, and a second copy of a rule is
+   * a rule that will one day disagree with itself — which is precisely what
+   * every card face on this screen must not do.
    */
-  const bookOpenFor = (pid: PlayerId) => state.players[pid].field?.slug === 'toon-world';
-  const shownName = (c: CardInstance | null | undefined): string | undefined => {
-    if (!c) return undefined;
-    const holder = state.players[me].monsters.some((m) => m?.uid === c.uid)
-      ? me
-      : state.players[foe].monsters.some((m) => m?.uid === c.uid)
-        ? foe
-        : c.owner;
-    return toonDisplayName(c.slug, bookOpenFor(holder));
-  };
+  const shownName = (c: CardInstance | null | undefined): string | undefined =>
+    c ? displayName(state, c) : undefined;
 
   /**
    * `form: 'actor'` reads "Kaiba activates Dark Hole"; `form: 'card'` reads
@@ -1614,7 +1616,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   }}
                   onPointerEnter={hoverInspect(c)}
                 >
-                  <GameCard card={c} />
+                  <GameCard card={c} displayName={shownName(c)} />
                 </div>
               );
             })}
@@ -1725,7 +1727,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           })}
           <div className="fuse-flare" />
           <div className="fuse-result">
-            <GameCard card={previewInstances([[fx.slug!, 1]])[0]} />
+            <GameCard card={previewInstances([[fx.slug!, 1]])[0]} displayName={toonDisplayName(fx.slug!, bookOpenFor(fx.player))} />
           </div>
         </div>
       )}
@@ -1737,7 +1739,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               King Rex" on screen at once was clutter, and the title collided
               with the card as it grew towards the viewer. */}
           <div className="sig-card relative">
-            <GameCard card={previewInstances([[fx!.slug!, 1]])[0]} />
+            <GameCard card={previewInstances([[fx!.slug!, 1]])[0]} displayName={toonDisplayName(fx!.slug!, bookOpenFor(fx!.player))} />
             <div className="sig-glint" />
           </div>
         </div>
@@ -1866,10 +1868,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex gap-3">
               <div className="w-24 shrink-0">
-                <GameCard card={handCard} />
+                <GameCard card={handCard} displayName={shownName(handCard)} />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-display text-base text-parchment">{handDef.name}</h3>
+                <h3 className="font-display text-base text-parchment">{shownName(handCard) ?? handDef.name}</h3>
                 <p className="mt-1 max-h-24 overflow-y-auto thin-scroll pr-1 text-[11px] leading-relaxed text-ptext/85">
                   {handDef.text}
                 </p>
@@ -1910,10 +1912,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex gap-3">
               <div className="w-20 shrink-0">
-                <GameCard card={monsterCard} {...statsOf(monsterCard, me)} />
+                <GameCard card={monsterCard} {...statsOf(monsterCard, me)} displayName={shownName(monsterCard)} />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-display text-base text-parchment">{monsterDef.name}</h3>
+                {/* The sheet you get by tapping your own monster on your own
+                    turn. It read the printed name while the inspector you get
+                    on the opponent's turn read the Toon one, so a drawing
+                    appeared to change its name every time the turn passed. */}
+                <h3 className="font-display text-base text-parchment">{shownName(monsterCard) ?? monsterDef.name}</h3>
                 <p className="text-[11px] text-brass">
                   ATK {statsOf(monsterCard, me).atk} · DEF {statsOf(monsterCard, me).def} ·{' '}
                   {monsterCard.position === 'atk' ? 'Attack' : 'Defence'} Position
@@ -2047,8 +2053,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                 .filter((c) => targetableSet.has(c.uid))
                 .map((c) => (
                   <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
-                    <GameCard card={c} />
-                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
+                    <GameCard card={c} displayName={shownName(c)} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
                   </button>
                 ))}
             </div>
@@ -2077,7 +2083,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   .filter((c) => targetableSet.has(c.uid))
                   .map((c) => (
                     <div key={c.uid} className="w-[72px] cursor-pointer selectable rounded" onClick={() => onPickTarget(c.uid)}>
-                      <GameCard card={c} />
+                      <GameCard card={c} displayName={shownName(c)} />
                       <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">
                         {pid === me ? 'Yours' : 'Theirs'}
                       </p>
@@ -2109,8 +2115,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                     beginTargeting('trap', c.uid, c.slug, 'trap');
                   }}
                 >
-                  <GameCard card={c} />
-                  <p className="mt-1 text-center font-display text-[10px] text-parchment">{CARDS[c.slug]?.name}</p>
+                  <GameCard card={c} displayName={shownName(c)} />
+                  <p className="mt-1 text-center font-display text-[10px] text-parchment">{shownName(c) ?? CARDS[c.slug]?.name}</p>
                 </button>
               ))}
             </div>
@@ -2172,7 +2178,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                     setGraveInspect((cur) => (cur?.uid === c.uid ? null : c));
                   }}
                 >
-                  <GameCard card={c} />
+                  <GameCard card={c} displayName={shownName(c)} />
                 </button>
               ))}
               {state.players[graveOpen].grave.length === 0 && <p className="text-xs text-ptextdim">Empty.</p>}

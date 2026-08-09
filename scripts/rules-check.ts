@@ -5135,6 +5135,31 @@ console.log('\nWho the book animates, and what they are called');
       `${displayName(turn, g)} / ${displayName(turn, b)}`
     );
   }
+
+  /* Nor on which pile it is sitting in. The board prints the name in the hand,
+     in the Graveyard viewer and in every picker, and one rule answers all of
+     them: on the field it is the controller's book, everywhere else it is the
+     owner's. */
+  const piles = fresh();
+  piles.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const held = card(ME, 'dark-rabbit');
+  const buried = card(ME, 'dark-rabbit');
+  const theirBuried = card(FOE, 'dark-rabbit');
+  piles.players[ME].hand = [held];
+  piles.players[ME].grave = [buried];
+  piles.players[FOE].grave = [theirBuried];
+  ok(displayName(piles, held) === 'Toon Dark Rabbit', 'a drawing in hand is already named for the open book',
+    displayName(piles, held));
+  ok(displayName(piles, buried) === 'Toon Dark Rabbit', 'and so is one in the Graveyard beneath it',
+    displayName(piles, buried));
+  ok(displayName(piles, theirBuried) === 'Dark Rabbit', 'while their Graveyard reads by their own shut book',
+    displayName(piles, theirBuried));
+
+  const noBook = fresh();
+  const spare = card(ME, 'dark-rabbit');
+  noBook.players[ME].hand = [spare];
+  ok(displayName(noBook, spare) === 'Dark Rabbit', 'with no book in play it is a rabbit like any other',
+    displayName(noBook, spare));
 }
 
 console.log('\nThe eye eats what you point at');

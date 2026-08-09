@@ -21,7 +21,15 @@
  * that list goes artless — in practice, that no line naming a card loses its
  * picture — so a new shape has to be looked at once and then declared, rather
  * than slipping in unseen.
+ *
+ * The second half asks the other half of the same question: whether every
+ * place that prints a card's *name* asks the board what that card is called.
+ * Four of them did not, and a drawing appeared to rename itself every time the
+ * turn passed — tapping your own monster on your own turn opens the action
+ * sheet, which read the printed name, while the same tap on the opponent's
+ * turn opens the inspector, which read the Toon one.
  */
+import { readFileSync } from 'node:fs';
 import { CARDS, DUELISTS } from '../src/game/cards';
 import { chooseAction, legalActions } from '../src/game/autoplay';
 import { applyAction, createDuel } from '../src/game/engine';
@@ -170,18 +178,70 @@ if (unused.length) {
   console.log(`\nnot reached this run (${unused.length}): ${unused.join(' · ')}`);
 }
 
-if (!artless.size) {
+/**
+ * Every card face the duel screen paints must be told what to call the card.
+ *
+ * `GameCard` and `CardDetail` both fall back to the printed name when nobody
+ * hands them one, which is right for a deck list and wrong for a board: four
+ * of the duel screen's own renders took that fallback, so Dark Rabbit was
+ * "Toon Dark Rabbit" in the inspector and plain "Dark Rabbit" in the action
+ * sheet you get by tapping it on your own turn.
+ *
+ * Only the duel screen is scanned. The lobby and the front page show cards
+ * that are not in play, and a card that is not in play has only its printed
+ * name. A `compact` GameCard prints no name at all — it is the small board
+ * face, all art and figures — so it is exempt.
+ */
+const nameless: string[] = [];
+for (const file of ['src/components/Duel.tsx', 'src/components/CardDetail.tsx']) {
+  const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  const lines = src.split('\n');
+  /* JSX elements are split across lines, so walk from each tag to its close. */
+  for (let i = 0; i < lines.length; i++) {
+    for (const tag of ['<GameCard', '<CardDetail'] as const) {
+      if (!lines[i].includes(tag)) continue;
+      let depth = 0;
+      let el = '';
+      for (let j = i; j < lines.length && j < i + 14; j++) {
+        el += lines[j];
+        for (const ch of lines[j]) {
+          if (ch === '<') depth++;
+          else if (ch === '>') depth--;
+        }
+        if (depth <= 0 && el.includes('>')) break;
+      }
+      const compact = tag === '<GameCard' && /\bcompact\b/.test(el);
+      if (!compact && !el.includes('displayName')) {
+        nameless.push(`${file}:${i + 1}  ${lines[i].trim()}`);
+      }
+    }
+  }
+}
+
+if (!artless.size && !nameless.length) {
   console.log(`\n✅ every banner outside the ${ALLOWED.size} declared shapes carries card art.`);
+  console.log('✅ every card the duel screen names asks the board what to call it.');
   process.exit(0);
 }
 
-console.log(`\n❌ ${artless.size} banner shape(s) printed over empty space:`);
-for (const [shape, info] of [...artless].sort((a, b) => b[1].count - a[1].count)) {
-  console.log(`   [${info.kind}] ×${info.count}  ${shape}`);
-  if (info.sample !== shape) console.log(`             e.g. ${info.sample}`);
+if (artless.size) {
+  console.log(`\n❌ ${artless.size} banner shape(s) printed over empty space:`);
+  for (const [shape, info] of [...artless].sort((a, b) => b[1].count - a[1].count)) {
+    console.log(`   [${info.kind}] ×${info.count}  ${shape}`);
+    if (info.sample !== shape) console.log(`             e.g. ${info.sample}`);
+  }
+  console.log(
+    '\nEither give the line its card — log(state, text, tone, player, logSlug(c)) —\n' +
+      'or, if it is chrome, about a duelist, or hidden information, add it to ALLOWED.'
+  );
 }
-console.log(
-  '\nEither give the line its card — log(state, text, tone, player, logSlug(c)) —\n' +
-    'or, if it is chrome, about a duelist, or hidden information, add it to ALLOWED.'
-);
+
+if (nameless.length) {
+  console.log(`\n❌ ${nameless.length} card face(s) print a name nobody supplied:`);
+  for (const where of nameless) console.log(`   ${where}`);
+  console.log(
+    '\nPass displayName={shownName(c)} — or mark it compact if it shows no name.\n' +
+      'A card on the board answers to what the board calls it, not to what is printed on it.'
+  );
+}
 process.exit(1);

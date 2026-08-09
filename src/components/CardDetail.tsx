@@ -27,7 +27,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
     return (
       <div className="panel grain flex gap-2 rounded p-2">
         <div className="w-[54px] shrink-0">
-          <GameCard card={card} atk={atk} def={def} faceDown={hidden} compact />
+          <GameCard card={card} atk={atk} def={def} faceDown={hidden} displayName={displayName} compact />
         </div>
         <div className="min-h-0 min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
@@ -82,7 +82,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
         </button>
       )}
       <div className="mx-auto w-[46%] max-w-[150px] min-w-[92px]">
-        <GameCard card={card} atk={atk} def={def} faceDown={hidden} />
+        <GameCard card={card} atk={atk} def={def} faceDown={hidden} displayName={displayName} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto thin-scroll pr-1">
