@@ -41,7 +41,7 @@
  *   npx tsx scripts/picker-check.ts            # every card
  *   npx tsx scripts/picker-check.ts graverobber  # one card, verbose
  */
-import { canActivateFromHand, canActivateSetCard, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
+import { canActivateFromHand, canActivateSetCard, canChangePosition, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor, type TargetSpec } from '../src/game/ui';
 import type { CardDef, CardFilter, CardInstance, DuelState, PlayerId, Trigger } from '../src/game/types';
@@ -237,12 +237,18 @@ function narrowTo(s: DuelState, spec: TargetSpec, self: string): boolean {
 }
 
 /** Where the card under test has to sit for the engine to let it be used. */
-type Seat = 'hand' | 'set' | 'field';
+type Seat = 'hand' | 'set' | 'field' | 'facedown';
 function seatFor(def: CardDef, trigger: Trigger): Seat | null {
   if (trigger === 'ignition' || trigger === 'continuous') return 'field';
   if (trigger === 'trap') return 'set';
   if (trigger === 'activate') return 'hand';
   if (trigger === 'onSummon' || trigger === 'onNormalSummon') return def.kind === 'monster' ? 'hand' : null;
+  /* A FLIP effect is reachable the moment you turn the monster over yourself,
+     which is a play you make in your own Main Phase — so it gets asked, and it
+     belongs in this harness. It was missing, which is exactly how Man-Eater
+     Bug shipped for months choosing its own victim: the effect named a target,
+     the board never offered one, and nothing here looked. */
+  if (trigger === 'onFlip') return def.kind === 'monster' ? 'facedown' : null;
   return null;
 }
 
@@ -250,6 +256,13 @@ function seat(s: DuelState, def: CardDef, where: Seat): CardInstance {
   const c = mint(ME, def.slug);
   if (where === 'hand') {
     s.players[ME].hand.push(c);
+  } else if (where === 'facedown') {
+    /* Set on an earlier turn, so it may be Flip Summoned now. */
+    c.face = 'down';
+    c.position = 'def';
+    c.summonedOnTurn = 0;
+    const z = s.players[ME].monsters.findIndex((m) => !m);
+    s.players[ME].monsters[z >= 0 ? z : 2] = c;
   } else if (where === 'set') {
     c.face = 'down';
     c.summonedOnTurn = 1; // set on an earlier turn, so a Trap is live
@@ -272,10 +285,11 @@ function engineAllows(s: DuelState, c: CardInstance, where: Seat, trigger: Trigg
     return canActivateFromHand(s, ME, c);
   }
   if (where === 'set') return canActivateSetCard(s, ME, c);
+  if (where === 'facedown') return canChangePosition(s, ME, c);
   return canIgnite(s, ME, c);
 }
 
-const TRIGGERS: Trigger[] = ['activate', 'trap', 'ignition', 'onSummon', 'onNormalSummon'];
+const TRIGGERS: Trigger[] = ['activate', 'trap', 'ignition', 'onSummon', 'onNormalSummon', 'onFlip'];
 
 let examined = 0;
 for (const def of Object.values(CARDS)) {

@@ -1807,6 +1807,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const matches = g.map((c, i) => ({ c, i })).filter(({ c }) => matchesFilter(c, op.filter));
           if (matches.length) {
             pool = g;
+            if (op.pick === 'random') {
+              i2 = matches[randInt(state, matches.length)].i;
+              break;
+            }
             /* Highest ATK wins, and the most recent card breaks a tie — which
                is what decides it for Spells, where ATK means nothing and the
                last one sent to the Graveyard is the one still worth having.
@@ -3153,10 +3157,17 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         c.position = 'atk';
         log(state, `${p.name} Flip Summons ${displayName(state, c)}!`, 'summon', pid, logSlug(c));
         anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: pid });
-        fireTriggers(state, c, pid, 'onFlip', {});
-        fireTriggers(state, c, pid, 'onSummon', {});
+        /* The player turned it over deliberately, in their own Main Phase, so
+           the FLIP effect has somebody to ask and the answer travels with the
+           action. Reported of Man-Eater Bug: "the effect should allow me to
+           select which monster" — it always could, and nothing ever handed the
+           choice down, so the engine fell back to picking for you every time.
+           Flipped by an attack there is still nobody to ask, and that path is
+           deliberately unchanged. */
+        fireTriggers(state, c, pid, 'onFlip', {}, action.targets ?? []);
+        fireTriggers(state, c, pid, 'onSummon', {}, action.targets ?? []);
         // A Flip Summon is a Normal Summon, so it pays those bonuses too.
-        fireTriggers(state, c, pid, 'onNormalSummon', {});
+        fireTriggers(state, c, pid, 'onNormalSummon', {}, action.targets ?? []);
       } else {
         c.position = c.position === 'atk' ? 'def' : 'atk';
         log(state, `${displayName(state, c)} switches to ${c.position === 'atk' ? 'Attack' : 'Defense'} Position.`, 'normal', pid, logSlug(c));

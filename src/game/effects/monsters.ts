@@ -1456,14 +1456,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        — the horror returns to the hand to be Set again. Killing her is its
        own mistake: the last thing she does is hand her killer over. */
     text:
-      'When this monster is summoned: gain 1000 Life Points and add 1 Fiend monster from your Graveyard to your hand. ' +
+      'When this monster is summoned: gain 1000 Life Points and add 1 random Fiend monster from your Graveyard to your hand. ' +
       'When this monster is destroyed: add "Change of Heart" from your Deck to your hand.',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
           { op: 'heal', amount: 1000, to: 'own' },
-          { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', type: 'Fiend' } },
+          { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', type: 'Fiend' }, pick: 'random' },
         ],
       },
       { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['change-of-heart'] } }] },

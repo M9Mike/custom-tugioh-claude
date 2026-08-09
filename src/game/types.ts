@@ -382,7 +382,10 @@ export type Op =
    * opponent's Spell and made getting your own Monster Reborn back impossible
    * while they had anything at all.
    */
-  | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' | 'own' }
+  /** `pick` decides which match comes back when the player named none. The
+   *  default is the strongest; Lady of Faith's séance reaches in blind, so she
+   *  says `random` and takes whichever Fiend answers. */
+  | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' | 'own'; pick?: 'strongest' | 'random' }
   | { op: 'coinFlip'; heads: Op[]; tails: Op[] }
   | { op: 'diceRoll'; perPip: Op[] }
   | { op: 'forceDefense'; target: Selector }
@@ -868,7 +871,11 @@ export interface DuelState {
 
 export type DuelAction =
   | { type: 'normalSummon'; uid: string; zone: number; position: Position; face: Face; tributes?: string[]; targets?: string[] }
-  | { type: 'changePosition'; uid: string }
+  /** `targets` for a Flip Summon: the monster is being turned face-up on
+   *  purpose, in your own Main Phase, so its FLIP effect has somebody to ask.
+   *  Man-Eater Bug flipped by an attack still has nobody, and the engine
+   *  answers for it there. */
+  | { type: 'changePosition'; uid: string; targets?: string[] }
   | { type: 'activateSpell'; uid: string; targets?: string[]; zone?: number }
   | { type: 'setSpellTrap'; uid: string }
   | { type: 'activateSetCard'; uid: string; targets?: string[] }

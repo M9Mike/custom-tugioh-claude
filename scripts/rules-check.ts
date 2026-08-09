@@ -5756,6 +5756,94 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
     `field ${once.players[FOE].field ? 'kept' : 'gone'} / backrow ${once.players[FOE].spellTrap ? 'kept' : 'gone'}`);
 }
 
+console.log('\nA flip you make yourself asks you who to bite');
+{
+  /* Reported: "Man-Eater Bug the effect should allow me to select which
+     monster". The card always said so and the board could never say it back:
+     the Flip Summon path fired the effect with an empty target list, so the
+     engine's own "take the strongest" fallback answered every time. */
+  const board = () => {
+    const s = fresh();
+    const bug = { ...card(ME, 'man-eater-bug'), face: 'down' as const, position: 'def' as const };
+    bug.summonedOnTurn = 0;
+    s.players[ME].monsters = [bug, null, null];
+    const big = card(FOE, 'summoned-skull'); // 2500
+    const small = card(FOE, 'kuriboh'); // 300
+    s.players[FOE].monsters = [big, small, null];
+    return { s, bug, big, small };
+  };
+
+  const chose = (() => {
+    const { s, bug, small } = board();
+    return act(s, ME, { type: 'changePosition', uid: bug.uid, targets: [small.uid] });
+  })();
+  ok(!chose.players[FOE].monsters.some((m) => m?.slug === 'kuriboh'),
+    'the monster you pointed at is the one that dies',
+    chose.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(chose.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'and the bigger one it would have chosen for you is left standing',
+    chose.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  const unasked = (() => {
+    const { s, bug } = board();
+    return act(s, ME, { type: 'changePosition', uid: bug.uid });
+  })();
+  ok(!unasked.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'CONTROL: name nobody and it still bites, taking the strongest',
+    unasked.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* Flipped by an attack there is nobody to ask, and that path is untouched. */
+  const bitten = (() => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const bug = { ...card(ME, 'man-eater-bug'), face: 'down' as const, position: 'def' as const };
+    s.players[ME].monsters = [bug, null, null];
+    const attacker = card(FOE, 'summoned-skull');
+    attacker.summonedOnTurn = 0;
+    const bystander = card(FOE, 'kuriboh');
+    s.players[FOE].monsters = [attacker, bystander, null];
+    return act(s, FOE, { type: 'attack', uid: attacker.uid, targetUid: bug.uid });
+  })();
+  ok(!bitten.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'CONTROL: revealed by an attack it still answers for itself',
+    bitten.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* And switching an already face-up monster carries no question at all. */
+  const turned = fresh();
+  const ox = card(ME, 'battle-ox');
+  ox.summonedOnTurn = 0;
+  turned.players[ME].monsters = [ox, null, null];
+  const flipped = act(turned, ME, { type: 'changePosition', uid: ox.uid });
+  ok(flipped.players[ME].monsters[0]?.position === 'def', 'CONTROL: a plain position change still just turns the card',
+    flipped.players[ME].monsters[0]?.position ?? 'gone');
+}
+
+console.log('\nLady of Faith reaches into the dark without looking');
+{
+  /* "add 1 random fiend" — she used to take the best one in the Graveyard,
+     which made her a reliable tutor rather than a séance. */
+  const seen = new Set<string>();
+  for (let seed = 0; seed < 60; seed++) {
+    const s = fresh();
+    s.seed = seed;
+    const lady = card(ME, 'lady-of-faith');
+    s.players[ME].hand = [lady];
+    s.players[ME].grave = [
+      card(ME, 'summoned-skull'), // 2500, the old certainty
+      card(ME, 'sangan'),
+      card(ME, 'headless-knight'),
+      card(ME, 'battle-ox'), // Beast-Warrior — never eligible
+    ];
+    const after = act(s, ME, { type: 'normalSummon', uid: lady.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const took = after.players[ME].hand.find((c) => c.slug !== 'lady-of-faith');
+    if (took) seen.add(took.slug);
+  }
+  ok(seen.size > 1, 'she does not always come back with the same Fiend', [...seen].join(', ') || 'nothing');
+  ok(!seen.has('battle-ox'), 'and never with something that is not one', [...seen].join(', '));
+  ok(seen.has('summoned-skull') && seen.has('sangan') && seen.has('headless-knight'),
+    'every Fiend in the Graveyard can be the one', [...seen].sort().join(', '));
+}
+
 console.log('\nThe board announces a drawing by the name it arrives under');
 {
   /* The engine's own Normal Summon line still read the printed name after the

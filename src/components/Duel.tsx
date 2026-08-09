@@ -87,7 +87,7 @@ type Mode =
   | { kind: 'tributes'; uid: string; need: number; picked: string[]; position: 'atk' | 'def'; face: 'up' | 'down' }
   | {
       kind: 'target';
-      source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'summon';
+      source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'summon' | 'flip';
       uid: string;
       spec: TargetSpec;
       picked: string[];
@@ -995,14 +995,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     [state, me]
   );
 
-  const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, targets: string[]) => {
+  const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip', uid: string, targets: string[]) => {
     if (source === 'trap') void run({ type: 'respondTrap', uid, targets });
     else if (source === 'spell') void run({ type: 'activateSpell', uid, targets });
     else if (source === 'ignition') void run({ type: 'ignition', uid, targets });
+    else if (source === 'flip') void run({ type: 'changePosition', uid, targets });
     else void run({ type: 'activateSetCard', uid, targets });
   };
 
-  const beginTargeting = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, slug: string, trigger: 'activate' | 'ignition' | 'trap') => {
+  const beginTargeting = (
+    source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip',
+    uid: string,
+    slug: string,
+    trigger: 'activate' | 'ignition' | 'trap' | 'onFlip'
+  ) => {
     const spec = targetSpecFor(slug, trigger);
     if (!spec) {
       /* No question of its own, but the monster it summons may have one. */
@@ -1035,7 +1041,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       (mine.spellTrap?.uid === uid ? mine.spellTrap : undefined) ??
       mine.monsters.find((m) => m?.uid === uid) ??
       undefined;
-    if (options.length === 0 && (!activating || wastedWithoutTarget(state, me, activating, trigger))) {
+    /* A Flip Summon is never refused for want of a target. Turning your own
+       monster face-up is a play in itself — Man-Eater Bug goes up whether or
+       not there is anything across the table to bite, and the effect simply
+       finds nobody. Only a card being *spent* can be spent for nothing. */
+    if (source !== 'flip' && options.length === 0 && (!activating || wastedWithoutTarget(state, me, activating, trigger))) {
       sfx.error();
       showToast('There is nothing this card can target.');
       setMode({ kind: 'idle' });
@@ -1087,6 +1097,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     else if (source === 'ignition') void run({ type: 'ignition', uid, targets: picked });
     else if (source === 'setcard') void run({ type: 'activateSetCard', uid, targets: picked });
     else if (source === 'trap') void run({ type: 'respondTrap', uid, targets: picked });
+    else if (source === 'flip') void run({ type: 'changePosition', uid, targets: picked });
   };
 
   const onPickTarget = (uid: string) => {
@@ -1979,7 +1990,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   className="btn rounded px-3 py-2 text-xs"
                   onClick={() => {
                     sfx.click();
-                    void run({ type: 'changePosition', uid: monsterCard.uid });
+                    /* Only a Flip Summon has an effect to aim. Switching an
+                       already face-up monster between Attack and Defence asks
+                       nothing and must not open a prompt. */
+                    if (monsterCard.face === 'down') {
+                      beginTargeting('flip', monsterCard.uid, monsterCard.slug, 'onFlip');
+                    } else {
+                      void run({ type: 'changePosition', uid: monsterCard.uid });
+                    }
                   }}
                 >
                   {monsterCard.face === 'down'
