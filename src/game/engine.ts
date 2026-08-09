@@ -699,7 +699,18 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
     state.players[ab.owner].grave.push(newInstance(state, ab.slug, ab.owner));
   }
 
-  if (c.isToken) return; // tokens simply vanish
+  if (c.isToken) {
+    /* A token leaves no body, but it may leave a debt. The Portrait's Secret
+       splits into three of itself and each one that dies is another 300 off
+       the opponent — written on the token because the painting that made it
+       is in the Graveyard by then and fires nothing. */
+    if (c.tokenDeathDamage && controller) {
+      const foe = other(controller);
+      log(state, `${displayName(state, c)} fades, and the shadows take their due.`, 'effect', controller, c.slug);
+      dealDamage(state, foe, c.tokenDeathDamage);
+    }
+    return; // otherwise tokens simply vanish
+  }
 
   const wasOnField = fromField && controller != null;
   resetInstance(c);
@@ -1202,7 +1213,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'gainAtk': {
         let amount = op.amount ?? 0;
-        if (op.scale === 'perCardInGrave') amount = 200 * state.players[ctx.controller].grave.length;
+        if (op.scale === 'perCardInGrave') amount = (op.amount ?? 0) * state.players[ctx.controller].grave.length;
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
         /* Multiplies whatever the op already carries, so the card writes its
            own rate: Garoozis says 100 per pip and a 4 is 400, in one beat. No
@@ -1473,7 +1484,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
                   (op.includeSelf || c.uid !== ctx.source.uid)
               );
               if (pool.length) {
-                picked = pool.reduce((a, b) => (baseAtk(a.slug) >= baseAtk(b.slug) ? a : b));
+                picked =
+                  op.pick === 'weakest'
+                    ? pool.reduce((a, b) => (baseAtk(a.slug) <= baseAtk(b.slug) ? a : b))
+                    : pool.reduce((a, b) => (baseAtk(a.slug) >= baseAtk(b.slug) ? a : b));
                 break;
               }
             }
@@ -1523,6 +1537,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.tokenName = op.name;
           t.tokenAtk = op.atk;
           t.tokenDef = op.def;
+          t.tokenDeathDamage = op.deathDamage;
           t.position = op.position ?? 'def';
           t.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = t;

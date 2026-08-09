@@ -270,6 +270,9 @@ export type Op =
    */
   | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed'; to: Side }
   | { op: 'heal'; amount: number; to: Side }
+  /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
+   *  written on the card: Headless Knight counts 100 a corpse, the Magician of
+   *  Black Chaos counts 200. `perMonsterOnField` still carries its own 300. */
   | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
   | { op: 'gainDef'; amount: number; target: Selector; duration: Duration }
   | { op: 'setAtk'; value: number; target: Selector }
@@ -313,7 +316,14 @@ export type Op =
    * Revival Jam's entire identity is that it will not stay dead, so it opts
    * in by name rather than the guard being loosened for everybody.
    */
-  | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face; includeSelf?: boolean }
+  /**
+   * `pick` is which monster the pool yields when the player named none. The
+   * default is the strongest, because a revival is normally meant to be the
+   * best thing available — Sangan is the exception that proves it: what it
+   * fetches on the way out is the *smallest* body in the Deck, a wall rather
+   * than a reward.
+   */
+  | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face; includeSelf?: boolean; pick?: 'strongest' | 'weakest' }
   /**
    * `position` defaults to Defence, which is what every token in the game was
    * before it existed — Kuriboh's, Multiply's, the Metal Reflect Slime's are
@@ -322,7 +332,13 @@ export type Op =
    * a player holding nothing in Attack Position: a deck whose whole board
    * arrives face-up in Defence reads to the pilot as one that cannot win.
    */
-  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def' }
+  /**
+   * `deathDamage` is what the token's controller's opponent loses when the
+   * token is sent to the Graveyard — the haunting that outlives the ghost.
+   * A token fires no triggers and carries no effects, which is the whole
+   * point of one, so the number rides on the instance instead.
+   */
+  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def'; deathDamage?: number }
   | { op: 'transformInto'; slug: string }
   | { op: 'addCounter'; amount: number }
   | { op: 'negateAttack' }
@@ -677,6 +693,9 @@ export interface CardInstance {
   tokenName?: string;
   tokenAtk?: number;
   tokenDef?: number;
+  /** See `summonToken`'s `deathDamage`. Carried on the token itself because
+   *  the card that made it is long gone by the time the token dies. */
+  tokenDeathDamage?: number;
 }
 
 export interface OngoingEffect {

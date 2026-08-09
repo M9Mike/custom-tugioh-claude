@@ -1345,8 +1345,9 @@ console.log('\nA Field Spell is the weather, not a personal buff');
   ok(effAtk(s, mine, ME) === 1800 + 500 + 800, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
   ok(effAtk(s, theirs, FOE) === plain + 500 + 800, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
 
-  // Dark Sanctuary is the counter-example: "your opponent's monsters lose 400"
-  // is one-sided on purpose, and must stay that way.
+  // Dark Sanctuary is the counter-example: both its auras are one-sided on
+  // purpose and must stay that way — the house feeds its own and bites theirs,
+  // and neither half may leak across the table the way Umi's does.
   const d = fresh();
   const a = card(ME, 'hitotsu-me-giant');
   const b = card(FOE, 'hitotsu-me-giant');
@@ -1354,7 +1355,7 @@ console.log('\nA Field Spell is the weather, not a personal buff');
   d.players[FOE].monsters[0] = b;
   const base = effAtk(d, a, ME);
   d.players[ME].field = card(ME, 'dark-sanctuary');
-  ok(effAtk(d, a, ME) === base, 'CONTROL: a one-sided Field Spell stays one-sided', String(effAtk(d, a, ME)));
+  ok(effAtk(d, a, ME) === base + 600, 'CONTROL: a one-sided Field Spell stays one-sided', String(effAtk(d, a, ME)));
   ok(effAtk(d, b, FOE) === base - 400, 'and still bites the other side', String(effAtk(d, b, FOE)));
 }
 
@@ -5437,6 +5438,259 @@ console.log('\nThe Graveyard gives back what could have stood there');
   ok(revived.players[ME].monsters.some((m) => m?.slug === 'relinquished'),
     'Monster Reborn brings a Ritual monster back',
     revived.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+}
+
+console.log('\nBakura counts the dead, and the dead do not stay put');
+{
+  /* Every number in the owner's Bakura batch, one assertion apiece, plus the
+     two that were not numbers: what a Graveyard is worth to the cards reading
+     it, and what a card leaves behind when it dies. */
+
+  /* Souls of the Forgotten: 500 a body, and no longer only for Fiends. */
+  const souls = fresh();
+  const forgotten = card(ME, 'souls-of-the-forgotten');
+  souls.players[ME].monsters = [forgotten, null, null];
+  souls.players[ME].grave = [card(ME, 'battle-ox'), card(ME, 'mystical-elf'), card(ME, 'dark-hole')];
+  ok(effAtk(souls, forgotten, ME) === 900 + 2 * 500, 'Souls of the Forgotten counts any monster at 500',
+    `${effAtk(souls, forgotten, ME)} of ${900 + 1000}`);
+
+  /* Man-Eater Bug: 500 now, and the Spell in the Graveyard is not a body. */
+  const bitten = (() => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const eater = { ...card(ME, 'man-eater-bug'), face: 'down' as const, position: 'def' as const };
+    s.players[ME].monsters = [eater, null, null];
+    const big = card(FOE, 'summoned-skull');
+    big.summonedOnTurn = 0;
+    s.players[FOE].monsters = [big, null, null];
+    return act(s, FOE, { type: 'attack', uid: big.uid, targetUid: eater.uid });
+  })();
+  ok(bitten.players[FOE].lp === 4000 - 500, 'Man-Eater Bug bites for 500', `${bitten.players[FOE].lp}`);
+
+  /* Headless Knight: 100 a card, counted once on arrival and kept. */
+  const knightly = fresh();
+  const knight = card(ME, 'headless-knight');
+  knightly.players[ME].hand = [knight];
+  knightly.players[ME].grave = [card(ME, 'kuriboh'), card(ME, 'dark-hole'), card(ME, 'trap-hole'), card(ME, 'battle-ox')];
+  const risen = act(knightly, ME, { type: 'normalSummon', uid: knight.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const armoured = risen.players[ME].monsters.find((m) => m?.slug === 'headless-knight')!;
+  ok(effAtk(risen, armoured, ME) === 1450 + 4 * 100, 'Headless Knight wears 100 for every card in the Graveyard',
+    `${effAtk(risen, armoured, ME)} of ${1450 + 400}`);
+  /* The one other card reading the same scale keeps its own rate. */
+  const chaos = fresh();
+  const wizard = card(ME, 'dark-magician');
+  chaos.players[ME].hand = [wizard];
+  chaos.players[ME].monsters = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), null];
+  chaos.players[ME].grave = [card(ME, 'dark-hole'), card(ME, 'trap-hole')];
+  const summoned = act(chaos, ME, {
+    type: 'normalSummon',
+    uid: wizard.uid,
+    zone: 2,
+    position: 'atk',
+    face: 'up',
+    tributes: chaos.players[ME].monsters.filter(Boolean).map((m) => m!.uid),
+  });
+  const mage = summoned.players[ME].monsters.find((m) => m?.slug === 'dark-magician')!;
+  ok(effAtk(summoned, mage, ME) === baseAtkOf('dark-magician') + 4 * 200,
+    'CONTROL: the Dark Magician still counts 200 — the rate is the card\'s, not the engine\'s',
+    `${effAtk(summoned, mage, ME)}`);
+
+  /* White Magical Hat picks a pocket arriving and another leaving. */
+  const thief = fresh();
+  const hat = card(ME, 'white-magical-hat');
+  thief.players[ME].hand = [hat];
+  thief.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'battle-ox'), card(FOE, 'mystical-elf')];
+  const arrived = act(thief, ME, { type: 'normalSummon', uid: hat.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(arrived.players[FOE].hand.length === 2, 'White Magical Hat lifts a card on the way in',
+    `${arrived.players[FOE].hand.length} left`);
+  const robbed = (() => {
+    const s = structuredClone(arrived);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand.push(dh);
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  /* Dark Hole was itself in that hand, so the count to beat is what remains
+     after it is spent — the theft is the difference, not the total. */
+  ok(robbed.players[FOE].hand.length === 1, 'and another on the way out', `${robbed.players[FOE].hand.length} left`);
+
+  /* Lady of Faith: 1000 now, and her killer is handed the Change of Heart. */
+  const lady = fresh();
+  const faith = card(ME, 'lady-of-faith');
+  lady.players[ME].hand = [faith];
+  lady.players[ME].grave = [card(ME, 'headless-knight')];
+  lady.players[ME].deck = [card(ME, 'change-of-heart'), card(ME, 'kuriboh')];
+  const blessed = act(lady, ME, { type: 'normalSummon', uid: faith.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(blessed.players[ME].lp === 4000 + 1000, 'Lady of Faith is worth 1000 Life Points', `${blessed.players[ME].lp}`);
+  const mourned = (() => {
+    const s = structuredClone(blessed);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(mourned.players[ME].hand.some((c) => c.slug === 'change-of-heart'),
+    'and hands over Change of Heart when she is destroyed',
+    mourned.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+
+  /* Dark Necrofear: 200 a corpse, any corpse, on either side. */
+  const doll = fresh();
+  const necro = card(ME, 'dark-necrofear');
+  doll.players[ME].monsters = [necro, null, null];
+  doll.players[ME].grave = [card(ME, 'battle-ox')];
+  doll.players[FOE].grave = [card(FOE, 'mystical-elf'), card(FOE, 'dark-hole')];
+  ok(effAtk(doll, necro, ME) === 2200 + 2 * 200, 'Dark Necrofear wears 200 for every monster in either Graveyard',
+    `${effAtk(doll, necro, ME)} of ${2200 + 400}`);
+  ok(effDef(doll, necro, ME) === 2800 + 2 * 200, 'and the same in DEF', `${effDef(doll, necro, ME)}`);
+  const widowed = (() => {
+    const s = structuredClone(doll);
+    s.active = FOE;
+    s.players[ME].deck = [card(ME, 'dark-sanctuary'), card(ME, 'kuriboh')];
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(widowed.players[ME].hand.some((c) => c.slug === 'dark-sanctuary'),
+    'and calls the house back when she is destroyed',
+    widowed.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+
+  /* Dark Sanctuary: the house feeds everything, fetches the doll, and puts her
+     on the board when it comes down. */
+  const house = fresh();
+  const sanctuary = card(ME, 'dark-sanctuary');
+  house.players[ME].hand = [sanctuary];
+  house.players[ME].deck = [card(ME, 'dark-necrofear'), card(ME, 'kuriboh')];
+  const ox = card(ME, 'battle-ox'); // Beast-Warrior — no Fiend would have felt this
+  house.players[ME].monsters = [ox, null, null];
+  const opened = act(house, ME, { type: 'activateSpell', uid: sanctuary.uid, targets: [] });
+  ok(opened.players[ME].hand.some((c) => c.slug === 'dark-necrofear'),
+    'Dark Sanctuary calls Dark Necrofear the moment it is activated',
+    opened.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+  const standing = opened.players[ME].monsters.find((m) => m?.slug === 'battle-ox')!;
+  ok(effAtk(opened, standing, ME) === baseAtkOf('battle-ox') + 600,
+    'and lends 600 to every monster you control, Fiend or not', `${effAtk(opened, standing, ME)}`);
+
+  /* Heads and tails both, by driving the seed rather than hoping. */
+  const burns = new Set<number>();
+  for (let seed = 0; seed < 24; seed++) {
+    const tick = structuredClone(opened);
+    tick.seed = seed;
+    tick.players[ME].hand = [];
+    const ended = act(tick, ME, { type: 'endTurn' });
+    burns.add(4000 - ended.players[FOE].lp);
+  }
+  ok(burns.has(1000) && burns.has(500) && burns.size === 2,
+    'and the coin pays 1000 or 500, and nothing else', [...burns].sort((a, b) => b - a).join(' / '));
+
+  const razed = (() => {
+    const s = structuredClone(opened);
+    s.active = FOE;
+    s.players[ME].hand = [card(ME, 'dark-necrofear')];
+    const despell = card(FOE, 'de-spell');
+    s.players[FOE].hand = [despell];
+    return act(s, FOE, { type: 'activateSpell', uid: despell.uid, targets: [s.players[ME].field!.uid] });
+  })();
+  ok(razed.players[ME].monsters.some((m) => m?.slug === 'dark-necrofear'),
+    'and pulling the house down puts the doll on the board',
+    razed.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* Sangan: destroyed, it leaves the smallest thing in the Deck standing. */
+  const fetcher = fresh();
+  const sangan = card(ME, 'sangan');
+  fetcher.players[ME].monsters = [sangan, null, null];
+  fetcher.players[ME].deck = [card(ME, 'summoned-skull'), card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+  const gone = (() => {
+    const s = structuredClone(fetcher);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  const wall = gone.players[ME].monsters.find(Boolean);
+  ok(wall?.slug === 'kuriboh', 'Sangan leaves the weakest monster in the Deck behind, not the best',
+    gone.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(wall?.position === 'def' && wall?.face === 'up', 'face-up, in Defence', `${wall?.face}/${wall?.position}`);
+
+  /* Witch of the Black Forest brings Sangan with her. */
+  const witchy = fresh();
+  const witch = card(ME, 'witch-of-the-black-forest');
+  witchy.players[ME].hand = [witch];
+  witchy.players[ME].deck = [card(ME, 'sangan'), card(ME, 'summoned-skull')];
+  const paired = act(witchy, ME, { type: 'normalSummon', uid: witch.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const escort = paired.players[ME].monsters.find((m) => m?.slug === 'sangan');
+  ok(!!escort, 'Witch of the Black Forest arrives with Sangan',
+    paired.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(escort?.position === 'def' && escort?.face === 'up', 'and stands it up as a wall', `${escort?.face}/${escort?.position}`);
+
+  /* The Portrait's Secret splits, and each piece bills the opponent. */
+  const painting = fresh();
+  const secret = card(ME, 'the-portrait-s-secret');
+  painting.players[ME].monsters = [secret, null, null];
+  const slashed = (() => {
+    const s = structuredClone(painting);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  const faces = slashed.players[ME].monsters.filter((m) => m?.isToken);
+  ok(faces.length === 3, 'The Portrait\'s Secret leaves three of itself behind',
+    slashed.players[ME].monsters.map((m) => (m ? (m.tokenName ?? m.slug) : '-')).join(','));
+  const before = slashed.players[FOE].lp;
+  const torn = (() => {
+    const s = structuredClone(slashed);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(before - torn.players[FOE].lp === 3 * 300, 'and each one taken off the wall costs 300',
+    `${before - torn.players[FOE].lp}`);
+  ok(!torn.players[ME].grave.some((c) => c.isToken), 'CONTROL: a Token still leaves no body in the Graveyard');
+
+  /* Earthbound Spirit pays for its own return, and what returns is hollow. */
+  const buried = fresh();
+  const spirit = card(ME, 'earthbound-spirit');
+  buried.players[ME].monsters = [spirit, null, null];
+  const foeOx = card(FOE, 'battle-ox');
+  buried.players[FOE].monsters = [foeOx, null, null];
+  ok(effAtk(buried, foeOx, FOE) === baseAtkOf('battle-ox') - 500, 'Earthbound Spirit drags their monsters down while it stands',
+    `${effAtk(buried, foeOx, FOE)}`);
+  const returned = (() => {
+    const s = structuredClone(buried);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(returned.players[ME].lp === 4000 - 1000, 'and its passing costs you 1000', `${returned.players[ME].lp}`);
+  ok(returned.players[FOE].lp === 4000 - 500, 'and them 500', `${returned.players[FOE].lp}`);
+  const husk = returned.players[ME].monsters.find((m) => m?.isToken);
+  ok(husk?.tokenAtk === 500 && husk?.tokenDef === 2000 && husk?.position === 'def',
+    'and what climbs back out has its numbers', husk ? `${husk.tokenAtk}/${husk.tokenDef} ${husk.position}` : 'nothing');
+  const survivor = returned.players[FOE].monsters.find(Boolean);
+  ok(!survivor, 'CONTROL: Dark Hole took their board with it, so nothing is left to drain');
+  const drained = (() => {
+    const s = structuredClone(returned);
+    const ox2 = card(FOE, 'battle-ox');
+    s.players[FOE].monsters = [ox2, null, null];
+    return effAtk(s, ox2, FOE);
+  })();
+  ok(drained === baseAtkOf('battle-ox'), 'and it haunts nobody — the husk has no effect at all', `${drained}`);
+
+  /* The Earl of Demise may skip the Tribute, at half of himself. */
+  const earl = fresh();
+  const noble = card(ME, 'the-earl-of-demise');
+  earl.players[ME].hand = [noble];
+  const trap = { ...card(FOE, 'trap-hole'), face: 'down' as const };
+  earl.players[FOE].spellTrap = trap;
+  ok(tributesRequired('the-earl-of-demise', earl, ME) === 1, 'The Earl of Demise normally costs a Tribute');
+  const rushed = act(earl, ME, { type: 'normalSummon', uid: noble.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const half = rushed.players[ME].monsters.find((m) => m?.slug === 'the-earl-of-demise');
+  ok(!!half && effAtk(rushed, half, ME) === Math.floor(2000 / 2), 'but may arrive for nothing at half his ATK',
+    half ? `${effAtk(rushed, half, ME)}` : 'gone');
+  ok(rushed.players[FOE].spellTrap === null, 'and his hand still goes through their Set card',
+    rushed.players[FOE].spellTrap ? 'still set' : 'gone');
 }
 
 /* ------------------------------------------------------------------ */

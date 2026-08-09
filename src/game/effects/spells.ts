@@ -767,27 +767,35 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-sanctuary': {
-    /* The ghost took a coin from Barrel Dragon: the flat 300 tick was too
-       small to ever matter and too flat to feel haunted. Heads is a real
-       bite; tails is still the old tick. Same expected burn roughly doubled,
-       and the End Phase becomes a beat worth watching. */
-    text: 'Field Spell: all monsters your opponent controls lose 400 ATK and your Fiend monsters gain 300 ATK. At the end of each of your turns, flip a coin: Heads — inflict 800 damage to your opponent. Tails — inflict 300.',
+    /* The ghost took a coin from Barrel Dragon: the flat tick was too small to
+       ever matter and too flat to feel haunted. The End Phase is a beat worth
+       watching now, and the house itself is the deck's engine — it calls the
+       doll on the way in and puts her on the board on the way out, so pulling
+       the sanctuary down is what summons the thing living in it. */
+    text:
+      'Field Spell: all monsters your opponent controls lose 400 ATK and your monsters gain 600 ATK. ' +
+      'When this card is activated: add "Dark Necrofear" from your Deck or Graveyard to your hand. ' +
+      'At the end of each of your turns, flip a coin: Heads — inflict 1000 damage to your opponent. Tails — inflict 500. ' +
+      'When this card is destroyed: Special Summon 1 "Dark Necrofear" from your hand.',
     cry: 'Welcome to the Shadow Realm.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
-      /* The haunted house feeds its own ghosts — a 700-point field-wide swing
-         once the sanctuary stands, which is what a Field Spell is for. */
-      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { kind: 'monster', type: 'Fiend' } }), atk: 300 } },
+      /* The haunted house feeds everything standing in it — a 1000-point
+         field-wide swing once the sanctuary stands, which is what a Field
+         Spell is for. */
+      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all'), atk: 600 } },
+      { trigger: 'activate', ops: [{ op: 'search', filter: { slugs: ['dark-necrofear'] }, orGrave: true }] },
       {
         trigger: 'onOwnTurnEnd',
         ops: [
           {
             op: 'coinFlip',
-            heads: [{ op: 'damage', amount: 800, to: 'opp' }],
-            tails: [{ op: 'damage', amount: 300, to: 'opp' }],
+            heads: [{ op: 'damage', amount: 1000, to: 'opp' }],
+            tails: [{ op: 'damage', amount: 500, to: 'opp' }],
           },
         ],
       },
+      { trigger: 'onDestroyed', ops: [{ op: 'specialSummon', from: 'hand', filter: { slugs: ['dark-necrofear'] } }] },
     ],
   },
 

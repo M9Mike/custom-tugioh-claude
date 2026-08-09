@@ -266,7 +266,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'gainAtk', scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
+          { op: 'gainAtk', amount: 200, scale: 'perCardInGrave', target: SELF, duration: 'permanent' },
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
           { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
         ],
@@ -1316,7 +1316,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'man-eater-bug': {
-    text: 'FLIP: destroy 1 monster your opponent controls, then inflict 300 damage to them.',
+    text: 'FLIP: destroy 1 monster your opponent controls, then inflict 500 damage to them.',
     cry: 'Into the shadows with you!',
     effects: [
       {
@@ -1324,7 +1324,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         targets: 1,
         ops: [
           { op: 'destroy', target: OPP_PICK },
-          { op: 'damage', amount: 300, to: 'opp' },
+          { op: 'damage', amount: 500, to: 'opp' },
         ],
       },
     ],
@@ -1344,13 +1344,46 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'the-portrait-s-secret': {
-    text: 'When this monster is destroyed by battle: inflict 700 damage to your opponent.',
-    effects: [{ trigger: 'onDestroyedByBattle', ops: [{ op: 'damage', amount: 700, to: 'opp' }] }],
+    /* The face in the painting does not leave when the canvas is slashed — it
+       steps out of it. Three of them, each worth 300 on the way out, so the
+       board the opponent just cleared is immediately full again and clearing
+       it a second time costs them the duel a little at a time. */
+    text:
+      'When this monster is destroyed by battle: inflict 700 damage to your opponent. ' +
+      'When this monster is destroyed: Special Summon up to 3 "Portrait Tokens" (Fiend/EARTH/Level 1/ATK 100/DEF 100) ' +
+      'in face-up Defence Position. When a Portrait Token is sent to the Graveyard: inflict 300 damage to your opponent.',
+    effects: [
+      { trigger: 'onDestroyedByBattle', ops: [{ op: 'damage', amount: 700, to: 'opp' }] },
+      {
+        trigger: 'onDestroyed',
+        ops: [
+          {
+            op: 'summonToken',
+            name: 'Portrait Token',
+            atk: 100,
+            def: 100,
+            count: 3,
+            artSlug: 'the-portrait-s-secret',
+            deathDamage: 300,
+          },
+        ],
+      },
+    ],
   },
 
   'headless-knight': {
-    text: 'When this monster is sent to the Graveyard: inflict 500 damage to your opponent and gain 500 Life Points.',
+    /* He wears the dead. The count is taken once, on arrival, and locked in —
+       a Graveyard this deck spends the whole duel filling means the knight
+       summoned on turn two is a 1450 body and the one summoned on turn ten is
+       a threat. Everything he was already doing on the way out still stands. */
+    text:
+      'When this monster is summoned: it gains 100 ATK for each card in your Graveyard. ' +
+      'When this monster is sent to the Graveyard: inflict 500 damage to your opponent and gain 500 Life Points.',
     effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'gainAtk', amount: 100, scale: 'perCardInGrave', target: SELF, duration: 'permanent' }],
+      },
       {
         trigger: 'onSentToGrave',
         ops: [
@@ -1362,10 +1395,33 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'earthbound-spirit': {
-    text: 'While this monster is face-up, your opponent\'s monsters lose 500 ATK. This monster cannot be destroyed by battle.',
+    /* It drags you down with it and then climbs back out. What returns is the
+       shape of the spirit and none of its will: a Token wearing its face and
+       its numbers, which haunts nothing, drains nobody and can be killed like
+       anything else. The 1000 you pay is why that is a bargain rather than a
+       gift. */
+    text:
+      'While this monster is face-up, your opponent\'s monsters lose 500 ATK. This monster cannot be destroyed by battle. ' +
+      'When this monster is sent to the Graveyard: you lose 1000 Life Points, your opponent loses 500 Life Points, ' +
+      'and Special Summon 1 "Earthbound Spirit Token" (Fiend/EARTH/Level 4/ATK 500/DEF 2000) in face-up Defence Position.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -500 } },
       { trigger: 'onSummon', ops: [{ op: 'indestructibleByBattle', duration: 'permanent' }] },
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          { op: 'damage', amount: 1000, to: 'own' },
+          { op: 'damage', amount: 500, to: 'opp' },
+          {
+            op: 'summonToken',
+            name: 'Earthbound Spirit Token',
+            atk: 500,
+            def: 2000,
+            count: 1,
+            artSlug: 'earthbound-spirit',
+          },
+        ],
+      },
     ],
   },
 
@@ -1375,39 +1431,55 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        whole card sat dead behind the first monster the opponent played.
        Attacking directly is what the hat does in the anime: slip past, lift
        a card on the way. */
-    text: 'This monster can attack your opponent directly. When it inflicts battle damage to your opponent: they discard 1 random card.',
+    /* The thief lifts a card on the way in, on the way through, and on the way
+       out. Three pockets picked for a 1000 body is what a thief is worth when
+       the deck around him wants their hand empty. */
+    text:
+      'This monster can attack your opponent directly. When it is summoned, when it inflicts battle damage to your opponent, ' +
+      'and when it is destroyed: your opponent discards 1 random card.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'directAttack', duration: 'permanent' },
+          { op: 'discard', count: 1, who: 'opp' },
+        ],
+      },
       { trigger: 'onDealBattleDamage', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
+      { trigger: 'onDestroyed', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
     ],
   },
 
   'lady-of-faith': {
     /* The draw became a séance: she reaches into the Graveyard the deck spends
        the whole duel filling and hands a Fiend back. On-theme card advantage
-       — the horror returns to the hand to be Set again. */
-    text: 'When this monster is summoned: gain 600 Life Points and add 1 Fiend monster from your Graveyard to your hand.',
+       — the horror returns to the hand to be Set again. Killing her is its
+       own mistake: the last thing she does is hand her killer over. */
+    text:
+      'When this monster is summoned: gain 1000 Life Points and add 1 Fiend monster from your Graveyard to your hand. ' +
+      'When this monster is destroyed: add "Change of Heart" from your Deck to your hand.',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'heal', amount: 600, to: 'own' },
+          { op: 'heal', amount: 1000, to: 'own' },
           { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', type: 'Fiend' } },
         ],
       },
+      { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['change-of-heart'] } }] },
     ],
   },
 
   'souls-of-the-forgotten': {
-    /* The forgotten grow as the Graveyard fills — a live aura over the pile of
-       Fiends this deck feeds all duel. Late it is a real body wearing every
-       horror that came before it, and the burn keeps ticking. */
-    text: 'Gains 300 ATK for each Fiend monster in your Graveyard. At the end of your turn: inflict 300 damage to your opponent.',
+    /* The forgotten grow as the Graveyard fills — a live aura over everything
+       this deck has buried, not only its Fiends. Late it is a real body wearing
+       every monster that came before it, and the burn keeps ticking. */
+    text: 'Gains 500 ATK for each monster in your Graveyard. At the end of your turn: inflict 300 damage to your opponent.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Fiend' }, atk: 300 } },
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 500 } },
       },
       { trigger: 'onOwnTurnEnd', ops: [{ op: 'damage', amount: 300, to: 'opp' }] },
     ],
@@ -1419,12 +1491,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-necrofear': {
-    /* She is built from the Fiends that came before her, so she wears them:
-       100/100 for every Fiend in either Graveyard, read live. In a deck whose
-       whole game plan is filling graves with horrors she grows past her
-       printed 2200 by mid-duel — and against the mirror she reads the other
-       side's dead too. */
-    text: 'Gains 100 ATK and DEF for each Fiend monster in either Graveyard. When this monster is summoned: take control of 1 monster your opponent controls permanently.',
+    /* She is built from the dead that came before her, so she wears them all:
+       200/200 for every monster in either Graveyard, read live. In a deck whose
+       whole game plan is filling graves she grows past her printed 2200 within
+       a few turns — and against the mirror she reads the other side's dead too.
+       Killing her only calls the house back: the sanctuary and the doll fetch
+       one another, so the pair keep returning until both are answered. */
+    text:
+      'Gains 200 ATK and DEF for each monster in either Graveyard. ' +
+      'When this monster is summoned: take control of 1 monster your opponent controls permanently. ' +
+      'When this monster is destroyed: add "Dark Sanctuary" from your Deck or Graveyard to your hand.',
     cry: 'The darkness claims your soul.',
     effects: [
       {
@@ -1432,21 +1508,43 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: {
           target: { side: 'own', pick: 'self' },
-          per: { zone: 'eitherGrave', filter: { kind: 'monster', type: 'Fiend' }, atk: 100, def: 100 },
+          per: { zone: 'eitherGrave', filter: { kind: 'monster' }, atk: 200, def: 200 },
         },
       },
       { trigger: 'onSummon', targets: 1, ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }] },
+      { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['dark-sanctuary'] }, orGrave: true }] },
     ],
   },
 
   sangan: {
-    text: 'When this monster is sent to the Graveyard: add the strongest monster with 1500 or less ATK from your Deck to your hand.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster', maxAtk: 1500 } }] }],
+    /* Killing it hands you a wall as well as a card. The smallest body in the
+       Deck on purpose: the point is that the board is never empty after Sangan
+       dies, not that dying is rewarded with the best thing left. */
+    text:
+      'When this monster is destroyed: Special Summon the weakest monster from your Deck in face-up Defence Position. ' +
+      'When this monster is sent to the Graveyard: add the strongest monster with 1500 or less ATK from your Deck to your hand.',
+    effects: [
+      {
+        trigger: 'onDestroyed',
+        ops: [{ op: 'specialSummon', from: 'deck', filter: { kind: 'monster' }, pick: 'weakest', position: 'def', face: 'up' }],
+      },
+      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster', maxAtk: 1500 } }] },
+    ],
   },
 
   'witch-of-the-black-forest': {
-    text: 'When this monster is sent to the Graveyard: add the strongest monster from your Deck to your hand.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster' } }] }],
+    /* She does not come alone. Sangan arrives with her as a wall, and the two
+       of them together mean anything that clears the board pays for it twice. */
+    text:
+      'When this monster is summoned: Special Summon 1 "Sangan" from your Deck in face-up Defence Position. ' +
+      'When this monster is sent to the Graveyard: add the strongest monster from your Deck to your hand.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['sangan'] }, position: 'def', face: 'up' }],
+      },
+      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster' } }] },
+    ],
   },
 
   'dark-elf': {
@@ -1463,7 +1561,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'the-earl-of-demise': {
-    text: 'When this monster is summoned: destroy 1 set card your opponent controls.',
+    mayForgoTributes: true,
+    /* A Level 5 the deck can afford on turn one. Bakura's board is walls and
+       flips, so a Tribute is a real price — half an Earl now, with his hand
+       still going through their Set cards, beats a whole one three turns from
+       now. He does not lose the effect for arriving cheaply. */
+    text:
+      'When this monster is summoned: destroy 1 set card your opponent controls. ' +
+      'This monster may be Normal Summoned without Tributes; if it is, its ATK and DEF are halved.',
     /* The filter is the whole point: it said "face-down" and did not check,
        so summoning this blew up a Spell the opponent had already played. */
     effects: [
