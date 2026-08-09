@@ -149,6 +149,23 @@ function anim(state: DuelState, ev: Omit<AnimEvent, 'id'>) {
 }
 
 /**
+ * Says so when a card resolves and comes up with nothing.
+ *
+ * Reported of Magical Hats: "I activated it with Dark Magician in my hand and
+ * it did not Special Summon". It could not — the hats hide a named handful of
+ * magicians and the only one in that deck was the one in the hand, so the pool
+ * was empty. The engine was right and the board was silent, which is the same
+ * thing as being wrong: a card that half-resolves and says nothing about the
+ * half that did not reads as broken every time.
+ *
+ * The source card's own face goes with the line, so the player is looking at
+ * the card that came up empty while being told it did.
+ */
+function emptyHanded(state: DuelState, ctx: EffectCtx, text: string) {
+  log(state, text, 'effect', ctx.controller, logSlug(ctx.source));
+}
+
+/**
  * Gives a beat to every log line that no animation claimed.
  *
  * Run at the end of an action, so a line like "Battle Ox's effects are negated"
@@ -1363,6 +1380,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'search': {
         const p = state.players[ctx.controller];
         const count = op.count ?? 1;
+        let found = 0;
         for (let i = 0; i < count; i++) {
           /* An explicit choice wins — a card the player activates asks them
              which one they want. The cards that search from the Graveyard fire
@@ -1434,22 +1452,33 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             if (gi < 0) break;
             const g = p.grave.splice(gi, 1)[0];
             p.hand.push(g);
+            found += 1;
             log(state, `${p.name} takes ${displayName(state, g)} from the Graveyard.`, 'effect', ctx.controller, logSlug(g));
             continue;
           }
           const c = p.deck.splice(idx, 1)[0];
           p.hand.push(c);
+          found += 1;
           log(state, `${p.name} adds ${displayName(state, c)} from their Deck to their hand.`, 'effect', ctx.controller, logSlug(c));
         }
+        if (!found) emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to add.`);
         shuffle(state, p.deck);
         checkExodia(state);
         break;
       }
       case 'specialSummon': {
         const count = op.count ?? 1;
+        let arrived = 0;
+        /* Why nothing arrived, when nothing arrives. A full board and an empty
+           pool are different disappointments and the player can act on the
+           difference. */
+        let blocked: 'zones' | 'pool' | null = null;
         for (let i = 0; i < count; i++) {
           const zone = state.players[ctx.controller].monsters.findIndex((m) => !m);
-          if (zone < 0) break;
+          if (zone < 0) {
+            blocked ??= 'zones';
+            break;
+          }
           const sources: PlayerId[] = op.side === 'both' ? [ctx.controller, other(ctx.controller)] : [ctx.controller];
           const zones = Array.isArray(op.from) ? op.from : [op.from];
           const from = (pid: PlayerId) => zones.flatMap((z) => zoneCards(state, pid, z));
@@ -1492,7 +1521,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               }
             }
           }
-          if (!picked) break;
+          if (!picked) {
+            blocked ??= 'pool';
+            break;
+          }
           removeFromAnywhere(state, picked.uid);
           resetInstance(picked);
           picked.position = op.position ?? 'atk';
@@ -1501,6 +1533,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           // It arrived without paying for itself — see `returnBorrowedGods`.
           picked.specialSummonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = picked;
+          arrived += 1;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
           log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(state, picked)}!`, 'summon', ctx.controller);
           anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
@@ -1524,6 +1557,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              Special Summons open `opponentSummon` would hand Torrential Tribute
              to the whole roster, which is a different change than this one. */
           if (!state.winner && picked.face === 'up') fireOpponentSummon(state, ctx.controller, picked.uid);
+        }
+        if (!arrived && blocked) {
+          emptyHanded(
+            state,
+            ctx,
+            blocked === 'zones'
+              ? `${state.players[ctx.controller].name} has no room to Special Summon.`
+              : `${displayName(state, ctx.source)} finds nothing to Special Summon.`
+          );
         }
         break;
       }

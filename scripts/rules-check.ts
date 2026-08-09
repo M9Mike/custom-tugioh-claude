@@ -5693,6 +5693,73 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
     rushed.players[FOE].spellTrap ? 'still set' : 'gone');
 }
 
+console.log('\nA card that comes up empty says so');
+{
+  /* Reported of Magical Hats: activated with Dark Magician in hand, and no
+     magician arrived. It could not — Yami's deck runs exactly one of the four
+     the hats hide, and it was the one in the hand. The engine was right and
+     the board said nothing, which is indistinguishable from broken. */
+  const hidden = (deck: string[]) => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const hats = { ...card(ME, 'magical-hats'), face: 'down' as const };
+    s.players[ME].spellTrap = hats;
+    const shield = { ...card(ME, 'big-shield-gardna'), face: 'down' as const, position: 'def' as const };
+    s.players[ME].monsters = [shield, null, null];
+    s.players[ME].hand = [card(ME, 'dark-magician')];
+    s.players[ME].deck = deck.map((slug) => card(ME, slug));
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beater, null, null];
+    const swung = act(s, FOE, { type: 'attack', uid: beater.uid, targetUid: shield.uid });
+    return act(swung, ME, { type: 'respondTrap', uid: hats.uid });
+  };
+
+  const empty = hidden(['celtic-guardian', 'gaia-the-fierce-knight']);
+  ok(empty.players[ME].monsters.filter(Boolean).length === 1,
+    'with no magician left in the Deck, nothing comes out from under the hats',
+    empty.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  const excuse = empty.log.find((l) => /finds nothing to Special Summon/.test(l.text));
+  ok(!!excuse, 'and the board says why rather than leaving it silent',
+    empty.log.slice(-4).map((l) => l.text).join(' | '));
+  ok(excuse?.slug === 'magical-hats', 'with the card that came up empty beside the line', excuse?.slug ?? '(no art)');
+  ok(empty.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull') && empty.players[ME].lp === 4000,
+    'CONTROL: the attack is still negated — half a card is not a dead card');
+
+  const stocked = hidden(['dark-magician-girl', 'celtic-guardian']);
+  ok(stocked.players[ME].monsters.some((m) => m?.slug === 'dark-magician-girl' && m?.face === 'down'),
+    'CONTROL: give the Deck a magician and one hides under a hat, face-down',
+    stocked.players[ME].monsters.map((m) => (m ? `${m.slug}/${m.face}` : '-')).join(','));
+  ok(!stocked.log.some((l) => /finds nothing/.test(l.text)), 'and then nothing is said about coming up empty');
+
+  /* A full board is a different disappointment, and reads as one. */
+  const crowded = fresh();
+  const witch = card(ME, 'witch-of-the-black-forest');
+  crowded.players[ME].hand = [witch];
+  crowded.players[ME].monsters = [card(ME, 'kuriboh'), card(ME, 'battle-ox'), null];
+  crowded.players[ME].deck = [card(ME, 'sangan')];
+  const packed = act(crowded, ME, { type: 'normalSummon', uid: witch.uid, zone: 2, position: 'atk', face: 'up', tributes: [] });
+  ok(packed.log.some((l) => /has no room to Special Summon/.test(l.text)),
+    'a board with no free zone is told it is full, not that the Deck was empty',
+    packed.log.slice(-3).map((l) => l.text).join(' | '));
+
+  /* And the same courtesy for a search. */
+  const barren = fresh();
+  const lady = card(ME, 'lady-of-faith');
+  barren.players[ME].monsters = [lady, null, null];
+  barren.players[ME].deck = [card(ME, 'kuriboh')]; // no Change of Heart anywhere
+  const mourned = (() => {
+    const s = structuredClone(barren);
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  const missed = mourned.log.find((l) => /finds nothing to add/.test(l.text));
+  ok(!!missed, 'a search with nothing to find says so too', mourned.log.slice(-3).map((l) => l.text).join(' | '));
+  ok(missed?.slug === 'lady-of-faith', 'and names the card that reached', missed?.slug ?? '(no art)');
+}
+
 /* ------------------------------------------------------------------ */
 /* A line written after the duel ends keeps its own beat, and its face   */
 /* ------------------------------------------------------------------ */
