@@ -234,6 +234,15 @@ export interface Selector {
    * was shielding herself and could not be killed in battle at all.
    */
   excludeSelf?: boolean;
+  /**
+   * Reaches a monster that no other effect may touch.
+   *
+   * Relinquished and Thousand-Eyes Restrict swallow things: the eye does not
+   * care that a card says it cannot be targeted, and the owner's ruling is that
+   * it reaches them. A God is still a God — that rule is checked separately and
+   * this never lifts it.
+   */
+  piercesProtection?: boolean;
 }
 
 export type Duration = 'permanent' | 'turn' | 'opponentTurn';
@@ -269,7 +278,9 @@ export type Op =
    * terrifying, and it refills the opponent just as generously.
    */
   | { op: 'drawTo'; count: number; who: Side }
-  | { op: 'discard'; count: number; who: Side }
+  /** `all` discards the whole hand and ignores `count` — Manga Ryu-Ran wipes
+   *  both hands, and a number would have to be a lie big enough to cover any. */
+  | { op: 'discard'; count: number; who: Side; all?: boolean }
   | { op: 'mill'; count: number; who: Side }
   /**
    * Add a card from the Deck to the hand.
@@ -371,6 +382,14 @@ export type EquipGrant =
   | 'untargetable'
   /** Held down by an aura — lapses the moment the card holding it leaves. */
   | 'cannotAttack'
+  /** Every attack against this monster's controller must be aimed at it.
+   *  Thousand-Eyes Restrict stares the board down: the opponent may still
+   *  attack, but it is the only thing they may attack. */
+  | 'mustBeAttacked'
+  /** Destruction is paid for out of what this monster has swallowed. While it
+   *  holds anything, being destroyed sheds the lot instead and the monster
+   *  stands there at its own printed stats; empty, it dies like anything. */
+  | 'shedsAbsorbedInstead'
   /** Attacks every opposing monster once each Battle Phase. */
   | 'attackAll'
   /**
@@ -528,6 +547,9 @@ export interface EffectCondition {
    * whatever Mai has standing, so it wants this one.
    */
   controlsMonster?: boolean;
+  /** True while the controller has another Toon monster on the field — Dark
+   *  Rabbit's mischief needs company, and never counts itself. */
+  controlsOtherToon?: boolean;
   /**
    * Requires the opponent to control a Spell, Trap or Field card.
    *
@@ -573,6 +595,8 @@ export interface CardFlags {
   noBattleDamage?: boolean;
   /** Pinned down by a card on the field, not by a timed lock. */
   cannotAttack?: boolean;
+  mustBeAttacked?: boolean;
+  shedsAbsorbedInstead?: boolean;
 }
 
 export interface CardInstance {
@@ -626,8 +650,16 @@ export interface CardInstance {
    * a turn never end.
    */
   positionChangedOnTurn?: number;
-  /** Monsters absorbed by Relinquished / Thousand-Eyes Restrict. */
-  absorbed: string[];
+  /**
+   * Monsters absorbed by Relinquished / Thousand-Eyes Restrict.
+   *
+   * The owner travels with the slug. While absorbed a monster is nowhere —
+   * banished, in a game with no zone to show it in — and when the holder is
+   * destroyed it goes to *its own* Graveyard, which is only knowable if the
+   * absorb wrote down whose it was. Bare slugs guessed, and guessed by
+   * assuming the victim was always the other seat.
+   */
+  absorbed: { slug: string; owner: PlayerId }[];
   /** Set when control was taken; control reverts at end of that turn. */
   controlRevertsOnTurn?: number;
   /** True for Scapegoat-style tokens (cannot be tributed for a Normal Summon). */

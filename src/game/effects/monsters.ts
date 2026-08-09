@@ -212,17 +212,31 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The lock was a 99-turn ongoing effect, which outlived the card that cast
        it — destroying Thousand-Eyes Restrict left the opponent frozen anyway.
        Its own text says "while this card is face-up", and now that is what it
-       does: an aura, read live, gone the moment the card is. */
-    text: 'Fusion: Relinquished + Illusionist Faceless Mage. When Fusion Summoned: absorb 1 monster your opponent controls and gain its ATK and DEF. While this monster is face-up, your opponent\'s monsters cannot attack.',
+       does: an aura, read live, gone the moment the card is.
+       And it is no longer a lock at all. Freezing the board outright is the
+       absence of an answer; a stare is a reason to think. The opponent may
+       attack all they like, provided they attack the eye — which is how it
+       gets fed, and how it can be killed. */
+    text:
+      'Fusion: Relinquished + Illusionist Faceless Mage. Once per turn: absorb 1 monster your opponent controls — this monster gains its ATK and DEF, ' +
+      'and the monster is banished, even if it could not otherwise be targeted. While this monster is face-up, your opponent\'s monsters can only attack it. ' +
+      'If this monster would be destroyed while it has absorbed a monster, send every monster it absorbed to its owner\'s Graveyard instead.',
     cry: 'A thousand eyes are watching you.',
     fusionMaterials: ['relinquished', 'illusionist-faceless-mage'],
     effects: [
       {
-        trigger: 'onSummon',
+        /* Once per turn, on its own initiative, rather than only on the Fusion
+           Summon. The card is the deck's payoff and it arrived able to eat
+           exactly one thing, ever. */
+        trigger: 'ignition',
         targets: 1,
-        ops: [{ op: 'absorb', target: OPP_PICK }],
+        ops: [{ op: 'absorb', target: sel('opp', 'chosen', { piercesProtection: true }) }],
       },
-      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, grants: ['cannotAttack'] } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'self'), grants: ['mustBeAttacked', 'shedsAbsorbedInstead'] },
+      },
     ],
   },
 
@@ -1079,7 +1093,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        straight back across the table. */
     text:
       'When this monster is summoned: absorb 1 monster your opponent controls — this monster gains its ATK and DEF, ' +
-      'and the monster is banished. This monster cannot be destroyed by battle, and its battle damage pierces defence. ' +
+      'and the monster is banished, even if it could not otherwise be targeted. If this monster is destroyed, ' +
+      'the monster it swallowed is sent to its owner\'s Graveyard. This monster cannot be destroyed by battle, and its battle damage pierces defence. ' +
       'Any battle damage you take from a battle involving this monster is dealt to your opponent as well.',
     cry: 'Your monster is mine now, Yugi-boy.',
     effects: [
@@ -1091,7 +1106,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onSummon',
         targets: 1,
         ops: [
-          { op: 'absorb', target: OPP_PICK },
+          { op: 'absorb', target: sel('opp', 'chosen', { piercesProtection: true }) },
           { op: 'indestructibleByBattle', duration: 'permanent' },
           { op: 'pierce', duration: 'permanent' },
           { op: 'reflectBattleDamage', duration: 'permanent' },
@@ -1127,10 +1142,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'toon-alligator': {
-    text: 'Can attack your opponent directly. When this monster is summoned: add "Toon World" from your Deck to your hand.',
+    /* The standalone direct attack is gone: the book grants it, and granting it
+       permanently on summon meant an Alligator kept walking past blockers long
+       after the book had been answered. Fetching the book is the whole card. */
+    text:
+      'When this monster is summoned: add "Toon World" from your Deck to your hand. ' +
+      'While "Toon World" is face-up on your field, this monster is a Toon monster.',
     cry: 'Snap to it!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
       // Pegasus's deck does nothing until Toon World is down, and drawing into
       // one of two copies is not something to leave to luck. The cheapest body
       // in the deck is the one that goes and fetches it.
@@ -1139,19 +1158,43 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'manga-ryu-ran': {
-    summonRequires: 'toon-world',
-    text: 'Requires "Toon World". Cannot be targeted by your opponent\'s effects.',
+    /* No `summonRequires` any more: it is a Level 7 dragon that can be Tribute
+       Summoned like any other, and only the book turns it into a cartoon. The
+       old "cannot be targeted" is gone with it — the book's protection is the
+       protection now, and this card's own trick is the hand it deals you. */
+    text:
+      'While "Toon World" is face-up on your field, this monster is a Toon monster and, when it is summoned, ' +
+      'both players discard their hand, then your opponent draws 2 cards and you draw 4 cards.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'untargetable', duration: 'permanent' }],
+        condition: { requiresOnField: 'toon-world' },
+        ops: [
+          { op: 'discard', count: 0, all: true, who: 'both' },
+          { op: 'draw', count: 2, who: 'opp' },
+          { op: 'draw', count: 4, who: 'own' },
+        ],
       },
     ],
   },
 
   'ryu-ran': {
-    text: 'When this monster is summoned: destroy 1 monster your opponent controls with 1600 or less ATK.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'weakest', { filter: { maxAtk: 1600 } }) }] }],
+    text:
+      'When this monster is summoned: destroy 1 monster your opponent controls with 1600 or less ATK, ' +
+      'and return 1 "Toon World" from your Graveyard to your hand.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'destroy', target: sel('opp', 'weakest', { filter: { maxAtk: 1600 } }) },
+          /* The second copy of the book, out of the pile. Pegasus's deck stops
+             dead when the book is answered, and this is the card that restarts
+             it — no target prompt, because there is only ever one thing it can
+             mean. */
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['toon-world'] } },
+        ],
+      },
+    ],
   },
 
   'dark-eyes-illusionist': {
@@ -1182,8 +1225,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'parrot-dragon': {
-    text: 'When this monster destroys a monster in battle: it may attack once more this turn.',
-    effects: [{ trigger: 'onBattleDestroy', ops: [{ op: 'extraAttacks', count: 1, duration: 'turn' }] }],
+    /* Off the Toon roster by the owner's ruling — it never was one, and riding
+       along on it was most of why the book's search read as the whole deck. It
+       gets paid for the loss: a card on arrival. */
+    text:
+      'When this monster is summoned: draw 1 card. ' +
+      'When this monster destroys a monster in battle: it may attack once more this turn.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'extraAttacks', count: 1, duration: 'turn' }] },
+    ],
   },
 
   'dragon-piper': {
@@ -1222,11 +1273,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-rabbit': {
-    summonRequires: 'toon-world',
-    text: 'Requires "Toon World". When summoned: your opponent discards 1 random card.',
+    /* A plain Level 4 beast on its own. The book makes it a Toon — and the
+       pickpocketing only happens when there is already another cartoon on the
+       field for it to work the crowd with. */
+    text:
+      'While "Toon World" is face-up on your field, this monster is a Toon monster. ' +
+      'When it is summoned while you control another Toon monster: your opponent discards 1 random card.',
     effects: [
       {
         trigger: 'onSummon',
+        condition: { controlsOtherToon: true },
         ops: [{ op: 'discard', count: 1, who: 'opp' }],
       },
     ],

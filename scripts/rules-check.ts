@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -3342,18 +3342,28 @@ console.log('\nThe book gives the mischief, and takes it back');
   shut.players[ME].field = null;
   const stranded = shut.players[ME].monsters[0]!;
   ok(!effFlags(shut, stranded, ME).directAttack, 'close the book and the direct attack goes with it');
-  ok(effAtk(shut, stranded, ME) === baseAtkOf('toon-mermaid'), 'and so does the 600', `${effAtk(shut, stranded, ME)}`);
+  /* The ATK does not move, because the book has stopped lending any — closing
+     it takes the mischief and leaves the printed body. What closing it *costs*
+     is the cascade, and that is pinned where the book is destroyed rather than
+     lifted out of the zone. */
+  ok(effAtk(shut, stranded, ME) === baseAtkOf('toon-mermaid'), 'while the printed ATK never moved either way', `${effAtk(shut, stranded, ME)}`);
   ok(!!shut.players[ME].monsters[0], 'but the body is still standing');
 
-  /* CONTROL: Toon Alligator is the way *into* the deck and is never gated —
-     its own text promises the direct attack with no book required, and it
-     keeps it. Removing the innate grant from the five gated Toons must not
-     have taken the enabler's with it. */
+  /* Toon Alligator is the way *into* the deck, and by the owner's ruling it is
+     a plain reptile until the book it fetches is open. It used to grant itself
+     a permanent direct attack on summon, which outlived every answer to the
+     book — an Alligator kept walking past blockers with the Field Zone empty. */
   const gator = fresh('battle');
   const alli = card(ME, 'toon-alligator');
   alli.summonedOnTurn = 0;
   gator.players[ME].monsters = [alli, null, null];
-  ok(!!effFlags(gator, alli, ME).directAttack, 'CONTROL: Toon Alligator needs no book to be a nuisance');
+  ok(!effFlags(gator, alli, ME).directAttack, 'with no book, Toon Alligator is just a reptile');
+  const gatorBook = structuredClone(gator);
+  gatorBook.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  ok(
+    !!effFlags(gatorBook, gatorBook.players[ME].monsters[0]!, ME).directAttack,
+    'and the book it went to fetch is what lets it walk past a blocker'
+  );
 }
 
 console.log('\nRevival Jam does not stay dead');
@@ -4999,6 +5009,132 @@ console.log("\nMai Valentine: the flock stops being the only thing her cards can
     'Happy Lover leaves the Hunting Ground behind when it dies',
     fell.players[ME].hand.map((c) => c.slug).join(',') || '(empty)'
   );
+}
+
+console.log('\nPegasus: the book, the drawings and the eye');
+{
+  /* Bickuribox pays either way. The cartoon reaches the field, not the hand. */
+  const book = fresh();
+  book.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  ok(tributesRequired('bickuribox', book, ME) === 2, 'Bickuribox pays 2 Tributes even under the book', `${tributesRequired('bickuribox', book, ME)}`);
+  ok(tributesRequired('manga-ryu-ran', book, ME) === 0, 'while Manga Ryu-Ran comes out free under it');
+  const noBook = fresh();
+  ok(tributesRequired('manga-ryu-ran', noBook, ME) === 2, 'and pays its full price without it', `${tributesRequired('manga-ryu-ran', noBook, ME)}`);
+
+  /* A drawing answers to a different name while the book is open, which is the
+     only warning that Dark Hole is about to walk past it. */
+  const named = fresh();
+  const box = card(ME, 'bickuribox');
+  named.players[ME].monsters = [box, null, null];
+  ok(displayName(named, box) === 'Bickuribox', 'with no book it is just Bickuribox', displayName(named, box));
+  named.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  ok(displayName(named, box) === 'Toon Bickuribox', 'and Toon Bickuribox under it', displayName(named, box));
+  const foeBox = fresh();
+  const theirs = card(FOE, 'dark-rabbit');
+  foeBox.players[FOE].monsters = [theirs, null, null];
+  foeBox.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  ok(displayName(foeBox, theirs) === 'Dark Rabbit', "CONTROL: your book does not animate their drawings", displayName(foeBox, theirs));
+
+  /* The book only ever belonged to the duelist who laid it. */
+  const mine = fresh();
+  mine.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const myToon = card(ME, 'toon-mermaid');
+  const theirToon = card(FOE, 'toon-mermaid');
+  mine.players[ME].monsters = [myToon, null, null];
+  mine.players[FOE].monsters = [theirToon, null, null];
+  ok(effFlags(mine, myToon, ME).indestructibleByBattle === true, 'your Toon cannot be destroyed by battle under your book');
+  ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
+}
+
+console.log('\nThe eye swallows, stares, and pays for its own destruction');
+{
+  /* Absorbed monsters go home to their *owner's* Graveyard.
+     The case that matters is the one where the owner is not simply the other
+     seat: a monster of mine that they had taken, which my Relinquished then
+     swallowed back. The old code wrote "whoever is not holding me", which is
+     right in the ordinary case and wrong here — and an assertion built on the
+     ordinary case passes either way, which is how the first version of this
+     pin managed to prove nothing at all. */
+  const eat = fresh();
+  const rel = card(ME, 'relinquished');
+  eat.players[ME].monsters = [rel, null, null];
+  const mineStolen = card(ME, 'battle-ox'); // owned by ME, standing on their side
+  eat.players[FOE].monsters = [mineStolen, null, null];
+  rel.absorbed = [{ slug: 'battle-ox', owner: ME }];
+  const dark = card(ME, 'dark-hole');
+  eat.players[ME].hand = [dark];
+  const swept = act(eat, ME, { type: 'activateSpell', uid: dark.uid, targets: [] });
+  ok(swept.players[ME].grave.some((g) => g.slug === 'battle-ox'),
+    "a destroyed Relinquished sends what it swallowed to its owner's Graveyard",
+    swept.players[ME].grave.map((g) => g.slug).join(',') || 'empty');
+  ok(!swept.players[FOE].grave.some((g) => g.slug === 'battle-ox'),
+    'and not to whichever seat happens not to be holding it');
+
+  /* The stare: the eye is the only thing they may swing at. */
+  const stare = fresh('battle');
+  stare.active = FOE;
+  const eye = card(ME, 'thousand-eyes-restrict');
+  const bystander = card(ME, 'mystical-elf');
+  stare.players[ME].monsters = [eye, bystander, null];
+  const swinger = card(FOE, 'summoned-skull');
+  swinger.summonedOnTurn = 0;
+  stare.players[FOE].monsters = [swinger, null, null];
+  const legal = legalAttackTargets(stare, FOE, swinger);
+  ok(legal.uids.length === 1 && legal.uids[0] === eye.uid,
+    'every attack must be aimed at Thousand-Eyes Restrict',
+    legal.uids.length + ' target(s)');
+  ok(!legal.direct, 'and nobody walks past it');
+
+  /* Destruction is paid out of the stomach — and only while there is one. */
+  const fed = fresh();
+  const full = card(ME, 'thousand-eyes-restrict');
+  full.absorbed = [{ slug: 'battle-ox', owner: FOE }];
+  fed.players[ME].monsters = [full, null, null];
+  const hole = card(ME, 'dark-hole');
+  fed.players[ME].hand = [hole];
+  const spat = act(fed, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  const alive = spat.players[ME].monsters.find((m) => m?.slug === 'thousand-eyes-restrict');
+  ok(!!alive, 'a fed eye survives a Dark Hole by spitting instead', spat.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!!alive && alive.absorbed.length === 0, 'with its stomach emptied');
+  ok(spat.players[FOE].grave.some((g) => g.slug === 'battle-ox'), 'and the meal sent home');
+  ok(!!alive && effAtk(spat, alive, ME) === baseAtkOf('thousand-eyes-restrict'),
+    'back to its own printed ATK', alive ? `${effAtk(spat, alive, ME)}` : 'gone');
+
+  const starving = fresh();
+  const empty = card(ME, 'thousand-eyes-restrict');
+  starving.players[ME].monsters = [empty, null, null];
+  starving.players[ME].hand = [card(ME, 'dark-hole')];
+  const gone = act(starving, ME, { type: 'activateSpell', uid: starving.players[ME].hand[0].uid, targets: [] });
+  ok(!gone.players[ME].monsters.some((m) => m?.slug === 'thousand-eyes-restrict'),
+    'an empty one dies like anything else',
+    gone.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+}
+
+console.log('\nThe Graveyard gives back what could have stood there');
+{
+  /* A Toon needs the book to come back; a drawing does not. */
+  const noBook = fresh();
+  const skull = card(ME, 'toon-summoned-skull');
+  noBook.players[ME].grave = [skull, card(ME, 'dark-rabbit')];
+  noBook.players[ME].hand = [card(ME, 'monster-reborn')];
+  const spec = targetSpecFor('monster-reborn', 'activate')!;
+  const offered = targetCandidates(noBook, ME, spec).map((c) => c.slug);
+  ok(!offered.includes('toon-summoned-skull'), 'with no book, a true Toon is not offered', offered.join(',') || 'nothing');
+  ok(offered.includes('dark-rabbit'), 'but a drawing is — without the book it is an ordinary monster');
+
+  const withBook = structuredClone(noBook);
+  withBook.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const offered2 = targetCandidates(withBook, ME, targetSpecFor('monster-reborn', 'activate')!).map((c) => c.slug);
+  ok(offered2.includes('toon-summoned-skull'), 'open the book and it is', offered2.join(','));
+
+  /* Ritual monsters were the reported gap. */
+  const ritual = fresh();
+  ritual.players[ME].grave = [card(ME, 'relinquished')];
+  ritual.players[ME].hand = [card(ME, 'monster-reborn')];
+  const revived = act(ritual, ME, { type: 'activateSpell', uid: ritual.players[ME].hand[0].uid, targets: [ritual.players[ME].grave[0].uid] });
+  ok(revived.players[ME].monsters.some((m) => m?.slug === 'relinquished'),
+    'Monster Reborn brings a Ritual monster back',
+    revived.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
 }
 
 /* ------------------------------------------------------------------ */

@@ -4,6 +4,7 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
+import { revivable } from './engine';
 import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
 export interface TargetSpec {
@@ -14,6 +15,15 @@ export interface TargetSpec {
   prompt: string;
   /** Narrows what may be picked — a Deck search is rarely "any card". */
   filter?: CardFilter;
+  /**
+   * Only monsters this player could legally have on the field.
+   *
+   * A Toon Summoned Skull in the Graveyard is not a summon option with the
+   * Field Zone empty, and offering it was the picker and the engine disagreeing
+   * about the rule — the same class of bug as the Graverobber's empty modal.
+   * State-dependent, so it cannot be a `CardFilter`.
+   */
+  revivableOnly?: boolean;
 }
 
 function scanOps(ops: Op[]): TargetSpec | null {
@@ -46,6 +56,7 @@ function scanOps(ops: Op[]): TargetSpec | null {
            nothing it can target". Carried on the spec, each picker states its
            own rule and the zone stops guessing. */
         filter: { ...(op.filter ?? {}), kind: 'monster' },
+        revivableOnly: true,
       };
     }
     if (op.op === 'search') {
@@ -179,11 +190,11 @@ export function targetCandidates(
       /* Whatever the spec asks for. The monster restriction that used to live
          here is now carried by the specs that actually want it — see the
          `specialSummon` branch above. */
-      out.push(...p.grave.filter(keep));
+      out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
     } else if (spec.zone === 'hand' && pid === viewer) {
-      out.push(...p.hand.filter(keep));
+      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
     }
   }
   return out;

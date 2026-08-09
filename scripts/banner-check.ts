@@ -62,6 +62,10 @@ const ALLOWED = new Map<string, string>([
   ['«player» takes no battle damage.', 'player'],
   ['«player» is shielded from battle damage.', 'player'],
   ['The attack is negated!', 'player'],
+  /* Two cards, so no one picture is right — and it only goes artless when the
+     destroy beat that used to adopt it never happens, which Thousand-Eyes
+     Restrict now causes by shedding what it swallowed instead of dying. */
+  ['Both monsters are destroyed!', 'chrome'],
   ['There is no monster to equip.', 'player'],
   /* The die and the coin are their own picture — the beat renders the face, and
      the card that threw it took its bow on the beat immediately before. */

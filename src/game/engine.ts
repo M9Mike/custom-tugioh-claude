@@ -387,14 +387,14 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
 export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId): number {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
   const base = c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug);
-  const absorbed = c.absorbed.reduce((sum, s) => sum + baseAtk(s), 0);
+  const absorbed = c.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0);
   return Math.max(0, base + absorbed + c.atkMod + c.turnAtkMod + aurasFor(state, c, ctrl).atk);
 }
 
 export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId): number {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
   const base = c.isToken ? (c.tokenDef ?? 0) : baseDef(c.slug);
-  const absorbed = c.absorbed.reduce((sum, s) => sum + baseDef(s), 0);
+  const absorbed = c.absorbed.reduce((sum, a) => sum + baseDef(a.slug), 0);
   return Math.max(0, base + absorbed + c.defMod + c.turnDefMod + aurasFor(state, c, ctrl).def);
 }
 
@@ -410,6 +410,8 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('indestructibleByEffect')) merged.indestructibleByEffect = true;
   if (grants.has('doubleAttack')) merged.extraAttacks = (merged.extraAttacks ?? 0) + 1;
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
+  if (grants.has('mustBeAttacked')) merged.mustBeAttacked = true;
+  if (grants.has('shedsAbsorbedInstead')) merged.shedsAbsorbedInstead = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
@@ -679,10 +681,12 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
   if (!c) return;
 
   releaseEquips(state, c);
-  // Absorbed monsters are released to their owner's graveyard.
-  for (const abSlug of c.absorbed) {
-    const ab = newInstance(state, abSlug, other(c.owner));
-    state.players[other(c.owner)].grave.push(ab);
+  /* Absorbed monsters go home. Each one carries the seat it came from, because
+     the holder's owner is not it: Monster Reborn hands Relinquished across the
+     table often enough, and "the other side from whoever is holding me" sent a
+     stolen monster to the thief's Graveyard. */
+  for (const ab of c.absorbed) {
+    state.players[ab.owner].grave.push(newInstance(state, ab.slug, ab.owner));
   }
 
   if (c.isToken) return; // tokens simply vanish
@@ -927,7 +931,7 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
     const uid = s.pick === 'attacker' ? ctx.trig.attackerUid : ctx.trig.targetUid;
     const c = uid ? findOnField(state, uid)?.c : null;
     if (!c) return [];
-    if (isProtectedTarget(state, c, ctx.controller, ctx)) {
+    if (isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection)) {
       const ctrl = controllerOf(state, c.uid);
       if (ctrl) log(state, `${displayName(state, c)} stands beyond that effect's reach.`, 'effect', ctrl, logSlug(c));
       return [];
@@ -937,7 +941,7 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
   if (s.pick === 'summoned') {
     return (ctx.summoned ?? [])
       .map((uid) => findOnField(state, uid)?.c)
-      .filter((c): c is CardInstance => !!c && !isProtectedTarget(state, c, ctx.controller, ctx));
+      .filter((c): c is CardInstance => !!c && !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   }
 
   const pool = targetPool(ctx, s);
@@ -975,7 +979,7 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
        and neither destroyed anything. Lord of D. himself is a Spellcaster and
        was legal the whole time. */
     if (picked.length === 0) {
-      const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
+      const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
       if (legal.length) {
         picked.push(
           zone === 'monster'
@@ -984,16 +988,16 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
         );
       }
     }
-    return picked.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
+    return picked.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   }
 
-  if (s.pick === 'all') return pool.filter((c) => zone !== 'monster' || !isProtectedTarget(state, c, ctx.controller, ctx));
+  if (s.pick === 'all') return pool.filter((c) => zone !== 'monster' || !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   if (s.pick === 'random') {
-    const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
+    const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
     if (!legal.length) return [];
     return [legal[randInt(state, legal.length)]];
   }
-  const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx));
+  const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   if (!legal.length) return [];
   if (s.pick === 'strongest') return [legal.reduce((a, b) => (effAtk(state, a) >= effAtk(state, b) ? a : b))];
   return [legal.reduce((a, b) => (effAtk(state, a) <= effAtk(state, b) ? a : b))];
@@ -1020,7 +1024,7 @@ function divineSource(ctx?: EffectCtx): boolean {
 }
 
 /** "Untargetable" only protects against the opponent's effects — and never against a God's. */
-function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, ctx?: EffectCtx): boolean {
+function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, ctx?: EffectCtx, pierces = false): boolean {
   if (ctx && divineSource(ctx)) return false;
   /* NO EFFECTS ON THE GODS. The decree in full: a Divine-Beast is reached by
      no card effect whatsoever — not targeted, not destroyed, not bounced, not
@@ -1038,6 +1042,9 @@ function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, c
   if (isDivine(c.slug)) return true;
   const ctrl = controllerOf(state, c.uid);
   if (ctrl === actor) return false;
+  /* The God check above is deliberately not reachable from here: piercing is a
+     mortal affair, and `isDivine` has already returned. */
+  if (pierces) return false;
   return !!effFlags(state, c).untargetable;
 }
 
@@ -1071,6 +1078,30 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
      it. Another God is still above this one. */
   if (!byBattle && isDivine(c.slug) && !divine) {
     log(state, `${displayName(state, c)} is a God — no card effect may destroy it.`, 'effect', found.controller, logSlug(c));
+    return;
+  }
+  /* Paid for out of the stomach. Thousand-Eyes Restrict does not die while it
+     is still holding something: the destruction takes what it swallowed
+     instead, everything it had goes home to its owner's Graveyard, and the
+     eye is left standing on its own printed 0/0 for the next one. Empty, it
+     is an ordinary monster and dies like one — which is what makes it
+     answerable rather than a wall.
+     Before the protection checks below on purpose: this is not immunity, it
+     is a price, and a God's blow collects it the same as anyone's. */
+  if (flags.shedsAbsorbedInstead && c.absorbed.length) {
+    const shed = c.absorbed;
+    c.absorbed = [];
+    for (const ab of shed) {
+      state.players[ab.owner].grave.push(newInstance(state, ab.slug, ab.owner));
+    }
+    log(
+      state,
+      `${displayName(state, c)} spits out ${shed.length} monster${shed.length > 1 ? 's' : ''} and holds its ground!`,
+      'effect',
+      found.controller,
+      logSlug(c)
+    );
+    anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
     return;
   }
   if (byBattle && flags.indestructibleByBattle && !divine) {
@@ -1267,7 +1298,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'discard':
         for (const pid of sideToPlayers(ctx, op.who)) {
           const p = state.players[pid];
-          const n = Math.min(op.count, p.hand.length);
+          const n = op.all ? p.hand.length : Math.min(op.count, p.hand.length);
           for (let i = 0; i < n; i++) {
             const idx = randInt(state, p.hand.length);
             const c = p.hand.splice(idx, 1)[0];
@@ -1391,7 +1422,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           for (const pid of sources) {
             const pool = from(pid);
             const byChoice = chosenUid ? pool.find((c) => c.uid === chosenUid) : null;
-            if (byChoice && matchesFilter(byChoice, op.filter) && CARDS[byChoice.slug]?.kind === 'monster') {
+            if (
+              byChoice &&
+              matchesFilter(byChoice, op.filter) &&
+              CARDS[byChoice.slug]?.kind === 'monster' &&
+              revivable(state, ctx.controller, byChoice.slug)
+            ) {
               picked = byChoice;
               ctx.cursor += 1;
               break;
@@ -1402,6 +1438,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               const pool = from(pid).filter(
                 (c) =>
                   CARDS[c.slug]?.kind === 'monster' &&
+                  revivable(state, ctx.controller, c.slug) &&
                   matchesFilter(c, op.filter) &&
                   // A card never Special Summons itself with its own "when this
                   // card is destroyed" effect — it is in the Graveyard by the
@@ -1582,7 +1619,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         for (const t of resolveTargets(ctx, op.target)) {
           const removed = removeFromAnywhere(state, t.uid);
           if (!removed || removed.isToken) continue;
-          ctx.source.absorbed.push(removed.slug);
+          ctx.source.absorbed.push({ slug: removed.slug, owner: removed.owner });
           log(state, `${displayName(state, ctx.source)} absorbs ${displayName(state, removed)}!`, 'effect', ctx.controller, logSlug(ctx.source));
         }
         break;
@@ -1804,6 +1841,14 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   if (cond.countersAtLeast != null && c.counters < cond.countersAtLeast) return false;
   if (cond.turnAtLeast != null && state.turn < cond.turnAtLeast) return false;
   if (cond.opponentHasMonster && state.players[other(controller)].monsters.every((m) => !m)) return false;
+  if (cond.controlsOtherToon) {
+    /* Another one, never itself — a lone Dark Rabbit is not company. Asked of
+       the live roster rather than the printed one, so a drawing only counts
+       while the book that animates it is open. */
+    const bookOpen = faceUpOnSide(state, controller, 'toon-world');
+    const hasCompany = p.monsters.some((m) => m && m.uid !== c.uid && m.face === 'up' && toonActive(m.slug, bookOpen));
+    if (!hasCompany) return false;
+  }
   if (cond.requiresOnField) {
     const has =
       p.monsters.some((m) => m?.slug === cond.requiresOnField) ||
@@ -2409,6 +2454,25 @@ export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): st
   return null;
 }
 
+/**
+ * Whether a Special Summon may bring this monster back to this player's side.
+ *
+ * The Graveyard holds everything and Monster Reborn takes anything out of it —
+ * Ritual monsters and Fusions included, which is the printed card's whole
+ * drama. The one bar is the book: a Toon Summoned Skull is not a Summoned
+ * Skull, it is a card that cannot be on the field without Toon World, and
+ * reviving one into an empty Field Zone put a monster on the board that could
+ * never have been Summoned there.
+ *
+ * The four that are only drawings while the book is open are revivable without
+ * it, because without it they are ordinary monsters — Dark Rabbit comes back as
+ * a Dark Rabbit, and stays one until somebody opens the book over it.
+ */
+export function revivable(state: DuelState, pid: PlayerId, slug: string): boolean {
+  const need = CARDS[slug]?.summonRequires;
+  return !need || faceUpOnSide(state, pid, need);
+}
+
 export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId): number {
   const def = CARDS[slug];
   const level = def?.level ?? 0;
@@ -2490,6 +2554,12 @@ export function legalAttackTargets(state: DuelState, pid: PlayerId, c: CardInsta
   const opp = state.players[other(pid)];
   const monsters = opp.monsters.filter((m): m is CardInstance => !!m);
   const flags = effFlags(state, c, pid);
+  /* The stare, asked before everything else. A monster demanding to be attacked
+     is the only legal target on that side — including for an attacker that
+     could otherwise walk straight past the board, which is the whole point:
+     Thousand-Eyes Restrict answers a Toon as well as a Battle Ox. */
+  const stare = monsters.filter((m) => m.face === 'up' && effFlags(state, m, other(pid)).mustBeAttacked);
+  if (stare.length) return { uids: stare.map((m) => m.uid), direct: false };
   if (flags.directAttack) return { uids: monsters.map((m) => m.uid), direct: true };
   if (monsters.length === 0) return { uids: [], direct: true };
   if (flags.attackAll) {
