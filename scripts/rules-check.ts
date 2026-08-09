@@ -2771,15 +2771,50 @@ console.log('\nEvery beat names the card it is showing');
   ok(said.some((t) => /Big Shield Gardna is destroyed/.test(t)),
     'and the destruction it caused is spoken too');
 
-  // Pot of Greed draws twice, and each draw is its own beat with its own line.
+  /* A multi-card draw is one beat carrying the total, not one beat per card.
+     Reported twice now — for Card of Sanctity, which fixed `drawTo`, and again
+     for Manga Ryu-Ran's four, which comes out of the plain `draw` op next door.
+     Reading "draws a card" four times while the duel stands still is the same
+     complaint whichever op is doing it. */
   const greed = fresh();
   const pot = card(ME, 'pot-of-greed');
   greed.players[ME].hand = [pot];
   greed.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'battle-ox'), card(ME, 'harpie-lady')];
+  const handBefore = greed.players[ME].hand.length - 1; // the Pot itself leaves
   const drawn = act(greed, ME, { type: 'activateSpell', uid: pot.uid, targets: [] });
   const draws = drawn.anims.filter((a) => a.kind === 'draw');
-  ok(draws.length === 2 && draws.every((a) => !!a.note),
-    'both of Pot of Greed\'s draws are announced', `${draws.length} beats, ${draws.filter((a) => a.note).length} spoken`);
+  ok(draws.length === 1, "Pot of Greed's two cards arrive on one beat", `${draws.length} beats`);
+  ok(!!draws[0]?.note && /draws 2 cards/.test(draws[0].note), 'announced by their total',
+    draws[0]?.note ?? '(silent)');
+  ok(drawn.players[ME].hand.length === handBefore + 2, 'and both cards are really in hand',
+    `${drawn.players[ME].hand.length} of ${handBefore + 2}`);
+
+  /* A single card keeps the sentence it has always had. */
+  const soloDraw = fresh();
+  const dragon = card(ME, 'left-arm-of-the-forbidden-one'); // Level 1, draws 1 on arrival
+  soloDraw.players[ME].hand = [dragon];
+  soloDraw.players[ME].deck = [card(ME, 'kuriboh')];
+  const drewOne = act(soloDraw, ME, { type: 'normalSummon', uid: dragon.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const oneDraw = drewOne.anims.filter((a) => a.kind === 'draw');
+  ok(oneDraw.length === 1 && /draws a card/.test(oneDraw[0]?.note ?? ''),
+    'CONTROL: a one-card draw still reads "draws a card"', oneDraw[0]?.note ?? '(silent)');
+
+  /* Manga Ryu-Ran, which is what the owner was looking at: four for you, two
+     for them, and one banner each rather than six in a row. */
+  const manga = fresh();
+  manga.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const ryu = card(ME, 'manga-ryu-ran');
+  manga.players[ME].hand = [ryu, card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+  manga.players[ME].deck = Array.from({ length: 6 }, () => card(ME, 'mystical-elf'));
+  manga.players[FOE].hand = [card(FOE, 'kuriboh')];
+  manga.players[FOE].deck = Array.from({ length: 6 }, () => card(FOE, 'battle-ox'));
+  const swapped = act(manga, ME, { type: 'normalSummon', uid: ryu.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const mine4 = swapped.anims.filter((a) => a.kind === 'draw' && a.player === ME);
+  const theirs2 = swapped.anims.filter((a) => a.kind === 'draw' && a.player === FOE);
+  ok(mine4.length === 1 && /draws 4 cards/.test(mine4[0]?.note ?? ''),
+    'Manga Ryu-Ran deals you four on one banner', mine4.map((a) => a.note).join(' | ') || '(none)');
+  ok(theirs2.length === 1 && /draws 2 cards/.test(theirs2[0]?.note ?? ''),
+    'and them two on one more', theirs2.map((a) => a.note).join(' | ') || '(none)');
 }
 
 console.log('\nThe second mouth never bites its own side, and says so');

@@ -1300,8 +1300,24 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       }
       case 'draw':
+        /* One line and one beat for the whole draw, the same way `drawTo` does
+           it. A single card keeps the sentence it has always had; more than one
+           is announced by its total. Manga Ryu-Ran deals four and the owner
+           read "draws a card" four times over while the duel stood still —
+           which is the report that fixed Card of Sanctity, arriving again on
+           the op next door.
+
+           Counted from what actually arrived, not from `op.count`: a Deck with
+           fewer cards left than the effect asks for gives out what it has, and
+           the announcement has to match the cards. */
         for (const pid of sideToPlayers(ctx, op.who)) {
-          for (let i = 0; i < op.count; i++) if (!drawCard(state, pid)) break;
+          const before = state.players[pid].hand.length;
+          for (let i = 0; i < op.count; i++) if (!drawCard(state, pid, op.count > 1)) break;
+          const drawn = state.players[pid].hand.length - before;
+          if (op.count > 1 && drawn > 0) {
+            log(state, `${state.players[pid].name} draws ${drawn} card${drawn === 1 ? '' : 's'}.`, 'normal', pid);
+            anim(state, { kind: 'draw', player: pid, amount: drawn });
+          }
         }
         checkExodia(state);
         break;
