@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -5044,6 +5044,47 @@ console.log('\nPegasus: the book, the drawings and the eye');
   mine.players[FOE].monsters = [theirToon, null, null];
   ok(effFlags(mine, myToon, ME).indestructibleByBattle === true, 'your Toon cannot be destroyed by battle under your book');
   ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
+}
+
+console.log('\nA card worth playing for what it leaves behind still plays');
+{
+  /* Reported: "toon world on an empty board says there is nothing this card can
+     target and won't activate". The board was deciding for itself that an empty
+     picker meant a wasted card. That is right for Ring of Destruction, which is
+     spent on the target it cannot find, and wrong for a Field Spell whose whole
+     worth is the aura — the search finding nobody costs nothing.
+     The engine always knew the difference. The board is asked now. */
+  const bare = fresh();
+  const tw = card(ME, 'toon-world');
+  bare.players[ME].hand = [tw];
+  bare.players[ME].deck = [card(ME, 'dark-hole')]; // not a Toon in sight
+  const offered = targetCandidates(bare, ME, targetSpecFor('toon-world', 'activate')!);
+  ok(offered.length === 0, 'with no Toon in the Deck the picker offers nothing', `${offered.length}`);
+  ok(!wastedWithoutTarget(bare, ME, tw, 'activate'), 'but the book is not wasted by that');
+  const opened = act(bare, ME, { type: 'activateSpell', uid: tw.uid, targets: [] });
+  ok(opened.players[ME].field?.slug === 'toon-world', 'and it opens anyway',
+    opened.players[ME].field?.slug ?? '(empty)');
+
+  /* Also with the Deck flatly empty, which is the same question asked harder. */
+  const empty = fresh();
+  const tw2 = card(ME, 'toon-world');
+  empty.players[ME].hand = [tw2];
+  empty.players[ME].deck = [];
+  ok(!wastedWithoutTarget(empty, ME, tw2, 'activate'), 'and on an empty Deck too');
+
+  /* CONTROL: a card that really would be spent for nothing is still refused,
+     or the fix is just "never refuse anything". Dark Hole on a board with no
+     monsters at all sweeps nothing and leaves nothing behind. */
+  const sweep = fresh();
+  const hole = card(ME, 'dark-hole');
+  sweep.players[ME].hand = [hole];
+  ok(wastedWithoutTarget(sweep, ME, hole, 'activate'),
+    'CONTROL: Dark Hole with no monsters anywhere is still a wasted card');
+  const worthIt = fresh();
+  worthIt.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  worthIt.players[ME].hand = [hole];
+  ok(!wastedWithoutTarget(worthIt, ME, hole, 'activate'),
+    'and is not the moment there is something to sweep');
 }
 
 console.log('\nThe picker and the engine read one filter');

@@ -28,6 +28,7 @@ import {
   type Selector,
   type Side,
   type TrapWindow,
+  type Trigger,
   type TriggerContext,
 } from './types';
 
@@ -2706,6 +2707,27 @@ function activationIsDead(state: DuelState, pid: PlayerId, c: CardInstance, def:
   // A card that stays on the field is never spent for nothing.
   if (def.effects.some((e) => e.trigger === 'continuous' && e.aura)) return false;
   return true;
+}
+
+/**
+ * Would spending this card achieve nothing at all?
+ *
+ * Exported because the board needs the same answer and had been working one out
+ * for itself: "the picker offered nothing, so refuse". That is right for Ring of
+ * Destruction against a lone untargetable monster, and wrong for a card whose
+ * worth is the aura it leaves behind — Toon World with no Toon left in the Deck
+ * still opens, and the search simply finds nothing. Reported as "it says there
+ * is nothing this card can target and won't activate".
+ *
+ * `activationIsDead` already knew that (a card with a continuous aura is never
+ * spent for nothing); the board's copy of the rule did not. One rule, one place,
+ * for the same reason `matchesFilter` is now one function.
+ */
+export function wastedWithoutTarget(state: DuelState, pid: PlayerId, c: CardInstance, trigger: Trigger): boolean {
+  const def = CARDS[c.slug];
+  const eff = def?.effects.find((e) => e.trigger === trigger);
+  if (!def || !eff) return false;
+  return activationIsDead(state, pid, c, def, eff);
 }
 
 export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInstance): boolean {

@@ -22,6 +22,7 @@ import {
   other,
   summonBlocked,
   tributesRequired,
+  wastedWithoutTarget,
 } from '@/game/engine';
 import { effectLabel, pickerSides, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
@@ -1004,12 +1005,19 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const options = pickableUids(spec);
     const want = spec.count ?? 1;
 
-    /* Nothing it can legally point at, so there is nothing to activate. This
-       used to go through anyway and the card was spent for no effect at all —
-       Ring of Destruction against a lone Celtic Guardian, which it can never
-       target, left the zone and did nothing. Saying so and keeping the card is
-       the only sensible answer. */
-    if (options.length === 0) {
+    /* Nothing it can legally point at. That is a reason to refuse only when the
+       card would be spent for nothing — Ring of Destruction against a lone
+       Celtic Guardian, which it can never target, left the zone and did
+       nothing. It is *not* a reason when the card's worth is what it leaves on
+       the field: Toon World with no Toon left in the Deck still opens, and the
+       search simply finds nobody. The board used to decide this by itself and
+       got the second case wrong; the engine is asked now. */
+    const activating =
+      mine.hand.find((h) => h.uid === uid) ??
+      (mine.spellTrap?.uid === uid ? mine.spellTrap : undefined) ??
+      mine.monsters.find((m) => m?.uid === uid) ??
+      undefined;
+    if (options.length === 0 && (!activating || wastedWithoutTarget(state, me, activating, trigger))) {
       sfx.error();
       showToast('There is nothing this card can target.');
       setMode({ kind: 'idle' });
