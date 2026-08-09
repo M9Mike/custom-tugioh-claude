@@ -5046,6 +5046,64 @@ console.log('\nPegasus: the book, the drawings and the eye');
   ok(!effFlags(mine, theirToon, FOE).indestructibleByBattle, "and theirs gets nothing from it");
 }
 
+console.log('\nThe eye eats what you point at');
+{
+  /* Reported: "Relinquished should let me decide which monster to absorb".
+     Two faults under it. The Ritual's Tribute cost paid with whatever stood in
+     the first zone and threw the player's answer away — the board asks "Choose
+     a monster to Tribute" and the engine had never once read the reply. And the
+     monster's own arrival question had nowhere to travel, so the absorb fell
+     back to "the strongest" whatever was chosen. */
+  const s = fresh();
+  const ritual = card(ME, 'black-illusion-ritual');
+  s.players[ME].hand = [ritual, card(ME, 'relinquished')];
+  const keeper = card(ME, 'summoned-skull'); // zone 0 — what the cost used to eat
+  const offering = card(ME, 'kuriboh');      // zone 1 — what the player picks
+  s.players[ME].monsters = [keeper, offering, null];
+  const weak = card(FOE, 'mystical-elf');    // 800
+  const strong = card(FOE, 'summoned-skull'); // 2500 — the old auto-pick
+  s.players[FOE].monsters = [weak, strong, null];
+
+  const done = act(s, ME, { type: 'activateSpell', uid: ritual.uid, targets: [offering.uid, weak.uid] });
+  ok(
+    done.players[ME].grave.some((g) => g.slug === 'kuriboh'),
+    'the Tribute you pointed at is the one that pays',
+    done.players[ME].grave.map((g) => g.slug).join(',')
+  );
+  ok(
+    done.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'and the monster you kept is still standing'
+  );
+  const rel = done.players[ME].monsters.find((m) => m?.slug === 'relinquished');
+  ok(!!rel, 'Relinquished arrives', done.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(
+    !!rel && rel.absorbed.some((a) => a.slug === 'mystical-elf'),
+    'and swallows the monster you chose, not the biggest one',
+    rel ? rel.absorbed.map((a) => a.slug).join(',') || '(nothing)' : 'gone'
+  );
+  ok(
+    done.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'leaving the one you did not choose alone'
+  );
+
+  /* The fusion asks the same question, and always could — its own once-per-turn
+     is a player-initiated effect, so the board opens a picker for it. */
+  const eyes = fresh();
+  const eye = card(ME, 'thousand-eyes-restrict');
+  eyes.players[ME].monsters = [eye, null, null];
+  const small = card(FOE, 'mystical-elf');
+  eyes.players[FOE].monsters = [small, card(FOE, 'summoned-skull'), null];
+  const spec = targetSpecFor('thousand-eyes-restrict', 'ignition')!;
+  ok(targetCandidates(eyes, ME, spec).length === 2, 'the eye is offered both monsters to choose from');
+  const ate = act(eyes, ME, { type: 'ignition', uid: eye.uid, targets: [small.uid] });
+  const fed = ate.players[ME].monsters.find((m) => m?.slug === 'thousand-eyes-restrict');
+  ok(
+    !!fed && fed.absorbed.some((a) => a.slug === 'mystical-elf'),
+    'and swallows the one you named',
+    fed ? fed.absorbed.map((a) => a.slug).join(',') || '(nothing)' : 'gone'
+  );
+}
+
 console.log('\nA card worth playing for what it leaves behind still plays');
 {
   /* Reported: "toon world on an empty board says there is nothing this card can

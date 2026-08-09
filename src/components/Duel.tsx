@@ -24,7 +24,7 @@ import {
   tributesRequired,
   wastedWithoutTarget,
 } from '@/game/engine';
-import { effectLabel, pickerSides, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, pickerSides, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -92,6 +92,10 @@ type Mode =
       picked: string[];
       /** Pending summon that resolves once targets are chosen. */
       summon?: { position: 'atk' | 'def'; face: 'up' | 'down'; tributes: string[] };
+      /** Answers already given this activation, kept in front of the new ones.
+       *  Black Illusion Ritual asks for a Tribute and then, because it puts
+       *  Relinquished on the field, asks what to swallow. */
+      carry?: string[];
     }
   | { kind: 'attack'; uid: string }
   /** Action sheet for one of your own monsters on the field. */
@@ -999,6 +1003,18 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const beginTargeting = (source: 'spell' | 'ignition' | 'setcard' | 'trap', uid: string, slug: string, trigger: 'activate' | 'ignition' | 'trap') => {
     const spec = targetSpecFor(slug, trigger);
     if (!spec) {
+      /* No question of its own, but the monster it summons may have one. */
+      const rider = source === 'spell' ? summonRiderSpec(slug, 'activate') : null;
+      if (rider) {
+        const riderOptions = pickableUids(rider);
+        const riderWant = rider.count ?? 1;
+        if (riderOptions.length > riderWant) {
+          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: [] });
+          return;
+        }
+        send(source, uid, riderOptions.slice(0, riderWant));
+        return;
+      }
       send(source, uid, []);
       return;
     }
@@ -1040,12 +1056,32 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const submitTargets = (picked: string[]) => {
     if (mode.kind !== 'target') return;
-    const { source, uid, summon } = mode;
+    const { source, uid, summon, carry } = mode;
     if (source === 'summon' && summon) {
       finishSummon(uid, summon.position, summon.face, summon.tributes, picked);
       return;
     }
-    if (source === 'spell') void run({ type: 'activateSpell', uid, targets: picked });
+    const answers = [...(carry ?? []), ...picked];
+    /* A Spell that summons a named monster asks that monster's question too,
+       once its own is answered. Only asked when there is something to decide —
+       one candidate is named and sent, exactly as `finishSummon` does. */
+    if (source === 'spell' && !carry) {
+      const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
+      const rider = summonRiderSpec(slug, 'activate');
+      if (rider) {
+        const options = pickableUids(rider);
+        const want = rider.count ?? 1;
+        if (options.length > want) {
+          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: answers });
+          return;
+        }
+        if (options.length) {
+          void run({ type: 'activateSpell', uid, targets: [...answers, ...options.slice(0, want)] });
+          return;
+        }
+      }
+    }
+    if (source === 'spell') void run({ type: 'activateSpell', uid, targets: answers });
     else if (source === 'ignition') void run({ type: 'ignition', uid, targets: picked });
     else if (source === 'setcard') void run({ type: 'activateSetCard', uid, targets: picked });
     else if (source === 'trap') void run({ type: 'respondTrap', uid, targets: picked });

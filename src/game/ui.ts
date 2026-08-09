@@ -218,6 +218,29 @@ export function hasTrigger(slug: string, trigger: Trigger): boolean {
  * Both summon triggers count: a card that only reacts to a Normal Summon still
  * needs its target picked at the moment it is Normal Summoned.
  */
+/**
+ * The question a Spell's *summoned monster* asks, after the Spell's own.
+ *
+ * Black Illusion Ritual costs a Tribute and then puts Relinquished on the
+ * field, whose arrival asks what to swallow. Two questions, one activation —
+ * and the second had no way to be asked, so the engine fell back to "the
+ * strongest" and the player watched it eat something they had not chosen.
+ *
+ * Only when the Spell names exactly one monster it can summon. Anything vaguer
+ * cannot be asked about in advance, because what arrives is not yet decided.
+ */
+export function summonRiderSpec(slug: string, trigger: Trigger): TargetSpec | null {
+  const eff = CARDS[slug]?.effects.find((e) => e.trigger === trigger);
+  if (!eff) return null;
+  for (const op of eff.ops) {
+    if (op.op !== 'specialSummon') continue;
+    const named = op.filter?.slugs;
+    if (named?.length !== 1) continue;
+    return summonTargetSpec(named[0]);
+  }
+  return null;
+}
+
 export function summonTargetSpec(slug: string): TargetSpec | null {
   return targetSpecFor(slug, 'onSummon') ?? targetSpecFor(slug, 'onNormalSummon');
 }

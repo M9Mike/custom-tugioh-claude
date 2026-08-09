@@ -1474,7 +1474,16 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
           log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(state, picked)}!`, 'summon', ctx.controller);
           anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
-          if (picked.face === 'up') fireTriggers(state, picked, ctx.controller, 'onSummon', {});
+          /* The targets the activating player named and nothing has claimed
+             yet. Black Illusion Ritual asks for a Tribute and then summons
+             Relinquished, whose own arrival asks what to swallow — and that
+             second choice had nowhere to travel, so the engine fell back to
+             "the strongest" and the player's pick was ignored. `fireTriggers`
+             has always taken a target list; the summon simply never passed
+             one. */
+          if (picked.face === 'up') {
+            fireTriggers(state, picked, ctx.controller, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
+          }
           /* A Special Summon is a Summon, and Slifer's second mouth was only
              ever told about Normal and Fusion Summons — so a Monster Reborn'd
              Blue-Eyes, a revived anything, a searched-out Magnet Warrior, all
@@ -3123,10 +3132,28 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
           p.grave.push(p.hand.splice(idx, 1)[0]);
         }
       }
+      /* Whichever ones the player pointed at, and only then whatever is left.
+         This took the first monsters in the row regardless — the board asks
+         "Choose a monster to Tribute", collected an answer, and the engine
+         threw it away. The ignition path was fixed for Catapult Turtle and
+         this one was not.
+         The uids that pay are then kept *out* of the effect's own target list,
+         so a Spell that costs a Tribute and then asks a second question does
+         not hand the first answer to the second question: Black Illusion
+         Ritual tributes a monster and summons Relinquished, whose arrival asks
+         what to swallow. */
+      const paidForCost: string[] = [];
       if (eff?.cost?.tribute) {
-        const alive = p.monsters.filter((m): m is CardInstance => !!m);
-        if (alive.length < eff.cost.tribute) return { state: prev, error: 'Not enough monsters to tribute.' };
-        for (let i = 0; i < eff.cost.tribute; i++) toGrave(state, alive[i].uid, true);
+        const fodder = tributeFodder(state, pid, eff, c.uid);
+        if (fodder.length < eff.cost.tribute) return { state: prev, error: 'Not enough monsters to tribute.' };
+        const chosen = (action.targets ?? [])
+          .map((uid) => fodder.find((m) => m.uid === uid))
+          .filter((m): m is CardInstance => !!m);
+        const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, eff.cost.tribute);
+        for (const m of paying) {
+          paidForCost.push(m.uid);
+          toGrave(state, m.uid, true);
+        }
       }
 
       const hi2 = p.hand.findIndex((h) => h.uid === action.uid);
@@ -3145,7 +3172,9 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       }
 
       if (eff) {
-        const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
+        /* Minus whatever the cost already ate — see `paidForCost`. */
+        const forOps = (action.targets ?? []).filter((u) => !paidForCost.includes(u));
+        const ctx: EffectCtx = { state, controller: pid, source: c, targets: forOps, cursor: 0, trig: {} };
         runOps(ctx, eff.ops);
       }
 
