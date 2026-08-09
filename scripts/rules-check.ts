@@ -5756,6 +5756,84 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
     `field ${once.players[FOE].field ? 'kept' : 'gone'} / backrow ${once.players[FOE].spellTrap ? 'kept' : 'gone'}`);
 }
 
+console.log('\nAn aura is weather over the field, not over your hand');
+{
+  /* Reported: "some monsters are shown in the hand with green buffed attack
+     while still in hand". Nothing in the aura scan asked where the target was,
+     only whether it matched the filter — so Dark Sanctuary's "your monsters
+     gain 600" reached into the hand, the Graveyard and the Deck alike, and the
+     board tinted a number the card would only actually have once it arrived. */
+  const s = fresh();
+  s.players[ME].field = { ...card(ME, 'dark-sanctuary'), face: 'up' as const };
+  const standing = card(ME, 'battle-ox');
+  s.players[ME].monsters = [standing, null, null];
+  const held = card(ME, 'battle-ox');
+  const buried = card(ME, 'battle-ox');
+  const decked = card(ME, 'battle-ox');
+  s.players[ME].hand = [held];
+  s.players[ME].grave = [buried];
+  s.players[ME].deck = [decked];
+
+  ok(effAtk(s, standing, ME) === baseAtkOf('battle-ox') + 600, 'a monster on the field is lent the 600',
+    `${effAtk(s, standing, ME)}`);
+  ok(effAtk(s, held, ME) === baseAtkOf('battle-ox'), 'the copy in your hand is not', `${effAtk(s, held, ME)}`);
+  ok(effDef(s, held, ME) === CARDS['battle-ox'].def, 'in DEF either', `${effDef(s, held, ME)}`);
+  ok(effAtk(s, buried, ME) === baseAtkOf('battle-ox'), 'nor the one in the Graveyard', `${effAtk(s, buried, ME)}`);
+  ok(effAtk(s, decked, ME) === baseAtkOf('battle-ox'), 'nor the one still in the Deck', `${effAtk(s, decked, ME)}`);
+
+  /* And a grant travels the same way: a Toon in hand is not walking past
+     anybody's blockers yet. */
+  const book = fresh();
+  book.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const onField = card(ME, 'toon-mermaid');
+  onField.summonedOnTurn = 0;
+  book.players[ME].monsters = [onField, null, null];
+  const inHand = card(ME, 'toon-mermaid');
+  book.players[ME].hand = [inHand];
+  ok(!!effFlags(book, onField, ME).directAttack, 'CONTROL: the Toon standing under the book still walks past blockers');
+  ok(!effFlags(book, inHand, ME).directAttack, 'but the one in hand has not been given anything yet');
+}
+
+console.log('\nThe painting lets its faces out however it leaves');
+{
+  /* By the owner's ruling: sent to the Graveyard, not merely destroyed — so a
+     Tribute lets them out too. */
+  const tributed = fresh();
+  const painting = card(ME, 'the-portrait-s-secret');
+  painting.summonedOnTurn = 0;
+  tributed.players[ME].monsters = [painting, null, null];
+  const heavy = card(ME, 'summoned-skull'); // Level 6, one Tribute
+  tributed.players[ME].hand = [heavy];
+  const paid = act(tributed, ME, {
+    type: 'normalSummon', uid: heavy.uid, zone: 1, position: 'atk', face: 'up', tributes: [painting.uid],
+  });
+  const faces = paid.players[ME].monsters.filter((m) => m?.isToken).length;
+  ok(faces > 0, 'Tributing the painting still lets the faces out',
+    paid.players[ME].monsters.map((m) => (m ? (m.tokenName ?? m.slug) : '-')).join(','));
+  /* And the Summon it was paying for still lands. The faces used to fill all
+     three zones during the payment, so the Tribute Summon they had just bought
+     was refused for want of a zone — a Tribute's departure belongs after the
+     monster it bought is standing. */
+  ok(paid.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'and the monster it was paying for is standing there',
+    paid.players[ME].monsters.map((m) => (m ? (m.tokenName ?? m.slug) : '-')).join(','));
+  ok(faces === 2, 'with the faces taking only the room left over', `${faces} of 3 zones`);
+
+  /* Destroyed, it still does — "sent to the Graveyard" covers that too. */
+  const slashed = (() => {
+    const s = fresh();
+    const p2 = card(ME, 'the-portrait-s-secret');
+    s.players[ME].monsters = [p2, null, null];
+    s.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [dh];
+    return act(s, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(slashed.players[ME].monsters.filter((m) => m?.isToken).length === 3,
+    'CONTROL: and destroying it still leaves three of them',
+    slashed.players[ME].monsters.map((m) => (m ? (m.tokenName ?? m.slug) : '-')).join(','));
+}
+
 console.log('\nA flip you make yourself asks you who to bite');
 {
   /* Reported: "Man-Eater Bug the effect should allow me to select which

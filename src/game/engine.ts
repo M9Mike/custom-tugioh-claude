@@ -364,6 +364,14 @@ function auraCount(
 
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
   const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set() };
+  /* An aura is weather over the field, and a card in your hand is indoors.
+     Nothing here asked where the target was, only whether it matched the
+     filter — so with Dark Sanctuary open every monster in Bakura's hand was
+     drawn at +600, tinted green, promising a number it would only actually
+     have once it arrived. Reported as "shown in the hand with green buffed
+     attack while still in hand". The Graveyard and the Deck read printed too,
+     for the same reason. */
+  if (!findOnField(state, target.uid)) return bonus;
   for (const { c: source, controller } of fieldCards(state)) {
     if (source.isToken || source.flags.negated) continue;
     const def = CARDS[source.slug];
@@ -701,7 +709,30 @@ function releaseEquips(state: DuelState, c: CardInstance) {
   }
 }
 
-function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false) {
+/**
+ * A departure whose triggers have not gone off yet.
+ *
+ * A Tribute is paid *for* a Summon, and what the tributed card does on its way
+ * out belongs after the monster it bought has landed — not in the middle of
+ * paying. The Portrait's Secret is the card that makes this matter: it lets
+ * three of itself out when it is sent to the Graveyard, and firing that during
+ * payment filled all three Monster Zones, so the Summon it had just paid for
+ * had nowhere to go and was refused outright.
+ */
+interface PendingDeparture {
+  c: CardInstance;
+  controller: PlayerId;
+  destroyed: boolean;
+}
+
+function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
+  for (const d of pending) {
+    if (d.destroyed) fireTriggers(state, d.c, d.controller, 'onDestroyed', {});
+    fireTriggers(state, d.c, d.controller, 'onSentToGrave', {});
+  }
+}
+
+function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false, defer?: PendingDeparture[]) {
   const found = fromField ? findOnField(state, uid) : null;
   const controller = found?.controller;
   const c = removeFromAnywhere(state, uid);
@@ -734,8 +765,8 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
   state.players[c.owner].grave.push(c);
 
   if (wasOnField) {
-    if (destroyed) fireTriggers(state, c, controller, 'onDestroyed', {});
-    fireTriggers(state, c, controller, 'onSentToGrave', {});
+    if (defer) defer.push({ c, controller, destroyed });
+    else fireDepartures(state, [{ c, controller, destroyed }]);
   }
 }
 
@@ -3080,10 +3111,15 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
           paidDef += effDef(state, t, pid);
         }
       }
+      /* Held back until the monster they bought is standing. See
+         `PendingDeparture`: a painting that lets three of itself out on the way
+         to the Graveyard used to fill the very zone the Summon was headed for,
+         and the Summon was then refused for want of a zone. */
+      const departures: PendingDeparture[] = [];
       for (const tu of tributes) {
         const paid = p.monsters.find((m) => m?.uid === tu)!;
         log(state, `${p.name} tributes ${displayName(state, paid)}.`, 'summon', pid, logSlug(paid));
-        toGrave(state, tu, true);
+        toGrave(state, tu, true, false, departures);
       }
       /* Paying the tributes can put something back on the board — a Chimera
          coming apart, a trap answering the departure — and the zone chosen
@@ -3125,11 +3161,13 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
            Summon line beside this one already did. */
         log(state, `${p.name} Normal Summons ${displayName(state, c)}!`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: pid });
+        fireDepartures(state, departures);
         fireTriggers(state, c, pid, 'onSummon', {}, action.targets ?? []);
         fireTriggers(state, c, pid, 'onNormalSummon', {}, action.targets ?? []);
       } else {
         log(state, `${p.name} sets a monster.`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, player: pid });
+        fireDepartures(state, departures);
       }
       /* Setting a monster face-down is not a Summon, and opened this window
          anyway — so Trap Hole went off on a Set, and the prompt announced the

@@ -1347,15 +1347,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The face in the painting does not leave when the canvas is slashed — it
        steps out of it. Three of them, each worth 300 on the way out, so the
        board the opponent just cleared is immediately full again and clearing
-       it a second time costs them the duel a little at a time. */
+       it a second time costs them the duel a little at a time.
+
+       Sent to the Graveyard rather than destroyed, by the owner's ruling: the
+       faces come out however the painting leaves the field, so Tributing it or
+       spending it as material still lets them out. */
     text:
       'When this monster is destroyed by battle: inflict 700 damage to your opponent. ' +
-      'When this monster is destroyed: Special Summon up to 3 "Portrait Tokens" (Fiend/EARTH/Level 1/ATK 100/DEF 100) ' +
+      'When this monster is sent to the Graveyard: Special Summon up to 3 "Portrait Tokens" (Fiend/EARTH/Level 1/ATK 100/DEF 100) ' +
       'in face-up Defence Position. When a Portrait Token is sent to the Graveyard: inflict 300 damage to your opponent.',
     effects: [
       { trigger: 'onDestroyedByBattle', ops: [{ op: 'damage', amount: 700, to: 'opp' }] },
       {
-        trigger: 'onDestroyed',
+        trigger: 'onSentToGrave',
         ops: [
           {
             op: 'summonToken',
