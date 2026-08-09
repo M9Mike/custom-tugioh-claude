@@ -1567,14 +1567,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        still going through their Set cards, beats a whole one three turns from
        now. He does not lose the effect for arriving cheaply. */
     text:
-      'When this monster is summoned: destroy 1 set card your opponent controls. ' +
+      'When this monster is summoned: destroy 1 Spell or Trap your opponent controls. ' +
       'This monster may be Normal Summoned without Tributes; if it is, its ATK and DEF are halved.',
-    /* The filter is the whole point: it said "face-down" and did not check,
-       so summoning this blew up a Spell the opponent had already played. */
+    /* Face-up or face-down, and you choose which — the same selector Dark
+       Magician's ignition and De-Spell use, because they say the same sentence
+       and cards that say the same sentence must do the same thing. "Spell or
+       Trap your opponent controls" reaches the Field Zone too: a Field Spell is
+       a Spell they control. */
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap', filter: { face: 'down' } }) }],
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
     ],
   },

@@ -3116,7 +3116,10 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       p.normalSummonUsed = true;
 
       if (c.face === 'up') {
-        log(state, `${p.name} Normal Summons ${def.name}!`, 'summon', pid);
+        /* `displayName`, not the printed name: a drawing Normal Summoned under
+           an open Toon World is announced as the Toon it arrives as. The Flip
+           Summon line beside this one already did. */
+        log(state, `${p.name} Normal Summons ${displayName(state, c)}!`, 'summon', pid);
         anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: pid });
         fireTriggers(state, c, pid, 'onSummon', {}, action.targets ?? []);
         fireTriggers(state, c, pid, 'onNormalSummon', {}, action.targets ?? []);
@@ -3432,7 +3435,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       ex.face = 'up';
       ex.summonedOnTurn = state.turn;
       p.monsters[zone] = ex;
-      log(state, `${p.name} Fusion Summons ${CARDS[ex.slug].name}!`, 'summon', pid);
+      log(state, `${p.name} Fusion Summons ${displayName(state, ex)}!`, 'summon', pid);
       anim(state, {
         kind: 'fusion',
         uid: ex.uid,

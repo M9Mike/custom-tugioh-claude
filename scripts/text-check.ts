@@ -22,7 +22,7 @@
  *   npx tsx scripts/text-check.ts
  */
 import { CARDS } from '../src/game/cards';
-import type { CardDef, CardEffect, CardFilter, Trigger } from '../src/game/types';
+import type { CardDef, CardEffect, CardFilter, Op, Trigger } from '../src/game/types';
 
 /** A phrase in the rules text, and the triggers that would satisfy it. */
 const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
@@ -232,11 +232,61 @@ function checkSelfReference(def: CardDef): string[] {
   ];
 }
 
+/**
+ * A card that promises "a Spell or Trap" must not quietly mean "a Set one".
+ *
+ * The Earl of Demise was written the other way round — his text said "1 Set
+ * card" and his selector said face-down, which agreed. When the owner widened
+ * him to "1 Spell or Trap your opponent controls" the selector had to widen
+ * with him, and nothing in this battery would have noticed if it had not:
+ * narrowing that clause back to face-down-only passed every check.
+ *
+ * The reverse matters just as much. "Set" is a promise of a limit — a card
+ * that says it and then blows up anything is stronger than it reads, which is
+ * the same lie told the other way.
+ *
+ * Only the destroy ops are examined, and only the backrow ones: this is about
+ * which Spells and Traps a card can reach, not about monsters.
+ */
+const SAYS_SET = /\b(set card|set spell|set trap|face-down (spell|trap|card))/i;
+const SAYS_ANY_BACKROW = /\b(spell or trap|spell\/trap)\b/i;
+
+function checkBackrowReach(def: CardDef): string[] {
+  const out: string[] = [];
+  const backrowDestroys = (def.effects ?? [])
+    .flatMap((e) => e.ops ?? [])
+    .filter((op): op is Extract<Op, { op: 'destroy' }> => op.op === 'destroy')
+    .filter((op) => ['spellTrap', 'backrow', 'field'].includes(op.target.zone ?? ''));
+  if (!backrowDestroys.length) return out;
+
+  const anySet = backrowDestroys.some((op) => op.target.filter?.face === 'down');
+
+  if (SAYS_SET.test(def.text!) && !anySet) {
+    out.push(
+      `${def.name} (${def.slug}) — text limits itself to a Set card but the selector takes any Spell or Trap, ` +
+        'so the card reaches further than it reads'
+    );
+  }
+  /* `some`, not `every`. A card with several backrow clauses could otherwise
+     hide a narrowed one behind a wide one — Dark Magician has three, and
+     quietly limiting his once-per-turn to Set cards went unnoticed while his
+     summon still cleared the board. If a card never says "Set" anywhere, then
+     none of its clauses may mean it. */
+  if (!SAYS_SET.test(def.text!) && SAYS_ANY_BACKROW.test(def.text!) && anySet) {
+    out.push(
+      `${def.name} (${def.slug}) — text promises "1 Spell or Trap" but a selector only reaches Set ones, ` +
+        'so a card they have already played is safe from it'
+    );
+  }
+  return out;
+}
+
 for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown' || !def.text) continue;
   checked += 1;
 
   problems.push(...checkSelfReference(def));
+  problems.push(...checkBackrowReach(def));
 
   for (const { phrase, needs, label } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;

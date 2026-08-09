@@ -352,8 +352,12 @@ console.log('\nA set monster destroyed by an attack still flips and fires');
 }
 
 /* ------------------------------------------------------------------ */
-console.log('\nThe Earl of Demise only blows up cards that are actually set');
+console.log('\nThe Earl of Demise blows up a Spell or Trap whichever way it is facing');
 {
+  /* He used to reach only Set cards. By the owner's ruling he now reaches "1
+     Spell or Trap your opponent controls", which is the sentence De-Spell and
+     Dark Magician's ignition already say — so it means what it means there:
+     either face, and the Field Zone counts. */
   for (const face of ['up', 'down'] as const) {
     const s = fresh();
     const st = card(FOE, 'swords-of-revealing-light');
@@ -372,14 +376,28 @@ console.log('\nThe Earl of Demise only blows up cards that are actually set');
       position: 'atk',
       face: 'up',
       tributes: [t1.uid, t2.uid],
+      targets: [st.uid],
     });
-    const survived = !!after.players[FOE].spellTrap;
-    ok(
-      survived === (face === 'up'),
-      `a face-${face} Spell ${face === 'up' ? 'survives' : 'is destroyed'}`,
-      `it ${survived ? 'survived' : 'was destroyed'}`
-    );
+    ok(!after.players[FOE].spellTrap, `a face-${face} Spell is destroyed`,
+      after.players[FOE].spellTrap ? 'it survived' : 'gone');
   }
+
+  /* And with nobody to ask — the computer summoning him — exactly one falls,
+     never both. "Destroy 1" is a number the card has to keep even when the
+     choice is made for it. */
+  const auto = fresh();
+  const earl2 = card(ME, 'the-earl-of-demise');
+  auto.players[ME].hand = [earl2];
+  const t3 = card(ME, 'kuriboh');
+  const t4 = card(ME, 'kuriboh');
+  auto.players[ME].monsters = [t3, t4, null];
+  auto.players[FOE].spellTrap = { ...card(FOE, 'trap-hole'), face: 'down' as const };
+  auto.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+  const unasked = act(auto, ME, {
+    type: 'normalSummon', uid: earl2.uid, zone: 2, position: 'atk', face: 'up', tributes: [t3.uid, t4.uid],
+  });
+  const left = [unasked.players[FOE].spellTrap, unasked.players[FOE].field].filter(Boolean).length;
+  ok(left === 1, 'and with nobody asked, exactly one of the two falls', `${left} of 2 left standing`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -5678,19 +5696,88 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
   })();
   ok(drained === baseAtkOf('battle-ox'), 'and it haunts nobody — the husk has no effect at all', `${drained}`);
 
-  /* The Earl of Demise may skip the Tribute, at half of himself. */
+  /* The Earl of Demise may skip the Tribute, at half of himself, and his hand
+     goes through any Spell or Trap they control — face-up, face-down, or the
+     Field Spell — whichever one is pointed at. */
   const earl = fresh();
   const noble = card(ME, 'the-earl-of-demise');
   earl.players[ME].hand = [noble];
   const trap = { ...card(FOE, 'trap-hole'), face: 'down' as const };
   earl.players[FOE].spellTrap = trap;
   ok(tributesRequired('the-earl-of-demise', earl, ME) === 1, 'The Earl of Demise normally costs a Tribute');
-  const rushed = act(earl, ME, { type: 'normalSummon', uid: noble.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const rushed = act(earl, ME, {
+    type: 'normalSummon', uid: noble.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [trap.uid],
+  });
   const half = rushed.players[ME].monsters.find((m) => m?.slug === 'the-earl-of-demise');
   ok(!!half && effAtk(rushed, half, ME) === Math.floor(2000 / 2), 'but may arrive for nothing at half his ATK',
     half ? `${effAtk(rushed, half, ME)}` : 'gone');
   ok(rushed.players[FOE].spellTrap === null, 'and his hand still goes through their Set card',
     rushed.players[FOE].spellTrap ? 'still set' : 'gone');
+
+  /* The change the owner asked for: a card they have already played is no
+     longer safe from him. */
+  const played = fresh();
+  const noble2 = card(ME, 'the-earl-of-demise');
+  played.players[ME].hand = [noble2];
+  const faceUp = card(FOE, 'the-dark-door'); // face-up Continuous Spell
+  played.players[FOE].spellTrap = faceUp;
+  const shattered = act(played, ME, {
+    type: 'normalSummon', uid: noble2.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [faceUp.uid],
+  });
+  ok(shattered.players[FOE].spellTrap === null, 'and now through a face-up one as well',
+    shattered.players[FOE].spellTrap ? 'still standing' : 'gone');
+
+  /* "1 Spell or Trap your opponent controls" reaches the Field Zone, the same
+     reading De-Spell and Dark Magician's ignition already use. */
+  const weather = fresh();
+  const noble3 = card(ME, 'the-earl-of-demise');
+  weather.players[ME].hand = [noble3];
+  const book = { ...card(FOE, 'toon-world'), face: 'up' as const };
+  weather.players[FOE].field = book;
+  const closed = act(weather, ME, {
+    type: 'normalSummon', uid: noble3.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [book.uid],
+  });
+  ok(closed.players[FOE].field === null, 'and a Field Spell is a Spell they control',
+    closed.players[FOE].field ? 'still open' : 'gone');
+
+  /* One, not the lot. */
+  const both = fresh();
+  const noble4 = card(ME, 'the-earl-of-demise');
+  both.players[ME].hand = [noble4];
+  const set = { ...card(FOE, 'trap-hole'), face: 'down' as const };
+  const umi = { ...card(FOE, 'umi'), face: 'up' as const };
+  both.players[FOE].spellTrap = set;
+  both.players[FOE].field = umi;
+  const once = act(both, ME, {
+    type: 'normalSummon', uid: noble4.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [umi.uid],
+  });
+  ok(once.players[FOE].field === null && once.players[FOE].spellTrap !== null,
+    'and only the one he was pointed at',
+    `field ${once.players[FOE].field ? 'kept' : 'gone'} / backrow ${once.players[FOE].spellTrap ? 'kept' : 'gone'}`);
+}
+
+console.log('\nThe board announces a drawing by the name it arrives under');
+{
+  /* The engine's own Normal Summon line still read the printed name after the
+     client's copies were fixed, so a Dark Rabbit summoned under an open book
+     was announced as "Dark Rabbit" and then sat on the board called "Toon Dark
+     Rabbit". The Flip Summon line beside it had been right all along. */
+  const open = fresh();
+  open.players[ME].field = { ...card(ME, 'toon-world'), face: 'up' as const };
+  const bunny = card(ME, 'dark-rabbit');
+  open.players[ME].hand = [bunny];
+  open.players[FOE].hand = [card(FOE, 'kuriboh')];
+  const hopped = act(open, ME, { type: 'normalSummon', uid: bunny.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const said = hopped.log.find((l) => /Normal Summons/.test(l.text));
+  ok(!!said?.text.includes('Toon Dark Rabbit'), 'a drawing is announced as the Toon it arrives as', said?.text ?? '(no line)');
+
+  const shut = fresh();
+  const bunny2 = card(ME, 'dark-rabbit');
+  shut.players[ME].hand = [bunny2];
+  const plain = act(shut, ME, { type: 'normalSummon', uid: bunny2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const saidPlain = plain.log.find((l) => /Normal Summons/.test(l.text));
+  ok(!!saidPlain?.text.includes('Normal Summons Dark Rabbit') && !saidPlain!.text.includes('Toon'),
+    'CONTROL: and as itself with the book shut', saidPlain?.text ?? '(no line)');
 }
 
 console.log('\nA card that comes up empty says so');
