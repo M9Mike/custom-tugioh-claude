@@ -53,7 +53,9 @@ await page.waitForTimeout(2500);
 /* Clipped to the canvas rather than screenshotted through the element: an
    element shot waits for the box to stop moving, and a canvas driven by
    `requestAnimationFrame` never satisfies that. */
-const box = await page.locator('canvas').boundingBox();
+const canvas = page.locator('canvas');
+const box = await canvas.boundingBox();
+if (!box) throw new Error('character: the canvas has no bounding box — it never became visible');
 const clip = { x: box.x, y: box.y, width: box.width, height: box.height };
 
 if (SEAMS) {

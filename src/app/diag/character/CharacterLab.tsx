@@ -147,7 +147,14 @@ export default function CharacterLab() {
     };
     rebuild(specRef.current);
 
-    const cameras = SHEET.map(() => new THREE.PerspectiveCamera(35, 1, 0.02, 100));
+    /* One camera per viewport, sized to whichever view set is longer. Built
+       from `SHEET` alone it happens to work only because both sets are six
+       long today, and the seventh seam view anybody adds would index past the
+       end of the array. */
+    const cameras = Array.from(
+      { length: Math.max(SHEET.length, SEAMS.length) },
+      () => new THREE.PerspectiveCamera(35, 1, 0.02, 100)
+    );
 
     const resize = () => {
       renderer.setSize(el.clientWidth || 1, el.clientHeight || 1, false);
