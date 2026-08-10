@@ -182,11 +182,6 @@ const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
  * Which surfaces may not end up inside which.
  *
  * `probe` names the parts that move, `into` the tubes they must stay out of.
- */
-/**
- * Which surfaces may not end up inside which.
- *
- * `probe` names the parts that move, `into` the tubes they must stay out of.
  * `otherSideOnly` is for pairs that share a limb and are *meant* to overlap
  * where they join — a shin lives inside the bottom of its own thigh, and a foot
  * inside the bottom of its own shin. Those get checked against the far leg,
@@ -198,6 +193,7 @@ const CLASHES: { probe: string; into: string[]; otherSideOnly?: boolean }[] = [
   { probe: 'forearm', into: ['thigh', 'shin', 'torso'] },
   { probe: 'hand', into: ['forearm'], otherSideOnly: true },
   { probe: 'foot', into: ['shin', 'thigh'], otherSideOnly: true },
+  { probe: 'sole', into: ['shin', 'thigh'], otherSideOnly: true },
   { probe: 'shin', into: ['thigh'], otherSideOnly: true },
 ];
 
@@ -537,7 +533,7 @@ export default function CharacterLab() {
                     src.mesh.localToWorld(p);
                     const d = insideDepth(ray, p, dst.mesh, local, axis, dir);
                     if (d > CLASH_TOLERANCE) {
-                      const key = `${probe} in ${targetPart}`;
+                      const key = `${probe}.${src.side} in ${targetPart}${dst.side ? `.${dst.side}` : ''}`;
                       worst.set(key, Math.max(worst.get(key) ?? 0, d));
                     }
                   }

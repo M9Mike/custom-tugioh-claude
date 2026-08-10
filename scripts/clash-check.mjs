@@ -30,11 +30,12 @@ const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium'
 
 const browser = await chromium.launch({ executablePath: EXEC });
 let bad = 0;
+let errors = 0;
 try {
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
   page.on('pageerror', (e) => {
     console.log('PAGEERROR:', e.message);
-    bad++;
+    errors++;
   });
   const res = await page.goto(`${BASE}/diag/character`, { waitUntil: 'domcontentloaded' });
   if (!res || !res.ok()) throw new Error(`clash: ${BASE}/diag/character returned ${res ? res.status() : 'nothing'}`);
@@ -75,8 +76,11 @@ try {
   await browser.close();
 }
 
-if (bad) {
-  console.log(`\nclash: ${bad} mode(s) with parts inside other parts.`);
+if (bad || errors) {
+  /* Reported apart, because a page error is not a limb inside a limb and
+     saying so sends you looking at the model instead of the console. */
+  if (errors) console.log(`\nclash: ${errors} page error(s) during the audit.`);
+  if (bad) console.log(`\nclash: ${bad} mode(s) with parts inside other parts.`);
   process.exit(1);
 }
 console.log('\nclash: nothing passes through anything, standing or walking.');

@@ -438,8 +438,8 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
   const hemY = O.hem * S;
   const topY = neckBaseY + 0.012 * S;
-  add(torso, torsoLoft(-0.1 * S, hemY + 0.03 * S, 0.008 * S), trouser);
-  add(torso, torsoLoft(hemY, topY, 0.015 * S, 0.16 * S, { r: 0.088 * neckG, cz: -0.006 * S }), primary);
+  add(torso, torsoLoft(-0.1 * S, hemY + 0.03 * S, 0.008 * S), trouser, 'torso');
+  add(torso, torsoLoft(hemY, topY, 0.015 * S, 0.16 * S, { r: 0.088 * neckG, cz: -0.006 * S }), primary, 'torso');
 
   /* The jacket's closure, in the secondary colour: a placket down the centre
      front, which is what turns one lofted tube into a garment that was cut and
@@ -618,7 +618,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     shin.add(foot);
     feet.push(foot);
     add(foot, footGeometry(ankleY, S), boots, `foot.${sideTag}`);
-    add(foot, soleGeometry(ankleY, S), leather, `foot.${sideTag}`);
+    add(foot, soleGeometry(ankleY, S), leather, `sole.${sideTag}`);
   }
 
   /* ---------------- cape ---------------- */
