@@ -2309,8 +2309,19 @@ console.log('\nGOD CARDS ARE ABOVE EVERYTHING');
   const godAfter = walled.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon');
   ok(!!godAfter && effAtk(walled, godAfter, ME) === 3000,
     'Mirror Wall cannot halve a God', godAfter ? `ATK ${effAtk(walled, godAfter, ME)}` : 'gone');
-  ok(walled.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
-    'CONTROL: the negation itself still holds — the wall says no, it just cannot maim');
+  /* The negation used to be allowed to stand — "the wall says no, it just
+     cannot maim" — on the reasoning that refusing a blow is not a protection.
+     The owner's instruction overrules it: "they can attack over swords over
+     cage over everything, NO EFFECTS ON THE GODS". Turning the swing back is
+     a card effect reaching a God, and it was the last door left open: Marik
+     would pay 1000 for God Phoenix, clear the board, swing for lethal and be
+     waved away — and because the computer can see that coming, it declined to
+     do any of it and passed the turn with the duel won on the board. */
+  ok(!walled.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'),
+    'and it cannot turn a God back either — the blow lands anyway',
+    walled.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || 'their field is empty');
+  ok(walled.players[FOE].spellTrap === null || walled.players[FOE].spellTrap?.face === 'up',
+    'CONTROL: the wall was really played — it is spent, it simply did nothing');
 
   // CONTROL: between mortals every protection still holds.
   const mortal = fresh();

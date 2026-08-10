@@ -1669,10 +1669,27 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
         applyEvolution(state, ctx.source, ctx.controller);
         break;
-      case 'negateAttack':
+      case 'negateAttack': {
+        /* A God's blow cannot be refused. "They can attack over swords over
+           cage over everything — NO EFFECTS ON THE GODS": stopping the swing
+           is a card effect reaching a God like any other, and it was the last
+           door left open. Mirror Force, Negate Attack and Mirror Wall could
+           all wave Ra away, which made the God's whole turn worthless and —
+           worse — the computer could *see* that coming, so it declined to
+           press God Phoenix or to attack at all and simply passed with lethal
+           on the board. Reported from a real duel as "he won't use Ra's
+           effect, nor attack, when clearly he has game if he does both".
+           They may still be played, and every other rider on them still
+           lands; they just cannot turn a God back. */
+        const attacker = findOnField(state, ctx.trig?.attackerUid ?? '');
+        if (attacker && isDivine(attacker.c.slug)) {
+          log(state, `Nothing turns a God aside — ${displayName(state, attacker.c)} attacks on.`, 'effect');
+          break;
+        }
         ctx.attackNegated = true;
         log(state, 'The attack is negated!', 'effect');
         break;
+      }
       case 'endBattlePhase':
         ctx.battlePhaseEnded = true;
         break;
