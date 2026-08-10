@@ -176,7 +176,7 @@ async function run(phoneName) {
   /* ---- the main menu offers it ---- */
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const entry = page.locator('button:has-text("Story Mode")').first();
-  check(await entry.isVisible(), 'Story Mode is on the main menu');
+  check(await entry.isVisible().catch(() => false), 'Story Mode is on the main menu');
   await tapWhenAwake(page, 'button:has-text("Story Mode")');
   await page.waitForURL(/\/story$/, { timeout: 20000 });
   ok('it opens Story Mode');

@@ -80,7 +80,15 @@ async function devRead(): Promise<Record<string, StoryProfile>> {
   try {
     const fs = await import('node:fs/promises');
     return JSON.parse(await fs.readFile(DEV_FILE, 'utf8')) as Record<string, StoryProfile>;
-  } catch {
+  } catch (err) {
+    /* No file is the ordinary case — nobody has played yet. Anything else is a
+       corrupt or unreadable save, which still falls back to "no profiles" so
+       Story Mode opens, but says so first: a character that has silently
+       stopped coming back is otherwise indistinguishable from one that was
+       never made. */
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.error(`story: could not read ${DEV_FILE}, continuing without it`, err);
+    }
     return {};
   }
 }
@@ -135,8 +143,15 @@ export async function loadOrCreateProfile(canonical: string): Promise<StoryProfi
   const existing = await loadProfile(canonical);
   if (existing) return existing;
   const fresh = newProfile(canonical, Date.now());
-  await commit(fresh, true);
-  return fresh;
+  /* `commit` stores revision one, so handing `fresh` back with its revision
+     zero would give the caller a profile that is already out of date — every
+     first write against a new account would then lose its compare-and-set and
+     have to go round again. And if another request created the account first,
+     `fresh` was never stored at all: re-reading is the only way to find out
+     what actually landed. */
+  const won = await commit(fresh, true);
+  if (won) return { ...fresh, rev: (fresh.rev ?? 0) + 1 };
+  return (await loadProfile(canonical)) ?? fresh;
 }
 
 /** What a route decided to do with the profile it was handed. */

@@ -260,8 +260,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
       if (e.type === 'keydown') held.add(k);
       else held.delete(k);
     };
+    /* A key held while the tab goes away never sends its keyup, and the duelist
+       marches off across the field on their own until you press it and let go
+       again. Losing focus means letting go of everything. */
+    const releaseAll = () => held.clear();
+    const onHidden = () => {
+      if (document.hidden) releaseAll();
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', onHidden);
 
     const resize = () => {
       const w = el.clientWidth || 1;
@@ -362,6 +371,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
       ro.disconnect();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', releaseAll);
+      document.removeEventListener('visibilitychange', onHidden);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
@@ -435,8 +446,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
      way out. Two saves in quick succession used to schedule two, and the first
      one wiped the second one's message halfway through reading it. */
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Also the guard for a save that is still in flight when the player leaves.
+     Clearing the timer on unmount is not enough on its own: the one this save
+     is about to schedule does not exist yet, so without knowing we are gone it
+     would be armed *after* the cleanup and left to fire into nothing. */
+  const alive = useRef(true);
   useEffect(
     () => () => {
+      alive.current = false;
       if (noteTimer.current) clearTimeout(noteTimer.current);
     },
     []
@@ -457,8 +474,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
       console.error('open world: onSave rejected', err);
       problem = 'Could not save. Try again in a moment.';
     } finally {
-      setSaving(false);
+      if (alive.current) setSaving(false);
     }
+    /* The save itself has landed either way — only the reporting of it is
+       skipped, because there is nobody left to report to. */
+    if (!alive.current) return;
     setNote(problem ?? 'Saved.');
     if (!problem) sfx.heal();
     else sfx.error();

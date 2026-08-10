@@ -53,17 +53,24 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     return new Map(pool.map((slug, i) => [slug, list[i]]));
   }, [pool]);
 
-  /* The sounds and the error are raised out here rather than inside a
-     `setChosen` updater. React may call an updater more than once — Strict Mode
-     does so on every render in development — and one tap was playing its sound
-     twice and setting the message twice. `chosen` is already in scope in an
-     event handler, so there is nothing an updater was buying. */
+  /**
+   * A card moves in or out, and the strip above opens it.
+   *
+   * The two halves are deliberately split. What the player *hears* is decided
+   * out here from this render's `chosen`, because React may call a state
+   * updater more than once — Strict Mode does so on every render in
+   * development — and one tap was playing its sound twice and setting the
+   * message twice. What the deck *becomes* still goes through an updater,
+   * because two taps landing before a re-render would otherwise both build
+   * their new list from the same stale array and the second would undo the
+   * first. Neither concern is the other's, and each is answered where it lives.
+   */
   const toggle = (slug: string) => {
     setError(null);
     setInspect(instances.get(slug) ?? null);
     if (inDeck.has(slug)) {
       sfx.flip();
-      setChosen(chosen.filter((s) => s !== slug));
+      setChosen((cur) => cur.filter((s) => s !== slug));
       return;
     }
     if (chosen.length >= DECK_SIZE) {
@@ -72,7 +79,7 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
       return;
     }
     sfx.place();
-    setChosen([...chosen, slug]);
+    setChosen((cur) => (cur.includes(slug) || cur.length >= DECK_SIZE ? cur : [...cur, slug]));
   };
 
   const confirm = async () => {
