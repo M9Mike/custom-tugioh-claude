@@ -43,6 +43,7 @@
     "picker": "tsx scripts/picker-check.ts",
     "banner": "tsx scripts/banner-check.ts",
     "nudge": "node scripts/nudge-check.mjs",
+    "ra": "tsx scripts/ra-lethal-check.ts",
     "story": "node scripts/story-check.mjs"
   },
   "dependencies": {
