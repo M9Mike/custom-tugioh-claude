@@ -63,8 +63,16 @@ function position(): DuelState {
   return s;
 }
 
-/** Run one variant and report whether the computer found the kill. */
-function trial(name: string, tweak: (s: DuelState) => void, budgetMs = 2500): boolean {
+/**
+ * Run one variant and check it came out the way it should.
+ *
+ * `wantKill: false` is not a tolerated failure, it is an assertion in its own
+ * right — Kuriboh blanks the damage and is *meant* to. It never touches the
+ * God; it is a shield on its owner, so the decree does not reach it and the
+ * swing is still made. A check left permanently red for a case everybody has
+ * agreed about is a check that teaches you to ignore it.
+ */
+function trial(name: string, tweak: (s: DuelState) => void, budgetMs = 2500, wantKill = true): boolean {
   const s = position();
   tweak(s);
   const plan = planTurn(s, ME, 'champion', budgetMs);
@@ -89,11 +97,17 @@ function trial(name: string, tweak: (s: DuelState) => void, budgetMs = 2500): bo
   const won = end.winner === ME;
   const used = plan.some((a) => a.type === 'ignition');
   const hit = plan.some((a) => a.type === 'attack');
+  /* Pressing the button and swinging is required either way. A variant that is
+     not supposed to end the duel must still show Marik taking the line — if he
+     went back to passing the turn, that is the reported bug returning and it
+     must not hide behind an expected survival. */
+  const okNow = used && hit && won === wantKill;
   console.log(
-    `  ${won ? '✅' : '❌'} ${name.padEnd(46)} phoenix:${used ? 'y' : 'n'} attack:${hit ? 'y' : 'n'} ` +
-      `they end on ${end.players[FOE].lp}  [${plan.map((a) => a.type).join(' → ')}]`
+    `  ${okNow ? '✅' : '❌'} ${name.padEnd(48)} phoenix:${used ? 'y' : 'n'} attack:${hit ? 'y' : 'n'} ` +
+      `they end on ${String(end.players[FOE].lp).padStart(4)}` +
+      `${wantKill ? '' : ' (survival expected)'}  [${plan.map((a) => a.type).join(' → ')}]`
   );
-  return won;
+  return okNow;
 }
 
 const base = position();
@@ -108,13 +122,17 @@ const results = [
     set.summonedOnTurn = s.turn - 1;
     s.players[FOE].spellTrap = set;
   }),
-  trial('they hold a face-down + a card in hand', (s) => {
+  /* Kuriboh survives on purpose, confirmed by the owner: "Kuriboh as is". It
+     blanks the battle damage without ever touching Ra, so it is a shield on
+     the player rather than an effect on a God, and the decree does not reach
+     it. Ra still attacks — that half is still asserted. */
+  trial('Kuriboh in hand blanks the damage — by design', (s) => {
     const set = card(FOE, 'mirror-force');
     set.face = 'down';
     set.summonedOnTurn = s.turn - 1;
     s.players[FOE].spellTrap = set;
     s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'dark-hole')];
-  }),
+  }, 2500, false),
   trial('Ra landed this turn (Special Summoned)', (s) => {
     const ra = s.players[ME].monsters[0]!;
     ra.summonedOnTurn = s.turn;
@@ -132,5 +150,5 @@ const results = [
   trial('a very tight time budget (100ms)', () => {}, 100),
 ];
 
-console.log(`\n${results.filter(Boolean).length}/${results.length} variants found the kill.`);
+console.log(`\n${results.filter(Boolean).length}/${results.length} variants came out as they should.`);
 process.exitCode = results.every(Boolean) ? 0 : 1;
