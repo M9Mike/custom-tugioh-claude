@@ -303,7 +303,15 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
   /* ---------------- confirmation ---------------- */
 
+  /* A ref, not `busy`: state does not update until the next render, so a fast
+     double-tap on a button that reads `disabled={busy}` can still fire twice
+     and post twice. On the one screen whose result is permanent, once means
+     once. */
+  const binding = useRef(false);
+
   const confirm = async () => {
+    if (binding.current) return;
+    binding.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -312,6 +320,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         setError(problem);
         setBusy(false);
         setAsking(false);
+        binding.current = false;
       }
       /* No success branch, deliberately: the caller swaps this screen out, and
          re-enabling the button first would flash it live for a frame on the way
@@ -326,6 +335,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       setError('Your duelist could not be saved. Try again in a moment.');
       setBusy(false);
       setAsking(false);
+      binding.current = false;
     }
   };
 

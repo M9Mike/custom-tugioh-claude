@@ -168,9 +168,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
        short strokes in a spread of greens, tiled small enough that a metre of
        ground is a metre of grass rather than a metre of pattern. At head height
        it reads as grass and it weighs nothing. */
-    const groundTex = keep(grassTexture(renderer.capabilities.getMaxAnisotropy()));
+    const painted = grassTexture(renderer.capabilities.getMaxAnisotropy());
+    const groundTex = painted ? keep(painted) : null;
     const groundGeo = keep(new THREE.CircleGeometry(WORLD_RADIUS + 60, 64));
-    const groundMat = keep(new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, metalness: 0 }));
+    const groundMat = keep(
+      new THREE.MeshStandardMaterial({
+        map: groundTex,
+        color: groundTex ? '#ffffff' : '#4d6b32',
+        roughness: 1,
+        metalness: 0,
+      })
+    );
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -589,13 +597,21 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
 /* Generated assets                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Grass, painted into a canvas: a few thousand short strokes in six greens. */
-function grassTexture(anisotropy: number): THREE.CanvasTexture {
+/**
+ * Grass, painted into a canvas: a few thousand short strokes in six greens.
+ *
+ * Returns null if the browser will not give up a 2D context — which happens on
+ * a device that has run out of them, and which used to take the whole world
+ * down with a TypeError on the `!`. The caller falls back to a flat green,
+ * because a plain field is a field and a crash is a black screen.
+ */
+function grassTexture(anisotropy: number): THREE.CanvasTexture | null {
   const size = 256;
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
-  const ctx = c.getContext('2d')!;
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
   ctx.fillStyle = '#415c2a';
   ctx.fillRect(0, 0, size, size);
   let seed = 7717;

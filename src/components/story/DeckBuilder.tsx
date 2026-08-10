@@ -15,7 +15,7 @@
  * one.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { CARDS } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
@@ -82,7 +82,14 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     setChosen((cur) => (cur.includes(slug) || cur.length >= DECK_SIZE ? cur : [...cur, slug]));
   };
 
+  /* See the note on the same guard in the creation booth: `busy` is state and
+     does not take effect until the next render, so a fast double-tap can post
+     twice. Sleeving is permanent; once means once. */
+  const sleeving = useRef(false);
+
   const confirm = async () => {
+    if (sleeving.current) return;
+    sleeving.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -91,6 +98,7 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
         setError(problem);
         setBusy(false);
         setAsking(false);
+        sleeving.current = false;
       }
       /* No success branch, deliberately: both callers move to another screen and
          this one unmounts, so clearing `busy` here would only flash the button
@@ -103,6 +111,7 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
       setError('Your deck could not be saved. Try again in a moment.');
       setBusy(false);
       setAsking(false);
+      sleeving.current = false;
     }
   };
 
