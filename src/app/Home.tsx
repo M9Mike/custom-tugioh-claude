@@ -352,11 +352,8 @@ export default function Home() {
           }}
           disabled={busy !== null || !ready}
         >
-          ⚔ Story Mode
+          Story Mode
         </button>
-        <p className="mt-2 text-center text-[10px] leading-relaxed text-ptextdim">
-          Make a duelist, cut your first deck, and walk out into the world.
-        </p>
 
         <div className="my-4 flex items-center gap-3">
           <div className="brass-rule flex-1" />
