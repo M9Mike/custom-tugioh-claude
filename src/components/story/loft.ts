@@ -32,13 +32,78 @@ import * as THREE from 'three';
 export type Profile = readonly (readonly number[])[];
 
 /**
+ * Slopes for one column of a table, cached against the table itself.
+ *
+ * Fritsch–Carlson: the slope at each row starts as the average of the secants
+ * either side of it, then is clamped so the curve between two rows never leaves
+ * the interval they bound. The clamp is the point — a plain Catmull-Rom will
+ * happily bulge a thigh past the widest number in the table on its way to the
+ * next one, and then the table has stopped describing the model.
+ *
+ * The tables are module constants, so this runs once per column for the life of
+ * the page rather than once per vertex.
+ */
+const slopeCache = new WeakMap<Profile, Map<number, Float64Array>>();
+
+function slopesFor(table: Profile, col: number): Float64Array {
+  let byCol = slopeCache.get(table);
+  if (!byCol) {
+    byCol = new Map();
+    slopeCache.set(table, byCol);
+  }
+  const hit = byCol.get(col);
+  if (hit) return hit;
+
+  const n = table.length;
+  const m = new Float64Array(n);
+  if (n > 1) {
+    const d = new Float64Array(n - 1);
+    for (let i = 0; i < n - 1; i++) {
+      d[i] = (table[i + 1][col] - table[i][col]) / (table[i + 1][0] - table[i][0]);
+    }
+    m[0] = d[0];
+    m[n - 1] = d[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      /* Flat at a turning point. Where the secants either side change sign the
+         row is a local maximum or minimum — the widest part of a calf, the
+         crown of the skull — and averaging them leaves a slope running through
+         it, which the interval clamp below does not catch because it only ever
+         looks at one interval at a time. The curve then sails past the widest
+         measurement in the table on its way over the top. */
+      m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (d[i] === 0) {
+        /* A flat run stays flat, instead of dipping between its ends. */
+        m[i] = 0;
+        m[i + 1] = 0;
+        continue;
+      }
+      const a = m[i] / d[i];
+      const b = m[i + 1] / d[i];
+      const s = a * a + b * b;
+      if (s > 9) {
+        const tau = 3 / Math.sqrt(s);
+        m[i] = tau * a * d[i];
+        m[i + 1] = tau * b * d[i];
+      }
+    }
+  }
+  byCol.set(col, m);
+  return m;
+}
+
+/**
  * Reads a column of a profile at an arbitrary parameter.
  *
- * Smoothstepped rather than linear between rows. Straight lerping is visible:
- * the surface creases along every keyframe, because the normal changes
- * discontinuously there, and you get a body that looks faceted in exactly the
- * places you were trying to shape. Easing costs one multiply and makes the
- * table a set of *hints* about the curve rather than a set of hard corners.
+ * A cubic through the whole table, not an ease between each neighbouring pair.
+ * The difference is the entire reason a bald head used to look like a contour
+ * map. Smoothstep is flat at both ends — its derivative is zero at `t` = 0 and
+ * `t` = 1 — so a stack of them holds the surface still at every measurement and
+ * does all its bending in between. Curvature therefore spikes and dies once per
+ * row, and at sixty-six rings up a skull that is sixty-six rings' worth of
+ * visible terracing. Interpolating with slopes carried *through* the rows makes
+ * the second derivative behave, and the terraces go.
  */
 export function sample(table: Profile, v: number, col: number): number {
   const n = table.length;
@@ -48,8 +113,55 @@ export function sample(table: Profile, v: number, col: number): number {
   while (i < n - 2 && table[i + 1][0] < v) i++;
   const a = table[i];
   const b = table[i + 1];
-  const t = (v - a[0]) / (b[0] - a[0]);
-  return a[col] + (b[col] - a[col]) * t * t * (3 - 2 * t);
+  const h = b[0] - a[0];
+  const t = (v - a[0]) / h;
+  const m = slopesFor(table, col);
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (
+    (2 * t3 - 3 * t2 + 1) * a[col] +
+    (t3 - 2 * t2 + t) * h * m[i] +
+    (-2 * t3 + 3 * t2) * b[col] +
+    (t3 - t2) * h * m[i + 1]
+  );
+}
+
+/**
+ * How to close a lathe at a pole without leaving a point on it.
+ *
+ * Fanning the last ring straight to an apex is the obvious way to shut a
+ * surface, and it puts a teat on the crown of the head: the meridian arrives
+ * still travelling inwards at a finite rate, the fan carries on at that rate,
+ * and where they meet there is a corner the light draws a hard line along. It
+ * is the single most conspicuous thing about a bald duelist.
+ *
+ * This returns the rings of a circular arc instead — tangent to the surface
+ * where it starts, and flat where it reaches the pole, which is the one
+ * condition a smooth closed surface has to meet there. Each entry scales the
+ * final section and lifts it; the last is the apex, at scale zero.
+ *
+ * `slope` is d(radius)/d(height) as the surface arrives, and must be negative:
+ * a lathe still widening cannot be closed this way.
+ */
+export function domeRings(r1: number, slope: number, steps: number): { scale: number; rise: number }[] {
+  const out: { scale: number; rise: number }[] = [];
+  /* One ring minimum: every path below divides by this. */
+  steps = Math.max(1, Math.floor(steps));
+  if (!(r1 > 0) || !(slope < 0)) {
+    /* Nothing sensible to fit. Close it flat rather than guess. */
+    for (let j = 0; j <= steps; j++) out.push({ scale: 1 - j / steps, rise: 0 });
+    return out;
+  }
+  /* Centre the arc on the axis, `rho` below the pole. `k` falls out of
+     requiring the radius at the start to be perpendicular to the surface. */
+  const k = -r1 * slope;
+  const rho = Math.hypot(r1, k);
+  const phi1 = Math.atan2(r1, k);
+  for (let j = 0; j <= steps; j++) {
+    const phi = phi1 * (1 - j / steps);
+    out.push({ scale: (rho * Math.sin(phi)) / r1, rise: rho * Math.cos(phi) - k });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
