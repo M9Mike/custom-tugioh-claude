@@ -39,6 +39,26 @@ const AUTHORISED: Record<string, string> = {
   mike: 'Mike',
 };
 
+/**
+ * The account a request is acting as — **on the request's word alone.**
+ *
+ * Say it plainly, because every Story Mode route funnels through this line and
+ * none of them can tell who is calling: there is no password, no session, no
+ * token and no signature anywhere in Story Mode yet. A caller states a username
+ * and is believed. Anyone who can reach the API can write any admitted account's
+ * character, deck and position.
+ *
+ * That is the state the mode is deliberately being built in, and the reason it
+ * is not a live hole is the roster above: exactly one hardcoded development name
+ * is admitted, so there is nobody to impersonate. It stops being true the moment
+ * a second account exists.
+ *
+ * So this function is the gate for what comes next, and it is the *only* one:
+ * accounts, passwords and registration all land here, as a credential checked
+ * against a real user record before a name is handed back. Until then, no route
+ * should treat the name it gets as proof of anything, and nothing that matters
+ * outside one player's own save should be reachable through them.
+ */
 export function canonicalUsername(username: string): string | null {
   return AUTHORISED[fold(username)] ?? null;
 }

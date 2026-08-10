@@ -267,18 +267,31 @@ async function run(phoneName) {
   await fs.writeFile(`${OUT}/${phoneName}-5-world.png`, await page.screenshot());
 
   /* Walk. The stick is a DOM element over the canvas, so this is a real drag
-     with a real finger, and the proof is that the picture is different after. */
-  const stick = page.locator('[aria-label="Move"]');
-  const box = await stick.boundingBox();
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2, box.y - 40, { steps: 8 });
-  await page.waitForTimeout(1600);
-  await page.mouse.up();
-  const walked = await canvasShot(page);
-  check(!walked.equals(standing), 'the duelist walks');
-  await fs.writeFile(`${OUT}/${phoneName}-6-walked.png`, await page.screenshot());
+     with a real finger, and the proof is that the picture is different after.
+
+     `boundingBox()` is null for an element that is not laid out — a stick that
+     never rendered, or one pushed off-screen by a safe-area inset. That is a
+     real failure of a real control and it is worth reporting as one: reading
+     `.x` off the null instead crashed the whole run on a TypeError naming a
+     line number, and took the menu, Save, Edit Deck and the re-entry check
+     down with it, none of which need the stick at all. */
+  const box = await page.locator('[aria-label="Move"]').boundingBox();
+  if (!box) {
+    bad('the duelist walks', 'the thumb stick is not on screen — nothing to drag');
+    await fs.writeFile(`${OUT}/${phoneName}-X-no-stick.png`, await page.screenshot());
+  } else {
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.touchscreen.tap(cx, cy);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx, box.y - 40, { steps: 8 });
+    await page.waitForTimeout(1600);
+    await page.mouse.up();
+    const walked = await canvasShot(page);
+    check(!walked.equals(standing), 'the duelist walks');
+    await fs.writeFile(`${OUT}/${phoneName}-6-walked.png`, await page.screenshot());
+  }
 
   /* ---- the corner menu ---- */
   await page.locator('button[aria-label="Menu"]').first().tap();

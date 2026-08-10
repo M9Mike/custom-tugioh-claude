@@ -74,9 +74,22 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
   const confirm = async () => {
     setBusy(true);
     setError(null);
-    const problem = await onConfirm(chosen);
-    if (problem) {
-      setError(problem);
+    try {
+      const problem = await onConfirm(chosen);
+      if (problem) {
+        setError(problem);
+        setBusy(false);
+        setAsking(false);
+      }
+      /* No success branch, deliberately: both callers move to another screen and
+         this one unmounts, so clearing `busy` here would only flash the button
+         back to life for a frame first. */
+    } catch (err) {
+      /* A rejection is a broken caller rather than a refused deck — but nothing
+         else clears `busy` and nothing is going to unmount this screen either,
+         so without this the builder sits on "Sleeving…" for ever. */
+      console.error('deck builder: onConfirm rejected', err);
+      setError('Your deck could not be saved. Try again in a moment.');
       setBusy(false);
       setAsking(false);
     }

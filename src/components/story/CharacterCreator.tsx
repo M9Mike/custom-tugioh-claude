@@ -300,13 +300,27 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
   const confirm = async () => {
     setBusy(true);
     setError(null);
-    const problem = await onConfirm({ ...spec, name: spec.name.trim() || username });
-    if (problem) {
-      setError(problem);
+    try {
+      const problem = await onConfirm({ ...spec, name: spec.name.trim() || username });
+      if (problem) {
+        setError(problem);
+        setBusy(false);
+        setAsking(false);
+      }
+      /* No success branch, deliberately: the caller swaps this screen out, and
+         re-enabling the button first would flash it live for a frame on the way
+         to unmounting. */
+    } catch (err) {
+      /* `onConfirm` is a prop and is only contracted to *resolve* a problem, so
+         a rejection is a broken caller rather than a failed save. It still has
+         to be caught here: nothing else clears `busy`, and nothing is going to
+         unmount this screen either, so a throw would leave the duelist you just
+         made behind a button that says "Binding…" for ever. */
+      console.error('character booth: onConfirm rejected', err);
+      setError('Your duelist could not be saved. Try again in a moment.');
       setBusy(false);
       setAsking(false);
     }
-    /* No success branch: the caller swaps this screen out. */
   };
 
   if (webglFailed) {
