@@ -290,6 +290,12 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       plinthMat.dispose();
       ringGeo.dispose();
       ringMat.dispose();
+      /* `dispose()` frees three's own objects but leaves the WebGL context
+         itself alive until the GC gets round to it. A browser allows only a
+         handful at once, and walking booth → deck → world → booth opens one
+         each time, so on a phone they run out. Asking for the loss hands it
+         back at unmount. */
+      renderer.forceContextLoss();
       renderer.dispose();
       canvas.remove();
     };

@@ -34,9 +34,14 @@ const OUT = args[1] ?? '/tmp/story';
  * database — pointed at production it would spend the player's one character on
  * a random one it made itself, before they had ever opened the booth. This flag
  * is what makes the check runnable against the real thing: it signs in, proves
- * the booth draws, and stops at the door. Everything after the lock — the
- * world, the corner menu, Save, Edit Deck, and signing back in from a browser
- * with no storage — is not destructive and still runs.
+ * the booth draws, and stops at the door.
+ *
+ * What it covers therefore depends on how far the account has already got. On
+ * an account that has not made a duelist yet — which is the interesting case,
+ * and the one this exists for — the run ends at the confirmation and the world,
+ * Save, Edit Deck and the fresh-browser check do not run at all. Once the
+ * account is past the lock there is nothing left to spend, and the whole of the
+ * rest of the check runs exactly as it does without the flag.
  */
 const NO_CREATE = process.argv.includes('--no-create');
 /* The container's browser may be a different build from the one this copy of

@@ -1,5 +1,6 @@
 import { canonicalUsername, loadOrCreateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
+import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 
 export const runtime = 'nodejs';
@@ -14,8 +15,8 @@ export const dynamic = 'force-dynamic';
  * could do is strand a character behind a name nobody meant to type.
  */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { username?: string };
-  const canonical = canonicalUsername(body.username ?? '');
+  const body = await readBody(req);
+  const canonical = canonicalUsername(body.username);
   if (!canonical) {
     return Response.json(
       { ok: false, error: 'No duelist by that name. Story Mode is not open to new names yet.' },

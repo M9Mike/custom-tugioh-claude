@@ -163,8 +163,13 @@ database. An account gets one character and one first deck, for good, so
 pointed at production the check would spend them on a duelist it invented
 itself before anyone had opened the booth. With the flag it signs in, proves
 the booth draws and every panel opens, backs out of the confirmation, and
-stops. Everything past the lock — the world, the corner menu, Save, Edit Deck,
-signing back in from an empty browser — is not destructive and still runs.
+stops there.
+
+How much it covers therefore depends on how far that account has already got.
+Against a name that has not made a duelist, the run *ends* at the confirmation
+— the world, Save, Edit Deck and the fresh-browser check do not run. Once the
+account is past the lock there is nothing left to spend, and everything after
+it runs exactly as it does without the flag.
 
 Saves live in the same store as duel rooms (`MONGODB_URI`, or the Redis pair)
 under a ten-year deadline rather than the rooms' ninety minutes. With neither

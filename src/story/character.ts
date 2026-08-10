@@ -222,9 +222,17 @@ const clamp01 = (v: unknown, fallback: number): number => {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 };
 
+/**
+ * A palette index, or the default.
+ *
+ * `Number.isInteger` rather than `Math.floor`: rounding 1.9 down to 1 turns a
+ * value that is not an index at all into a *different, valid* swatch, and the
+ * player is then wearing a colour nothing chose. A field that arrives wrong
+ * should fall back to the default, not quietly land somewhere plausible.
+ */
 const index = (v: unknown, len: number, fallback: number): number => {
-  const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : fallback;
-  return n < 0 || n >= len ? fallback : n;
+  if (typeof v !== 'number' || !Number.isInteger(v)) return fallback;
+  return v < 0 || v >= len ? fallback : v;
 };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>

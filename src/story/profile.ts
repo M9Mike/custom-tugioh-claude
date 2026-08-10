@@ -41,6 +41,19 @@ export interface StoryProfile {
   world: WorldPosition;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Bumped on every write, and the guard that makes two of them safe.
+   *
+   * Every route here is load → change → save, which without a check is a plain
+   * lost update: two requests read the same profile, both write, and the second
+   * silently erases the first. It is not theoretical — saving your position in
+   * the world writes the *whole* profile back, so a position save that started
+   * before a deck was sleeved would put the old deck back on top of it.
+   *
+   * Absent on anything written before this existed, which `updateProfile`
+   * treats as revision zero.
+   */
+  rev?: number;
 }
 
 export const STARTING_POSITION: WorldPosition = { x: 0, z: 0, facing: 0 };
@@ -56,6 +69,7 @@ export function newProfile(username: string, now: number): StoryProfile {
     world: { ...STARTING_POSITION },
     createdAt: now,
     updatedAt: now,
+    rev: 0,
   };
 }
 

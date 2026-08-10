@@ -50,7 +50,24 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
   const move = useRef({ x: 0, y: 0 });
   const here = useRef({ x: profile.world.x, z: profile.world.z, facing: profile.world.facing });
 
-  const character = profile.character;
+  /**
+   * The duelist this world was built for, frozen on the first render.
+   *
+   * Not `profile.character`, which is a *different object* after every save:
+   * the parent replaces the whole profile with the server's response, and that
+   * response is parsed JSON, so the character has a new identity even though
+   * every field in it is the same. With the effect below keyed on that, pressing
+   * Save tore down the renderer and rebuilt the sky, the ground texture and all
+   * sixteen thousand tufts of grass — a visible stall on a phone, in exchange
+   * for nothing, and it reset the camera angle while it was at it.
+   *
+   * State with a lazy initialiser rather than a ref, because this *is* read
+   * while rendering and a ref read during render is a different bug waiting to
+   * happen. It is never set again: appearance is immutable once bound, which is
+   * the whole promise of the creation booth. If that ever stops being true,
+   * this is the line that has to change with it.
+   */
+  const [character] = useState(profile.character);
 
   useEffect(() => {
     const el = holder.current;
@@ -352,6 +369,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
       rig.dispose();
       tufts.dispose();
       for (const x of trash) x.dispose();
+      /* `dispose()` frees three's own objects but leaves the WebGL context
+         itself alive until the GC gets round to it. A browser allows only a
+         handful at once, and walking booth → deck → world → booth opens one
+         each time, so on a phone they run out. Asking for the loss hands it
+         back at unmount. */
+      renderer.forceContextLoss();
       renderer.dispose();
       canvas.remove();
     };
@@ -408,16 +431,39 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
     };
   }, []);
 
+  /* One timer for the toast, cleared before it is replaced and cancelled on the
+     way out. Two saves in quick succession used to schedule two, and the first
+     one wiped the second one's message halfway through reading it. */
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+    },
+    []
+  );
+
   const save = useCallback(async () => {
     setSaving(true);
     setNote(null);
     sfx.click();
-    const problem = await onSave({ ...here.current });
-    setSaving(false);
+    let problem: string | null;
+    try {
+      problem = await onSave({ ...here.current });
+    } catch (err) {
+      /* `onSave` is contracted to *resolve* a problem, so a rejection is a
+         broken caller. It still has to be caught: the clear is in `finally`
+         because a throw past it would leave Save disabled and reading
+         "Saving…" for the rest of the session. */
+      console.error('open world: onSave rejected', err);
+      problem = 'Could not save. Try again in a moment.';
+    } finally {
+      setSaving(false);
+    }
     setNote(problem ?? 'Saved.');
     if (!problem) sfx.heal();
     else sfx.error();
-    setTimeout(() => setNote(null), 2600);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(null), 2600);
   }, [onSave]);
 
   if (!character) return null;

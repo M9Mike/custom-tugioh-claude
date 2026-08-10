@@ -53,22 +53,26 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     return new Map(pool.map((slug, i) => [slug, list[i]]));
   }, [pool]);
 
+  /* The sounds and the error are raised out here rather than inside a
+     `setChosen` updater. React may call an updater more than once — Strict Mode
+     does so on every render in development — and one tap was playing its sound
+     twice and setting the message twice. `chosen` is already in scope in an
+     event handler, so there is nothing an updater was buying. */
   const toggle = (slug: string) => {
     setError(null);
     setInspect(instances.get(slug) ?? null);
-    setChosen((cur) => {
-      if (cur.includes(slug)) {
-        sfx.flip();
-        return cur.filter((s) => s !== slug);
-      }
-      if (cur.length >= DECK_SIZE) {
-        sfx.error();
-        setError(`That is ${DECK_SIZE} already. Take one out before adding another.`);
-        return cur;
-      }
-      sfx.place();
-      return [...cur, slug];
-    });
+    if (inDeck.has(slug)) {
+      sfx.flip();
+      setChosen(chosen.filter((s) => s !== slug));
+      return;
+    }
+    if (chosen.length >= DECK_SIZE) {
+      sfx.error();
+      setError(`That is ${DECK_SIZE} already. Take one out before adding another.`);
+      return;
+    }
+    sfx.place();
+    setChosen([...chosen, slug]);
   };
 
   const confirm = async () => {

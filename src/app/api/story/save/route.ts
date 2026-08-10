@@ -1,5 +1,6 @@
-import { canonicalUsername, loadProfile, saveProfile } from '@/server/story';
+import { canonicalUsername, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
+import { readBody } from '../body';
 import type { WorldPosition } from '@/story/profile';
 
 export const runtime = 'nodejs';
@@ -17,27 +18,30 @@ const WORLD_RADIUS = 120;
  * Only the things the world itself owns are written — where you are standing
  * and which way you are looking. The character and the deck have their own
  * routes and their own locks, and a save must never be a way round either of
- * them: this route reads the stored profile and puts back everything else
- * exactly as it found it.
+ * them: the patch below is applied to whatever profile is stored at the moment
+ * it lands, and `updateProfile` re-reads and re-applies it if anything else
+ * wrote in the meantime. Without that, pressing Save could put an older deck
+ * back on top of one that had just been sleeved on another device.
  */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { username?: string; world?: Partial<WorldPosition> };
-  const canonical = canonicalUsername(body.username ?? '');
+  const body = await readBody(req);
+  const canonical = canonicalUsername(body.username);
   if (!canonical) return Response.json({ ok: false, error: 'Not signed in.' }, { status: 401 });
 
-  try {
-    const profile = await loadProfile(canonical);
-    if (!profile) return Response.json({ ok: false, error: 'No save to write to.' }, { status: 404 });
+  const patch = (body.world ?? {}) as Partial<WorldPosition>;
 
-    const clamp = (v: number) => (v < -WORLD_RADIUS ? -WORLD_RADIUS : v > WORLD_RADIUS ? WORLD_RADIUS : v);
-    const world: WorldPosition = {
-      x: clamp(finite(body.world?.x, profile.world.x)),
-      z: clamp(finite(body.world?.z, profile.world.z)),
-      facing: finite(body.world?.facing, profile.world.facing) % (Math.PI * 2),
-    };
-    const next = { ...profile, world };
-    await saveProfile(next);
-    return Response.json({ ok: true, profile: next });
+  try {
+    const result = await updateProfile(canonical, (profile) => {
+      const clamp = (v: number) => (v < -WORLD_RADIUS ? -WORLD_RADIUS : v > WORLD_RADIUS ? WORLD_RADIUS : v);
+      const world: WorldPosition = {
+        x: clamp(finite(patch.x, profile.world.x)),
+        z: clamp(finite(patch.z, profile.world.z)),
+        facing: finite(patch.facing, profile.world.facing) % (Math.PI * 2),
+      };
+      return { ok: true, profile: { ...profile, world } };
+    });
+    if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });
+    return Response.json({ ok: true, profile: result.profile });
   } catch (err) {
     const reason = describeStoreError(err);
     console.error('story save failed:', reason, err);

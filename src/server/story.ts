@@ -14,7 +14,7 @@
  * adding them is a change to this one function.
  */
 
-import { durable, readJson, writeJson } from './store';
+import { durable, readJson, writeJsonIf } from './store';
 import { newProfile, type StoryProfile } from '@/story/profile';
 
 /** Ten years. Long enough that "permanent" is a fair description. */
@@ -110,10 +110,18 @@ export async function loadProfile(username: string): Promise<StoryProfile | null
   return (await devRead())[fold(username)] ?? null;
 }
 
-export async function saveProfile(profile: StoryProfile): Promise<void> {
-  const next = { ...profile, updatedAt: Date.now() };
-  await writeJson(key(next.username), next, FOREVER_SECONDS);
-  if (!durable) await devWrite(next);
+/**
+ * Writes a profile, but only if nobody has written one since we read it.
+ *
+ * `isNew` skips the guard, which is what creating a profile for a name seen for
+ * the first time needs — there is no revision to match against yet.
+ */
+async function commit(profile: StoryProfile, isNew: boolean): Promise<boolean> {
+  const rev = profile.rev ?? 0;
+  const next: StoryProfile = { ...profile, rev: rev + 1, updatedAt: Date.now() };
+  const won = await writeJsonIf(key(next.username), next, isNew ? -1 : rev, rev + 1, FOREVER_SECONDS);
+  if (won && !durable) await devWrite(next);
+  return won;
 }
 
 /**
@@ -127,6 +135,41 @@ export async function loadOrCreateProfile(canonical: string): Promise<StoryProfi
   const existing = await loadProfile(canonical);
   if (existing) return existing;
   const fresh = newProfile(canonical, Date.now());
-  await saveProfile(fresh);
+  await commit(fresh, true);
   return fresh;
+}
+
+/** What a route decided to do with the profile it was handed. */
+export type Update =
+  | { ok: true; profile: StoryProfile }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Load, change, save — and if somebody got there first, do it all again.
+ *
+ * This is the only way anything in Story Mode is written, and the *whole*
+ * profile going back on every write is why it has to be. Saving your position
+ * in the world rewrites the character and the deck along with it, so a position
+ * save that began before a deck was sleeved would have put the old deck back on
+ * top of the new one. Retrying against a fresh read is what makes that a
+ * non-event rather than a lost deck: `apply` is handed whatever is stored *now*
+ * and gets to make its decision again, so the lock checks are re-run too and
+ * two racing attempts to create a character cannot both pass.
+ *
+ * Four attempts, because each one only loses to a write that actually landed in
+ * the gap, and a fifth consecutive loss is a bug rather than contention.
+ */
+export async function updateProfile(
+  canonical: string,
+  apply: (current: StoryProfile) => Update
+): Promise<Update> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const current = await loadOrCreateProfile(canonical);
+    const decided = apply(current);
+    if (!decided.ok) return decided;
+    if (await commit(decided.profile, false)) {
+      return { ok: true, profile: { ...decided.profile, rev: (decided.profile.rev ?? 0) + 1 } };
+    }
+  }
+  return { ok: false, status: 409, error: 'Your save is busy elsewhere. Try again in a moment.' };
 }
