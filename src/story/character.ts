@@ -180,7 +180,11 @@ export function defaultCharacter(name: string): StoryCharacter {
     boots: 5,
     cape: false,
     capeColor: 10,
-    gauntlet: 'right',
+    /* Both, not one. A single bracer is a real design and stays on the
+       menu, but as the *default* a lone gold cuff on one forearm reads as a
+       mistake — the first thing anyone said about this model was that
+       something odd was going on between one wrist and one elbow. */
+    gauntlet: 'both',
   };
 }
 
