@@ -145,6 +145,8 @@ export function sample(table: Profile, v: number, col: number): number {
  */
 export function domeRings(r1: number, slope: number, steps: number): { scale: number; rise: number }[] {
   const out: { scale: number; rise: number }[] = [];
+  /* One ring minimum: every path below divides by this. */
+  steps = Math.max(1, Math.floor(steps));
   if (!(r1 > 0) || !(slope < 0)) {
     /* Nothing sensible to fit. Close it flat rather than guess. */
     for (let j = 0; j <= steps; j++) out.push({ scale: 1 - j / steps, rise: 0 });
