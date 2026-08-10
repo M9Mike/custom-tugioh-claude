@@ -71,11 +71,19 @@ const TORSO: Profile = [
   [0.56, 0.084, 0.075, 2.0], // base of the neck
 ];
 
+/**
+ * The neck. The `dz` column leans it back, and it has to stay small.
+ *
+ * A neck really does sit behind the sternum, but the collar around it is a
+ * ring on the torso's own axis: lean the neck far enough and its back passes
+ * out through the back of its own collar, leaving a strip of bare skin at the
+ * nape that is invisible from the front and obvious from anywhere behind.
+ */
 const NECK: Profile = [
-  [0.0, 0.083, 0.077, -0.011],
-  [0.25, 0.064, 0.058, -0.008],
-  [0.55, 0.059, 0.053, -0.006],
-  [0.8, 0.06, 0.056, -0.003],
+  [0.0, 0.083, 0.077, -0.004],
+  [0.25, 0.064, 0.058, -0.004],
+  [0.55, 0.059, 0.053, -0.003],
+  [0.8, 0.06, 0.056, -0.002],
   [1.0, 0.067, 0.065, 0.0],
 ];
 
@@ -156,11 +164,11 @@ const FRAME_METRICS = {
 
 /** What each outfit id actually changes about the garment. */
 const OUTFIT_SHAPE = {
-  duelist: { hem: 0.055, skirt: 0, flare: 1, collar: 0.075, sleeve: 1, pauldron: false },
-  traveller: { hem: -0.03, skirt: 0.46, flare: 1.5, collar: 0.055, sleeve: 1, pauldron: false },
-  scholar: { hem: -0.05, skirt: 0.86, flare: 1.8, collar: 0.045, sleeve: 1, pauldron: false },
-  warden: { hem: 0.04, skirt: 0.24, flare: 1.35, collar: 0.07, sleeve: 1, pauldron: true },
-  street: { hem: 0.09, skirt: 0, flare: 1, collar: 0, sleeve: 0.55, pauldron: false },
+  duelist: { hem: 0.055, skirt: 0, flare: 1, collar: 0.075, sleeve: 1, pauldron: false, split: 0 },
+  traveller: { hem: -0.03, skirt: 0.46, flare: 1.5, collar: 0.055, sleeve: 1, pauldron: false, split: 0.22 },
+  scholar: { hem: -0.05, skirt: 0.86, flare: 1.8, collar: 0.045, sleeve: 1, pauldron: false, split: 0.06 },
+  warden: { hem: 0.04, skirt: 0.24, flare: 1.35, collar: 0.07, sleeve: 1, pauldron: true, split: 0.16 },
+  street: { hem: 0.09, skirt: 0, flare: 1, collar: 0, sleeve: 0.55, pauldron: false, split: 0 },
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -235,6 +243,9 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const neckG = S * lerp(0.95, 1.1, spec.build);
 
   const hipY = 0.52 * stature;
+  /** Shoulders to the head's own pivot. Declared here because the collar is
+      cut to the neck's taper and needs it before the neck is built. */
+  const neckLen = 0.174 * stature - 0.68 * H;
   const thighL = (0.52 - 0.285) * stature;
   const shinL = (0.285 - 0.039) * stature;
   const ankleY = 0.039 * stature;
@@ -242,7 +253,6 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const foreArmL = 0.146 * stature;
   const shoulderY = 0.8 * stature - hipY;
   const neckBaseY = 0.826 * stature - hipY;
-  const chinY = stature - H;
 
   /* ---------------- materials ---------------- */
 
@@ -316,7 +326,8 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   spine.add(chest);
 
   const neck = new THREE.Group();
-  neck.position.set(0, neckBaseY - 0.175 * S, -0.012 * S);
+  /* Barely off the torso's axis — see `NECK`. */
+  neck.position.set(0, neckBaseY - 0.175 * S, -0.004 * S);
   chest.add(neck);
 
   const add = (parent: THREE.Group, geo: THREE.BufferGeometry, m: THREE.Material) => {
@@ -368,7 +379,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
        * thigh comes through the cloth — which is the single most obvious
        * defect a body can have, and it only shows mid-step.
        */
-      const flare = flareBelow > 0 ? Math.max(0, 1 - Math.max(0, y - y0) / flareBelow) ** 2 * 0.016 * S : 0;
+      const flare = flareBelow > 0 ? Math.max(0, 1 - Math.max(0, y - y0) / flareBelow) ** 2 * 0.008 * S : 0;
       const hw = torsoAt(y, 1) + inflate + flare;
       const hd = torsoAt(y, 2) + inflate + flare * 0.7;
       const sq = sample(TORSO, y / S, 3);
@@ -418,7 +429,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
   const hemY = O.hem * S;
   const topY = neckBaseY + 0.012 * S;
-  add(torso, torsoLoft(-0.1 * S, hemY + 0.03 * S, 0.008 * S), O.skirt > 0.5 ? primary : trouser);
+  add(torso, torsoLoft(-0.1 * S, hemY + 0.03 * S, 0.008 * S), trouser);
   add(torso, torsoLoft(hemY, topY, 0.015 * S, 0.16 * S, { r: 0.088 * neckG, cz: -0.006 * S }), primary);
 
   /* The jacket's closure, in the secondary colour: a placket down the centre
@@ -427,7 +438,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
      bib, and the duelist looks like it is wearing a tabard by accident. */
   add(torso, panelGeometry(torsoAt, hemY, topY - 0.035 * S, S), secondary);
 
-  if (O.skirt > 0) add(torso, skirtGeometry(torsoAt, hemY, O.skirt * S, O.flare, S), primary);
+  if (O.skirt > 0) add(torso, skirtGeometry(torsoAt, hemY, O.skirt * S, O.flare, O.split, S), primary);
 
   /* Belt and buckle. */
   const beltY = 0.16 * S;
@@ -443,12 +454,11 @@ export function buildCharacter(spec: StoryCharacter): Rig {
      far the rim is buried inside the jacket and the collar emerges from the
      shoulders, which is where a collar comes from. */
   if (O.collar > 0) {
-    add(torso, collarGeometry(0.083 * neckG, neckBaseY - 0.035 * S, (O.collar + 0.03) * S, S), primary);
+    add(torso, collarGeometry(neckG, neckBaseY, neckLen, (O.collar * 0.7 + 0.02) * S, S), primary);
   }
 
   /* ---------------- neck and head ---------------- */
 
-  const neckLen = chinY + 0.32 * H - 0.826 * stature;
   {
     const m = new MeshBuilder();
     limb(m, NECK, neckLen, {
@@ -464,7 +474,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const headRig = buildHead(spec, H, skinColor);
   kept.push(headRig);
   const head = new THREE.Group();
-  head.position.set(0, neckLen, 0.016 * S);
+  head.position.set(0, neckLen, 0.022 * S);
   head.add(headRig.group);
   neck.add(head);
 
@@ -569,7 +579,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
     const tm = new MeshBuilder();
     limb(tm, THIGH, thighL, { scale: LS, inflate: 0.01 * S, capTip: false });
-    add(leg, tm.build(), O.skirt > 0.5 ? primary : trouser);
+    add(leg, tm.build(), trouser);
 
     const shin = new THREE.Group();
     shin.position.y = -thighL;
@@ -704,25 +714,51 @@ function panelGeometry(at: TorsoAt, y0: number, y1: number, S: number): THREE.Bu
 
 const sampleSq = (y: number, S: number) => sample(TORSO, y / S, 3);
 
-/** A coat's tails or a robe's skirt: flared, and split up the front. */
-function skirtGeometry(at: TorsoAt, hemY: number, len: number, flare: number, S: number): THREE.BufferGeometry {
+/**
+ * A coat's tails or a robe's skirt: flared, split up the front, and — this is
+ * the whole of it — *two-sided*.
+ *
+ * A garment that wraps the body is seen from inside as well as out: at the
+ * split, and from any angle where the far half faces away. Built as one
+ * surface it is backface-culled to nothing there, and a full robe renders as
+ * two red ribbons hanging at the hips. So the rings run down the outside,
+ * turn at the hem and come back up the inside, which reverses the winding
+ * exactly where the cloth turns over and gives the hem a thickness to catch
+ * the light on.
+ */
+function skirtGeometry(
+  at: TorsoAt,
+  hemY: number,
+  len: number,
+  flare: number,
+  gap: number,
+  S: number
+): THREE.BufferGeometry {
   const m = new MeshBuilder();
-  const gap = 0.34;
-  sheet(m, 18, 40, (u, v) => {
-    const a = lerp(gap, Math.PI * 2 - gap, v);
-    const y = hemY - u * len;
-    const grow = 1 + (flare - 1) * u * u;
-    const p = sectionPoint(
-      (at(hemY, 1) + 0.015 * S) * grow,
-      (at(hemY, 2) + 0.015 * S) * grow,
-      (at(hemY, 2) + 0.015 * S) * grow * 1.08,
-      2.4,
-      a
-    );
+  const base = at(hemY, 1) + 0.03 * S;
+  const baseD = at(hemY, 2) + 0.03 * S;
+  sheet(m, 30, 40, (u, v) => {
+    /* Down the outside for the first half, back up the inside for the second. */
+    const outside = u <= 0.5;
+    const t = outside ? u * 2 : (1 - u) * 2;
+    /**
+     * A vent, not a slot.
+     *
+     * Held open the same width from waist to hem, the split shows a column of
+     * near-black trouser at the hip that reads as a hole punched in the
+     * garment. A real one is closed where the cloth is belted and opens as it
+     * falls, which is both what a coat does and what stops the eye finding a
+     * void at the top of it.
+     */
+    const a = lerp(gap * (0.12 + 0.88 * t * t), Math.PI * 2 - gap * (0.12 + 0.88 * t * t), v);
+    const grow = 1 + (flare - 1) * t * t;
+    /* The lining sits inside the shell, and meets it at the fold. */
+    const inset = outside ? 0 : 0.045 * S * (1 - t);
+    const p = sectionPoint(base * grow - inset, baseD * grow - inset, (baseD * grow - inset) * 1.08, 2.4, a);
     /* A hem that hangs: lower at the back than at the front, so it reads as
        cloth under gravity rather than a cone. */
     const hang = 1 + 0.14 * Math.cos(a - Math.PI);
-    return { x: p.x, y: hemY - (hemY - y) * hang, z: p.z };
+    return { x: p.x, y: hemY - t * len * hang, z: p.z };
   });
   return m.build();
 }
@@ -761,9 +797,16 @@ function buckleGeometry(at: TorsoAt, y: number, S: number): THREE.BufferGeometry
  * climb the outside, turn over at the top and come back down the inside,
  * which reverses the winding exactly where the surface reverses.
  */
-function collarGeometry(neckR: number, base: number, h: number, S: number): THREE.BufferGeometry {
+function collarGeometry(
+  neckG: number,
+  neckBase: number,
+  neckLen: number,
+  h: number,
+  S: number
+): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const N = 7;
+  const base = neckBase - 0.035 * S;
   const rings: number[][] = [];
   for (let i = 0; i <= N * 2; i++) {
     const outside = i <= N;
@@ -774,9 +817,20 @@ function collarGeometry(neckR: number, base: number, h: number, S: number): THRE
       /* Low at the throat, high behind the neck — a collar you can see the jaw
          over, and the shape that says "cut and sewn" rather than "extruded". */
       const tall = 0.42 + 0.58 * (1 + Math.cos(a - Math.PI)) * 0.5;
-      const r = (neckR + 0.011 * S) * (1 + 0.2 * up * up) * (outside ? 1 : 0.84);
+      const y = base + up * h * tall * 1.15;
+      /**
+       * Cut to the neck at every height, not to its base.
+       *
+       * A neck narrows sharply as it rises. Held at the base radius and then
+       * flared on top of that, a collar stands 60 mm clear of the throat by
+       * the time it reaches its rim — and from anywhere behind and above you
+       * look straight down into the funnel and see the nape inside it. That
+       * pale sliver at the back of every duelist was this.
+       */
+      const t = Math.max(0, Math.min(1, (y - neckBase) / neckLen));
+      const r = (sample(NECK, t, 1) * neckG + 0.01 * S) * (1 + 0.15 * up * up) * (outside ? 1 : 0.84);
       const p = sectionPoint(r, r * 0.97, r * 0.97, 2.1, a);
-      ring.push(m.vertex(p.x, base + up * h * tall * 1.15, p.z));
+      ring.push(m.vertex(p.x, y, p.z));
     }
     rings.push(ring);
   }
@@ -784,18 +838,25 @@ function collarGeometry(neckR: number, base: number, h: number, S: number): THRE
   return m.build();
 }
 
+/**
+ * A pauldron: a plate over the shoulder, wrapping it rather than perched on it.
+ *
+ * Sized to clear the deltoid underneath — a cap the same width as the arm
+ * reads as a bead balanced on the shoulder, with the sleeve visible all round
+ * the edge of it.
+ */
 function pauldronGeometry(S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const rings: number[][] = [];
-  for (let i = 0; i <= 8; i++) {
-    const t = i / 8;
-    const th = t * Math.PI * 0.62;
-    const r = Math.sin(th) * 0.085 * S;
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    const th = t * Math.PI * 0.72;
+    const r = Math.sin(th) * 0.086 * S;
     const ring: number[] = [];
-    for (let k = 0; k < 20; k++) {
-      const a = (k / 20) * Math.PI * 2;
-      const p = sectionPoint(r, r * 1.06, r * 1.06, 2.5, a);
-      ring.push(m.vertex(p.x, -0.012 * S - (1 - Math.cos(th)) * 0.075 * S, p.z));
+    for (let k = 0; k < 22; k++) {
+      const a = (k / 22) * Math.PI * 2;
+      const p = sectionPoint(r, r * 1.12, r * 1.12, 2.6, a);
+      ring.push(m.vertex(p.x, 0.006 * S - (1 - Math.cos(th)) * 0.085 * S, p.z));
     }
     rings.push(ring);
   }

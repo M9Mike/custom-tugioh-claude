@@ -372,7 +372,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     const shave = beardMask(spec.facialHair, v, bx, z);
     if (shave > 0) {
       const solid = spec.facialHair === 'stubble' ? 0.5 : 1;
-      c.lerp(hairOnSkin, clamp01(smooth(shave * 1.5)) * solid);
+      c.lerp(hairOnSkin, clamp01(smooth(shave * 2.6)) * solid);
     }
     return c;
   };
@@ -639,20 +639,32 @@ function addEars(
 /* Hair                                                                */
 /* ------------------------------------------------------------------ */
 
-/** How each cut behaves: thickness, where the hairline sits, what it adds. */
+/**
+ * How each cut behaves.
+ *
+ * `thick` is how far it stands off the scalp, `line` shifts the hairline,
+ * `part` cuts a parting down the middle, `nape` is how far down the back it
+ * grows, `tail` picks a mass that is not on the scalp, and `mantle` hangs a
+ * curtain from the nape.
+ *
+ * The numbers are spread much further apart than they look like they need to
+ * be. Laid out side by side at 8, 26 and 42 thousandths of a head, a shaved
+ * scalp, a crop and a swept cut were the same haircut three times: a knob you
+ * cannot tell from its neighbour is not a choice, whatever the label says.
+ */
 const HAIR_SHAPE = {
-  shaved: { thick: 0.008, line: 0.0, part: 0, nape: 0.42, tail: 0 },
-  crop: { thick: 0.026, line: 0.0, part: 0, nape: 0.42, tail: 0 },
-  swept: { thick: 0.042, line: 0.02, part: 0, nape: 0.46, tail: 0 },
-  spiked: { thick: 0.05, line: 0.01, part: 0, nape: 0.44, tail: 0 },
-  curtain: { thick: 0.04, line: -0.04, part: 0.7, nape: 0.44, tail: 0 },
-  wild: { thick: 0.058, line: -0.02, part: 0.2, nape: 0.4, tail: 0 },
-  long: { thick: 0.04, line: -0.02, part: 0.35, nape: 0.1, tail: 0 },
-  ponytail: { thick: 0.028, line: 0.02, part: 0, nape: 0.44, tail: 1 },
-  topknot: { thick: 0.026, line: 0.06, part: 0, nape: 0.5, tail: 2 },
-  braids: { thick: 0.03, line: -0.02, part: 0.4, nape: 0.3, tail: 3 },
-  mohawk: { thick: 0.06, line: 0.0, part: 0, nape: 0.9, tail: 0 },
-  bun: { thick: 0.028, line: 0.04, part: 0, nape: 0.5, tail: 4 },
+  shaved: { thick: 0.005, line: 0.05, part: 0, nape: 0.34, tail: 0, mantle: 0 },
+  crop: { thick: 0.024, line: 0.01, part: 0, nape: 0.28, tail: 0, mantle: 0 },
+  swept: { thick: 0.05, line: 0.03, part: 0, nape: 0.3, tail: 0, mantle: 0 },
+  spiked: { thick: 0.062, line: 0.02, part: 0, nape: 0.29, tail: 0, mantle: 0 },
+  curtain: { thick: 0.052, line: -0.06, part: 0.85, nape: 0.26, tail: 0, mantle: 0 },
+  wild: { thick: 0.075, line: -0.03, part: 0.2, nape: 0.24, tail: 0, mantle: 0 },
+  long: { thick: 0.046, line: -0.03, part: 0.35, nape: 0.16, tail: 0, mantle: 1.0 },
+  ponytail: { thick: 0.026, line: 0.03, part: 0, nape: 0.3, tail: 1, mantle: 0 },
+  topknot: { thick: 0.022, line: 0.07, part: 0, nape: 0.32, tail: 2, mantle: 0 },
+  braids: { thick: 0.03, line: -0.02, part: 0.4, nape: 0.22, tail: 3, mantle: 0 },
+  mohawk: { thick: 0.075, line: 0.0, part: 0, nape: 0.9, tail: 0, mantle: 0 },
+  bun: { thick: 0.024, line: 0.05, part: 0, nape: 0.3, tail: 4, mantle: 0 },
 } as const;
 
 function buildHair(
@@ -694,19 +706,41 @@ function buildHair(
   const thickness = (a: number, u: number) => {
     const ax = fromFront(a);
     let t = S.thick;
-    /* Thin at the edge so it lies down into the skin rather than ending in a
-       ledge, and fullest a little way up from the hairline. */
-    t *= 0.18 + 0.82 * smooth(u * 2.4);
+    /**
+     * Negative right at the hairline, so the shell starts *inside* the skull
+     * and crosses out of it in a clean line.
+     *
+     * Tapered to a thin positive instead, it lies half a millimetre proud of
+     * the scalp all along the edge — two near-coincident surfaces, which
+     * speckle where they cross. The line a haircut is judged by is exactly
+     * that edge.
+     */
+    t *= 0.02 + 1.05 * smooth(u * 2.4);
     /* Volume on the crown, because hair has a mass and gravity gives it a
        shape; a shell of constant offset never does. */
     t *= 1 + 0.55 * smooth((u - 0.35) / 0.6);
     /* A parting: the shell dips towards the scalp along the middle. */
     if (S.part > 0) t *= 1 - S.part * 0.75 * win(ax, -0.34, 0.34) * smooth(u * 1.6);
     /* Mohawks keep the crest and lose the sides. */
-    if (spec.hair === 'mohawk') t *= 0.06 + 1.6 * win(ax, -0.55, 0.55);
-    if (spec.hair === 'spiked') t *= 1 + 0.5 * Math.sin(a * 9) * smooth((u - 0.4) / 0.6);
+    /* Negative off the crest, so the shell is *inside* the skull there rather
+       than lying on it — a shell at nominally zero thickness still crosses the
+       scalp and speckles it. */
+    if (spec.hair === 'mohawk') {
+      t *= 0.02 + 2.4 * Math.max(win(ax, -0.5, 0.5), win(ax, Math.PI - 0.5, Math.PI + 0.5));
+    }
+    if (spec.hair === 'spiked') t *= 1 + 0.85 * Math.sin(a * 9) ** 2 * smooth((u - 0.3) / 0.6);
     if (spec.hair === 'wild') t *= 1 + 0.34 * Math.sin(a * 6.3 + u * 7) + 0.2 * Math.sin(a * 11);
-    return t * H;
+    /**
+     * Sunk a constant millimetre at the end, rather than by a factor.
+     *
+     * The shell has to start inside the skull and cross out of it, or its edge
+     * speckles where two near-coincident surfaces meet. Doing that with a
+     * negative *multiplier* looks equivalent and is not: a mohawk multiplies
+     * by a second negative off the crest, the two cancel, and hair reappears
+     * in a jagged patch exactly where it was supposed to vanish. Subtracting
+     * cannot change sign twice.
+     */
+    return t * H - 0.005 * H;
   };
 
   const rows: number[][] = [];
@@ -740,6 +774,7 @@ function buildHair(
   m.loft(rows);
 
   if (S.tail) addHairMass(m, S.tail, H, y, surface);
+  if (S.mantle) addMantle(m, S.mantle, H, surface);
   const g = m.build();
   return g;
 }
@@ -758,9 +793,11 @@ function addHairMass(
   /** A tapered rope from the anchor, drooping as it goes. */
   const rope = (x0: number, len: number, r0: number, r1: number, droop: number) => {
     const rings: number[][] = [];
-    for (let s = 0; s <= 10; s++) {
-      const t = s / 10;
-      const r = lerp(r0, r1, t) * H;
+    for (let s = 0; s <= 12; s++) {
+      const t = s / 12;
+      /* Full for most of its length, then rounded off — tapered linearly to a
+         capped point it reads as a spike rather than a plait. */
+      const r = lerp(r0, r1, t ** 2) * H * Math.sqrt(Math.max(0.06, 1 - (t > 0.86 ? (t - 0.86) / 0.14 : 0) ** 2));
       const ring: number[] = [];
       for (let k = 0; k < SEG; k++) {
         const a = (k / SEG) * Math.PI * 2;
@@ -778,10 +815,10 @@ function addHairMass(
     m.cap(rings[rings.length - 1], m.vertex(anchor.x + x0 * H, anchor.y - len * H - droop * H - r1 * H, anchor.z - 0.1 * H), -1);
   };
 
-  if (kind === 1) rope(0, 0.9, 0.09, 0.035, 0.1);
+  if (kind === 1) rope(0, 1.15, 0.115, 0.045, 0.12);
   if (kind === 3) {
-    rope(-0.26, 0.95, 0.06, 0.028, 0.08);
-    rope(0.26, 0.95, 0.06, 0.028, 0.08);
+    rope(-0.24, 1.25, 0.082, 0.036, 0.1);
+    rope(0.24, 1.25, 0.082, 0.036, 0.1);
   }
   if (kind === 2 || kind === 4) {
     /* A knot or a bun: a squashed ball sitting on the crown or the nape. */
@@ -791,15 +828,71 @@ function addHairMass(
     for (let s = 0; s <= 12; s++) {
       const t = s / 12;
       const th = t * Math.PI;
-      const r = Math.sin(th) * 0.15 * H;
+      const r = Math.sin(th) * 0.185 * H;
       const ring: number[] = [];
       for (let k = 0; k < SEG; k++) {
         const a = (k / SEG) * Math.PI * 2;
-        ring.push(m.vertex(Math.sin(a) * r, cy - Math.cos(th) * 0.11 * H, cz + Math.cos(a) * r));
+        ring.push(m.vertex(Math.sin(a) * r, cy - Math.cos(th) * 0.14 * H, cz + Math.cos(a) * r));
       }
       rings.push(ring);
     }
     m.loft(rings);
+  }
+}
+
+/**
+ * Long hair: a curtain hung from the nape, down the back and over the
+ * shoulders.
+ *
+ * A scalp shell cannot be long. However far the hairline is pushed down the
+ * neck, hair that follows the skull is a hat — the thing that reads as length
+ * is mass *leaving* the head, falling past the jaw and breaking on the
+ * shoulders. Drawn with the hair material, which is double-sided, so the
+ * inside of the curtain is there when the head turns.
+ */
+function addMantle(
+  m: MeshBuilder,
+  len: number,
+  H: number,
+  surface: (v: number, a: number) => { x: number; y: number; z: number }
+): void {
+  const ROWS = 20;
+  const COLS = 34;
+  const grid: number[][] = [];
+  for (let i = 0; i <= ROWS; i++) {
+    const t = i / ROWS;
+    const line: number[] = [];
+    for (let k = 0; k <= COLS; k++) {
+      /* The back two-thirds of the head: hair falls behind the ears, not over
+         the face. */
+      const a = lerp(0.95, Math.PI * 2 - 0.95, k / COLS);
+      /* Hung from ear level, the same height all the way round. Hung from the
+         hairline instead — which for a long cut runs from the temple down to
+         the nape — the top of the curtain rose and fell by most of a head, and
+         the hem inherited every wobble of it. */
+      const top = surface(0.44, a);
+      /* Widens to the head's own width within the first fifth of the drop,
+         then falls straight with a little flare at the hem. */
+      const wide = surface(0.3, a);
+      const blend = Math.min(1, t * 4.5);
+      /* Standing well off the body as it falls. At a gentler flare the curtain
+         drops *inside* the jacket and is swallowed by the shoulders, which
+         reads as a hood rather than as hair. */
+      const flare = 1 + 0.95 * t * t;
+      line.push(
+        m.vertex(
+          lerp(top.x, wide.x * flare, blend),
+          top.y - t * len * H,
+          lerp(top.z, wide.z * flare, blend)
+        )
+      );
+    }
+    grid.push(line);
+  }
+  for (let i = 0; i < ROWS; i++) {
+    for (let k = 0; k < COLS; k++) {
+      m.quad(grid[i][k], grid[i][k + 1], grid[i + 1][k + 1], grid[i + 1][k]);
+    }
   }
 }
 
@@ -816,11 +909,16 @@ function addHairMass(
  */
 function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, z: number): number {
   if (kind === 'none' || z <= 0) return 0;
-  const jawline = win(v, -0.08, 0.34) * win(bx, -0.28, 0.28);
+  /* Stops at the chin. Below v = 0 the skull table is being extrapolated and
+     the surface is a small ring around the throat — a beard grown there is a
+     black collar on the neck, which is exactly how it looked. */
+  const jawline = win(v, 0.0, 0.36) * win(bx, -0.28, 0.28);
   const chin = win(v, 0.02, 0.2) * win(bx, -0.115, 0.115);
   const tache = win(v, 0.232, 0.3) * win(bx, -0.105, 0.105);
   const cheek = win(v, 0.16, 0.44) * win(bx, 0.1, 0.32);
-  const burns = win(v, 0.3, 0.55) * win(bx, 0.19, 0.33);
+  /* In front of the ear, not beside the eye: at bx 0.19 this reached the
+     outer corner of the socket and speckled it. */
+  const burns = win(v, 0.27, 0.5) * win(bx, 0.25, 0.37);
   let m: number;
   switch (kind) {
     case 'stubble':
@@ -860,12 +958,21 @@ function buildBeard(
   tint: THREE.Color
 ): THREE.BufferGeometry | null {
   const kind = spec.facialHair;
-  if (kind === 'none' || kind === 'stubble') return null;
-  const height = kind === 'full' ? 0.026 : kind === 'goatee' ? 0.022 : 0.015;
+  /**
+   * Only what has a silhouette gets geometry.
+   *
+   * Stubble is a shadow. So, at this scale, are a moustache and a pair of
+   * sideburns: their mask covers so little of the face that the shell emerges
+   * as a few islands with holes between them, which reads as damage rather
+   * than hair. They are painted instead; a full beard and a goatee have real
+   * mass and keep their shell.
+   */
+  if (kind === 'none' || kind === 'stubble' || kind === 'moustache' || kind === 'sideburns') return null;
+  const height = kind === 'full' ? 0.03 : 0.024;
 
   const m = new MeshBuilder();
-  const V0 = kind === 'sideburns' ? 0.28 : -0.04;
-  const V1 = kind === 'sideburns' ? 0.56 : 0.32;
+  const V0 = 0.0;
+  const V1 = 0.34;
   const rings: number[][] = [];
 
   /* Rows snapped to the skull's own rings, and only those inside the beard's
@@ -881,7 +988,11 @@ function buildBeard(
          is zero the surface is inside the skull and cannot be seen; where it
          is one the beard stands proud. The cut edge falls out of the
          arithmetic instead of needing a separate outline. */
-      const off = (smooth(beardMask(kind, v, Math.abs(p.x) / H, p.z) * 1.5) * height - 0.011) * H;
+      /* Raised only where the tint has already saturated, so the shell's own
+         edge — the place two surfaces cross, and the place a staircase would
+         show — is buried well inside a region that is already hair-coloured. */
+      const mask = beardMask(kind, v, Math.abs(p.x) / H, p.z);
+      const off = (smooth(clamp01((mask - 0.34) / 0.5)) * height - 0.003) * H;
       const len = Math.hypot(p.x, p.z) || 1;
       ring.push(m.vertex(p.x + (p.x / len) * off, p.y, p.z + (p.z / len) * off, tint));
     }
