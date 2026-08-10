@@ -281,12 +281,41 @@ function checkBackrowReach(def: CardDef): string[] {
   return out;
 }
 
+/**
+ * A condition that names the card's own slug must say "another".
+ *
+ * A card is always on the field while it is asking, so `requiresOnField` set to
+ * its own slug is a sentence that can never be false. Bowganian's read "while
+ * you control another Bowganian, this monster gains 800 ATK and cannot be
+ * destroyed by battle", and a lone crossbow counted itself: it stood at 2100
+ * and could not be killed in battle with no twin anywhere. Reported by a player
+ * who noticed it survived alone.
+ *
+ * The engine has the word — `excludeSelf` — and this insists the card use it,
+ * because the failure is invisible: nothing crashes, no effect goes unfired,
+ * the card simply gets a bonus it never earned.
+ */
+function checkSelfCondition(def: CardDef): string[] {
+  const out: string[] = [];
+  for (const eff of def.effects ?? []) {
+    const cond = eff.condition;
+    if (!cond?.requiresOnField || cond.requiresOnField !== def.slug) continue;
+    if (cond.excludeSelf) continue;
+    out.push(
+      `${def.name} (${def.slug}) — a condition requiring "${cond.requiresOnField}" on your field names the card ` +
+        'itself, so it can never be false; set excludeSelf if the text means "another"'
+    );
+  }
+  return out;
+}
+
 for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown' || !def.text) continue;
   checked += 1;
 
   problems.push(...checkSelfReference(def));
   problems.push(...checkBackrowReach(def));
+  problems.push(...checkSelfCondition(def));
 
   for (const { phrase, needs, label } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;

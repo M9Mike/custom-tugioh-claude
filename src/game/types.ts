@@ -559,6 +559,17 @@ export interface EffectCondition {
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
   /**
+   * "While you control **another** Bowganian" — the card asking must not count
+   * as its own company.
+   *
+   * Bowganian was the one card whose condition named its own slug, and without
+   * this the condition could never be false: a lone crossbow saw a Bowganian on
+   * the field, namely itself, and helped itself to +800 ATK and immunity to
+   * battle it was never meant to have alone. The same word, "other", is why
+   * `Selector.excludeSelf` and `controlsOtherToon` exist.
+   */
+  excludeSelf?: boolean;
+  /**
    * Requires *all* of these slugs on own field at once — "while you control
    * Queen's Knight and King's Knight". The royal court assembled is a state
    * the cards can ask about; one slug was never enough to express it.

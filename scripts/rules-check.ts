@@ -5756,6 +5756,55 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
     `field ${once.players[FOE].field ? 'kept' : 'gone'} / backrow ${once.players[FOE].spellTrap ? 'kept' : 'gone'}`);
 }
 
+console.log('\nA crossbow is not its own company');
+{
+  /* Reported: "Bowganian could not be destroyed by battle even if it was the
+     only Bowganian on the field". Its text says "while you control ANOTHER
+     Bowganian", and the condition named its own slug — a card is always on the
+     field while it is asking, so the sentence could never be false. */
+  const lone = fresh('battle');
+  const solo = card(ME, 'bowganian');
+  solo.summonedOnTurn = 0;
+  lone.players[ME].monsters = [solo, null, null];
+  ok(effAtk(lone, solo, ME) === baseAtkOf('bowganian'), 'a lone Bowganian is worth its printed ATK',
+    `${effAtk(lone, solo, ME)} of ${baseAtkOf('bowganian')}`);
+  ok(!effFlags(lone, solo, ME).indestructibleByBattle, 'and can be destroyed in battle like anything else');
+
+  const pair = fresh('battle');
+  const a1 = card(ME, 'bowganian');
+  const a2 = card(ME, 'bowganian');
+  a1.summonedOnTurn = 0;
+  a2.summonedOnTurn = 0;
+  pair.players[ME].monsters = [a1, a2, null];
+  ok(effAtk(pair, a1, ME) === baseAtkOf('bowganian') + 800, 'CONTROL: bring its twin and the pair is worth 800 more each',
+    `${effAtk(pair, a1, ME)}`);
+  ok(!!effFlags(pair, a1, ME).indestructibleByBattle && !!effFlags(pair, a2, ME).indestructibleByBattle,
+    'CONTROL: and neither of them can be destroyed in battle');
+
+  /* Kill one and the survivor drops back to a mortal crossbow. */
+  const widowed = structuredClone(pair);
+  widowed.players[ME].monsters[1] = null;
+  const left = widowed.players[ME].monsters[0]!;
+  ok(effAtk(widowed, left, ME) === baseAtkOf('bowganian'), 'and losing the twin takes the bonus back',
+    `${effAtk(widowed, left, ME)}`);
+  ok(!effFlags(widowed, left, ME).indestructibleByBattle, 'and the immunity with it');
+
+  /* And a lone one really does die to a bigger body, which is the report. */
+  const struck = (() => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const target = card(ME, 'bowganian');
+    target.summonedOnTurn = 0;
+    s.players[ME].monsters = [target, null, null];
+    const big = card(FOE, 'summoned-skull');
+    big.summonedOnTurn = 0;
+    s.players[FOE].monsters = [big, null, null];
+    return act(s, FOE, { type: 'attack', uid: big.uid, targetUid: target.uid });
+  })();
+  ok(!struck.players[ME].monsters.some((m) => m?.slug === 'bowganian'), 'a lone Bowganian dies to a bigger body',
+    struck.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+}
+
 console.log('\nAn aura is weather over the field, not over your hand');
 {
   /* Reported: "some monsters are shown in the hand with green buffed attack

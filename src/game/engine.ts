@@ -1977,10 +1977,14 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     if (!hasCompany) return false;
   }
   if (cond.requiresOnField) {
+    /* `excludeSelf` is the word "another". A card is always on the field while
+       it is asking, so a condition naming its own slug is otherwise a sentence
+       that can never be false — see the field's own note. */
+    const other_ = (m: CardInstance | null | undefined) => !!m && (!cond.excludeSelf || m.uid !== c.uid);
     const has =
-      p.monsters.some((m) => m?.slug === cond.requiresOnField) ||
-      p.spellTrap?.slug === cond.requiresOnField ||
-      p.field?.slug === cond.requiresOnField;
+      p.monsters.some((m) => m?.slug === cond.requiresOnField && other_(m)) ||
+      (p.spellTrap?.slug === cond.requiresOnField && other_(p.spellTrap)) ||
+      (p.field?.slug === cond.requiresOnField && other_(p.field));
     if (!has) return false;
   }
   if (cond.requiresOnFieldAll) {

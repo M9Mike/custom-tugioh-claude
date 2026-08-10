@@ -2822,7 +2822,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         /* Gazelle and Berfomet's clause: the pair is worth more than two
            singles, and this card now always arrives in twos. */
         trigger: 'continuous',
-        condition: { requiresOnField: 'bowganian' },
+        /* "another Bowganian" — and a crossbow is not its own company. Without
+           `excludeSelf` a lone one satisfied its own condition, so it stood
+           there at 2100 and could not be destroyed by battle on its own.
+           Reported as "Bowganian could not be destroyed by battle even if it
+           was the only Bowganian on the field". */
+        condition: { requiresOnField: 'bowganian', excludeSelf: true },
         ops: [],
         /* Battle immunity only — the one axis a mortal card is allowed, per
            the rule that only a God is proof against both. Card effects still
