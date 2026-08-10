@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   CLOTH_COLORS,
   EYE_COLORS,
@@ -45,8 +46,11 @@ const TABS: { id: Tab; label: string }[] = [
 
 /** Where the camera sits for each framing, as (height, distance, pitch). */
 const SHOTS = {
-  full: { y: 0.94, dist: 2.9, pitch: 0.05 },
-  face: { y: 1.58, dist: 0.62, pitch: 0.0 },
+  /* Framed with headroom. The viewport runs under the screen's title, so a
+     shot tight enough to fill it puts the duelist's head behind the words —
+     and the head is the half of the model anybody is actually judging. */
+  full: { y: 1.0, dist: 3.25, pitch: 0.05 },
+  face: { y: 1.63, dist: 0.66, pitch: 0.0 },
 } as const;
 type Shot = keyof typeof SHOTS;
 
@@ -108,7 +112,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.25;
+    renderer.toneMappingExposure = 1.0;
     el.appendChild(renderer.domElement);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
@@ -121,13 +125,24 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
     const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100);
 
-    /* Three lights and no more: a warm key from the front-left, a cold fill from
-       behind-right to cut the silhouette out of the background, and a hemisphere
-       bright enough that a duelist in a black coat is still a duelist rather
-       than a hole in the screen. The arena's palette is nearly all very dark
-       cloth, so the fill here carries more of the image than a key-and-rim
-       setup normally would. */
-    const key = new THREE.DirectionalLight('#ffe7c2', 2.9);
+    /**
+     * A key, a rim, a soft front fill — and, carrying more of the image than
+     * any of them, an environment.
+     *
+     * The duelist's skin and cloth are `MeshPhysicalMaterial` with sheen, and
+     * sheen is a broad view-facing lobe: pile enough direct light on it and
+     * every surface saturates towards white, which is how an earlier version
+     * of this booth turned a black coat and a red jacket into the same pale
+     * grey. Most of the light here is therefore image-based and low — it is
+     * what gives a cheekbone a gradient instead of a hotspot — and the
+     * directional lights only have to shape it.
+     */
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = envRT.texture;
+    scene.environmentIntensity = 0.55;
+
+    const key = new THREE.DirectionalLight('#ffe7c2', 1.8);
     key.position.set(2.4, 3.6, 3.2);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -138,19 +153,20 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     key.shadow.camera.top = 2.6;
     key.shadow.camera.bottom = -0.4;
     key.shadow.bias = -0.0015;
+    key.shadow.normalBias = 0.02;
     scene.add(key);
 
-    const rim = new THREE.DirectionalLight('#8fb6ff', 2.1);
+    const rim = new THREE.DirectionalLight('#8fb6ff', 0.85);
     rim.position.set(-2.8, 2.2, -2.6);
     scene.add(rim);
 
     /* A second, weaker key from the front so a face is never read purely by its
        shadows — the booth's whole job is showing what somebody chose. */
-    const fill = new THREE.DirectionalLight('#dfe8f5', 1.1);
+    const fill = new THREE.DirectionalLight('#dfe8f5', 0.42);
     fill.position.set(-1.2, 1.4, 3.4);
     scene.add(fill);
 
-    scene.add(new THREE.HemisphereLight('#b8c8dd', '#2a2620', 1.5));
+    scene.add(new THREE.HemisphereLight('#b8c8dd', '#2a2620', 0.4));
 
     /* A plinth, so the duelist is standing on something rather than hovering in
        a void — and so the shadow has somewhere to land. */
@@ -290,6 +306,8 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       plinthMat.dispose();
       ringGeo.dispose();
       ringMat.dispose();
+      envRT.dispose();
+      pmrem.dispose();
       /* `dispose()` frees three's own objects but leaves the WebGL context
          itself alive until the GC gets round to it. A browser allows only a
          handful at once, and walking booth → deck → world → booth opens one
