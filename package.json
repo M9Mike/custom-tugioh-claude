@@ -45,7 +45,8 @@
     "banner": "tsx scripts/banner-check.ts",
     "nudge": "node scripts/nudge-check.mjs",
     "ra": "tsx scripts/ra-lethal-check.ts",
-    "story": "node scripts/story-check.mjs"
+    "story": "node scripts/story-check.mjs",
+    "clash": "node scripts/clash-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

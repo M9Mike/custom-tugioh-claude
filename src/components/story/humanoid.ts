@@ -36,6 +36,10 @@ import { buildHead } from './head';
 import { MeshBuilder, type Profile, limb, sample, sectionPoint } from './loft';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const smoothstep = (v: number) => {
+  const t = v < 0 ? 0 : v > 1 ? 1 : v;
+  return t * t * (3 - 2 * t);
+};
 
 /* ------------------------------------------------------------------ */
 /* Proportions                                                         */
@@ -330,10 +334,15 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   neck.position.set(0, neckBaseY - 0.175 * S, -0.004 * S);
   chest.add(neck);
 
-  const add = (parent: THREE.Group, geo: THREE.BufferGeometry, m: THREE.Material) => {
+  /* `part` names the mesh. Nothing in the game reads it; the diagnostic in
+     `/diag/character` uses it to know which surfaces are limbs and which are
+     body, so it can check that no limb has ended up inside one. A model that
+     passes through itself is the one fault a still photograph will not show. */
+  const add = (parent: THREE.Group, geo: THREE.BufferGeometry, m: THREE.Material, part = '') => {
     keep(geo);
     const mesh = new THREE.Mesh(geo, m);
     mesh.castShadow = true;
+    mesh.name = part;
     parent.add(mesh);
     return mesh;
   };
@@ -491,6 +500,10 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const fores: THREE.Group[] = [];
 
   for (const side of [1, -1] as const) {
+    /* Which side this limb is, so the self-intersection check in the lab can
+       tell "the hand is inside the *other* thigh" from "the shin meets its own
+       thigh at the knee", which it is supposed to. */
+    const sideTag = side === 1 ? 'r' : 'l';
     const arm = new THREE.Group();
     /* Set forward of the coronal plane, as a relaxed arm hangs — which is
        also what keeps the forearm in front of the hip rather than beside it. */
@@ -508,10 +521,10 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     const m = new MeshBuilder();
     limb(m, UPPER_ARM, upperArmL * (1 + overshoot), {
       scale: LS,
-      inflate: 0.012 * S,
+      inflate: 0.011 * S,
       capTip: false,
     });
-    add(holder, m.build(), primary);
+    add(holder, m.build(), primary, `upperarm.${sideTag}`);
 
     if (O.pauldron) add(holder, pauldronGeometry(S), trim);
 
@@ -525,28 +538,16 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     const fm = new MeshBuilder();
     limb(fm, FOREARM, foreArmL, {
       scale: LS,
-      inflate: bare ? 0 : 0.01 * S,
+      inflate: bare ? 0 : 0.011 * S,
       capRoot: false,
       capTip: false,
     });
-    add(fore, fm.build(), bare ? skin : primary);
+    add(fore, fm.build(), bare ? skin : primary, `forearm.${sideTag}`);
 
     const wearsGauntlet =
       spec.gauntlet === 'both' || (spec.gauntlet === 'right' ? side === 1 : spec.gauntlet === 'left' && side === -1);
     if (wearsGauntlet) {
-      const gm = new MeshBuilder();
-      /* Started below the elbow and kept thin. Run up to the elbow it sits at
-         hip height in a metal that contrasts with the coat, so every
-         millimetre it overlaps is a millimetre you can see. */
-      limb(gm, FOREARM, foreArmL, {
-        from: 0.44,
-        to: 0.99,
-        scale: LS,
-        inflate: 0.011 * S,
-        square: 2.6,
-        seg: 20,
-      });
-      add(fore, gm.build(), trim);
+      add(fore, gauntletGeometry(foreArmL, LS, S), trim, `gauntlet.${sideTag}`);
     }
 
     const hand = new THREE.Group();
@@ -560,7 +561,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
       */
     hand.rotation.y = -side * 0.8;
     fore.add(hand);
-    add(hand, handGeometry(side, S), skin);
+    add(hand, handGeometry(side, S), skin, `hand.${sideTag}`);
   }
 
   /* ---------------- legs ---------------- */
@@ -572,6 +573,10 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const bootTop = 0.42;
 
   for (const side of [1, -1] as const) {
+    /* Which side this limb is, so the self-intersection check in the lab can
+       tell "the hand is inside the *other* thigh" from "the shin meets its own
+       thigh at the knee", which it is supposed to. */
+    const sideTag = side === 1 ? 'r' : 'l';
     const leg = new THREE.Group();
     leg.position.set(side * hipX, 0, 0);
     hips.add(leg);
@@ -579,7 +584,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
     const tm = new MeshBuilder();
     limb(tm, THIGH, thighL, { scale: LS, inflate: 0.01 * S, capTip: false });
-    add(leg, tm.build(), trouser);
+    add(leg, tm.build(), trouser, `thigh.${sideTag}`);
 
     const shin = new THREE.Group();
     shin.position.y = -thighL;
@@ -594,7 +599,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
       capRoot: false,
       capTip: false,
     });
-    add(shin, sm.build(), trouser);
+    add(shin, sm.build(), trouser, `shin.${sideTag}`);
 
     /* The boot: the bottom of the shin again, one layer out and squarer,
        because leather holds a shape where a trouser leg does not. */
@@ -612,7 +617,8 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     foot.position.y = -shinL;
     shin.add(foot);
     feet.push(foot);
-    add(foot, footGeometry(ankleY, S), boots);
+    add(foot, footGeometry(ankleY, S), boots, `foot.${sideTag}`);
+    add(foot, soleGeometry(ankleY, S), leather, `foot.${sideTag}`);
   }
 
   /* ---------------- cape ---------------- */
@@ -911,77 +917,267 @@ function capeGeometry(stature: number, S: number): THREE.BufferGeometry {
  * wrong without knowing anything about anatomy. Five short tubes cost almost
  * nothing and stop the question being asked.
  */
+/**
+ * A vambrace over the forearm.
+ *
+ * Built as a limb section and left at that, it is a length of pipe pushed onto
+ * the arm: parallel sides, and both ends cut off square so the edge reads as a
+ * wall thickness of nothing. In a metal that contrasts with the sleeve, at the
+ * one place on the model a viewer's eye already goes, that is the first thing
+ * anybody notices — and the first thing they say is that something is wrong
+ * with the arm.
+ *
+ * So it is shaped: it follows the forearm's own taper, stands off it by a
+ * fraction that *narrows* towards the wrist as a fitted plate does, and turns a
+ * rolled lip at each end instead of stopping. The lip is what gives the edge a
+ * thickness to catch the light on, and what stops the wrist end reading as a
+ * bucket.
+ */
+function gauntletGeometry(foreArmL: number, LS: number, S: number): THREE.BufferGeometry {
+  const m = new MeshBuilder();
+  /* The lower half of the forearm, not most of it. Run up towards the elbow it
+     becomes the largest single thing on the duelist's arm, in the one colour
+     that contrasts with everything — which is why the first thing anyone said
+     about this model was that something odd was going on between the wrist and
+     the elbow. */
+  const T0 = 0.56;
+  const T1 = 0.97;
+  const SEG = 22;
+  const ROWS = 22;
+  const rings: number[][] = [];
+  for (let i = 0; i <= ROWS; i++) {
+    const u = i / ROWS;
+    const t = lerp(T0, T1, u);
+    /**
+     * Clear of the sleeve, closest at the wrist — a plate is strapped down
+     * there and stands proudest at the forearm's belly.
+     *
+     * Constant, and that is the whole trick. The sleeve under it is already
+     * inflated 10 mm, so anything tighter than that is simply swallowed — but
+     * a standoff that *shrinks* from 16 mm at the elbow to 7 mm at the wrist
+     * adds its own taper on top of the forearm's, and the result stood 55 %
+     * proud at the top and read as a flowerpot with an arm in it. Held even,
+     * the plate follows the limb's own line and reads as a skin on the arm.
+     */
+    const gap = 0.0145 * S;
+    /* The lip: a short flare in the last few per cent at each end, so the rim
+       rolls outward instead of ending on a cut edge. */
+    const lip = (Math.max(0, 1 - u / 0.1) + Math.max(0, 1 - (1 - u) / 0.1)) * 0.003 * S;
+    const rx = sample(FOREARM, t, 1) * LS + gap + lip;
+    const rz = sample(FOREARM, t, 2) * LS + gap + lip;
+    const dz = sample(FOREARM, t, 3) * LS;
+    const ring: number[] = [];
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2;
+      /* Squarer down the back of the arm than the front, which is how a plate
+         beaten over a forearm actually sits. */
+      const q = sectionPoint(rx, rz, rz * 1.05, 2.5, a);
+      ring.push(m.vertex(q.x, -t * foreArmL, q.z + dz));
+    }
+    rings.push(ring);
+  }
+  m.loft([...rings].reverse());
+  /* Both rims turned back onto the arm, so neither is an open hole: the plate
+     gets an edge with a thickness to it rather than a paper one. */
+  const rim = (t: number, inward: number) => {
+    const out: number[] = [];
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2;
+      const rx = sample(FOREARM, t, 1) * LS + 0.002 * S;
+      const rz = sample(FOREARM, t, 2) * LS + 0.002 * S;
+      const q = sectionPoint(rx, rz, rz * 1.05, 2.5, a);
+      out.push(m.vertex(q.x, -(t + inward) * foreArmL, q.z + sample(FOREARM, t, 3) * LS));
+    }
+    return out;
+  };
+  /* Skinned in the same descending order as the body of the plate, so the
+     faces of the fold point the same way as the faces beside them. */
+  m.loft([rim(T0, 0.018), rings[0]].reverse());
+  m.loft([rings[ROWS], rim(T1, -0.018)].reverse());
+  return m.build();
+}
+
 function handGeometry(side: 1 | -1, S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const palmL = 0.1 * S;
 
-  /* The palm: a slab, flat front-to-back and slightly wider at the knuckles. */
+  /**
+   * The palm: a slab, flat front-to-back and wider at the knuckles.
+   *
+   * Squareness 3 made it a box, and a box with four tubes on the end is a
+   * spanner rather than a hand. At 2.4 it keeps the flat back and the flat
+   * palm — which is what a hand actually has — without the corners down the
+   * sides that were catching the light as two hard vertical lines.
+   */
   const rings: number[][] = [];
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6;
-    const rx = lerp(0.03, 0.043, t) * S;
-    const rz = lerp(0.023, 0.019, t) * S;
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    /* Narrow at the wrist, widening across the knuckles, then easing back so
+       the far edge is a rounded corner and not the end of a plank. */
+    const rx = (0.028 + 0.016 * Math.sin(Math.PI * 0.82 * t)) * S;
+    const rz = lerp(0.022, 0.0175, t) * S;
     const ring: number[] = [];
-    for (let k = 0; k < 18; k++) {
-      const a = (k / 18) * Math.PI * 2;
-      const p = sectionPoint(rx, rz, rz, 3, a);
+    for (let k = 0; k < 20; k++) {
+      const a = (k / 20) * Math.PI * 2;
+      const p = sectionPoint(rx, rz, rz, 2.4, a);
       ring.push(m.vertex(p.x + side * t * 0.004 * S, -t * palmL, p.z));
     }
     rings.push(ring);
   }
   m.loft([...rings].reverse());
-  m.cap(rings[0], m.vertex(0, 0.02 * S, 0), 1);
+  m.cap(rings[0], m.vertex(0, 0.018 * S, 0), 1);
 
-  /** One finger, curled forward as a hand at rest always is. */
-  const digit = (x: number, y0: number, len: number, r0: number, curl: number) => {
+  /**
+   * One finger, as a curve rather than a spike.
+   *
+   * A hand hanging at rest is not a rake. Its fingers carry a real hook — the
+   * knuckle is bent, and every joint below it more so — and the tips finish
+   * pointing back at the palm. Drawn nearly straight, which is what a single
+   * small `curl` gives you, four of them side by side read as the tines of a
+   * fork, and no amount of work on the palm rescues that. The bend is weighted
+   * towards the far end (`0.3 t + 0.7 t²`) so the finger leaves the knuckle
+   * gently and tightens as it goes, which is what the three joints of a real
+   * one add up to.
+   *
+   * `fan` swings the finger out across the hand as it extends. Parallel
+   * fingers are the other half of the rake; on a real hand they spread from
+   * the knuckles.
+   */
+  const digit = (x: number, y0: number, len: number, r0: number, curl: number, fan: number) => {
     const fr: number[][] = [];
-    for (let i = 0; i <= 6; i++) {
-      const t = i / 6;
-      const r = lerp(r0, r0 * 0.78, t) * S;
-      const bend = curl * t * t;
+    const SEGS = 8;
+    for (let i = 0; i <= SEGS; i++) {
+      const t = i / SEGS;
+      /* Thickest just past the knuckle, tapering to the tip. */
+      const r = r0 * (1 + 0.06 * Math.sin(Math.PI * t) - 0.3 * t) * S;
+      const bend = curl * (0.3 * t + 0.7 * t * t);
+      const reach = t * len;
       const ring: number[] = [];
-      for (let k = 0; k < 10; k++) {
-        const a = (k / 10) * Math.PI * 2;
-        const p = sectionPoint(r, r * 1.05, r * 1.05, 2.4, a);
-        ring.push(m.vertex(x * S + p.x, y0 - t * len * Math.cos(bend), p.z + t * len * Math.sin(bend)));
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        /* Slightly wider than deep, as a finger is. */
+        const p = sectionPoint(r, r * 0.92, r * 0.92, 2.3, a);
+        ring.push(
+          m.vertex(
+            x * S + p.x + side * fan * reach,
+            y0 - reach * Math.cos(bend),
+            p.z + reach * Math.sin(bend)
+          )
+        );
       }
       fr.push(ring);
     }
     m.loft([...fr].reverse());
-    m.cap(fr[fr.length - 1], m.vertex(x * S, y0 - len * Math.cos(curl) - r0 * 0.7 * S, len * Math.sin(curl)), -1);
+    /* The tip, rounded onto the end rather than run out to a point. */
+    m.cap(
+      fr[fr.length - 1],
+      m.vertex(
+        x * S + side * fan * len,
+        y0 - len * Math.cos(curl) - r0 * 0.62 * S * Math.cos(curl),
+        len * Math.sin(curl) + r0 * 0.62 * S * Math.sin(curl)
+      ),
+      -1
+    );
   };
 
   const knuckle = -palmL + 0.004 * S;
-  digit(side * -0.03, knuckle, 0.072 * S, 0.0115, 0.24);
-  digit(side * -0.0105, knuckle + 0.003 * S, 0.079 * S, 0.0122, 0.22);
-  digit(side * 0.0105, knuckle + 0.001 * S, 0.074 * S, 0.0118, 0.24);
-  digit(side * 0.029, knuckle - 0.005 * S, 0.058 * S, 0.0102, 0.27);
+  /**
+   * Four fingers, overlapping into one mass.
+   *
+   * Sized and curled to stand apart, they read as four separate worms hanging
+   * off a paddle — which is what they did. A hand is a *mass* with grooves in
+   * it: the fingers touch along their whole length, and what the eye picks up
+   * is the shadow between them, not a gap. So each is wide enough to overlap
+   * its neighbour by a few millimetres, and they curl within a hair of each
+   * other so the group moves as one. Only the length is staggered, which is
+   * where the shape of a real hand's end actually comes from.
+   */
+  digit(side * -0.0285, knuckle, 0.072 * S, 0.0122, 0.52, -0.012);
+  digit(side * -0.0095, knuckle + 0.003 * S, 0.079 * S, 0.0128, 0.48, -0.004);
+  digit(side * 0.0095, knuckle + 0.001 * S, 0.074 * S, 0.0122, 0.52, 0.006);
+  digit(side * 0.0275, knuckle - 0.005 * S, 0.06 * S, 0.0106, 0.58, 0.018);
 
-  /* The thumb: off the side of the palm, higher up and turned forward. */
+  /**
+   * The thumb: off the side of the palm, and swung across the front of it.
+   *
+   * A thumb held in the plane of the fingers is the tell that a hand was built
+   * as five identical rods. The real one opposes — it sits forward of the palm
+   * and points across it, and that is most of what makes a hand read as a hand
+   * from any angle at all.
+   */
   const tr: number[][] = [];
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6;
-    const r = lerp(0.015, 0.011, t) * S;
+  const TS = 8;
+  for (let i = 0; i <= TS; i++) {
+    const t = i / TS;
+    /* Stout at the base and only gently tapered. A thumb that thins like a
+       finger and swings far off the palm stops being a thumb and becomes a
+       tusk — which is exactly what the first attempt at this looked like. */
+    const r = lerp(0.0152, 0.0115, t) * S;
+    const swing = 0.3 * (0.4 * t + 0.6 * t * t);
     const ring: number[] = [];
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2;
-      const p = sectionPoint(r, r, r, 2.4, a);
+      const p = sectionPoint(r, r * 0.88, r * 0.88, 2.3, a);
       ring.push(
         m.vertex(
-          side * (0.032 + t * 0.02) * S + p.x,
-          -0.03 * S - t * 0.058 * S,
-          p.z + t * 0.03 * S
+          side * (0.029 + t * 0.019) * S + p.x,
+          -0.028 * S - t * 0.055 * S,
+          p.z + t * 0.024 * S * Math.sin(swing) + t * 0.01 * S
         )
       );
     }
     tr.push(ring);
   }
   m.loft([...tr].reverse());
-  m.cap(tr[tr.length - 1], m.vertex(side * 0.052 * S, -0.092 * S, 0.032 * S), -1);
+  m.cap(
+    tr[tr.length - 1],
+    m.vertex(side * 0.048 * S, -0.088 * S, 0.024 * S * Math.sin(0.3) + 0.017 * S),
+    -1
+  );
   return m.build();
 }
 
 /** The foot, lofted along its own length rather than down the leg. */
+/**
+ * The sole, and the heel block under it.
+ *
+ * Without one a boot is a single rounded form, and a single rounded form on the
+ * end of a leg is a sock. What says *footwear* is the line where the sole meets
+ * the upper: a hard, flat, slightly proud edge running the length of the foot,
+ * stepping down at the back into a heel. It is two centimetres of geometry and
+ * it does more for the bottom of the model than anything else at this size.
+ */
+function soleGeometry(ankleY: number, S: number): THREE.BufferGeometry {
+  const m = new MeshBuilder();
+  const len = 0.26 * S;
+  const heel = -0.075 * S;
+  const STEPS = 16;
+  const rings: number[][] = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    const z = heel + t * len;
+    /* Standing a whisker outside the upper, so the join is a visible welt and
+       not two surfaces fighting over the same pixels. */
+    const hw = sample(FOOT, t, 1) * S * 1.04 + 0.0025 * S;
+    /* Thin under the ball and the toe, deep under the heel. */
+    const thick = (0.013 + 0.023 * smoothstep(1 - t / 0.3)) * S;
+    const bottom = -ankleY;
+    const top = bottom + thick;
+    const cy = (bottom + top) / 2;
+    const ring: number[] = [];
+    for (let k = 0; k < 18; k++) {
+      const a = (k / 18) * Math.PI * 2;
+      const p = sectionPoint(hw, thick / 2, thick / 2, 3.4, a);
+      ring.push(m.vertex(p.x, cy - p.z, z));
+    }
+    rings.push(ring);
+  }
+  m.loft(rings);
+  m.cap(rings[0], m.vertex(0, -ankleY + 0.014 * S, heel - 0.008 * S), -1);
+  m.cap(rings[STEPS], m.vertex(0, -ankleY + 0.007 * S, heel + len + 0.004 * S), 1);
+  return m.build();
+}
+
 function footGeometry(ankleY: number, S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const len = 0.26 * S;
@@ -1046,7 +1242,16 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
   /* Arms hang a little away from the body, not flat against it. Too little
      and the hands finish inside the thighs; too much and the duelist reads as
      spoiling for a fight. */
-  const rest = 0.12 + 0.03 * spec.build;
+  /**
+   * How far off the body the arms hang, which cannot be one number.
+   *
+   * The hips are what the hands have to clear, and the hips are not a constant:
+   * a sturdy frame at full build carries a thigh a fifth wider than a lean one
+   * at nothing. Held at a fixed angle the heaviest duelist's bracer finished
+   * 2 mm inside its own thigh — small, but a limb inside a limb. Wider bodies
+   * carry their arms wider, which is both the fix and what people do.
+   */
+  const rest = 0.1 + 0.09 * spec.build + 0.25 * (FRAME_METRICS[spec.frame].hip - 1);
   j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
   /**

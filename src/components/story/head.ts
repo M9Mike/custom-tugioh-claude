@@ -605,7 +605,18 @@ function addNose(
     const ring: number[] = [];
     for (let k = 0; k < SEG; k++) {
       const a = (k / SEG) * Math.PI * 2;
-      const p = sectionPoint(hw, depth, depth, 2.5, a);
+      /**
+       * Rounder than it was, and far deeper behind than in front.
+       *
+       * At squareness 2.5 with equal front and back the nose is a box on a
+       * stalk: it has a flat front plane, hard corners down both sides, and it
+       * meets the cheek at an angle that says it was stuck on afterwards —
+       * which is exactly how it read. Dropping to 2.05 gives it the rounded
+       * dorsum a nose actually has, and pushing the back nearly twice as deep
+       * buries the root of the form inside the face, so what shows at the
+       * sides is the tail of a curve rather than the edge of a tube.
+       */
+      const p = sectionPoint(hw, depth, depth * 1.85, 2.05, a);
       /* The nostrils, as tint on the underside of the wings. */
       const under = v < 0.3 && p.z > -depth * 0.2 && Math.abs(p.x) > hw * 0.24;
       ring.push(m.vertex(p.x, y(v), cz + p.z, under ? NOSTRIL : new THREE.Color(1, 1, 1)));

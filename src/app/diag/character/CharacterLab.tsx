@@ -47,6 +47,8 @@ interface View {
   yaw: number;
   pitch: number;
   label: string;
+  /** Sideways offset of what the camera looks at. A hand is not on the axis. */
+  x?: number;
 }
 
 const SHEET: View[] = [
@@ -56,6 +58,28 @@ const SHEET: View[] = [
   { y: 0.95, dist: 3.0, yaw: Math.PI, pitch: 0.02, label: 'back' },
   { y: 1.62, dist: 0.62, yaw: 0.55, pitch: 0.0, label: 'head, three-quarter' },
   { y: 1.65, dist: 0.5, yaw: 0, pitch: 0.0, label: 'face' },
+];
+
+/**
+ * Every region of the body, close enough to judge it.
+ *
+ * The sheet is for proportion and the seams are for clipping; neither is any
+ * use for asking whether a wrist looks like a wrist. Nine views, head to feet,
+ * at a distance where the surface is the subject.
+ */
+const PARTS: View[] = [
+  { y: 1.63, dist: 0.55, yaw: 0.4, pitch: 0.02, label: 'head' },
+  { y: 1.47, dist: 0.6, yaw: 0.85, pitch: 0.12, label: 'neck · collar' },
+  { y: 1.38, dist: 0.9, yaw: 0.35, pitch: 0.22, label: 'shoulders' },
+  { y: 1.2, dist: 1.0, yaw: 0.1, pitch: 0.04, label: 'chest' },
+  /* Aimed at the arm, not the body: a hand hangs a quarter of a metre off the
+     axis, and a camera pointed at the axis at that height photographs a hip. */
+  { y: 1.02, dist: 0.5, yaw: 0.7, pitch: 0.06, label: 'elbow · gauntlet', x: 0.25 },
+  /* Over the back of the hand, which is the face anybody actually sees of it. */
+  { y: 0.72, dist: 0.44, yaw: -0.15, pitch: 0.45, label: 'wrist · hand', x: 0.24 },
+  { y: 0.82, dist: 1.15, yaw: 0.0, pitch: 0.04, label: 'waist · hips' },
+  { y: 0.46, dist: 1.0, yaw: 0.4, pitch: 0.04, label: 'knees' },
+  { y: 0.1, dist: 0.55, yaw: 0.75, pitch: 0.28, label: 'feet', x: 0.09 },
 ];
 
 /**
@@ -132,11 +156,11 @@ const SWEEPS = {
   },
 } as const;
 
-type Mode = 'sheet' | 'seams' | keyof typeof SWEEPS;
+type Mode = 'sheet' | 'seams' | 'parts' | keyof typeof SWEEPS;
 /* Derived rather than restated: a sweep added to `SWEEPS` widens `Mode` but
    would not have added a button, and nothing would have complained — the mode
    would simply never be photographed. */
-const MODES: Mode[] = ['sheet', 'seams', ...(Object.keys(SWEEPS) as (keyof typeof SWEEPS)[])];
+const MODES: Mode[] = ['sheet', 'seams', 'parts', ...(Object.keys(SWEEPS) as (keyof typeof SWEEPS)[])];
 
 /** How far apart sweep duelists stand. Wide enough that none overlaps a neighbour. */
 const SPACING = 2.6;
@@ -154,6 +178,102 @@ const CYCLE = (Math.PI * 2) / 11;
 type Paint = 'shaded' | 'matte' | 'wire';
 const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
 
+/**
+ * Which surfaces may not end up inside which.
+ *
+ * `probe` names the parts that move, `into` the tubes they must stay out of.
+ */
+/**
+ * Which surfaces may not end up inside which.
+ *
+ * `probe` names the parts that move, `into` the tubes they must stay out of.
+ * `otherSideOnly` is for pairs that share a limb and are *meant* to overlap
+ * where they join — a shin lives inside the bottom of its own thigh, and a foot
+ * inside the bottom of its own shin. Those get checked against the far leg,
+ * where any overlap is a real one.
+ */
+const CLASHES: { probe: string; into: string[]; otherSideOnly?: boolean }[] = [
+  { probe: 'hand', into: ['thigh', 'shin', 'torso'] },
+  { probe: 'gauntlet', into: ['thigh', 'torso'] },
+  { probe: 'forearm', into: ['thigh', 'shin', 'torso'] },
+  { probe: 'hand', into: ['forearm'], otherSideOnly: true },
+  { probe: 'foot', into: ['shin', 'thigh'], otherSideOnly: true },
+  { probe: 'shin', into: ['thigh'], otherSideOnly: true },
+];
+
+/**
+ * Only tubes lofted along their own Y may be a target — see `insideDepth`.
+ *
+ * A foot is not one of those: it is a form that runs *forward*, so a line from
+ * a point to its local Y axis says nothing about being inside it. Asked
+ * anyway, the test reported one foot a metre deep inside the other. A hand is
+ * the same, its fingers standing off in Z. Both stay as probes, where all that
+ * is needed of them is their vertices.
+ */
+const TUBES = new Set(['torso', 'thigh', 'shin', 'forearm', 'upperarm']);
+
+/**
+ * Is a world-space point inside a lofted tube?
+ *
+ * Every limb and the torso are built as a stack of closed sections around their
+ * own local Y, so each is *star-shaped about that axis*: a straight line from
+ * any point on the surface to the axis at the same height stays inside. That
+ * gives an exact test with no watertightness needed, which matters because
+ * these tubes are deliberately open at the ends where another part takes over.
+ *
+ * Fire a ray from the point at the axis. Cross the surface on the way and the
+ * point was outside; reach the axis without crossing and it was inside. The
+ * distance to the axis is then how deep inside it is.
+ */
+function insideDepth(
+  ray: THREE.Raycaster,
+  point: THREE.Vector3,
+  target: THREE.Mesh,
+  local: THREE.Vector3,
+  axis: THREE.Vector3,
+  dir: THREE.Vector3
+): number {
+  target.worldToLocal(local.copy(point));
+  const box = target.geometry.boundingBox;
+  /* Outside the box is outside the surface, and saying so first is what keeps
+     a missed ray from being read as a deep penetration. A ray can fail to hit
+     for reasons that have nothing to do with the point being inside — a
+     tangent grazing the silhouette, a gap at a ring — and without this the
+     test cheerfully reported a hand half a metre inside a thigh. Nothing truly
+     inside a surface is outside the box that contains it. */
+  if (!box || !box.containsPoint(local)) return 0;
+  /* Dead on the axis there is no direction to fire in, and nothing to report. */
+  const reach = Math.hypot(local.x, local.z);
+  if (reach < 1e-6) return 0;
+  target.localToWorld(axis.set(0, local.y, 0));
+  dir.copy(axis).sub(point);
+  const far = dir.length();
+  if (far < 1e-6) return 0;
+  dir.divideScalar(far);
+  ray.set(point, dir);
+  ray.far = far;
+  if (ray.intersectObject(target, false).length > 0) return 0;
+
+  /**
+   * Inside. How far in is the distance back out to the wall, not the distance
+   * to the axis — those are opposites, and reporting the wrong one calls a
+   * vertex that has just broken the surface the worst offender on the model.
+   * Reading it needs the target double-sided for the length of the audit,
+   * because this ray meets the wall from behind.
+   */
+  ray.set(point, dir.negate());
+  ray.far = Infinity;
+  const out = ray.intersectObject(target, false);
+  /* No wall on the way out means the inward ray missed for some reason other
+     than the point being inside — a tangent along the silhouette, most often.
+     Refusing to assert a penetration that cannot be measured is what separates
+     a real fault from the noise around every grazing contact. */
+  return out.length ? out[0].distance : 0;
+}
+
+/** Below this, a contact is a rounding error rather than a limb inside a body. */
+const CLASH_TOLERANCE = 0.0005;
+
 /** A deterministic random, so a given seed is always the same duelist. */
 function seeded(seed: number): () => number {
   let s = seed >>> 0;
@@ -166,8 +286,8 @@ function seeded(seed: number): () => number {
 /** The specs a mode needs, and the camera for each. */
 function plan(mode: Mode, seed: number): { specs: StoryCharacter[]; views: View[] } {
   const base = seed === 0 ? defaultCharacter('Mike') : randomCharacter('Mike', seeded(seed * 7919));
-  if (mode === 'sheet' || mode === 'seams') {
-    const views = mode === 'sheet' ? SHEET : SEAMS;
+  if (mode === 'sheet' || mode === 'seams' || mode === 'parts') {
+    const views = mode === 'sheet' ? SHEET : mode === 'parts' ? PARTS : SEAMS;
     return { specs: [base], views };
   }
   const sweep = SWEEPS[mode];
@@ -216,6 +336,16 @@ export default function CharacterLab() {
    */
   const [phase, setPhase] = useState(-1);
   /**
+   * The self-intersection verdict, tagged with the bodies it was measured on.
+   *
+   * Kept that way rather than cleared when the mode changes: a verdict left
+   * standing is the previous mode's answer, and a script polling for "not
+   * empty" takes it and moves on. Comparing the tag on the way past is the
+   * same guarantee without a second render to do it in.
+   */
+  const [clash, setClash] = useState<{ of: unknown; text: string } | null>(null);
+  const auditRef = useRef<(() => string) | null>(null);
+  /**
    * Frozen by default.
    *
    * The idle pose turns the head about a fifth of a radian either way, which
@@ -230,6 +360,7 @@ export default function CharacterLab() {
      outside React and only ever reads it; the labels below are read from the
      memo, so nothing touches a ref while rendering. */
   const current = useMemo(() => plan(mode, seed), [mode, seed]);
+  const clashText = clash && clash.of === current ? clash.text : '';
   const strideRef = useRef(0);
   const liveRef = useRef(false);
   const planRef = useRef(current);
@@ -337,6 +468,97 @@ export default function CharacterLab() {
     };
     rebuild(planRef.current);
 
+    /**
+     * Walks the duelist through the whole stride and reports the deepest any
+     * moving part gets inside another.
+     *
+     * Looking for clipping by eye means looking at one moment, from one angle,
+     * on one duelist, and being sure — and I have been sure and wrong about
+     * this three times. Every vertex of every hand, bracer, forearm, boot and
+     * shin is tested against every tube it could be inside of, at sixteen
+     * moments of the walk and again standing. The answer is a number in
+     * millimetres, and zero is the only acceptable one.
+     */
+    const audit = () => {
+      const ray = new THREE.Raycaster();
+      const p = new THREE.Vector3();
+      const local = new THREE.Vector3();
+      const axis = new THREE.Vector3();
+      const dir = new THREE.Vector3();
+      const worst = new Map<string, number>();
+
+      /* Every surface double-sided for the duration, so a ray leaving a body
+         from the inside registers the wall it passes through. Restored below —
+         the shipped materials are front-faced and stay that way. */
+      const sides = new Map<THREE.Material, THREE.Side>();
+      scene.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          if (!sides.has(mat)) sides.set(mat, mat.side);
+          mat.side = THREE.DoubleSide;
+        }
+      });
+
+      for (const rig of rigs) {
+        /* Keyed by the part, keeping which side each one is. */
+        const byPart = new Map<string, { side: string; mesh: THREE.Mesh }[]>();
+        rig.root.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh || !mesh.name) return;
+          const [part, side = ''] = mesh.name.split('.');
+          const list = byPart.get(part) ?? [];
+          list.push({ side, mesh });
+          byPart.set(part, list);
+          mesh.geometry.computeBoundingBox();
+        });
+
+        const STEPS = 16;
+        for (let k = 0; k <= STEPS; k++) {
+          /* The last pass is the standing pose: a fault that only exists at
+             rest is still a fault. */
+          const walking = k < STEPS;
+          rig.pose(walking ? (k / STEPS) * CYCLE : 0, walking ? 1 : 0);
+          rig.root.updateWorldMatrix(true, true);
+
+          for (const { probe, into, otherSideOnly } of CLASHES) {
+            for (const src of byPart.get(probe) ?? []) {
+              const pos = src.mesh.geometry.attributes.position;
+              /* Enough points to catch a limb inside a body, few enough that
+                 sixteen poses of a twelve-strong sweep still finishes. */
+              const step = Math.max(1, Math.ceil(pos.count / 260));
+              for (const targetPart of into) {
+                if (!TUBES.has(targetPart)) continue;
+                for (const dst of byPart.get(targetPart) ?? []) {
+                  if (dst.mesh === src.mesh) continue;
+                  if (otherSideOnly && dst.side === src.side) continue;
+                  for (let i = 0; i < pos.count; i += step) {
+                    p.fromBufferAttribute(pos, i);
+                    src.mesh.localToWorld(p);
+                    const d = insideDepth(ray, p, dst.mesh, local, axis, dir);
+                    if (d > CLASH_TOLERANCE) {
+                      const key = `${probe} in ${targetPart}`;
+                      worst.set(key, Math.max(worst.get(key) ?? 0, d));
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      sides.forEach((side, mat) => (mat.side = side));
+      rigs.forEach((r) => r.pose(0, 0));
+
+      const rows = [...worst.entries()].sort((a, b) => b[1] - a[1]);
+      return rows.length
+        ? rows.map(([k, v]) => `${k} ${(v * 1000).toFixed(1)}mm`).join(' · ')
+        : 'clear';
+    };
+
+    auditRef.current = audit;
+
     const cameras: THREE.PerspectiveCamera[] = [];
     const cameraAt = (i: number) => {
       while (cameras.length <= i) cameras.push(new THREE.PerspectiveCamera(35, 1, 0.02, 100));
@@ -383,7 +605,7 @@ export default function CharacterLab() {
         cam.updateProjectionMatrix();
         /* One duelist per viewport when sweeping; the same one from six angles
            otherwise. */
-        const ox = specs.length > 1 ? (i - (specs.length - 1) / 2) * SPACING : 0;
+        const ox = (specs.length > 1 ? (i - (specs.length - 1) / 2) * SPACING : 0) + (v.x ?? 0);
         cam.position.set(
           ox + Math.sin(v.yaw) * Math.cos(v.pitch) * v.dist,
           v.y + Math.sin(v.pitch) * v.dist,
@@ -397,6 +619,7 @@ export default function CharacterLab() {
 
     return () => {
       cancelAnimationFrame(raf);
+      auditRef.current = null;
       ro.disconnect();
       rigs.forEach((r) => r.dispose());
       matteMat.dispose();
@@ -463,6 +686,14 @@ export default function CharacterLab() {
             {i}
           </button>
         ))}
+        <span className="mx-1 h-4 w-px bg-white/15" />
+        <button
+          data-clash={clashText}
+          className="btn rounded px-2.5 py-1.5 text-[11px]"
+          onClick={() => setClash({ of: current, text: auditRef.current?.() ?? 'no rig' })}
+        >
+          {clashText ? `clash: ${clashText}` : 'check clipping'}
+        </button>
         <span className="mx-1 h-4 w-px bg-white/15" />
         {PAINTS.map((p) => (
           <button
