@@ -111,6 +111,57 @@ Confidence intervals are printed because they matter here: at 30 games a matchup
 ±18%, which is wide enough to hide any real difference between two configurations, and
 early tuning against numbers that noisy sent this AI down a blind alley.
 
+## Story Mode
+
+The long game, and the only part of this that has a *save*. Sign in with your
+name — no password yet, and only `Mike` is admitted while it is being built —
+and you make a duelist, cut your first deck out of what you are offered, and
+walk into the world with them.
+
+**The duelist is made in 3D and is yours for good.** The creation booth is a
+live model with the whole of it on knobs: frame, build, height, skin, jaw, eye
+shape and colour, brow, nose, mouth, years, twelve hair styles and sixteen
+colours, six kinds of facial hair, five sets of attire with their own
+silhouettes, five colour slots, a gauntlet and a cloak. Nothing is a preview of
+a preview — the model in the booth is built by the same function from the same
+record as the one that walks around the field.
+
+Then it is bound. A duelist and a deck belong to the name that made them, and
+the *server* holds them: the same name on another phone, in another browser, or
+after clearing the site data brings back the same duelist. There is no way back
+from the confirmation, and it says so twice before you take it. Changing your
+appearance in-game comes later; making a second character does not.
+
+The first deck is exactly 25 from 34 offered cards, one copy of each. The
+offered pool is not the collection — **what you keep is what you sleeved.**
+
+The world you walk out into is a grass field and nothing else yet, which is
+deliberate: what goes in it is not decided, and the piece worth building first
+is the one everything attaches to. Ground, sky, wind, a third-person camera, a
+thumb stick (WASD on a keyboard), and a corner menu with your name, your level,
+Edit Deck, Save and the way back to the main menu.
+
+Everything 3D here is generated at runtime — no models, no textures, no
+downloads. The duelist is a chain of joints with primitives on it and a head
+built by displacing one sphere; the grass is sixteen thousand instances of four
+triangles swaying in a hand-injected vertex shader, over a texture painted into
+a canvas on load. The whole of it is [three.js](https://threejs.org) behind a
+`next/dynamic` boundary, so the renderer is downloaded when you enter Story
+Mode and never by the duel board.
+
+```bash
+npm run story -- http://localhost:3000   # the whole flow, tapped, at both iPhone sizes
+```
+
+drives it end to end on both phones: making the duelist, cutting the deck,
+walking the field, and — from a browser with no storage and no memory of the
+first one — signing in again and landing straight back in the world.
+
+Saves live in the same store as duel rooms (`MONGODB_URI`, or the Redis pair)
+under a ten-year deadline rather than the rooms' ninety minutes. With neither
+configured, Story Mode also writes `.cache/story-profiles.json` so a character
+survives a `next dev` restart; production is never in that branch.
+
 ## Tournament
 
 Pick your duelist and seven rivals are drawn against you in a bracket of eight.
@@ -153,6 +204,13 @@ moves could go on for ever.
 - **`src/server/tournament.ts`** — the bracket that turns a solo room into a run of three
   duels. It rides on the same nudge endpoint: one simulated side match per call, so a
   round resolves across several requests instead of timing one out.
+- **`src/story/`** — what a Story Mode save *is*, shared by the client and the routes:
+  the character record and its palettes, the starter pool and the deck rules, the
+  profile. Deliberately plain data with no three.js anywhere near it, so the server can
+  validate a whole duelist without knowing how one is drawn.
+- **`src/components/story/`** — the screens, and `humanoid.ts`, which turns that record
+  into a model. Both 3D screens are behind `next/dynamic`, which is what keeps a WebGL
+  renderer out of the home page and the duel board.
 - **Regions** — functions are pinned to `cdg1` (Paris) in `vercel.json` to sit beside
   the MongoDB cluster. The database is read and written on every move, so co-locating
   compute and storage matters more than shaving the player's own hop.
@@ -187,6 +245,7 @@ npm run audit    # resolve every card's effect in a built position and check wha
 npm run picker   # the layer the player touches: every card the rules allow, the board can point at
 npm run banner   # read every banner the board prints and insist a line naming a card shows it
 npm run nudge    # drop the computer's own requests on the floor; the duel must still finish
+npm run story -- http://localhost:3000   # Story Mode end to end, tapped, at both iPhone sizes
 npm run e2e      # drive two HTTP clients through full duels against a running server
 npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled   # whole brackets

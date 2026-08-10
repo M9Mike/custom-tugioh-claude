@@ -42,19 +42,22 @@
     "winscreen": "node scripts/winscreen-check.mjs",
     "picker": "tsx scripts/picker-check.ts",
     "banner": "tsx scripts/banner-check.ts",
-    "nudge": "node scripts/nudge-check.mjs"
+    "nudge": "node scripts/nudge-check.mjs",
+    "story": "node scripts/story-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
     "next": "16.2.12",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.180.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "mongodb-memory-server": "^11.2.0",

@@ -1,0 +1,69 @@
+/**
+ * A Story Mode save, as both the client and the server see it.
+ *
+ * One record per username, written the first time you finish the creation booth
+ * and updated from then on. It is the *server* that holds it, deliberately: the
+ * promise made to the player is that the same name on a different phone, a
+ * different browser or after clearing the site data brings back the same
+ * duelist, and localStorage cannot keep that promise.
+ */
+
+import type { StoryCharacter } from './character';
+
+export interface WorldPosition {
+  x: number;
+  z: number;
+  /** Facing, in radians, around the world's Y axis. */
+  facing: number;
+}
+
+export interface StoryProfile {
+  /** Canonical spelling, as it will be printed back. Lookups are folded. */
+  username: string;
+  /**
+   * Absent until the creation booth is finished — which is the whole test for
+   * "has this player made a character yet". Once present it is never replaced:
+   * the routes refuse a second write rather than merging one.
+   */
+  character: StoryCharacter | null;
+  /** The 25 the player chose. Absent until the first deck is confirmed. */
+  deck: string[] | null;
+  /**
+   * Every card this account owns.
+   *
+   * Written at the same moment the first deck is locked, and written as exactly
+   * the cards that went into it. The rest of what was on offer is not kept
+   * anywhere: choosing the deck *is* choosing the collection.
+   */
+  collection: string[];
+  level: number;
+  xp: number;
+  world: WorldPosition;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const STARTING_POSITION: WorldPosition = { x: 0, z: 0, facing: 0 };
+
+export function newProfile(username: string, now: number): StoryProfile {
+  return {
+    username,
+    character: null,
+    deck: null,
+    collection: [],
+    level: 1,
+    xp: 0,
+    world: { ...STARTING_POSITION },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Which screen a returning player lands on. */
+export type StoryStage = 'character' | 'deck' | 'world';
+
+export function stageFor(profile: StoryProfile | null): StoryStage {
+  if (!profile?.character) return 'character';
+  if (!profile.deck) return 'deck';
+  return 'world';
+}

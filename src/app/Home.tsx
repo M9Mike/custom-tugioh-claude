@@ -335,6 +335,31 @@ export default function Home() {
 
         <div className="my-4 flex items-center gap-3">
           <div className="brass-rule flex-1" />
+          <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or begin the story</span>
+          <div className="brass-rule flex-1" />
+        </div>
+
+        {/* Story Mode signs in under its own name and keeps its own save, so it
+            deliberately ignores the name field above and asks again on arrival.
+            A plain navigation rather than an `openRoom` call: there is no duel
+            room behind it, and there may never be one. */}
+        <button
+          className="btn btn-primary w-full rounded px-4 py-3 text-sm"
+          onClick={() => {
+            primeAudio();
+            sfx.click();
+            router.push('/story');
+          }}
+          disabled={busy !== null || !ready}
+        >
+          ⚔ Story Mode
+        </button>
+        <p className="mt-2 text-center text-[10px] leading-relaxed text-ptextdim">
+          Make a duelist, cut your first deck, and walk out into the world.
+        </p>
+
+        <div className="my-4 flex items-center gap-3">
+          <div className="brass-rule flex-1" />
           <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">or play alone</span>
           <div className="brass-rule flex-1" />
         </div>
