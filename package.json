@@ -15,6 +15,7 @@
     "e2e-ai": "tsx scripts/e2e-ai.ts",
     "ai-arena": "tsx scripts/ai-arena.ts",
     "shots": "node scripts/shots.mjs",
+    "character": "node scripts/character-shots.mjs",
     "iphone": "node scripts/iphone.mjs",
     "pwa": "node scripts/pwa-check.mjs",
     "anim": "node scripts/anim-check.mjs",

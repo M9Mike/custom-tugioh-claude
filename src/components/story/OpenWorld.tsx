@@ -144,7 +144,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
     scene.add(sky);
 
     /* ---- light ---- */
-    const sun = new THREE.DirectionalLight('#fff2d8', 2.6);
+    /* Daylight, but not as much of it as an open field suggests. The duelist's
+       cloth and skin carry a sheen lobe that saturates towards white under a
+       strong key, so the sun here is dialled to where a dark coat is still a
+       dark coat — see the note on lighting in the creation booth. */
+    const sun = new THREE.DirectionalLight('#fff2d8', 2.05);
     sun.position.set(30, 48, 22);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -161,7 +165,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
     sun.shadow.bias = -0.0018;
     scene.add(sun);
     scene.add(sun.target);
-    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 1.15));
+    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.72));
 
     /* ---- ground ----
        The texture is painted into a canvas rather than downloaded: five thousand
@@ -459,13 +463,20 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
      is about to schedule does not exist yet, so without knowing we are gone it
      would be armed *after* the cleanup and left to fire into nothing. */
   const alive = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    /* Re-armed on mount, not just cleared on unmount. An effect that only ever
+       sets this false latches: once anything remounts the world — Strict Mode
+       in development does it on the first render, and leaving for the deck
+       builder and coming back does it in earnest — every later save runs to
+       completion on the server and then reports nothing, because the button is
+       still waiting for a component it has been told is gone. It reads as a
+       Save that hangs on "Saving…" forever. */
+    alive.current = true;
+    return () => {
       alive.current = false;
       if (noteTimer.current) clearTimeout(noteTimer.current);
-    },
-    []
-  );
+    };
+  }, []);
 
   const save = useCallback(async () => {
     setSaving(true);
