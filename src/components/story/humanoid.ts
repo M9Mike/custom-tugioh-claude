@@ -1251,7 +1251,12 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
    * 2 mm inside its own thigh — small, but a limb inside a limb. Wider bodies
    * carry their arms wider, which is both the fix and what people do.
    */
-  const rest = 0.1 + 0.09 * spec.build + 0.25 * (FRAME_METRICS[spec.frame].hip - 1);
+  /* Guarded the same way `buildCharacter` guards it. A profile is loaded from
+     the database and can carry a frame this build has never heard of; without
+     the fallback the body would be built happily and then throw on every
+     frame of the pose loop, which is a stranger failure than a wrong hip. */
+  const frame = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
+  const rest = 0.1 + 0.09 * spec.build + 0.25 * (frame.hip - 1);
   j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
   /**
