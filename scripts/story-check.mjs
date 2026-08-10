@@ -22,8 +22,23 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 
-const BASE = process.argv[2] ?? 'http://localhost:3000';
-const OUT = process.argv[3] ?? '/tmp/story';
+const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const BASE = args[0] ?? 'http://localhost:3000';
+const OUT = args[1] ?? '/tmp/story';
+
+/**
+ * `--no-create`: run everything except the two steps that cannot be undone.
+ *
+ * A duelist and a first deck are bound to the account for good, and the account
+ * gets exactly one of each. So the full run is only safe against a throwaway
+ * database — pointed at production it would spend the player's one character on
+ * a random one it made itself, before they had ever opened the booth. This flag
+ * is what makes the check runnable against the real thing: it signs in, proves
+ * the booth draws, and stops at the door. Everything after the lock — the
+ * world, the corner menu, Save, Edit Deck, and signing back in from a browser
+ * with no storage — is not destructive and still runs.
+ */
+const NO_CREATE = process.argv.includes('--no-create');
 /* The container's browser may be a different build from the one this copy of
    Playwright would download; both this and `channel` are honoured. */
 const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH;
@@ -44,6 +59,7 @@ const bad = (label, detail) => {
   console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ''}`);
 };
 const check = (cond, label, detail) => (cond ? ok(label) : bad(label, detail));
+const log = (line) => console.log(`  · ${line}`);
 
 /** A canvas that drew a scene compresses to far more than a flat rectangle. */
 const RENDERED_BYTES = 9000;
@@ -209,6 +225,22 @@ async function run(phoneName) {
       await page.locator('text=Bind this duelist').first().isVisible().catch(() => false),
       'binding asks first'
     );
+
+    if (NO_CREATE) {
+      /* The one thing this flag exists to not do. Backing out of the modal is
+         itself worth proving: it is the only way out of a screen that otherwise
+         spends a character. */
+      await page.locator('button:has-text("Keep editing")').first().tap();
+      await page.waitForTimeout(400);
+      check(
+        await page.locator('h1:has-text("Make your duelist")').first().isVisible().catch(() => false),
+        'and backing out of it leaves the duelist unmade'
+      );
+      log('--no-create: stopping at the booth, so the account keeps its one character');
+      await browser.close();
+      return;
+    }
+
     await page.locator('button:has-text("Bind")').last().tap();
     at = await stage(page, 'deck');
     if (at !== 'deck') await fs.writeFile(`${OUT}/${phoneName}-X-bind-failed.png`, await page.screenshot());
@@ -225,6 +257,14 @@ async function run(phoneName) {
 
     const confirmBtn = page.locator('button:has-text("more")').first();
     check(await confirmBtn.isVisible(), 'the deck cannot be sleeved before it is full');
+
+    if (NO_CREATE) {
+      /* Choosing cards writes nothing — only sleeving does — so the counting is
+         safe to leave out and the stopping point is here. */
+      log('--no-create: stopping at the deck, so the account keeps its first 25');
+      await browser.close();
+      return;
+    }
 
     for (let i = 0; i < 25; i++) {
       await cards.nth(i).scrollIntoViewIfNeeded();
@@ -352,7 +392,7 @@ async function run(phoneName) {
 }
 
 await fs.mkdir(OUT, { recursive: true });
-console.log(`Story Mode check against ${BASE}`);
+console.log(`Story Mode check against ${BASE}${NO_CREATE ? ' (--no-create)' : ''}`);
 for (const phone of Object.keys(PHONES)) await run(phone);
 
 console.log(

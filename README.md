@@ -150,12 +150,21 @@ a canvas on load. The whole of it is [three.js](https://threejs.org) behind a
 Mode and never by the duel board.
 
 ```bash
-npm run story -- http://localhost:3000   # the whole flow, tapped, at both iPhone sizes
+npm run story -- http://localhost:3000               # the whole flow, tapped, at both iPhone sizes
+npm run story -- https://your-deployment --no-create # the same, minus anything permanent
 ```
 
 drives it end to end on both phones: making the duelist, cutting the deck,
 walking the field, and — from a browser with no storage and no memory of the
 first one — signing in again and landing straight back in the world.
+
+`--no-create` exists because the full run is only safe against a throwaway
+database. An account gets one character and one first deck, for good, so
+pointed at production the check would spend them on a duelist it invented
+itself before anyone had opened the booth. With the flag it signs in, proves
+the booth draws and every panel opens, backs out of the confirmation, and
+stops. Everything past the lock — the world, the corner menu, Save, Edit Deck,
+signing back in from an empty browser — is not destructive and still runs.
 
 Saves live in the same store as duel rooms (`MONGODB_URI`, or the Redis pair)
 under a ten-year deadline rather than the rooms' ninety minutes. With neither
