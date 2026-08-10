@@ -63,7 +63,15 @@ function slopesFor(table: Profile, col: number): Float64Array {
     }
     m[0] = d[0];
     m[n - 1] = d[n - 2];
-    for (let i = 1; i < n - 1; i++) m[i] = (d[i - 1] + d[i]) / 2;
+    for (let i = 1; i < n - 1; i++) {
+      /* Flat at a turning point. Where the secants either side change sign the
+         row is a local maximum or minimum — the widest part of a calf, the
+         crown of the skull — and averaging them leaves a slope running through
+         it, which the interval clamp below does not catch because it only ever
+         looks at one interval at a time. The curve then sails past the widest
+         measurement in the table on its way over the top. */
+      m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+    }
     for (let i = 0; i < n - 1; i++) {
       if (d[i] === 0) {
         /* A flat run stays flat, instead of dipping between its ends. */

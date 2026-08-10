@@ -1049,8 +1049,21 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
   const rest = 0.12 + 0.03 * spec.build;
   j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
-  j.armL.rotation.z = rest + 0.1 * s;
-  j.armR.rotation.z = -rest - 0.1 * s;
+  /**
+   * Away from the body, which is the opposite of what this used to do.
+   *
+   * `armL` is `arms[1]`, and the loop that fills that array runs `[1, -1]` —
+   * so the left arm hangs at *negative* x, and a positive rotation about Z
+   * carries its hand towards the midline. Both arms were being drawn across
+   * the torso rather than held off it: the hands met in front of the crotch,
+   * and at the top of the stride the fingers came through the thigh. Every
+   * previous attempt to fix that clipping raised this angle, which made it
+   * worse each time. Standing it read as "arms held close", which is why it
+   * survived so long.
+   */
+  const out = rest + 0.1 * s;
+  j.armL.rotation.z = -out;
+  j.armR.rotation.z = out;
   j.foreL.rotation.x = -0.22 - Math.max(0, -gait) * 0.5 * s;
   j.foreR.rotation.x = -0.22 - Math.max(0, gait) * 0.5 * s;
 

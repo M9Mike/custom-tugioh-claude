@@ -66,7 +66,10 @@ const SHEET: View[] = [
  * a jaw turning over a collar, a hem the leg sweeps inside of.
  */
 const SEAMS: View[] = [
-  { y: 0.92, dist: 0.75, yaw: 0.5, pitch: 0.1, label: 'hand · hem · thigh' },
+  /* Far enough back to hold the hand *and* the thigh through the whole stride.
+     Framed for a standing pose the hand simply left the shot at the top of the
+     swing, which is the one moment the two can collide. */
+  { y: 0.86, dist: 1.35, yaw: 0.5, pitch: 0.1, label: 'hand · hem · thigh' },
   { y: 1.36, dist: 0.8, yaw: 0.9, pitch: 0.15, label: 'armpit · deltoid' },
   { y: 1.52, dist: 0.55, yaw: 0.7, pitch: -0.15, label: 'jaw · collar' },
   { y: 1.44, dist: 0.7, yaw: 1.15, pitch: 0.5, label: 'shoulder, from above' },
@@ -138,6 +141,16 @@ const MODES: Mode[] = ['sheet', 'seams', ...(Object.keys(SWEEPS) as (keyof typeo
 /** How far apart sweep duelists stand. Wide enough that none overlaps a neighbour. */
 const SPACING = 2.6;
 
+/**
+ * How many moments the stride is cut into, and how long one stride lasts.
+ *
+ * `pose` advances its gait as `t * (4.6 + stride * 6.4)`, so at full pace a
+ * whole cycle is 2π/11 seconds. Feeding it `PHASES` evenly spaced values of `t`
+ * across that gives the same set of poses every run.
+ */
+const PHASES = 8;
+const CYCLE = (Math.PI * 2) / 11;
+
 type Paint = 'shaded' | 'matte' | 'wire';
 const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
 
@@ -192,6 +205,17 @@ export default function CharacterLab() {
    */
   const [paint, setPaint] = useState<Paint>('shaded');
   /**
+   * Which moment of the stride to hold, or `-1` to let it run.
+   *
+   * Walking against the wall clock cannot be inspected. Two runs of the shot
+   * script catch different moments, so a before and an after are not
+   * comparable — you cannot tell a fix from a phase, and I spent a round
+   * believing a clearance change had done nothing when I was simply looking at
+   * a different part of the cycle. Held at a numbered phase the same frame
+   * comes back every time.
+   */
+  const [phase, setPhase] = useState(-1);
+  /**
    * Frozen by default.
    *
    * The idle pose turns the head about a fifth of a radian either way, which
@@ -210,13 +234,15 @@ export default function CharacterLab() {
   const liveRef = useRef(false);
   const planRef = useRef(current);
   const paintRef = useRef<Paint>('shaded');
+  const phaseRef = useRef(-1);
 
   useEffect(() => {
     strideRef.current = walking ? 1 : 0;
     liveRef.current = live;
     planRef.current = current;
     paintRef.current = paint;
-  }, [walking, live, current, paint]);
+    phaseRef.current = phase;
+  }, [walking, live, current, paint, phase]);
 
   useEffect(() => {
     const el = holder.current;
@@ -328,7 +354,13 @@ export default function CharacterLab() {
       raf = requestAnimationFrame(frame);
       if (builtFor !== planRef.current) rebuild(planRef.current);
       if (paintedAs !== paintRef.current) repaint(paintRef.current);
-      const t = liveRef.current || strideRef.current > 0 ? clock.getElapsedTime() : 0;
+      const held = phaseRef.current;
+      const t =
+        held >= 0
+          ? (held / PHASES) * CYCLE
+          : liveRef.current || strideRef.current > 0
+            ? clock.getElapsedTime()
+            : 0;
       rigs.forEach((r) => r.pose(t, strideRef.current));
 
       const { views, specs } = planRef.current;
@@ -387,6 +419,7 @@ export default function CharacterLab() {
           <button
             key={m}
             data-mode={m}
+            data-on={m === mode ? 'yes' : 'no'}
             className={`btn rounded px-2.5 py-1.5 text-[11px] ${m === mode ? 'btn-primary' : ''}`}
             onClick={() => setMode(m)}
           >
@@ -410,6 +443,26 @@ export default function CharacterLab() {
         >
           {live ? 'Live' : 'Frozen'}
         </button>
+        <span className="mx-1 h-4 w-px bg-white/15" />
+        <button
+          data-phase="-1"
+          data-on={phase < 0 ? 'yes' : 'no'}
+          className={`btn rounded px-2.5 py-1.5 text-[11px] ${phase < 0 ? 'btn-primary' : ''}`}
+          onClick={() => setPhase(-1)}
+        >
+          run
+        </button>
+        {Array.from({ length: PHASES }, (_, i) => (
+          <button
+            key={i}
+            data-phase={i}
+            data-on={phase === i ? 'yes' : 'no'}
+            className={`btn rounded px-2 py-1.5 text-[11px] ${phase === i ? 'btn-primary' : ''}`}
+            onClick={() => setPhase(i)}
+          >
+            {i}
+          </button>
+        ))}
         <span className="mx-1 h-4 w-px bg-white/15" />
         {PAINTS.map((p) => (
           <button

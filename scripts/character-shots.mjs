@@ -154,7 +154,12 @@ async function run() {
   };
 
   for (const mode of MODES) {
-    await page.locator(`button[data-mode="${mode}"]`).click({ noWaitAfter: true });
+    await page.locator(`button[data-mode="${mode}"]`).dispatchEvent('click');
+    /* Confirmed, not assumed. A fixed wait says nothing about whether the mode
+       actually changed, and a shot taken early is the previous mode filed under
+       the new mode's name — which is worse than no shot, because you correct
+       the model against it. */
+    await page.waitForSelector(`button[data-mode="${mode}"][data-on="yes"]`, { timeout: 30000 });
     /* Sweeps build up to twelve duelists in one frame, which blocks the main
        thread for seconds — long enough that a screenshot asked for too early
        simply times out. */
@@ -168,13 +173,24 @@ async function run() {
     await setPaint('shaded');
 
     /* Seams are about what happens mid-stride, so they get the whole cycle
-       whether or not the run asked for walking everywhere. */
+       whether or not the run asked for walking everywhere.
+
+       Held at numbered phases rather than sampled off the clock: two runs that
+       catch different moments of the walk cannot be compared, and a fix to a
+       clipping fault is then indistinguishable from a lucky frame. */
     if (mode === 'seams' || WALK_ALL) {
       await setWalking(true);
-      for (let k = 0; k < 3; k++) {
-        await page.waitForTimeout(190);
-        await shot(`${slug(mode)}-walk${k + (WALK_ALL ? 1 : 0)}`);
+      const phases = await page.$$eval('[data-phase]', (els) =>
+        els.map((e) => e.dataset.phase).filter((p) => Number(p) >= 0)
+      );
+      for (const p of phases) {
+        await page.locator(`[data-phase="${p}"]`).dispatchEvent('click');
+        await page.waitForSelector(`[data-phase="${p}"][data-on="yes"]`, { timeout: 30000 });
+        await page.waitForTimeout(400);
+        await shot(`${slug(mode)}-phase${p}`);
       }
+      await page.locator('[data-phase="-1"]').dispatchEvent('click');
+      await page.waitForSelector('[data-phase="-1"][data-on="yes"]', { timeout: 30000 });
     }
   }
 

@@ -714,7 +714,12 @@ function buildHair(
   const S = HAIR_SHAPE[spec.hair];
   if (!S) return null;
   const m = new MeshBuilder();
-  const SEG = 56;
+  /* The skull's own azimuths, for the same reason the beard uses them: the
+     hairline is where this shell crosses out of the skull, and two lofts on
+     grids that do not line up cross in a zigzag whose period is the beat
+     between them. At 56 against the skull's 60 that beat was the visible edge
+     of the haircut. */
+  const SEG = SKULL_SEG;
   const ROWS = 22;
   const DARK = new THREE.Color(0.55, 0.55, 0.58);
 
@@ -732,8 +737,15 @@ function buildHair(
     /* A little grain, so the fringe is a hairline and not a machined edge.
        Deterministic — two sines, not a random — because the model is rebuilt
        on every slider move and hair that reshuffles as you drag a colour is
-       worse than hair that is slightly too tidy. */
-    const grain = 0.011 * (Math.sin(a * 13.7) * 0.62 + Math.sin(a * 27.3 + 1.1) * 0.38);
+       worse than hair that is slightly too tidy.
+
+       Both frequencies are kept well under the ring's own. At 13.7 and 27.3
+       against sixty segments the second wave had barely two samples to a
+       cycle, so what reached the mesh was not grain but its alias: a hard
+       sawtooth, right along the one line a haircut is judged by. It showed at
+       the fringe and worse across the nape. Detail finer than the mesh cannot
+       be drawn by the mesh — it can only corrupt it. */
+    const grain = 0.013 * (Math.sin(a * 5.3) * 0.6 + Math.sin(a * 9.7 + 1.1) * 0.4);
     if (ax < 0.62) return 0.735 + S.line + grain - 0.03 * Math.cos(ax * 2.5);
     if (ax < 1.02) return lerp(0.762, 0.66, smooth((ax - 0.62) / 0.4)) + S.line + grain;
     if (ax < 1.45) return lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43)) + S.line * 0.5;
