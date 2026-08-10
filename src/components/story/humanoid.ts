@@ -91,9 +91,9 @@ const NECK: Profile = [
 const UPPER_ARM: Profile = [
   [0.0, 0.026, 0.028, 0.0],
   [0.06, 0.048, 0.05, 0.0],
-  [0.14, 0.058, 0.058, -0.002],
-  [0.24, 0.06, 0.06, -0.004], // deltoid
-  [0.38, 0.054, 0.058, -0.004],
+  [0.14, 0.054, 0.058, -0.002],
+  [0.24, 0.055, 0.062, -0.004], // deltoid: deeper than it is wide, as it is
+  [0.38, 0.051, 0.058, -0.004],
   [0.55, 0.049, 0.055, -0.004], // bicep in front, triceps behind
   [0.75, 0.045, 0.05, -0.003],
   [0.92, 0.042, 0.045, -0.001],
@@ -156,10 +156,10 @@ const FRAME_METRICS = {
 
 /** What each outfit id actually changes about the garment. */
 const OUTFIT_SHAPE = {
-  duelist: { hem: 0.02, skirt: 0, flare: 1, collar: 0.075, sleeve: 1, pauldron: false },
+  duelist: { hem: 0.055, skirt: 0, flare: 1, collar: 0.075, sleeve: 1, pauldron: false },
   traveller: { hem: -0.03, skirt: 0.46, flare: 1.5, collar: 0.055, sleeve: 1, pauldron: false },
   scholar: { hem: -0.05, skirt: 0.86, flare: 1.8, collar: 0.045, sleeve: 1, pauldron: false },
-  warden: { hem: 0.0, skirt: 0.24, flare: 1.35, collar: 0.07, sleeve: 1, pauldron: true },
+  warden: { hem: 0.04, skirt: 0.24, flare: 1.35, collar: 0.07, sleeve: 1, pauldron: true },
   street: { hem: 0.09, skirt: 0, flare: 1, collar: 0, sleeve: 0.55, pauldron: false },
 } as const;
 
@@ -349,13 +349,28 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     return raw * w * girth * S;
   };
 
-  const torsoLoft = (y0: number, y1: number, inflate: number, rows = 22) => {
+  const torsoLoft = (
+    y0: number,
+    y1: number,
+    inflate: number,
+    flareBelow = 0,
+    hole: { r: number; cz: number } | null = null,
+    rows = 22
+  ) => {
     const m = new MeshBuilder();
     const rings: number[][] = [];
     for (let i = 0; i <= rows; i++) {
       const y = lerp(y0, y1, i / rows);
-      const hw = torsoAt(y, 1) + inflate;
-      const hd = torsoAt(y, 2) + inflate;
+      /**
+       * A garment flares over the hip, and it has to: the thigh rotates about
+       * a joint inside the coat and sweeps wider than the waist above it. Cut
+       * straight the hem is narrower than the leg at full stride, and the
+       * thigh comes through the cloth — which is the single most obvious
+       * defect a body can have, and it only shows mid-step.
+       */
+      const flare = flareBelow > 0 ? Math.max(0, 1 - Math.max(0, y - y0) / flareBelow) ** 2 * 0.016 * S : 0;
+      const hw = torsoAt(y, 1) + inflate + flare;
+      const hd = torsoAt(y, 2) + inflate + flare * 0.7;
       const sq = sample(TORSO, y / S, 3);
       const ring: number[] = [];
       for (let k = 0; k < 30; k++) {
@@ -367,14 +382,44 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     }
     m.loft(rings);
     m.cap(rings[0], m.vertex(0, y0 - 0.04 * S, 0), -1);
-    m.cap(rings[rows], m.vertex(0, y1 + 0.03 * S, -0.01 * S), 1);
+
+    /**
+     * The neck hole, closed onto the neck rather than to a point.
+     *
+     * A cone from the shoulders to a spike above them leaves the garment's
+     * opening far wider than the neck for most of its height, and the neck —
+     * which is not on the torso's axis — finds its way out through the back of
+     * it. Tapering onto a ring the size of the neck, at the neck's own centre,
+     * means there is no opening left to escape through, whatever the collar
+     * above it happens to be doing.
+     */
+    if (hole) {
+      let prev = rings[rows];
+      for (let i = 1; i <= 3; i++) {
+        const t = i / 3;
+        const y = y1 + t * 0.03 * S;
+        const r = lerp(1, hole.r / Math.max(hole.r, torsoAt(y1, 1) + inflate), t);
+        const ring: number[] = [];
+        for (let k = 0; k < 30; k++) {
+          const a = (k / 30) * Math.PI * 2;
+          const hw = lerp(torsoAt(y1, 1) + inflate, hole.r, t);
+          const hd = lerp(torsoAt(y1, 2) + inflate, hole.r * 0.95, t);
+          const q = sectionPoint(hw * (r > 0 ? 1 : 1), hd, hd, lerp(sample(TORSO, y1 / S, 3), 2.1, t), a);
+          ring.push(m.vertex(q.x, y, q.z + hole.cz * t));
+        }
+        m.loft([prev, ring]);
+        prev = ring;
+      }
+    } else {
+      m.cap(rings[rows], m.vertex(0, y1 + 0.03 * S, -0.01 * S), 1);
+    }
     return m.build();
   };
 
   const hemY = O.hem * S;
   const topY = neckBaseY + 0.012 * S;
   add(torso, torsoLoft(-0.1 * S, hemY + 0.03 * S, 0.008 * S), O.skirt > 0.5 ? primary : trouser);
-  add(torso, torsoLoft(hemY, topY, 0.015 * S), primary);
+  add(torso, torsoLoft(hemY, topY, 0.015 * S, 0.16 * S, { r: 0.088 * neckG, cz: -0.006 * S }), primary);
 
   /* The jacket's closure, in the secondary colour: a placket down the centre
      front, which is what turns one lofted tube into a garment that was cut and
@@ -392,7 +437,14 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   /* Hips-local, like everything else the torso profile is written in. Handed
      chest-local heights it sampled the ribcage instead of the neck and came
      out as a funnel twice the width of the throat it was supposed to fit. */
-  if (O.collar > 0) add(torso, collarGeometry(0.083 * neckG, neckBaseY - 0.01 * S, O.collar * S, S), primary);
+  /* Rooted well below the neckline, not at it. A collar whose bottom rim is
+     wider than the hole it sits in leaves a ring of bare neck showing between
+     the two — invisible from the front and unmissable from behind. Sunk this
+     far the rim is buried inside the jacket and the collar emerges from the
+     shoulders, which is where a collar comes from. */
+  if (O.collar > 0) {
+    add(torso, collarGeometry(0.083 * neckG, neckBaseY - 0.035 * S, (O.collar + 0.03) * S, S), primary);
+  }
 
   /* ---------------- neck and head ---------------- */
 
@@ -418,13 +470,21 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
   /* ---------------- arms ---------------- */
 
-  const shoulderX = torsoAt(shoulderY, 1) * 0.99;
+  /**
+    * The glenohumeral joint, which is further out than the ribcage under it.
+    * Mounted flush with the torso the whole arm hangs *inside* the coat's
+    * silhouette: the forearm crosses the hem, the hand ends up in the thigh,
+    * and anything worn on the arm erupts through the jacket's side.
+    */
+  const shoulderX = torsoAt(shoulderY, 1) * 1.08;
   const arms: THREE.Group[] = [];
   const fores: THREE.Group[] = [];
 
   for (const side of [1, -1] as const) {
     const arm = new THREE.Group();
-    arm.position.set(side * shoulderX, shoulderY - 0.175 * S, 0.004 * S);
+    /* Set forward of the coronal plane, as a relaxed arm hangs — which is
+       also what keeps the forearm in front of the hip rather than beside it. */
+    arm.position.set(side * shoulderX, shoulderY - 0.175 * S, 0.06 * S);
     chest.add(arm);
     arms.push(arm);
 
@@ -465,11 +525,14 @@ export function buildCharacter(spec: StoryCharacter): Rig {
       spec.gauntlet === 'both' || (spec.gauntlet === 'right' ? side === 1 : spec.gauntlet === 'left' && side === -1);
     if (wearsGauntlet) {
       const gm = new MeshBuilder();
+      /* Started below the elbow and kept thin. Run up to the elbow it sits at
+         hip height in a metal that contrasts with the coat, so every
+         millimetre it overlaps is a millimetre you can see. */
       limb(gm, FOREARM, foreArmL, {
-        from: 0.16,
+        from: 0.44,
         to: 0.99,
         scale: LS,
-        inflate: 0.018 * S,
+        inflate: 0.011 * S,
         square: 2.6,
         seg: 20,
       });
@@ -478,11 +541,14 @@ export function buildCharacter(spec: StoryCharacter): Rig {
 
     const hand = new THREE.Group();
     hand.position.y = -foreArmL;
-    /* Turned so the palm faces the thigh. A hand at rest is not a paddle held
-       out front — the forearm is pronated, the palm looks inward, and the
-       fingers curl towards the body. Left flat it reads as a mannequin
-       presenting its hands for inspection. */
-    hand.rotation.y = -side * 1.25;
+    /**
+      * Turned so the palm faces the thigh — a hand at rest is not a paddle
+      * held out front. Only three-quarters of the way, though: the digits are
+      * built curling towards +Z, so the same rotation that turns the palm
+      * inward turns the curl inward with it, and at a right angle the fingers
+      * are aimed straight into the thigh they are supposed to hang beside.
+      */
+    hand.rotation.y = -side * 0.8;
     fore.add(hand);
     add(hand, handGeometry(side, S), skin);
   }
@@ -818,10 +884,10 @@ function handGeometry(side: 1 | -1, S: number): THREE.BufferGeometry {
   };
 
   const knuckle = -palmL + 0.004 * S;
-  digit(side * -0.03, knuckle, 0.072 * S, 0.0115, 0.34);
-  digit(side * -0.0105, knuckle + 0.003 * S, 0.079 * S, 0.0122, 0.32);
-  digit(side * 0.0105, knuckle + 0.001 * S, 0.074 * S, 0.0118, 0.34);
-  digit(side * 0.029, knuckle - 0.005 * S, 0.058 * S, 0.0102, 0.38);
+  digit(side * -0.03, knuckle, 0.072 * S, 0.0115, 0.24);
+  digit(side * -0.0105, knuckle + 0.003 * S, 0.079 * S, 0.0122, 0.22);
+  digit(side * 0.0105, knuckle + 0.001 * S, 0.074 * S, 0.0118, 0.24);
+  digit(side * 0.029, knuckle - 0.005 * S, 0.058 * S, 0.0102, 0.27);
 
   /* The thumb: off the side of the palm, higher up and turned forward. */
   const tr: number[][] = [];
@@ -909,7 +975,10 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
   j.footR.rotation.x = -j.legR.rotation.x - j.shinR.rotation.x + Math.max(0, gait) * 0.34 * s;
 
   /* arms: counter-swing, plus a resting angle so they never clip the coat */
-  const rest = 0.07 + 0.03 * spec.build;
+  /* Arms hang a little away from the body, not flat against it. Too little
+     and the hands finish inside the thighs; too much and the duelist reads as
+     spoiling for a fight. */
+  const rest = 0.12 + 0.03 * spec.build;
   j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
   j.armL.rotation.z = rest + 0.1 * s;

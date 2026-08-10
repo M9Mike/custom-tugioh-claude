@@ -20,13 +20,31 @@ import { defaultCharacter, randomCharacter, type StoryCharacter } from '@/story/
 import { buildCharacter, type Rig } from '@/components/story/humanoid';
 
 /** Every view is (target height, distance, yaw, pitch, label). */
-const VIEWS = [
+const SHEET = [
   { y: 0.95, dist: 3.0, yaw: 0, pitch: 0.02, label: 'front' },
   { y: 0.95, dist: 3.0, yaw: 0.7, pitch: 0.02, label: 'three-quarter' },
   { y: 0.95, dist: 3.0, yaw: Math.PI / 2, pitch: 0.02, label: 'side' },
   { y: 0.95, dist: 3.0, yaw: Math.PI, pitch: 0.02, label: 'back' },
   { y: 1.62, dist: 0.62, yaw: 0.55, pitch: 0.0, label: 'head, three-quarter' },
   { y: 1.65, dist: 0.5, yaw: 0, pitch: 0.0, label: 'face' },
+];
+
+/**
+ * The joints where two parts can pass through each other.
+ *
+ * A separate set because clipping is not something you see in a contact
+ * sheet: it happens at the seams, mid-stride, at a distance you would never
+ * frame a character at. Every one of these is a place where geometry that
+ * moves meets geometry that does not — a hand swinging past a thigh, a
+ * deltoid rotating inside a sleeve, a jaw turning over a collar.
+ */
+const SEAMS = [
+  { y: 0.92, dist: 0.75, yaw: 0.5, pitch: 0.1, label: 'hand · thigh' },
+  { y: 1.36, dist: 0.8, yaw: 0.9, pitch: 0.15, label: 'armpit · deltoid' },
+  { y: 1.52, dist: 0.55, yaw: 0.7, pitch: -0.15, label: 'jaw · collar' },
+  { y: 1.44, dist: 0.7, yaw: 1.15, pitch: 0.5, label: 'shoulder, from above' },
+  { y: 1.48, dist: 0.5, yaw: Math.PI, pitch: -0.12, label: 'nape · collar, from below' },
+  { y: 1.1, dist: 2.2, yaw: 0, pitch: 0.05, label: 'whole, near' },
 ];
 
 /** A deterministic random, so a given seed is always the same duelist. */
@@ -52,14 +70,17 @@ export default function CharacterLab() {
    * t = 0 the duelist faces front with its eyes open.
    */
   const [live, setLive] = useState(false);
+  const [seams, setSeams] = useState(false);
   const specRef = useRef<StoryCharacter>(defaultCharacter('Mike'));
   const strideRef = useRef(0);
   const liveRef = useRef(false);
+  const viewsRef = useRef(SHEET);
 
   useEffect(() => {
     strideRef.current = walking ? 1 : 0;
     liveRef.current = live;
-  }, [walking, live]);
+    viewsRef.current = seams ? SEAMS : SHEET;
+  }, [walking, live, seams]);
 
   useEffect(() => {
     specRef.current = seed === 0 ? defaultCharacter('Mike') : randomCharacter('Mike', seeded(seed * 7919));
@@ -126,7 +147,14 @@ export default function CharacterLab() {
     };
     rebuild(specRef.current);
 
-    const cameras = VIEWS.map(() => new THREE.PerspectiveCamera(35, 1, 0.05, 100));
+    /* One camera per viewport, sized to whichever view set is longer. Built
+       from `SHEET` alone it happens to work only because both sets are six
+       long today, and the seventh seam view anybody adds would index past the
+       end of the array. */
+    const cameras = Array.from(
+      { length: Math.max(SHEET.length, SEAMS.length) },
+      () => new THREE.PerspectiveCamera(35, 1, 0.02, 100)
+    );
 
     const resize = () => {
       renderer.setSize(el.clientWidth || 1, el.clientHeight || 1, false);
@@ -150,7 +178,7 @@ export default function CharacterLab() {
       const cw = Math.floor(W / cols);
       const ch = Math.floor(H / rows);
 
-      VIEWS.forEach((v, i) => {
+      viewsRef.current.forEach((v, i) => {
         const cx = (i % cols) * cw;
         const cy = H - Math.floor(i / cols) * ch - ch;
         renderer.setViewport(cx, cy, cw, ch);
@@ -203,8 +231,14 @@ export default function CharacterLab() {
         >
           {live ? 'Live' : 'Frozen'}
         </button>
+        <button
+          className={`btn rounded px-3 py-1.5 text-[11px] ${seams ? 'btn-primary' : ''}`}
+          onClick={() => setSeams((s) => !s)}
+        >
+          {seams ? 'Seams' : 'Contact sheet'}
+        </button>
         <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">
-          seed {seed} · front · ¾ · side · back · bust · face
+          seed {seed} · {seams ? 'hand · armpit · collar · knees · cape · near' : 'front · ¾ · side · back · head · face'}
         </span>
       </div>
       <div ref={holder} className="min-h-0 flex-1" />
