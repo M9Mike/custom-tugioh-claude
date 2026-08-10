@@ -303,6 +303,9 @@ export default function CharacterLab() {
       const { views, specs } = planRef.current;
       const W = el.clientWidth;
       const H = el.clientHeight;
+      /* Nothing to draw into, and a zero-sized viewport would set every
+         camera's aspect to NaN on the way past. */
+      if (W === 0 || H === 0) return;
       const { cols, rows } = gridFor(views.length);
       const cw = Math.floor(W / cols);
       const ch = Math.floor(H / rows);
