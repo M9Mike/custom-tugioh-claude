@@ -27,7 +27,7 @@
 
 import * as THREE from 'three';
 import { EYE_COLORS, HAIR_COLORS, type StoryCharacter } from '@/story/character';
-import { MeshBuilder, type Profile, fromFront, sample, sectionPoint } from './loft';
+import { MeshBuilder, type Profile, domeRings, fromFront, sample, sectionPoint } from './loft';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -62,6 +62,20 @@ const smoothEdge = (v: number, a: number, b: number) => smooth((v - a) / (b - a)
  * is smooth wherever its inputs are.
  */
 const union = (...xs: number[]): number => 1 - xs.reduce((p, x) => p * (1 - clamp01(x)), 1);
+
+/**
+ * How far forward of the head's mid-plane a point lies, 0..1.
+ *
+ * Every feature on a face — the socket shadow, the warmth over the cheekbone,
+ * the brow, a beard — belongs to the front of the head and has to stop
+ * somewhere on the way round. `z > 0 ? 1 : 0` is the obvious way to say that,
+ * and it is a cliff: the plane it stops on runs from the temple, down in front
+ * of the ear and along the jaw, and at sixty segments around the head a
+ * full-strength colour that ends on it is a staircase cut into the side of the
+ * face. It looked like the face had been masked off and sprayed. A ramp about
+ * a centimetre wide reads as the same boundary and has no edge in it.
+ */
+const frontness = (z: number, H: number) => smooth(z / (0.07 * H));
 
 /** Where the head group's origin sits, as a fraction of head height. */
 const PIVOT_V = 0.32;
@@ -317,14 +331,16 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
        immediately. */
     const c = scratch.setRGB(1, 1, 1);
     const bx = Math.abs(x) / H;
-    const front = z > 0 ? 1 : 0;
+    const front = frontness(z, H);
     const lipW = win(bx, -mouthHalf, mouthHalf) * front;
     const d = eyeD(v, x);
 
     /* --- occlusion, before anything is coloured --- */
     let ao = 0;
-    /* The socket, deepest at the inner corner and along the upper lid. */
-    ao += 0.42 * front * win(d, 0.85, 2.6) * (v > EYE_V ? 1 : 0.45);
+    /* The socket, deepest at the inner corner and along the upper lid — the
+       upper/lower difference ramped across the lid rather than switched at the
+       eye line, which would draw a horizontal step across the socket. */
+    ao += 0.42 * front * win(d, 0.85, 2.6) * lerp(0.45, 1, smooth((v - EYE_V) / 0.05 + 0.5));
     /* Where the wing of the nose meets the cheek. */
     ao += 0.5 * front * win(bx, 0.03, 0.13) * win(v, 0.27, 0.37);
     /* Under the lower lip, and the crease under the nose. */
@@ -369,7 +385,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
      * Stubble stays a shadow: it has no silhouette, so it never gets a shell
      * and never goes to full strength.
      */
-    const shave = beardMask(spec.facialHair, v, bx, z);
+    const shave = beardMask(spec.facialHair, v, bx, front);
     if (shave > 0) {
       const solid = spec.facialHair === 'stubble' ? 0.5 : 1;
       c.lerp(hairOnSkin, clamp01(smooth(shave * 2.6)) * solid);
@@ -393,9 +409,31 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     }
     rings.push(ring);
   }
+  /**
+   * The crown, closed as a dome rather than fanned to a point.
+   *
+   * The slope is measured off the surface itself rather than assumed, so the
+   * arc leaves the last ring going exactly where the skull was already going.
+   * See `domeRings`.
+   */
+  const CROWN = 5;
+  const rTop = sample(SKULL, 1, 1) * H;
+  const rBelow = sample(SKULL, 0.99, 1) * H;
+  const dome = domeRings(rTop, (rTop - rBelow) / (0.01 * H), CROWN);
+  const white = new THREE.Color(1, 1, 1);
+  for (let j = 1; j < CROWN; j++) {
+    const { scale, rise } = dome[j];
+    const ring: number[] = [];
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2;
+      const p = surface(1, a);
+      ring.push(m.vertex(p.x * scale, y(1) + rise, p.z * scale, white));
+    }
+    rings.push(ring);
+  }
   m.loft(rings);
   m.cap(rings[0], m.vertex(0, y(-0.05), sample(SKULL, 0, 2) * H * 0.4, UNDER), -1);
-  m.cap(rings[RINGS], m.vertex(0, y(1.035), 0, new THREE.Color(1, 1, 1)), 1);
+  m.cap(rings[rings.length - 1], m.vertex(0, y(1) + dome[CROWN].rise, 0, white), 1);
 
   addNose(m, spec, H, y, surface);
   addEars(m, H, y, surface);
@@ -825,9 +863,13 @@ function addHairMass(
     const cy = kind === 2 ? y(1.05) : anchor.y + 0.06 * H;
     const cz = kind === 2 ? anchor.z * 0.25 : anchor.z - 0.09 * H;
     const rings: number[][] = [];
-    for (let s = 0; s <= 12; s++) {
-      const t = s / 12;
-      const th = t * Math.PI;
+    /* Poles excluded from the loft: at `th` = 0 and π the radius is zero, so
+       those rings would be sixteen vertices on one point. The zero-area quads
+       that makes contribute nothing to `computeVertexNormals`, so the vertices
+       at the top of the bun end up with no normal at all and shade black —
+       which is what the topknot had sitting on its crown. */
+    for (let s = 1; s < 12; s++) {
+      const th = (s / 12) * Math.PI;
       const r = Math.sin(th) * 0.185 * H;
       const ring: number[] = [];
       for (let k = 0; k < SEG; k++) {
@@ -837,6 +879,8 @@ function addHairMass(
       rings.push(ring);
     }
     m.loft(rings);
+    m.cap(rings[0], m.vertex(0, cy - 0.14 * H, cz), -1);
+    m.cap(rings[rings.length - 1], m.vertex(0, cy + 0.14 * H, cz), 1);
   }
 }
 
@@ -907,8 +951,8 @@ function addMantle(
  * height, so a full beard has a silhouette. Sharing one mask is what keeps the
  * shaved edge of a goatee in the same place in both.
  */
-function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, z: number): number {
-  if (kind === 'none' || z <= 0) return 0;
+function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, fz: number): number {
+  if (kind === 'none' || fz <= 0) return 0;
   /* Stops at the chin. Below v = 0 the skull table is being extrapolated and
      the surface is a small ring around the throat — a beard grown there is a
      black collar on the neck, which is exactly how it looked. */
@@ -941,7 +985,10 @@ function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, z:
   }
   /* Nothing grows on the lips. Left in, a full beard swallows the mouth and
      the duelist ends up wearing its own face as a scarf. */
-  return Math.max(0, m - win(v, 0.145, 0.268) * win(bx, -0.1, 0.1) * 1.3);
+  /* Faded round the side of the head rather than cut off at the mid-plane —
+     see `frontness`. A beard that stopped dead there had a vertical edge in
+     front of the ear, on the shell as well as in the tint. */
+  return Math.max(0, m - win(v, 0.145, 0.268) * win(bx, -0.1, 0.1) * 1.3) * fz;
 }
 
 /**
@@ -972,7 +1019,21 @@ function buildBeard(
 
   const m = new MeshBuilder();
   const V0 = 0.0;
-  const V1 = 0.34;
+  /**
+   * High enough that the mask has died before the last row.
+   *
+   * The shell's edge is supposed to fall out of the arithmetic: where the mask
+   * is small the surface sits inside the skin and cannot be seen. That only
+   * works if the range covers the whole mask. Cut at 0.34 it did not — the
+   * cheek window is still at two-thirds of its peak there, so the top row stood
+   * 0.018 H proud of the face and the loft left it open, which is a hole at the
+   * top of the cheek looking into the inside of the beard. By 0.47 the last
+   * surviving term is under the lift threshold everywhere, so the final row is
+   * back under the skin where an edge cannot be seen. It also lets a full
+   * beard's sideburn exist as geometry at all, instead of being sheared off
+   * halfway up.
+   */
+  const V1 = 0.46;
   const rings: number[][] = [];
 
   /* Rows snapped to the skull's own rings, and only those inside the beard's
@@ -991,7 +1052,7 @@ function buildBeard(
       /* Raised only where the tint has already saturated, so the shell's own
          edge — the place two surfaces cross, and the place a staircase would
          show — is buried well inside a region that is already hair-coloured. */
-      const mask = beardMask(kind, v, Math.abs(p.x) / H, p.z);
+      const mask = beardMask(kind, v, Math.abs(p.x) / H, frontness(p.z, H));
       const off = (smooth(clamp01((mask - 0.34) / 0.5)) * height - 0.003) * H;
       const len = Math.hypot(p.x, p.z) || 1;
       ring.push(m.vertex(p.x + (p.x / len) * off, p.y, p.z + (p.z / len) * off, tint));

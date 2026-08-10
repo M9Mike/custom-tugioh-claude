@@ -848,7 +848,11 @@ function collarGeometry(
 function pauldronGeometry(S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const rings: number[][] = [];
-  for (let i = 0; i <= 10; i++) {
+  /* From the second ring in. At `th` = 0 the radius is zero, so the first ring
+     would be twenty-two vertices stacked on one point: twenty-two zero-area
+     quads, and twenty-two different normals meeting at the crown of the plate,
+     which catches the key light as a star. One apex and a fan instead. */
+  for (let i = 1; i <= 10; i++) {
     const t = i / 10;
     const th = t * Math.PI * 0.72;
     const r = Math.sin(th) * 0.086 * S;
@@ -860,7 +864,10 @@ function pauldronGeometry(S: number): THREE.BufferGeometry {
     }
     rings.push(ring);
   }
-  m.loft([...rings].reverse());
+  /* Reversed so the faces point out of the dome rather than into it. */
+  const order = [...rings].reverse();
+  m.loft(order);
+  m.cap(order[order.length - 1], m.vertex(0, 0.006 * S, 0), 1);
   return m.build();
 }
 

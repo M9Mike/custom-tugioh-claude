@@ -130,21 +130,16 @@ const SWEEPS = {
 } as const;
 
 type Mode = 'sheet' | 'seams' | keyof typeof SWEEPS;
-const MODES: Mode[] = [
-  'sheet',
-  'seams',
-  'outfit',
-  'outfit-behind',
-  'hair',
-  'hair-behind',
-  'beard',
-  'frame',
-  'gauntlet',
-  'skin',
-];
+/* Derived rather than restated: a sweep added to `SWEEPS` widens `Mode` but
+   would not have added a button, and nothing would have complained — the mode
+   would simply never be photographed. */
+const MODES: Mode[] = ['sheet', 'seams', ...(Object.keys(SWEEPS) as (keyof typeof SWEEPS)[])];
 
 /** How far apart sweep duelists stand. Wide enough that none overlaps a neighbour. */
 const SPACING = 2.6;
+
+type Paint = 'shaded' | 'matte' | 'wire';
+const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
 
 /** A deterministic random, so a given seed is always the same duelist. */
 function seeded(seed: number): () => number {
@@ -185,6 +180,18 @@ export default function CharacterLab() {
   const [mode, setMode] = useState<Mode>('sheet');
   const [walking, setWalking] = useState(false);
   /**
+   * What the surface is painted with.
+   *
+   * A fault you can see is not the same as a fault you can name. The head
+   * carries its pigment and its ambient occlusion in the vertex colours, so a
+   * dark edge on a cheek is either a crease in the geometry or a step in a
+   * mask, and the shaded render cannot tell you which — twice now I have
+   * corrected the wrong one. `matte` strips every material back to one grey
+   * with no vertex colour, which leaves only form; `wire` shows the
+   * tessellation the mask is being sampled on.
+   */
+  const [paint, setPaint] = useState<Paint>('shaded');
+  /**
    * Frozen by default.
    *
    * The idle pose turns the head about a fifth of a radian either way, which
@@ -202,12 +209,14 @@ export default function CharacterLab() {
   const strideRef = useRef(0);
   const liveRef = useRef(false);
   const planRef = useRef(current);
+  const paintRef = useRef<Paint>('shaded');
 
   useEffect(() => {
     strideRef.current = walking ? 1 : 0;
     liveRef.current = live;
     planRef.current = current;
-  }, [walking, live, current]);
+    paintRef.current = paint;
+  }, [walking, live, current, paint]);
 
   useEffect(() => {
     const el = holder.current;
@@ -263,6 +272,24 @@ export default function CharacterLab() {
     let rigs: Rig[] = [];
     let builtFor: typeof planRef.current | null = null;
 
+    /* Diagnostic overrides. Kept next to the rigs rather than inside
+       `buildCharacter`, so nothing about the shipped model knows they exist. */
+    const matteMat = new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.78, metalness: 0 });
+    const wireMat = new THREE.MeshBasicMaterial({ color: '#8fd0ff', wireframe: true });
+    const shipped = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    let paintedAs: Paint | null = null;
+    const repaint = (p: Paint) => {
+      rigs.forEach((r) =>
+        r.root.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          if (!shipped.has(mesh)) shipped.set(mesh, mesh.material);
+          mesh.material = p === 'matte' ? matteMat : p === 'wire' ? wireMat : shipped.get(mesh)!;
+        })
+      );
+      paintedAs = p;
+    };
+
     /* Stood in a row rather than swapped in and out: each viewport gets its
        own camera pointed at its own duelist, so one frame draws the whole
        sweep and there is nothing to toggle between shots. */
@@ -271,6 +298,8 @@ export default function CharacterLab() {
         scene.remove(r.root);
         r.dispose();
       });
+      /* The old meshes are gone, and with them any right to their entries. */
+      shipped.clear();
       rigs = next.specs.map((spec, i) => {
         const rig = buildCharacter(spec);
         rig.root.position.x = (i - (next.specs.length - 1) / 2) * SPACING;
@@ -278,6 +307,7 @@ export default function CharacterLab() {
         return rig;
       });
       builtFor = next;
+      repaint(paintRef.current);
     };
     rebuild(planRef.current);
 
@@ -297,6 +327,7 @@ export default function CharacterLab() {
     const frame = () => {
       raf = requestAnimationFrame(frame);
       if (builtFor !== planRef.current) rebuild(planRef.current);
+      if (paintedAs !== paintRef.current) repaint(paintRef.current);
       const t = liveRef.current || strideRef.current > 0 ? clock.getElapsedTime() : 0;
       rigs.forEach((r) => r.pose(t, strideRef.current));
 
@@ -336,6 +367,8 @@ export default function CharacterLab() {
       cancelAnimationFrame(raf);
       ro.disconnect();
       rigs.forEach((r) => r.dispose());
+      matteMat.dispose();
+      wireMat.dispose();
       floorGeo.dispose();
       floorMat.dispose();
       pmrem.dispose();
@@ -377,6 +410,18 @@ export default function CharacterLab() {
         >
           {live ? 'Live' : 'Frozen'}
         </button>
+        <span className="mx-1 h-4 w-px bg-white/15" />
+        {PAINTS.map((p) => (
+          <button
+            key={p}
+            data-paint={p}
+            data-on={p === paint ? 'yes' : 'no'}
+            className={`btn rounded px-2.5 py-1.5 text-[11px] ${p === paint ? 'btn-primary' : ''}`}
+            onClick={() => setPaint(p)}
+          >
+            {p}
+          </button>
+        ))}
       </div>
       <div className="shrink-0 px-2 pb-1">
         <span className="font-display text-[10px] uppercase tracking-widest text-ptextdim">
