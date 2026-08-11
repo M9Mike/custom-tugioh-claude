@@ -232,16 +232,31 @@ async function run(phoneName) {
     /* Every kind of pick has to reach the model, or the booth is a picture of
        a default duelist with buttons next to it. Each tap is compared against
        the frame before it, so the one control that does nothing is named
-       rather than hidden behind the ones that work. Framing-preserving picks
-       come first: the face pick also moves the camera, which would make its
-       own comparison pass for the wrong reason, so everything after it is
-       checked within the face framing it switched to. */
+       rather than hidden behind the ones that work.
+
+       The body-framed picks come first, checked in a framing the camera never
+       leaves. A face or hair pick also *moves* the camera, and a comparison
+       across that move passes whether or not the model changed — so the first
+       face pick is only the way into the face framing, given long enough for
+       the camera to arrive, and the face check proper is a second face picked
+       inside it. */
     let before = first;
     for (const [selector, what] of [
       ['[data-pick="body-plan:female"]', 'a body plan'],
       ['[data-pick="body:2"]', 'a body'],
       ['[data-pick="outfit:3"]', 'an outfit'],
-      ['[data-pick="face:2"]', 'a face'],
+    ]) {
+      await page.locator(selector).tap();
+      await page.waitForTimeout(1400);
+      const after = await canvasShot(page);
+      check(!after.equals(before), `picking ${what} changes the model`);
+      before = after;
+    }
+    await page.locator('[data-pick="face:2"]').tap();
+    await page.waitForTimeout(2600);
+    before = await canvasShot(page);
+    for (const [selector, what] of [
+      ['[data-pick="face:1"]', 'a face'],
       ['[data-pick="hair:2"]', 'a hair'],
       ['[aria-label="Hair colour 4"]', 'a hair colour'],
     ]) {

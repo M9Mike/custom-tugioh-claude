@@ -90,8 +90,18 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
   /* The booth edits a handful of preset indices; the rich record the world
      runs on is derived from them in exactly one place. What is previewed is
      `resolvePick(pick)` and what is bound is `resolvePick(pick)`, so the two
-     cannot drift. */
-  const spec = useMemo(() => resolvePick(pick, name.trim() || username), [pick, name, username]);
+     cannot drift.
+
+     The name is deliberately not folded in here. `buildCharacter` never reads
+     it, but the render loop rebuilds on identity — so a spec that changed
+     with the name tore down and rebuilt the whole duelist on every keystroke
+     of it, on the one screen that has to run a live model on a phone. */
+  const spec = useMemo(() => resolvePick(pick, username), [pick, username]);
+  /* The same record with the chosen name on it — what binding actually posts. */
+  const named = useMemo(
+    () => ({ ...spec, name: (name.trim() || username).slice(0, MAX_CHARACTER_NAME) }),
+    [spec, name, username]
+  );
 
   /* Picking is also framing. Choosing a face zooms to the face and choosing an
      outfit pulls back to the body, so every option is inspected at the
@@ -388,9 +398,9 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     setBusy(true);
     setError(null);
     try {
-      /* `spec` is already the resolved record, name and all — the same object
-         the viewport has been rendering. */
-      const problem = await onConfirm(spec);
+      /* `named` is the record the viewport has been rendering, with the chosen
+         name attached — geometry-identical to the preview by construction. */
+      const problem = await onConfirm(named);
       if (problem) {
         setError(problem);
         setBusy(false);

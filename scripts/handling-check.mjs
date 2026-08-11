@@ -334,6 +334,7 @@ try {
        binds against a local store (see the guard in the booth), but the frames
        should show the door holding, not the save going. */
     const del = page.locator('button:has-text("Delete Character")').first();
+    let declined = false;
     if (await del.isVisible().catch(() => false)) {
       await del.tap();
       await page.waitForTimeout(500);
@@ -341,15 +342,20 @@ try {
       await page.locator('button:has-text("Keep playing")').first().tap();
       await page.waitForTimeout(500);
       await shot('world-delete-declined');
+      declined = true;
     } else {
       console.log('  ! no Delete Character in the menu');
       faults++;
     }
 
     /* Opening the sheet closed the menu, so the ✕ needs the menu back first
-       before it has anything to prove. */
-    await page.locator('[aria-label="Menu"]').tap();
-    await page.waitForTimeout(400);
+       before it has anything to prove — but only down that path. On the fault
+       path the menu never closed, and a blind reopen here would photograph an
+       open menu under the name "closed". */
+    if (declined) {
+      await page.locator('[aria-label="Menu"]').tap();
+      await page.waitForTimeout(400);
+    }
     await page.locator('[aria-label="Menu"]').tap();
     await page.waitForTimeout(500);
     await shot('world-menu-closed');

@@ -1474,8 +1474,12 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
    * why the old walk read stiff-armed. It rides at ~17°, folds towards 40° as
    * the arm comes forward, and never locks at any point of the cycle.
    */
-  j.foreL.rotation.x = -0.3 - 0.1 * s - Math.max(0, gait) * 0.38 * s;
-  j.foreR.rotation.x = -0.3 - 0.1 * s - Math.max(0, -gait) * 0.38 * s;
+  /* The fold rides a `wsin` window over the arm's forward half, not
+     `max(0, gait)`: the clamp is continuous in value but not in slope, so the
+     elbow's angular velocity jumped twice a stride — exactly the corner the
+     legs' windows exist to avoid, in the one joint that was still clamping. */
+  j.foreL.rotation.x = -0.3 - 0.1 * s - wsin(cycle, 0, Math.PI) * 0.38 * s;
+  j.foreR.rotation.x = -0.3 - 0.1 * s - wsin(cycle, Math.PI, TAU) * 0.38 * s;
 
   /**
    * The body over the legs. Three corrections, all of frequency or phase:

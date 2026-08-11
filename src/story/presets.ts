@@ -321,7 +321,7 @@ export function resolvePick(pick: CharacterPick, name: string): StoryCharacter {
     mouth: face.mouth,
     age: Math.max(0, Math.min(1, pick.age)),
     hair: hair.style,
-    hairColor: at(HAIR_COLOR_CHOICES as unknown as number[], pick.hairColor),
+    hairColor: at(HAIR_COLOR_CHOICES, pick.hairColor),
     facialHair: face.facialHair,
     outfit: outfit.outfit,
     primary: outfit.primary,
