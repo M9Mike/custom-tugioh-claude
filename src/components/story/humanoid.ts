@@ -544,7 +544,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
       const rings: number[][] = [];
       for (let i = 0; i <= 6; i++) {
         const t = 0.45 + (0.55 * i) / 6;
-        const flareUp = 1 + (1 - (t - 0.45) / 0.55) * 0.45;
+        const flareUp = 1 + (1 - (t - 0.45) / 0.55) * 0.3;
         const rx = (sample(FOREARM, t, 1) * LS + 0.012 * S) * flareUp;
         const rz = (sample(FOREARM, t, 2) * LS + 0.012 * S) * flareUp;
         const ring: number[] = [];
@@ -812,12 +812,25 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   };
 
   /**
-   * The arms' resting splay: enough that the hand clears the hip this body
-   * actually has — read from the same tables the build used, never restated.
+   * The arms' resting splay, computed from what was actually built: the
+   * forearm (plus its gauntlet, when worn) must hang clear of the thigh
+   * this body has. The first cut eyeballed a constant and the clash audit
+   * found the gauntlet 25 mm inside the thigh on the default body and 45 mm
+   * on the heavy one — clearance is geometry, so it is read from the same
+   * tables and scales the geometry came from, never restated.
    */
-  const hipReach = torsoAt(0.04, 1) + 0.02 * S;
-  const armDrop = upperArmL + foreArmL;
-  const splay = Math.max(0.06, Math.asin(Math.min(0.6, (hipReach - shoulderX + 0.045 * S) / armDrop)));
+  const thighOuterX = hipX + sample(THIGH, 0.08, 1) * LS + 0.006 * S;
+  /* A heavy build's jacketed waist reaches further out than its thigh does;
+     the arm has to clear whichever is widest at the height it hangs. */
+  const waistOuterX = torsoAt(0.32, 1) + 0.013 * S;
+  const wornGauntlet = spec.gauntlet !== 'none';
+  const foreR = wornGauntlet
+    ? (sample(FOREARM, 0.45, 1) * LS + 0.012 * S) * 1.3
+    : sample(FOREARM, 0.3, 1) * LS + 0.009 * S;
+  /* The gauntlet's widest point rides the upper forearm. */
+  const armReach = upperArmL + foreArmL * 0.55;
+  const needed = Math.max(thighOuterX, waistOuterX) + foreR + 0.012 * S - shoulderX;
+  const splay = Math.max(0.07, Math.min(0.34, Math.asin(Math.min(0.9, Math.max(0, needed) / armReach))));
 
   const TAU = Math.PI * 2;
   /** A smooth window on the cycle: 0 outside `lo..hi`, a sin² hump inside. */
@@ -912,15 +925,18 @@ export function buildCharacter(spec: StoryCharacter): Rig {
        trail. At rest they hang bent and easy, never straight. ---- */
     const armC = c - 0.28;
     const swing = Math.sin(armC) * 0.52 * gs;
-    j.armL.rotation.x = -swing + sway * 0.02;
-    j.armR.rotation.x = swing - sway * 0.02;
+    /* At rest the arm hangs a touch *behind* the hip line, so the bent
+       forearm falls beside the thigh rather than across its front — the
+       other half of the clearance the splay buys sideways. */
+    j.armL.rotation.x = 0.06 * (1 - s) - swing + sway * 0.02;
+    j.armR.rotation.x = 0.06 * (1 - s) + swing - sway * 0.02;
     j.armL.rotation.z = splay + 0.02 * Math.sin(t * 1.1) * (1 - s) + 0.05 * s;
     j.armR.rotation.z = -splay - 0.02 * Math.sin(t * 1.27 + 0.9) * (1 - s) - 0.05 * s;
 
     const foldL = wsin(armC, 0, Math.PI);
     const foldR = wsin(armC, Math.PI, TAU);
-    j.foreL.rotation.x = -0.32 - 0.05 * breath * (1 - s) - 0.1 * s - foldL * 0.5 * s;
-    j.foreR.rotation.x = -0.32 - 0.05 * breath * (1 - s) - 0.1 * s - foldR * 0.5 * s;
+    j.foreL.rotation.x = -0.2 - 0.05 * breath * (1 - s) - 0.22 * s - foldL * 0.5 * s;
+    j.foreR.rotation.x = -0.2 - 0.05 * breath * (1 - s) - 0.22 * s - foldR * 0.5 * s;
 
     j.handL.rotation.x = 0.1 + Math.sin(armC - 0.55) * 0.12 * s;
     j.handR.rotation.x = 0.1 + Math.sin(armC + Math.PI - 0.55) * 0.12 * s;
