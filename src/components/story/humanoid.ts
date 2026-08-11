@@ -71,7 +71,7 @@ const TORSO: Profile = [
   [0.38, 0.17, 0.117, 2.4], // pectoral
   [0.44, 0.171, 0.108, 2.3],
   [0.49, 0.163, 0.096, 2.2], // the shelf the shoulder hangs off
-  [0.525, 0.13, 0.086, 2.1], // trapezius
+  [0.525, 0.139, 0.09, 2.1], // trapezius
   [0.56, 0.084, 0.075, 2.0], // base of the neck
 ];
 
@@ -495,7 +495,16 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     * silhouette: the forearm crosses the hem, the hand ends up in the thigh,
     * and anything worn on the arm erupts through the jacket's side.
     */
-  const shoulderX = torsoAt(shoulderY, 1) * 1.08;
+  /**
+   * Seated into the shoulder, not hung beside it.
+   *
+   * At 1.08 the arm's axis stands eight per cent outside the torso's own edge,
+   * so the deltoid meets the chest in a narrow valley and its cap rises clear
+   * of the trapezius — the puffed sleeve of a stage costume, and a hard crease
+   * underneath it. Pulled in, the same tube shares more of its top with the
+   * body it belongs to and the shoulder line runs on through it.
+   */
+  const shoulderX = torsoAt(shoulderY, 1) * 1.015;
   const arms: THREE.Group[] = [];
   const fores: THREE.Group[] = [];
 
@@ -1250,13 +1259,17 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
    * at nothing. Held at a fixed angle the heaviest duelist's bracer finished
    * 2 mm inside its own thigh — small, but a limb inside a limb. Wider bodies
    * carry their arms wider, which is both the fix and what people do.
+   *
+   * Widened again when the shoulder was seated into the torso: pulling the
+   * arm's root inwards to close the crease brought the forearm in with it,
+   * and on the heaviest frame it touched the ribs.
    */
   /* Guarded the same way `buildCharacter` guards it. A profile is loaded from
      the database and can carry a frame this build has never heard of; without
      the fallback the body would be built happily and then throw on every
      frame of the pose loop, which is a stranger failure than a wrong hip. */
   const frame = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
-  const rest = 0.1 + 0.09 * spec.build + 0.25 * (frame.hip - 1);
+  const rest = 0.11 + 0.11 * spec.build + 0.3 * (frame.hip - 1);
   j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
   /**

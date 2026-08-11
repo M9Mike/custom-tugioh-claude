@@ -90,7 +90,11 @@ const PIVOT_V = 0.32;
  * Sampled at the *same* points the two surfaces differ only by a radial
  * offset, so the crossing follows one grid and reads as a shaved line.
  */
-const SKULL_RINGS = 66;
+/* Raised from 66. One ring was 3.5 mm of head, and a lip seam, an eyelid rim
+   and the crease under a nostril all want finer than that — at 66 the mouth
+   could only ever be a soft smear, however the tints were tuned. At 84 a ring
+   is 2.7 mm, which is what the features below were written expecting. */
+const SKULL_RINGS = 84;
 const SKULL_SEG = 60;
 
 /** The eye line, which is the vertical middle of every head there has ever been. */
@@ -158,7 +162,7 @@ const NOSE: Profile = [
    factor stays a lip on every skin tone in the palette, where a hex value is
    only ever right for one of them. */
 const LIP = new THREE.Color(1.0, 0.68, 0.63);
-const SEAM = new THREE.Color(0.58, 0.38, 0.36);
+const SEAM = new THREE.Color(0.44, 0.27, 0.26);
 const LASH = new THREE.Color(0.24, 0.17, 0.16);
 const WARM = new THREE.Color(1.08, 0.94, 0.92);
 /** Occlusion: what collects in a crease. Cool, because skin in shadow is. */
@@ -283,7 +287,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     const bow = 0.009 * win(bx, -0.032, 0.032);
     z += 0.024 * H * lipW * (0.92 * win(v + bow, 0.208, 0.262) + win(v, 0.15, 0.212));
     /* The seam is a line, not a slot. At 3 mm deep it read as an open mouth. */
-    z -= 0.009 * H * lipW * win(v, 0.192, 0.22);
+    z -= 0.012 * H * lipW * win(v, 0.194, 0.218);
     z -= 0.011 * H * win(bx, -0.032, 0.032) * win(v, 0.252, 0.3);
     z -= 0.009 * H * win(bx, -mouthHalf * 0.8, mouthHalf * 0.8) * win(v, 0.132, 0.168);
 
@@ -362,7 +366,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
 
     const bow = 0.009 * win(bx, -0.032, 0.032);
     c.lerp(LIP, clamp01(lipW * (win(v + bow, 0.2, 0.266) + win(v, 0.144, 0.21)) * 1.35));
-    c.lerp(SEAM, clamp01(lipW * win(v, 0.19, 0.222) * 1.6));
+    c.lerp(SEAM, clamp01(lipW * win(v, 0.194, 0.218) * 2.1));
 
     /* Lashes, at the rim of the fissure — heavier above than below, as they
        are. An eye without a dark edge has nothing to hold it in the face. */
@@ -390,6 +394,10 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
       const solid = spec.facialHair === 'stubble' ? 0.5 : 1;
       c.lerp(hairOnSkin, clamp01(smooth(shave * 2.6)) * solid);
     }
+
+    /* The scalp, for the same reason and by the same means — see `hairPaint`. */
+    const cut = HAIR_SHAPE[spec.hair];
+    if (cut) c.lerp(hairOnSkin, clamp01(hairPaint(spec, cut, H, v, x, z)));
     return c;
   };
 
@@ -716,6 +724,108 @@ const HAIR_SHAPE = {
   bun: { thick: 0.024, line: 0.05, part: 0, nape: 0.3, tail: 4, mantle: 0 },
 } as const;
 
+type HairShape = (typeof HAIR_SHAPE)[keyof typeof HAIR_SHAPE];
+
+function hairlineAt(S: HairShape, a: number): number {
+  const ax = fromFront(a);
+  /* A little grain, so the fringe is a hairline and not a machined edge.
+     Deterministic — two sines, not a random — because the model is rebuilt
+     on every slider move and hair that reshuffles as you drag a colour is
+     worse than hair that is slightly too tidy.
+
+     Both frequencies are kept well under the ring's own. At 13.7 and 27.3
+     against sixty segments the second wave had barely two samples to a
+     cycle, so what reached the mesh was not grain but its alias: a hard
+     sawtooth, right along the one line a haircut is judged by. It showed at
+     the fringe and worse across the nape. Detail finer than the mesh cannot
+     be drawn by the mesh — it can only corrupt it. */
+  const grain = 0.013 * (Math.sin(a * 5.3) * 0.6 + Math.sin(a * 9.7 + 1.1) * 0.4);
+  if (ax < 0.62) return 0.735 + S.line + grain - 0.03 * Math.cos(ax * 2.5);
+  if (ax < 1.02) return lerp(0.762, 0.66, smooth((ax - 0.62) / 0.4)) + S.line + grain;
+  if (ax < 1.45) return lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43)) + S.line * 0.5;
+  return lerp(0.5, S.nape, smooth((ax - 1.45) / (Math.PI - 1.45)));
+}
+
+function hairStand(spec: StoryCharacter, S: HairShape, H: number, a: number, u: number): number {
+  const ax = fromFront(a);
+  let t = S.thick;
+  /**
+   * Negative right at the hairline, so the shell starts *inside* the skull
+   * and crosses out of it in a clean line.
+   *
+   * Tapered to a thin positive instead, it lies half a millimetre proud of
+   * the scalp all along the edge — two near-coincident surfaces, which
+   * speckle where they cross. The line a haircut is judged by is exactly
+   * that edge.
+   */
+  t *= 0.02 + 1.05 * smooth(u * 2.4);
+  /* Volume on the crown, because hair has a mass and gravity gives it a
+     shape; a shell of constant offset never does. */
+  t *= 1 + 0.55 * smooth((u - 0.35) / 0.6);
+  /* A parting: the shell dips towards the scalp along the middle. */
+  if (S.part > 0) t *= 1 - S.part * 0.75 * win(ax, -0.34, 0.34) * smooth(u * 1.6);
+  /* Mohawks keep the crest and lose the sides. */
+  /* Negative off the crest, so the shell is *inside* the skull there rather
+     than lying on it — a shell at nominally zero thickness still crosses the
+     scalp and speckles it. */
+  if (spec.hair === 'mohawk') {
+    t *= 0.02 + 2.4 * Math.max(win(ax, -0.5, 0.5), win(ax, Math.PI - 0.5, Math.PI + 0.5));
+  }
+  if (spec.hair === 'spiked') t *= 1 + 0.85 * Math.sin(a * 9) ** 2 * smooth((u - 0.3) / 0.6);
+  if (spec.hair === 'wild') t *= 1 + 0.34 * Math.sin(a * 6.3 + u * 7) + 0.2 * Math.sin(a * 11);
+  /**
+   * Sunk a constant millimetre at the end, rather than by a factor.
+   *
+   * The shell has to start inside the skull and cross out of it, or its edge
+   * speckles where two near-coincident surfaces meet. Doing that with a
+   * negative *multiplier* looks equivalent and is not: a mohawk multiplies
+   * by a second negative off the crest, the two cancel, and hair reappears
+   * in a jagged patch exactly where it was supposed to vanish. Subtracting
+   * cannot change sign twice.
+   */
+  return t * H - 0.005 * H;
+}
+
+/**
+ * The hair, as colour on the skull under the shell that gives it shape.
+ *
+ * The shell has to break out of the skin somewhere, and where it does there is
+ * a step — a hard line straight across the forehead, which is the one line a
+ * haircut is judged by. The beard solved this long ago and the hair never got
+ * the same treatment: paint the scalp the hair's own colour *just before* the
+ * shell emerges, and the crossing then happens between two surfaces of the
+ * same colour with nothing to see.
+ *
+ * The paint is driven by the shell's own standoff, not by height. Driven by
+ * height it is a band of fixed width, and a band of fixed width smears a long
+ * way down the temples where the hairline plunges — a dark smudge on the side
+ * of the face, which is worse than the edge it was hiding. Driven by the
+ * standoff it tracks the shell exactly: full a hair's breadth before the
+ * surface breaks, gone a few millimetres below, and absent entirely at an
+ * azimuth where no hair grows, so a mohawk's shaved sides stay shaved.
+ */
+function hairPaint(spec: StoryCharacter, S: HairShape, H: number, v: number, x: number, z: number): number {
+  const a = Math.atan2(x, z);
+  const hl = hairlineAt(S, a);
+  /* Below the hairline the standoff stops changing, so it cannot end the paint
+     — that has to be said separately, and tightly. */
+  if (v < hl - 0.014) return 0;
+  const u = (v - hl) / Math.max(0.05, 1.005 - hl);
+  const stand = hairStand(spec, S, H, a, Math.max(0, u)) / H;
+  /**
+   * Kept well short of full strength, which is the difference between this
+   * working and not.
+   *
+   * At full hair colour the painted fringe is a dark band on light skin, and
+   * its boundary is per-vertex: where the hairline plunges at the temple it
+   * runs across the rings rather than along them, so sixty segments draw it as
+   * a staircase. Two attempts at this failed that way. Held at a third, the
+   * same band reads as what a hairline actually casts — a soft shadow — and a
+   * staircase at that contrast is not visible at any distance the game uses.
+   */
+  return 0.34 * smooth((stand + 0.006) / 0.005) * smooth((v - hl + 0.014) / 0.014);
+}
+
 function buildHair(
   spec: StoryCharacter,
   H: number,
@@ -734,75 +844,11 @@ function buildHair(
   const ROWS = 22;
   const DARK = new THREE.Color(0.55, 0.55, 0.58);
 
-  /**
-   * Where the hairline crosses a given azimuth.
-   *
-   * This one function is most of the difference between hair and a swim cap.
-   * A real hairline is not a circle: it dips at the middle of the forehead,
-   * climbs at the temples, drops steeply in front of the ear into a sideburn,
-   * and runs low across the nape. Drawing it as a constant height is exactly
-   * what makes procedural hair look moulded on.
-   */
-  const hairline = (a: number) => {
-    const ax = fromFront(a);
-    /* A little grain, so the fringe is a hairline and not a machined edge.
-       Deterministic — two sines, not a random — because the model is rebuilt
-       on every slider move and hair that reshuffles as you drag a colour is
-       worse than hair that is slightly too tidy.
-
-       Both frequencies are kept well under the ring's own. At 13.7 and 27.3
-       against sixty segments the second wave had barely two samples to a
-       cycle, so what reached the mesh was not grain but its alias: a hard
-       sawtooth, right along the one line a haircut is judged by. It showed at
-       the fringe and worse across the nape. Detail finer than the mesh cannot
-       be drawn by the mesh — it can only corrupt it. */
-    const grain = 0.013 * (Math.sin(a * 5.3) * 0.6 + Math.sin(a * 9.7 + 1.1) * 0.4);
-    if (ax < 0.62) return 0.735 + S.line + grain - 0.03 * Math.cos(ax * 2.5);
-    if (ax < 1.02) return lerp(0.762, 0.66, smooth((ax - 0.62) / 0.4)) + S.line + grain;
-    if (ax < 1.45) return lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43)) + S.line * 0.5;
-    return lerp(0.5, S.nape, smooth((ax - 1.45) / (Math.PI - 1.45)));
-  };
-
-  /** How far the hair stands off the scalp at a point. */
-  const thickness = (a: number, u: number) => {
-    const ax = fromFront(a);
-    let t = S.thick;
-    /**
-     * Negative right at the hairline, so the shell starts *inside* the skull
-     * and crosses out of it in a clean line.
-     *
-     * Tapered to a thin positive instead, it lies half a millimetre proud of
-     * the scalp all along the edge — two near-coincident surfaces, which
-     * speckle where they cross. The line a haircut is judged by is exactly
-     * that edge.
-     */
-    t *= 0.02 + 1.05 * smooth(u * 2.4);
-    /* Volume on the crown, because hair has a mass and gravity gives it a
-       shape; a shell of constant offset never does. */
-    t *= 1 + 0.55 * smooth((u - 0.35) / 0.6);
-    /* A parting: the shell dips towards the scalp along the middle. */
-    if (S.part > 0) t *= 1 - S.part * 0.75 * win(ax, -0.34, 0.34) * smooth(u * 1.6);
-    /* Mohawks keep the crest and lose the sides. */
-    /* Negative off the crest, so the shell is *inside* the skull there rather
-       than lying on it — a shell at nominally zero thickness still crosses the
-       scalp and speckles it. */
-    if (spec.hair === 'mohawk') {
-      t *= 0.02 + 2.4 * Math.max(win(ax, -0.5, 0.5), win(ax, Math.PI - 0.5, Math.PI + 0.5));
-    }
-    if (spec.hair === 'spiked') t *= 1 + 0.85 * Math.sin(a * 9) ** 2 * smooth((u - 0.3) / 0.6);
-    if (spec.hair === 'wild') t *= 1 + 0.34 * Math.sin(a * 6.3 + u * 7) + 0.2 * Math.sin(a * 11);
-    /**
-     * Sunk a constant millimetre at the end, rather than by a factor.
-     *
-     * The shell has to start inside the skull and cross out of it, or its edge
-     * speckles where two near-coincident surfaces meet. Doing that with a
-     * negative *multiplier* looks equivalent and is not: a mohawk multiplies
-     * by a second negative off the crest, the two cancel, and hair reappears
-     * in a jagged patch exactly where it was supposed to vanish. Subtracting
-     * cannot change sign twice.
-     */
-    return t * H - 0.005 * H;
-  };
+  /* Both shared with the *paint* under the shell — see `hairPaint`. Two copies
+     of a hairline that disagree by a millimetre put a ring of bare scalp round
+     the whole head. */
+  const hairline = (a: number) => hairlineAt(S, a);
+  const thickness = (a: number, u: number) => hairStand(spec, S, H, a, u);
 
   const rows: number[][] = [];
   for (let r = 0; r <= ROWS; r++) {
@@ -851,14 +897,28 @@ function addHairMass(
   const anchor = surface(kind === 2 ? 0.99 : 0.78, Math.PI);
   const SEG = 16;
 
-  /** A tapered rope from the anchor, drooping as it goes. */
-  const rope = (x0: number, len: number, r0: number, r1: number, droop: number) => {
+  /**
+   * A plaited rope from the anchor, drooping as it goes.
+   *
+   * `plait` is what stops it being a spike. Long, thin and smoothly tapered,
+   * two of these hanging down the back read as a pair of chopsticks pushed
+   * into the hair — which is what the braids looked like. A real plait is
+   * short for its width and visibly *segmented*: the light catches a run of
+   * swellings down it, and that texture is the whole of what says "braid" at
+   * any distance where the strands themselves are invisible.
+   */
+  const rope = (x0: number, len: number, r0: number, r1: number, droop: number, plait = 0) => {
     const rings: number[][] = [];
-    for (let s = 0; s <= 12; s++) {
-      const t = s / 12;
+    const STEPS = 24;
+    for (let s = 0; s <= STEPS; s++) {
+      const t = s / STEPS;
       /* Full for most of its length, then rounded off — tapered linearly to a
          capped point it reads as a spike rather than a plait. */
-      const r = lerp(r0, r1, t ** 2) * H * Math.sqrt(Math.max(0.06, 1 - (t > 0.86 ? (t - 0.86) / 0.14 : 0) ** 2));
+      const r =
+        lerp(r0, r1, t ** 2) *
+        (1 + plait * Math.sin(t * 21)) *
+        H *
+        Math.sqrt(Math.max(0.06, 1 - (t > 0.86 ? (t - 0.86) / 0.14 : 0) ** 2));
       const ring: number[] = [];
       for (let k = 0; k < SEG; k++) {
         const a = (k / SEG) * Math.PI * 2;
@@ -876,10 +936,11 @@ function addHairMass(
     m.cap(rings[rings.length - 1], m.vertex(anchor.x + x0 * H, anchor.y - len * H - droop * H - r1 * H, anchor.z - 0.1 * H), -1);
   };
 
-  if (kind === 1) rope(0, 1.15, 0.115, 0.045, 0.12);
+  /* Shorter and thicker than they were, and plaited. */
+  if (kind === 1) rope(0, 0.98, 0.132, 0.062, 0.12, 0.05);
   if (kind === 3) {
-    rope(-0.24, 1.25, 0.082, 0.036, 0.1);
-    rope(0.24, 1.25, 0.082, 0.036, 0.1);
+    rope(-0.235, 0.86, 0.105, 0.055, 0.1, 0.1);
+    rope(0.235, 0.86, 0.105, 0.055, 0.1, 0.1);
   }
   if (kind === 2 || kind === 4) {
     /* A knot or a bun: a squashed ball sitting on the crown or the nape. */
