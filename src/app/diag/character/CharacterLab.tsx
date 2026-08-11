@@ -127,6 +127,33 @@ const SWEEPS = {
     view: WHOLE,
     specs: OUTFITS.map((o) => ({ label: o.id, over: { outfit: o.id } as Partial<StoryCharacter> })),
   },
+  /**
+   * A cape, right the way round.
+   *
+   * The only sweep that turns the camera rather than the duelist, and the
+   * reason it exists: `outfit` photographs the front without a cape and
+   * `outfit-behind` photographs the back with one, so between the two of them
+   * the *front* of a cape had never been looked at. What was there was two
+   * loose flaps of cloth hanging beside the duelist's hands. A garment that
+   * wraps has to be photographed all the way round or the half nobody shoots
+   * is the half that is wrong.
+   */
+  cape: {
+    view: WHOLE,
+    specs: [
+      { label: 'front', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: 0 } },
+      { label: 'three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: 0.85 } },
+      { label: 'side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI / 2 } },
+      /* Square on, not near it. A rear view a fifth of a radian off centre is
+         the one place a cape's two halves cannot be compared against each
+         other, which is the only way an asymmetry shows. */
+      { label: 'behind', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
+      { label: 'far side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -Math.PI / 2 } },
+      { label: 'far three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -0.85 } },
+      { label: 'over a robe', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+      { label: 'over a coat', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+    ],
+  },
   'outfit-behind': {
     view: BEHIND,
     specs: OUTFITS.map((o) => ({ label: o.id, over: { outfit: o.id, cape: true } as Partial<StoryCharacter> })),
@@ -172,8 +199,16 @@ type Mode = 'sheet' | 'seams' | 'parts' | keyof typeof SWEEPS;
    would simply never be photographed. */
 const MODES: Mode[] = ['sheet', 'seams', 'parts', ...(Object.keys(SWEEPS) as (keyof typeof SWEEPS)[])];
 
-/** How far apart sweep duelists stand. Wide enough that none overlaps a neighbour. */
-const SPACING = 2.6;
+/**
+ * How far apart sweep duelists stand.
+ *
+ * Wide enough that a camera never ends up standing on top of a neighbour. Each
+ * camera orbits its own duelist, so at 2.6 m a view from the side put the lens
+ * 3.7 m along the row — past the duelist next door, which then filled the
+ * frame instead. Framing is unaffected by this number, only what is behind the
+ * subject, so it costs nothing to make it large enough for any angle.
+ */
+const SPACING = 9;
 
 /**
  * How many moments the stride is cut into, and how long one stride lasts.
@@ -299,7 +334,14 @@ function plan(mode: Mode, seed: number): { specs: StoryCharacter[]; views: View[
   const sweep = SWEEPS[mode];
   return {
     specs: sweep.specs.map((s) => ({ ...base, ...s.over })),
-    views: sweep.specs.map((s) => ({ ...sweep.view, label: s.label })),
+    /* A sweep usually varies the duelist and holds the camera still. One of
+       them varies the camera instead — see `cape` — because some garments only
+       exist on one side of a person. */
+    views: sweep.specs.map((s) => ({
+      ...sweep.view,
+      ...(('view' in s ? s.view : null) ?? {}),
+      label: s.label,
+    })),
   };
 }
 
