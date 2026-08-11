@@ -130,6 +130,18 @@ export default function StoryMode() {
     return null;
   };
 
+  const deleteCharacter = async (): Promise<string | null> => {
+    const res = await post<Record<string, never>>('/api/story/delete', { username: profile?.username });
+    if (!res.ok) return res.error;
+    /* The save is gone; forget every trace of it here too. Landing back on the
+       sign-in screen rather than the home page makes the result visible:
+       signing straight back in walks into the creation booth as on day one,
+       which is the whole point of deleting. */
+    setProfile(null);
+    setScreen(null);
+    return null;
+  };
+
   const toMenu = () => router.push('/');
 
   /* ---------------- sign in ---------------- */
@@ -222,6 +234,7 @@ export default function StoryMode() {
       profile={profile}
       onEditDeck={() => setScreen('editDeck')}
       onSave={saveWorld}
+      onDelete={deleteCharacter}
       onExit={toMenu}
     />
   );

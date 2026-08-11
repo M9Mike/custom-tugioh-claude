@@ -146,16 +146,16 @@ const SKULL: Profile = [
  */
 const NOSE: Profile = [
   /* v      halfW   stand   depth */
-  [0.283, 0.054, -0.028, 0.028],
-  [0.292, 0.066, 0.014, 0.034],
-  [0.301, 0.078, 0.044, 0.046],
-  [0.312, 0.08, 0.058, 0.052], // wings
-  [0.332, 0.068, 0.064, 0.056], // tip
-  [0.365, 0.06, 0.054, 0.05],
-  [0.41, 0.049, 0.046, 0.043],
-  [0.46, 0.046, 0.031, 0.044],
-  [0.508, 0.045, 0.016, 0.046],
-  [0.548, 0.044, -0.018, 0.046], // the nasion, buried
+  [0.283, 0.05, -0.026, 0.026],
+  [0.292, 0.062, 0.016, 0.032],
+  [0.301, 0.074, 0.046, 0.044],
+  [0.312, 0.071, 0.06, 0.05], // wings
+  [0.332, 0.056, 0.071, 0.052], // tip — narrower than the wings and further out
+  [0.365, 0.046, 0.055, 0.045],
+  [0.41, 0.039, 0.043, 0.04],
+  [0.46, 0.036, 0.029, 0.041],
+  [0.508, 0.037, 0.015, 0.043],
+  [0.548, 0.04, -0.018, 0.046], // the nasion, buried
 ];
 
 /* Multipliers on the skin material. Tints, not colours: a lip written as a
@@ -194,8 +194,16 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     return x;
   };
 
+  const female = spec.sex === 'female';
   const hairHex = HAIR_COLORS[spec.hairColor] ?? HAIR_COLORS[0];
   const hairColor = new THREE.Color(hairHex);
+  /**
+   * Age greys the hair, because a slider called young–old that only wrinkles
+   * the skin is doing half its job. Applied to the source colour before the
+   * brows, beard and shell tints are derived from it, so all of them grey
+   * together — a dark beard under white hair is a disguise, not an age.
+   */
+  hairColor.lerp(new THREE.Color('#b9b6b2'), smooth((spec.age - 0.45) / 0.5) * 0.85);
   /* Brows and stubble are hair lying on skin, so their tint is whatever turns
      this face's skin into this character's hair — which is a division, and is
      the reason it stays correct for every pairing in the palette rather than
@@ -294,24 +302,36 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
        headache rather than a skull. */
     const ridge =
       0.5 * win(ax, -0.26, 0.26) + win(ax, 0.08, 0.82) * (0.55 + 0.45 * brow);
-    z += 0.034 * H * ridge * win(v, 0.515, 0.645);
+    /* Softer on the female plan: the supraorbital ridge is one of the loudest
+       skeletal differences a face has, and at full depth it reads male whatever
+       the rest of the face says. */
+    z += 0.034 * H * ridge * win(v, 0.515, 0.645) * (female ? 0.55 : 1);
 
     /* Eye sockets, cut back under the ridge so the eyeball has somewhere to
        sit, and the nasion pinched in between them. */
-    z -= 0.026 * H * win(v, 0.44, 0.552) * win(ax, 0.06, 0.8);
+    /* Stops under the lower lid, not down the cheek. Cut to 0.44 the recess
+       ran a fingertip below the eye, and its lower boundary was a crease
+       across each cheek that no amount of paint-calming could remove — the
+       matte view is what finally named it as geometry. */
+    z -= 0.023 * H * win(v, 0.468, 0.552) * win(ax, 0.06, 0.8);
     z -= 0.016 * H * win(v, 0.5, 0.585) * win(ax, -0.17, 0.17);
 
     /* Cheekbone out, and the hollow under it that deepens with age. */
     const zygo = win(v, 0.392, 0.502) * win(ax, 0.28, 1.06);
     x += Math.sign(x || 1) * 0.024 * H * zygo;
     z += 0.016 * H * zygo;
+    /* Almost nothing on a young face. At a constant base this scooped every
+       cheek regardless of the age slider, and under the booth's key light the
+       scoop's shading read as gauntness — worst on the fair faces, where every
+       young duelist looked drawn and ill. Cheek hollows are what age *does*;
+       they are not what a cheek is. */
     const hollow = win(v, 0.25, 0.398) * win(ax, 0.34, 0.98);
-    x -= Math.sign(x || 1) * (0.006 + 0.016 * age) * H * hollow;
-    z -= (0.007 + 0.018 * age) * H * hollow;
+    x -= Math.sign(x || 1) * (0.0015 + 0.02 * age) * H * hollow;
+    z -= (0.002 + 0.022 * age) * H * hollow;
 
     /* Temples, which are flat-to-hollow on everyone and are most of what makes
        a forehead look like bone rather than a dome. */
-    x -= Math.sign(x || 1) * 0.017 * H * win(v, 0.5, 0.72) * win(ax, 0.7, 1.24);
+    x -= Math.sign(x || 1) * 0.013 * H * win(v, 0.5, 0.72) * win(ax, 0.7, 1.24);
 
     /* Lips: two cushions, the seam between them, the philtrum above and the
        crease below. All of it stops at the corner of the mouth. */
@@ -319,7 +339,10 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     /* The philtrum notches the upper lip down at the centre line — a cupid's
        bow. Two millimetres, and the mouth stops being a stripe. */
     const bow = 0.009 * win(bx, -0.032, 0.032);
-    z += 0.024 * H * lipW * (0.92 * win(v + bow, 0.208, 0.262) + win(v, 0.15, 0.212));
+    z += 0.026 * H * lipW * (0.92 * win(v + bow, 0.208, 0.262) + 1.08 * win(v, 0.15, 0.212));
+    /* The corners tuck back into the cheek — a mouth ends by turning in, not
+       by fading out. */
+    z -= 0.005 * H * win(bx, mouthHalf * 0.78, mouthHalf * 1.12) * win(v, 0.178, 0.24);
     /* The seam is a line, not a slot. At 3 mm deep it read as an open mouth. */
     z -= 0.012 * H * lipW * win(v, 0.194, 0.218);
     z -= 0.011 * H * win(bx, -0.032, 0.032) * win(v, 0.252, 0.3);
@@ -330,7 +353,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
 
     /* Nasolabial fold — the line from the wing of the nose to the corner of
        the mouth. Barely there on a young face, unmissable on an old one. */
-    z -= (0.004 + 0.016 * age) * H * win(bx, 0.05, 0.115) * win(v, 0.2, 0.32);
+    z -= (0.001 + 0.018 * age) * H * win(bx, 0.05, 0.115) * win(v, 0.2, 0.32);
 
     /**
      * The opening between the lids, cut into the skull.
@@ -378,9 +401,16 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     /* The socket, deepest at the inner corner and along the upper lid — the
        upper/lower difference ramped across the lid rather than switched at the
        eye line, which would draw a horizontal step across the socket. */
-    ao += 0.42 * front * win(d, 0.85, 2.6) * lerp(0.45, 1, smooth((v - EYE_V) / 0.05 + 0.5));
-    /* Where the wing of the nose meets the cheek. */
-    ao += 0.5 * front * win(bx, 0.03, 0.13) * win(v, 0.27, 0.37);
+    /* Tight to the socket. Run out to 2.6 fissure-radii this reached most of
+       the way down the cheek, and its lower boundary was the diagonal smudge
+       that made every face look unwashed. A socket's shadow ends at the
+       socket. */
+    ao += 0.34 * front * win(d, 0.85, 1.9) * lerp(0.45, 1, smooth((v - EYE_V) / 0.05 + 0.5));
+    /* Where the wing of the nose meets the cheek — mostly an old face's
+       line. At half strength on a young face it was a permanent grey smudge
+       beside the nose, and it was the loudest of the marks that made every
+       face look unwashed at the booth's own framing. */
+    ao += (0.08 + 0.45 * spec.age) * front * win(bx, 0.03, 0.13) * win(v, 0.27, 0.37);
     /* Under the lower lip, and the crease under the nose. */
     ao += 0.45 * lipW * win(v, 0.118, 0.168);
     ao += 0.35 * win(bx, -0.05, 0.05) * win(v, 0.255, 0.295) * front;
@@ -388,24 +418,44 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
        any head and the one that gives the chin an edge against the throat. */
     ao += 1.0 * win(v, -0.16, 0.1);
     /* The temple, and the hollow in front of the ear. */
-    ao += 0.3 * win(bx, 0.24, 0.34) * win(v, 0.42, 0.68);
+    ao += 0.2 * win(bx, 0.24, 0.34) * win(v, 0.42, 0.68);
     c.lerp(SHADE, clamp01(ao));
 
     /* Brows. The band rises and thins as it runs outward, which is the
        difference between an eyebrow and a smear. */
     const bc = 0.556 + 0.03 * smooth((bx - 0.05) / 0.22);
-    const bh = lerp(0.031, 0.015, clamp01((bx - 0.05) / 0.24)) * (0.75 + 0.5 * brow);
+    /**
+     * Never thinner than the mesh can draw. The band used to taper to 0.015
+     * of a head — one and a bit rings at this density — and a stripe one ring
+     * tall painted along a diagonal is a row of dashes, which is why every
+     * brow looked moth-eaten at the booth's Face framing. Rule 8: detail finer
+     * than the mesh cannot be drawn by the mesh.
+     */
+    const bh = lerp(0.032, 0.026, clamp01((bx - 0.05) / 0.24)) * (0.8 + 0.4 * brow);
     const browW = win(v, bc - bh, bc + bh) * win(bx, 0.032, 0.3) * front;
-    c.lerp(hairOnSkin, clamp01(browW * 1.4));
+    c.lerp(hairOnSkin, clamp01(browW * 1.15));
 
     const bow = 0.009 * win(bx, -0.032, 0.032);
-    c.lerp(LIP, clamp01(lipW * (win(v + bow, 0.2, 0.266) + win(v, 0.144, 0.21)) * 1.35));
-    c.lerp(SEAM, clamp01(lipW * win(v, 0.194, 0.218) * 2.1));
+    /**
+     * The vermilion, saturating inside the cushions it sits on.
+     *
+     * At 1.35 over windows wider than the lip geometry, the colour faded out
+     * across the skin around the mouth — a soft-edged patch, which at the
+     * booth's Face framing reads as a bruise, not a mouth. Steeper and
+     * narrower, the painted region and the modelled region are the same
+     * region, and the boundary between lip and skin is the *vermilion
+     * border* a mouth actually has.
+     */
+    const lipPaint = lipW * (win(v + bow, 0.206, 0.26) + win(v, 0.15, 0.208));
+    c.lerp(LIP, clamp01(smooth(lipPaint * 2.4) * (female ? 1.15 : 0.95)));
+    c.lerp(SEAM, clamp01(lipW * win(v, 0.197, 0.215) * 2.4));
 
     /* Lashes, at the rim of the fissure — heavier above than below, as they
        are. An eye without a dark edge has nothing to hold it in the face. */
-    c.lerp(LASH, clamp01(front * win(d, 0.82, 1.18) * (v > EYE_V ? 1.7 : 0.8)));
-    c.lerp(WARM, clamp01(win(v, 0.3, 0.48) * win(bx, 0.1, 0.31) * 0.5 * front));
+    c.lerp(LASH, clamp01(front * win(d, 0.82, 1.18) * (v > EYE_V ? 1.7 : 0.8) * (female ? 1.35 : 1)));
+    /* A quarter of what it was: at 0.5 the warmth over the cheekbone had a
+       visible boundary, and a patch of colour with an edge is a blotch. */
+    c.lerp(WARM, clamp01(win(v, 0.3, 0.48) * win(bx, 0.1, 0.31) * 0.25 * front));
 
     /**
      * The beard, as colour on skin.
@@ -669,7 +719,16 @@ function addNose(
        * buries the root of the form inside the face, so what shows at the
        * sides is the tail of a curve rather than the edge of a tube.
        */
-      const p = sectionPoint(hw, depth, depth * 1.85, 2.05, a);
+      /**
+       * Roundness that changes along the nose, because a nose is not one tube.
+       *
+       * At a constant 2.05 the whole front was one flat facade with a corner
+       * down each side — at the booth's Face framing it read as a strip of
+       * wood from brow to lip, and it was the first thing anyone saw. The
+       * wings are round (2.2); the bridge is a soft *ridge* (1.6), which is
+       * what puts a single highlight line down the dorsum instead of a plane.
+       */
+      const p = sectionPoint(hw, depth, depth * 1.85, lerp(2.2, 1.6, smooth((t - 0.1) / 0.6)), a);
       /* The nostrils, as tint on the underside of the wings. */
       const under = v < 0.3 && p.z > -depth * 0.2 && Math.abs(p.x) > hw * 0.24;
       ring.push(m.vertex(p.x, y(v), cz + p.z, under ? NOSTRIL : new THREE.Color(1, 1, 1)));
@@ -1204,8 +1263,18 @@ function addMantle(
        * actually occupies well round towards the nape; a bulge centred where
        * the ear ought to be misses it by most of its width, and leaves exactly
        * the torn patch it was added to close.
+       *
+       * The window opens at 0.5, not at the 0.85 it was written with, because
+       * the ear is not the only thing standing proud of the skull under this
+       * cloth. The lid caps wrap round to the eye's outer corner, which sits
+       * at ~0.9–1.1 radians from the front — right where a window opening at
+       * 0.85 is still at zero — and on the far side of a three-quarter view
+       * the corner of the eye surfaced through the curtain as a row of
+       * skin-coloured dashes at the temple. Opening earlier puts real
+       * clearance over the eye corner while the front edge itself, at 0.95,
+       * still carries only a third of the swell.
        */
-      const bulge = 0.055 * win(fromFront(a), 0.85, 3.05) * smooth(t / 0.07) * (1 - smooth((t - 0.3) / 0.3));
+      const bulge = 0.055 * win(fromFront(a), 0.5, 3.05) * smooth(t / 0.07) * (1 - smooth((t - 0.3) / 0.3));
       const off = (0.012 + bulge) * H;
       const rlen = Math.hypot(x, z) || 1;
       line.push(m.vertex(x + (x / rlen) * off, top.y - t * len * H, z + (z / rlen) * off));

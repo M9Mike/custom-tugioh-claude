@@ -16,6 +16,13 @@
 export interface StoryCharacter {
   /** Shown in the open-world menu. Defaults to the player's username. */
   name: string;
+  /**
+   * Which of the two body plans the model is built on. Everything it changes
+   * is geometric — shoulders, hips, chest, jaw, brow, neck — and it changes
+   * them *before* frame and build have their say, so every frame and every
+   * build exists in both.
+   */
+  sex: SexId;
   /** Skeleton proportions: shoulder-to-hip ratio, waist, chest. */
   frame: FrameId;
   /** 0 slight · 1 heavy-set. */
@@ -91,6 +98,7 @@ export const TRIM_COLORS = [
   '#8c5a3a', '#c87f4a', '#3f9c8f', '#93313a',
 ] as const;
 
+export type SexId = 'male' | 'female';
 export type FrameId = 'lean' | 'balanced' | 'sturdy';
 export type HairId =
   | 'shaved' | 'crop' | 'swept' | 'spiked' | 'curtain' | 'wild'
@@ -153,6 +161,7 @@ export const MAX_CHARACTER_NAME = 18;
 export function defaultCharacter(name: string): StoryCharacter {
   return {
     name: name.slice(0, MAX_CHARACTER_NAME),
+    sex: 'male',
     frame: 'balanced',
     build: 0.5,
     height: 0.5,
@@ -185,39 +194,6 @@ export function defaultCharacter(name: string): StoryCharacter {
        mistake — the first thing anyone said about this model was that
        something odd was going on between one wrist and one elbow. */
     gauntlet: 'both',
-  };
-}
-
-const pick = <T,>(xs: readonly T[], rnd: () => number): T => xs[Math.floor(rnd() * xs.length)];
-
-/** A complete, plausible character. Used by the Surprise me button. */
-export function randomCharacter(name: string, rnd: () => number = Math.random): StoryCharacter {
-  const hairColor = Math.floor(rnd() * HAIR_COLORS.length);
-  return {
-    name: name.slice(0, MAX_CHARACTER_NAME),
-    frame: pick(FRAMES, rnd).id,
-    build: rnd(),
-    height: rnd(),
-    skin: Math.floor(rnd() * SKIN_TONES.length),
-    jaw: rnd(),
-    eyeShape: rnd(),
-    eyeColor: Math.floor(rnd() * EYE_COLORS.length),
-    brow: rnd(),
-    nose: rnd(),
-    mouth: rnd(),
-    age: rnd() * 0.8,
-    hair: pick(HAIR_STYLES, rnd).id,
-    hairColor,
-    facialHair: pick(FACIAL_HAIR, rnd).id,
-    outfit: pick(OUTFITS, rnd).id,
-    primary: Math.floor(rnd() * CLOTH_COLORS.length),
-    secondary: Math.floor(rnd() * CLOTH_COLORS.length),
-    trim: Math.floor(rnd() * TRIM_COLORS.length),
-    trouser: Math.floor(rnd() * CLOTH_COLORS.length),
-    boots: Math.floor(rnd() * CLOTH_COLORS.length),
-    cape: rnd() < 0.3,
-    capeColor: Math.floor(rnd() * CLOTH_COLORS.length),
-    gauntlet: pick(GAUNTLETS, rnd).id,
   };
 }
 
@@ -258,6 +234,7 @@ export function normaliseCharacter(raw: unknown, username: string): StoryCharact
   const name = typeof c.name === 'string' ? c.name.trim().slice(0, MAX_CHARACTER_NAME) : '';
   return {
     name: name || d.name,
+    sex: oneOf(c.sex, ['male', 'female'] as const, d.sex),
     frame: oneOf(c.frame, FRAMES.map((f) => f.id), d.frame),
     build: clamp01(c.build, d.build),
     height: clamp01(c.height, d.height),

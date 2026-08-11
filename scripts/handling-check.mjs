@@ -177,33 +177,38 @@ try {
         await shot(`booth-shot-${s}-b`);
       }
 
-      /* ---- every tab ---- */
-      /* Long enough for the camera to arrive. The framing eases at 0.12 a
-         frame, and a headless phone renders this scene nowhere near 60 of
-         them a second: at 700 ms the Face tab was photographed two thirds of
-         the way in, which reads as the tab framing a torso. A shot of a camera
-         in transit says nothing about where it was going. */
-      const tabs = await page.$$eval('[data-tab]', (els) => els.map((e) => e.dataset.tab));
-      for (const t of tabs) {
-        await page.locator(`[data-tab="${t}"]`).tap();
+      /* ---- every pick, applied and photographed ---- */
+      /* Long enough for the camera to arrive as well as the model: a face or
+         hair pick re-frames to the face, and the framing eases at 0.12 a
+         frame on a headless phone rendering nowhere near 60 of them a second.
+         A shot of a camera in transit says nothing about where it was going.
+         Read off the page rather than restated here, so a preset added to the
+         tables is photographed without anyone remembering this file. */
+      const picks = await page.$$eval('[data-pick]', (els) => els.map((e) => e.dataset.pick));
+      for (const p of picks) {
+        await page.locator(`[data-pick="${p}"]`).tap();
         await page.waitForTimeout(1600);
-        await shot(`booth-tab-${t}`);
+        await shot(`booth-pick-${p.replace(/[^a-z0-9]+/gi, '-')}`);
+      }
+      /* The hair colours are swatches, not labelled buttons; two are enough
+         to show the tint landing on whatever hair the loop left selected. */
+      for (const c of [3, 5]) {
+        await page.locator(`[aria-label="Hair colour ${c}"]`).tap();
+        await page.waitForTimeout(900);
+        await shot(`booth-colour-${c}`);
       }
 
-      /* ---- a slider, dragged: does the model follow or jump? ----
-         Back to Body first: the last tab visited is Attire, which is all
-         swatches, and a slider drag there finds nothing to drag. */
-      await page.locator('[data-tab="body"]').tap();
-      await page.waitForTimeout(500);
+      /* ---- the age slider, dragged: does the model follow or jump? ---- */
       const sliders = page.locator('input[type="range"]');
       if (await sliders.count()) {
+        await sliders.first().scrollIntoViewIfNeeded();
         const sb = await sliders.first().boundingBox();
         if (sb) {
           await dragCapture(
             { x: sb.x + sb.width * 0.15, y: sb.y + sb.height / 2 },
             { x: sb.x + sb.width * 0.95, y: sb.y + sb.height / 2 },
             6,
-            'booth-slider'
+            'booth-age'
           );
         }
       }
@@ -322,6 +327,35 @@ try {
     await page.locator('[aria-label="Menu"]').tap();
     await page.waitForTimeout(500);
     await shot('world-menu-open');
+
+    /* ---- the delete sheet, opened and backed out of ----
+       Photographed for its weight — this is the heaviest door in the mode and
+       it should look like one. Backed out of, never confirmed: handling only
+       binds against a local store (see the guard in the booth), but the frames
+       should show the door holding, not the save going. */
+    const del = page.locator('button:has-text("Delete Character")').first();
+    let declined = false;
+    if (await del.isVisible().catch(() => false)) {
+      await del.tap();
+      await page.waitForTimeout(500);
+      await shot('world-delete-asked');
+      await page.locator('button:has-text("Keep playing")').first().tap();
+      await page.waitForTimeout(500);
+      await shot('world-delete-declined');
+      declined = true;
+    } else {
+      console.log('  ! no Delete Character in the menu');
+      faults++;
+    }
+
+    /* Opening the sheet closed the menu, so the ✕ needs the menu back first
+       before it has anything to prove — but only down that path. On the fault
+       path the menu never closed, and a blind reopen here would photograph an
+       open menu under the name "closed". */
+    if (declined) {
+      await page.locator('[aria-label="Menu"]').tap();
+      await page.waitForTimeout(400);
+    }
     await page.locator('[aria-label="Menu"]').tap();
     await page.waitForTimeout(500);
     await shot('world-menu-closed');

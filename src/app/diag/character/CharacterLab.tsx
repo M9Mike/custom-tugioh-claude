@@ -35,9 +35,15 @@ import {
   OUTFITS,
   SKIN_TONES,
   defaultCharacter,
-  randomCharacter,
   type StoryCharacter,
 } from '@/story/character';
+import {
+  BODY_PRESETS,
+  FACE_PRESETS,
+  OUTFIT_PRESETS,
+  randomCharacter,
+  resolvePick,
+} from '@/story/presets';
 import { buildCharacter, gaitRate, type Rig } from '@/components/story/humanoid';
 
 /** A camera placement: what height it looks at, how far off, and from where. */
@@ -122,7 +128,46 @@ const BEHIND: Omit<View, 'label'> = { y: 1.0, dist: 3.7, yaw: Math.PI - 0.4, pit
  * extremes are six bodies, and the extremes are where a profile table that
  * only works in the middle gives itself away.
  */
+/** Both body plans, spelled as picks, for the preset sweeps below. */
+const SEXES = ['male', 'female'] as const;
+
 const SWEEPS = {
+  /**
+   * What the booth actually sells, laid out in rows.
+   *
+   * The internal axes below (outfit, hair, beard, frame…) exercise the model's
+   * full range and stay the audit's backbone — but a player only ever sees a
+   * preset, so the presets are photographed as first-class subjects: every
+   * face on its own skin, every body on both plans, every finished look.
+   */
+  faces: {
+    view: BUST,
+    specs: SEXES.flatMap((sex) =>
+      FACE_PRESETS[sex].map((f, i) => ({
+        label: `${sex} ${f.label}`,
+        over: resolvePick({ sex, face: i, hair: 1, hairColor: 1, body: 1, outfit: 0, age: 0.25 }, 'Mike'),
+      }))
+    ),
+  },
+  bodies: {
+    view: WHOLE,
+    specs: SEXES.flatMap((sex) =>
+      BODY_PRESETS.map((b, i) => ({
+        label: `${sex} ${b.label}`,
+        over: resolvePick({ sex, face: 0, hair: 0, hairColor: 0, body: i, outfit: 0, age: 0.3 }, 'Mike'),
+      }))
+    ),
+  },
+  looks: {
+    view: WHOLE,
+    specs: OUTFIT_PRESETS.map((o, i) => ({
+      label: o.label,
+      over: resolvePick(
+        { sex: i % 2 ? 'female' : 'male', face: i % 3, hair: i % 3, hairColor: i % 5, body: i % 3, outfit: i, age: 0.3 },
+        'Mike'
+      ),
+    })),
+  },
   outfit: {
     view: WHOLE,
     specs: OUTFITS.map((o) => ({ label: o.id, over: { outfit: o.id } as Partial<StoryCharacter> })),
