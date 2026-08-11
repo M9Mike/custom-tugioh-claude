@@ -205,6 +205,40 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     Math.min(4, hairColor.g / Math.max(0.04, skinColor.g)),
     Math.min(4, hairColor.b / Math.max(0.04, skinColor.b))
   );
+  /**
+   * A beard is darker than the head it is under, and less of a colour.
+   *
+   * At the head's own tint a blond duelist wore mustard and a redhead wore
+   * a bright orange tongue on the chin — the palette is chosen to read as
+   * *hair*, at hair's scale and in hair's light, and a beard is neither: it is
+   * a small patch on skin, shaded by the jaw above it. Darkened and pulled
+   * towards its own grey it reads as growth on a face instead of as paint.
+   */
+  const beardOnSkin = hairOnSkin.clone().multiplyScalar(0.72);
+  /**
+   * Desaturated hard, and towards its own brightness rather than towards a
+   * grey.
+   *
+   * Towards a fixed grey it *lightened* every dark beard, and near-black hair
+   * came out mid-brown. And at the head's own saturation a red-haired duelist
+   * wore a patch on its chin within a few degrees of hue of its own lips,
+   * which is how a goatee ended up reading as a tongue stuck out. Beard hair
+   * is short, and short hair shows scalp through it: the colour that reaches
+   * the eye is most of the way back to the skin's own.
+   */
+  const lum = beardOnSkin.r * 0.3 + beardOnSkin.g * 0.59 + beardOnSkin.b * 0.11;
+  beardOnSkin.lerp(new THREE.Color(lum, lum, lum), 0.45);
+  /**
+   * And never within a fifth of the skin it grows on.
+   *
+   * The tint is a multiplier, so a fair duelist with fair hair got a beard a
+   * few per cent off the colour of its own cheek: what that draws is not a
+   * blond beard but a beige mass with a mouth in the middle of it. Hair at
+   * this scale has no texture to give itself away — contrast is the only thing
+   * telling the eye that the bottom of the face is not more face.
+   */
+  const lightest = Math.max(beardOnSkin.r, beardOnSkin.g, beardOnSkin.b);
+  if (lightest > 0.8) beardOnSkin.multiplyScalar(0.8 / lightest);
 
   const y = (v: number) => (v - PIVOT_V) * H;
 
@@ -392,7 +426,18 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     const shave = beardMask(spec.facialHair, v, bx, front);
     if (shave > 0) {
       const solid = spec.facialHair === 'stubble' ? 0.5 : 1;
-      c.lerp(hairOnSkin, clamp01(smooth(shave * 2.6)) * solid);
+      /**
+       * A long fade in, saturating before the shell starts to lift.
+       *
+       * Saturating at 0.385 of the mask put the whole colour change inside a
+       * band a few vertices wide, and sixty segments drew that as a torn edge
+       * along the top of the beard — the cheek line came out looking cut with
+       * scissors out of paper. A beard does not end; it thins. Fully coloured
+       * by 0.28 it is still saturated everywhere the shell exists, which is
+       * the one thing this ramp is not allowed to break: an edge that lifts
+       * out of skin that is not yet hair-coloured is a visible seam.
+       */
+      c.lerp(beardOnSkin, clamp01(smooth((shave - 0.02) / 0.26)) * solid);
     }
 
     /* The scalp, for the same reason and by the same means — see `hairPaint`. */
@@ -560,7 +605,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     hm.castShadow = true;
     group.add(hm);
   }
-  const beardGeo = buildBeard(spec, H, surface, hairOnSkin);
+  const beardGeo = buildBeard(spec, H, surface, beardOnSkin);
   if (beardGeo) {
     keep(beardGeo);
     /* Drawn with the *face's* material, not the hair's. The shell has to cross
@@ -760,7 +805,12 @@ const HAIR_SHAPE = {
   ponytail: { thick: 0.026, line: 0.03, part: 0, nape: 0.3, tail: 1, mantle: 0 },
   topknot: { thick: 0.022, line: 0.07, part: 0, nape: 0.32, tail: 2, mantle: 0 },
   braids: { thick: 0.03, line: -0.02, part: 0.4, nape: 0.22, tail: 3, mantle: 0 },
-  mohawk: { thick: 0.075, line: 0.0, part: 0, nape: 0.9, tail: 0, mantle: 0 },
+  /* `nape` low, not high. At 0.9 the shell did not exist below the crown at
+     the back, so the crest stopped dead at the top of the head and left a
+     notch where its two halves met. The sides are shaved by the crest mask in
+     `hairStand`, not by the hairline — the hairline only has to let the strip
+     reach the nape. */
+  mohawk: { thick: 0.072, line: 0.0, part: 0, nape: 0.3, tail: 0, mantle: 0 },
   bun: { thick: 0.024, line: 0.05, part: 0, nape: 0.3, tail: 4, mantle: 0 },
 } as const;
 
@@ -780,13 +830,43 @@ function hairlineAt(S: HairShape, a: number): number {
      the fringe and worse across the nape. Detail finer than the mesh cannot
      be drawn by the mesh — it can only corrupt it. */
   const grain = 0.013 * (Math.sin(a * 5.3) * 0.6 + Math.sin(a * 9.7 + 1.1) * 0.4);
-  if (ax < 0.62) return 0.735 + S.line + grain - 0.03 * Math.cos(ax * 2.5);
-  if (ax < 1.02) return lerp(0.762, 0.66, smooth((ax - 0.62) / 0.4)) + S.line + grain;
-  if (ax < 1.45) return lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43)) + S.line * 0.5;
-  return lerp(0.5, S.nape, smooth((ax - 1.45) / (Math.PI - 1.45)));
+  /**
+   * One curve, in four pieces that meet.
+   *
+   * They did not meet. Written as four returns, each carrying the style's
+   * `line` shift at its own strength and the grain at its own strength, every
+   * boundary was a step: 0.028 of a head at the brow, `line`/2 at the temple,
+   * `line`/2 again in front of the ear. A step in the hairline is a notch cut
+   * out of the fringe, and one sat on the forehead of every duelist in the
+   * game — the thing that reads, at the booth's own framing, as the haircut
+   * being broken. The pieces now hand off at a shared value, and the two
+   * modifiers are continuous functions of the same angle rather than per-piece
+   * constants.
+   */
+  let base: number;
+  if (ax < 0.62) base = 0.735 - 0.03 * Math.cos(ax * 2.5);
+  else if (ax < 1.02) base = lerp(BROW_END, 0.66, smooth((ax - 0.62) / 0.4));
+  else if (ax < 1.45) base = lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43));
+  else base = lerp(0.5, S.nape, smooth((ax - 1.45) / (Math.PI - 1.45)));
+  /* Both fade out towards the nape, where `nape` is already saying where the
+     hair stops and a shift on top of it would fight with it. */
+  const shift = S.line * (1 - smooth((ax - 1.0) / 0.5));
+  return base + shift + grain * (1 - smooth((ax - 1.2) / 0.6));
 }
 
-function hairStand(spec: StoryCharacter, S: HairShape, H: number, a: number, u: number): number {
+/** Where the forehead's own curve leaves off, so the next piece starts there. */
+const BROW_END = 0.735 - 0.03 * Math.cos(0.62 * 2.5);
+
+function hairStand(
+  spec: StoryCharacter,
+  S: HairShape,
+  H: number,
+  a: number,
+  u: number,
+  /** How far off the midline this point is, as a fraction of H. A crest is the
+      one shape that has to be told in those terms rather than in azimuth. */
+  bx: number
+): number {
   const ax = fromFront(a);
   let t = S.thick;
   /**
@@ -804,12 +884,26 @@ function hairStand(spec: StoryCharacter, S: HairShape, H: number, a: number, u: 
   t *= 1 + 0.55 * smooth((u - 0.35) / 0.6);
   /* A parting: the shell dips towards the scalp along the middle. */
   if (S.part > 0) t *= 1 - S.part * 0.75 * win(ax, -0.34, 0.34) * smooth(u * 1.6);
-  /* Mohawks keep the crest and lose the sides. */
-  /* Negative off the crest, so the shell is *inside* the skull there rather
-     than lying on it — a shell at nominally zero thickness still crosses the
-     scalp and speckles it. */
+  /**
+   * Mohawks keep the crest and lose the sides.
+   *
+   * A crest is a strip about the midline, and it has to be said in those
+   * terms. Said in azimuth — full at the front and back, nothing at the
+   * sides — it is a strip everywhere except at the crown, where every azimuth
+   * meets at one point: the front and back lifted that point and the sides did
+   * not, so the shell rose to a single peak and the duelist wore a traffic
+   * cone. Which is what it looked like, from every angle, for as long as
+   * nobody photographed a randomised duelist.
+   *
+   * Off the crest the multiplier is a small *negative*, so the shell sits
+   * inside the skull rather than on it — at nominally zero thickness two
+   * near-coincident surfaces speckle.
+   */
   if (spec.hair === 'mohawk') {
-    t *= 0.02 + 2.4 * Math.max(win(ax, -0.5, 0.5), win(ax, Math.PI - 0.5, Math.PI + 0.5));
+    /* Rounded across the strip rather than flat-topped: a plateau with a
+       falloff either side is a slab with two corners on it, and hair does not
+       hold a corner. */
+    t *= 0.02 + 2.1 * Math.cos(Math.min(1, bx / 0.082) * (Math.PI / 2)) ** 0.65;
   }
   if (spec.hair === 'spiked') t *= 1 + 0.85 * Math.sin(a * 9) ** 2 * smooth((u - 0.3) / 0.6);
   if (spec.hair === 'wild') t *= 1 + 0.34 * Math.sin(a * 6.3 + u * 7) + 0.2 * Math.sin(a * 11);
@@ -851,7 +945,7 @@ function hairPaint(spec: StoryCharacter, S: HairShape, H: number, v: number, x: 
      — that has to be said separately, and tightly. */
   if (v < hl - 0.014) return 0;
   const u = (v - hl) / Math.max(0.05, 1.005 - hl);
-  const stand = hairStand(spec, S, H, a, Math.max(0, u)) / H;
+  const stand = hairStand(spec, S, H, a, Math.max(0, u), Math.abs(x) / H) / H;
   /**
    * Kept well short of full strength, which is the difference between this
    * working and not.
@@ -881,14 +975,17 @@ function buildHair(
      between them. At 56 against the skull's 60 that beat was the visible edge
      of the haircut. */
   const SEG = SKULL_SEG;
-  const ROWS = 22;
+  /* The shell's edge is a contour in `u`, so it runs across the rows rather
+     than along them, and every row is a step in it. At 22 those steps were
+     coarse enough to read as a staircase down the front of a mohawk. */
+  const ROWS = 36;
   const DARK = new THREE.Color(0.55, 0.55, 0.58);
 
   /* Both shared with the *paint* under the shell — see `hairPaint`. Two copies
      of a hairline that disagree by a millimetre put a ring of bare scalp round
      the whole head. */
   const hairline = (a: number) => hairlineAt(S, a);
-  const thickness = (a: number, u: number) => hairStand(spec, S, H, a, u);
+  const thickness = (a: number, u: number, bx: number) => hairStand(spec, S, H, a, u, bx);
 
   const rows: number[][] = [];
   for (let r = 0; r <= ROWS; r++) {
@@ -899,13 +996,24 @@ function buildHair(
       const v0 = hairline(a);
       const v = lerp(v0, 1.005, u);
       const p = surface(Math.min(v, 1), a);
-      const off = thickness(a, u);
+      const off = thickness(a, u, Math.abs(p.x) / H);
       /* Pushed out along the scalp's own outward direction, so the shell
          follows the skull instead of inflating away from its centre — and
          turned upright as it nears the crown, where "outward" is sideways and
          a purely radial offset would slide the hair off the top of the head. */
       const len = Math.hypot(p.x, p.z) || 1;
-      const up = smoothEdge(v, 0.84, 1.0);
+      /**
+       * A crest stands up wherever on the skull it is.
+       *
+       * Everything else follows the scalp outward, which near the crown means
+       * sideways — hence the blend. But "outward" for a point on the midline
+       * is *forwards and backwards*, so the part of a mohawk crossing the top
+       * of the head was pushed fore and aft instead of up, and the ridge sagged
+       * into two humps with a notch between them at the very crown.
+       */
+      const crest =
+        spec.hair === 'mohawk' ? 1 - smooth((Math.abs(p.x) / H - 0.02) / 0.09) : 0;
+      const up = Math.max(smoothEdge(v, 0.84, 1.0), crest);
       const side = 1 - up;
       ring.push(
         m.vertex(
@@ -1031,10 +1139,12 @@ function addMantle(
     const t = i / ROWS;
     const line: number[] = [];
     for (let k = 0; k <= COLS; k++) {
-      /* The back two-thirds of the head: hair falls past the temple, not over
-         the face. Started at 0.95 the free edge landed just behind the ear's
-         own front, so the ear surfaced along it at the silhouette. */
-      const a = lerp(0.8, Math.PI * 2 - 0.8, k / COLS);
+      /* The back two-thirds of the head: hair falls behind the ears, not over
+         the face. Brought forward to 0.8 while the ear was still surfacing at
+         the free edge, it put a hard-edged sheet across the brow instead —
+         the clearance belongs in the standoff below, not in how far round the
+         face the cloth reaches. */
+      const a = lerp(0.95, Math.PI * 2 - 0.95, k / COLS);
       /**
        * Hung the same height all the way round, above both the ear and the
        * scalp shell's hairline.
@@ -1110,7 +1220,11 @@ function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, fz
      the surface is a small ring around the throat — a beard grown there is a
      black collar on the neck, which is exactly how it looked. */
   const jawline = win(v, 0.0, 0.36) * win(bx, -0.28, 0.28);
-  const chin = win(v, 0.02, 0.2) * win(bx, -0.115, 0.115);
+  /* Wide enough to be a chin, not a chin-shaped lozenge. Narrower than this it
+     stopped short of the jaw on both sides, and what was left hanging under
+     the lower lip — rounded, and in a warm hair colour a shade off the lips
+     themselves — read as a tongue stuck out. */
+  const chin = win(v, 0.0, 0.22) * win(bx, -0.15, 0.15);
   const tache = win(v, 0.232, 0.3) * win(bx, -0.105, 0.105);
   const cheek = win(v, 0.16, 0.44) * win(bx, 0.1, 0.32);
   /* In front of the ear, not beside the eye: at bx 0.19 this reached the
@@ -1168,7 +1282,7 @@ function buildBeard(
    * mass and keep their shell.
    */
   if (kind === 'none' || kind === 'stubble' || kind === 'moustache' || kind === 'sideburns') return null;
-  const height = kind === 'full' ? 0.03 : 0.024;
+  const height = kind === 'full' ? 0.026 : 0.02;
 
   const m = new MeshBuilder();
   const V0 = 0.0;
@@ -1205,8 +1319,20 @@ function buildBeard(
       /* Raised only where the tint has already saturated, so the shell's own
          edge — the place two surfaces cross, and the place a staircase would
          show — is buried well inside a region that is already hair-coloured. */
+      /**
+       * Full height as soon as the beard is there at all, rather than
+       * following the mask up.
+       *
+       * The mask is five overlapping lobes — jaw, chin, moustache, cheek,
+       * sideburn — and mapping its whole range onto the shell's height gave
+       * each lobe its own dome. What that draws is not a beard: it is five
+       * balls of clay stuck round a mouth, which is exactly what a randomised
+       * duelist with a full beard was wearing. Hair grown to one length is one
+       * mass at one thickness with an edge round it, so the band that maps
+       * mask to height is narrow and everything inside it is a plateau.
+       */
       const mask = beardMask(kind, v, Math.abs(p.x) / H, frontness(p.z, H));
-      const off = (smooth(clamp01((mask - 0.34) / 0.5)) * height - 0.003) * H;
+      const off = (smooth(clamp01((mask - 0.3) / 0.17)) * height - 0.003) * H;
       const len = Math.hypot(p.x, p.z) || 1;
       ring.push(m.vertex(p.x + (p.x / len) * off, p.y, p.z + (p.z / len) * off, tint));
     }

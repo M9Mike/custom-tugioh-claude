@@ -919,19 +919,45 @@ function pauldronGeometry(S: number): THREE.BufferGeometry {
 function capeGeometry(stature: number, S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const len = 0.46 * stature;
-  const END = 1.95;
+  /**
+   * How far round the body the cloth reaches, in radians from the spine.
+   *
+   * At 1.95 — 112°, a fifth of a turn past the side — the two ends came round
+   * in front of the arms and hung there, and from the front the duelist had
+   * two loose flaps dangling beside its hands. That was never seen because the
+   * outfit sweep photographs the front without a cape and the back with one:
+   * between the two, the front of a cape had never been looked at. At 1.62 the
+   * cloth stops at the side of the body, where an arm hides its edge.
+   */
+  const END = 1.62;
   sheet(m, 20, 34, (u, v) => {
     const a = lerp(-END, END, v);
-    const r = (0.17 + 0.2 * u * u) * S;
+    /**
+     * The back billows; the front edges hang.
+     *
+     * Flared evenly, the cloth reaches 0.37 m from the spine at the hem, which
+     * is wider than the shoulders it is hanging from — so its two edges stood
+     * out past the arms and were visible from the front as loose flaps beside
+     * the duelist's hands. Pulling the ends in is not a trick to hide them: it
+     * is what cloth does. A cape's weight falls down its own front edges and
+     * swings out behind, which is why the silhouette is a bell from the back
+     * and a pair of straight lines from the front.
+     */
+    const flare = 0.2 * (1 - 0.72 * (Math.abs(a) / END) ** 2);
+    const r = (0.17 + flare * u * u) * S;
     /* Vertical folds, deepest at the hem, where the cloth has slack. */
     const fold = 0.02 * S * Math.sin(a * 4.5) * u * u;
     /* A hem that is not a circle, because cloth never falls level. */
     const hem = 1 + 0.05 * Math.cos(a * 3.2);
-    /* Flat across the back, then away over the shoulder. */
-    const shoulder = Math.pow(Math.abs(a) / END, 2.6) * 0.088 * S;
+    /* Flat across the back, then away over the shoulder — at the top edge
+       only. Applied down the whole panel it moved the hem down with it, so the
+       two ends hung *lower* than the back and finished in points below the
+       hands. A cape is shorter at the shoulder, not longer: the hem stays
+       level and the cloth over the shoulder is the part that loses length. */
+    const shoulder = (Math.abs(a) / END) ** 2.6 * 0.088 * S;
     return {
       x: Math.sin(a) * (r + fold),
-      y: -u * len * hem - shoulder,
+      y: -u * len * hem - shoulder * (1 - u),
       z: -Math.cos(a) * (r + fold) - 0.03 * S * u,
     };
   });
