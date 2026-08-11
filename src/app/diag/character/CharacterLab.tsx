@@ -218,6 +218,16 @@ const MODES: Mode[] = ['sheet', 'seams', 'parts', ...(Object.keys(SWEEPS) as (ke
 const SPACING = 9;
 
 /**
+ * The most duelists any sweep puts in one row.
+ *
+ * Derived, not written down: the floor and the shadow frustum are both sized
+ * off it, and a sweep gaining an entry would otherwise leave its outer cells
+ * standing off the end of the ground with no shadow — which reads as a
+ * difference in the duelist rather than in the rig.
+ */
+const WIDEST_SWEEP = Math.max(...Object.values(SWEEPS).map((s) => s.specs.length));
+
+/**
  * How many moments the stride is cut into.
  *
  * `pose` takes the gait's phase directly, so a numbered phase is `n/PHASES` of
@@ -471,8 +481,8 @@ export default function CharacterLab() {
      * is comparing one cell against the next, a difference that comes from the
      * lighting rig rather than from the duelist is worse than no shadow at all.
      */
-    key.shadow.camera.left = -SPACING * 6;
-    key.shadow.camera.right = SPACING * 6;
+    key.shadow.camera.left = -SPACING * (WIDEST_SWEEP / 2 + 1);
+    key.shadow.camera.right = SPACING * (WIDEST_SWEEP / 2 + 1);
     key.shadow.camera.top = 2.6;
     key.shadow.camera.bottom = -0.4;
     key.shadow.bias = -0.0012;
@@ -483,7 +493,13 @@ export default function CharacterLab() {
     rim.position.set(-2.6, 2.0, -2.4);
     scene.add(rim);
 
-    const floorGeo = new THREE.CircleGeometry(40, 64);
+    /* Wide enough for the longest row this page can lay out, with margin —
+       another number that has to follow `SPACING` rather than sit next to it.
+       At a fixed 40 m the outer duelists of a twelve-strong sweep stood at
+       ±49.5 m, off the end of their own floor: no ground under them and
+       nothing for their shadow to land on, in a tool whose entire purpose is
+       holding one cell against the next. */
+    const floorGeo = new THREE.CircleGeometry(SPACING * (WIDEST_SWEEP / 2 + 2), 64);
     const floorMat = new THREE.MeshStandardMaterial({ color: '#161b22', roughness: 0.85, metalness: 0.05 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
