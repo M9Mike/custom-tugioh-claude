@@ -325,7 +325,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       );
       camera.lookAt(0, camY, 0);
 
-      rig?.pose(t, 0);
+      rig?.pose(t, 0, 0);
       renderer.render(scene, camera);
     };
     frame();

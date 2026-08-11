@@ -86,6 +86,20 @@ looking wrong and had to be found in a photograph.
    desaturate, and floor the contrast against skin.
 8. **Detail finer than the mesh cannot be drawn by the mesh.** It aliases. Keep
    every modulation frequency well under the ring count.
+9. **A phase is integrated, never `time × rate`.** If the rate depends on
+   anything that changes — and a gait's rate depends on how fast you are
+   walking — then `t × rate` jumps by `t × Δrate` whenever it changes, and `t`
+   only grows. The walk cycle was written that way: ten minutes into a session,
+   easing out of a standstill drove the legs through five thousand gait cycles
+   a second. `gaitRate(stride)` exists to be integrated by whoever is moving
+   the duelist, and the lab integrates it the same way so the workbench moves
+   the way the game does.
+10. **Feet must not slide.** Ground speed is step length × cadence, so both
+    have to be derived from the same speed. Scale them independently and they
+    agree at exactly one pace: the walk was correct at a full stick and skated
+    by up to two fifths of every step at anything less, which nobody can name
+    and everybody feels. `scripts/` has no check for this — it is arithmetic,
+    and the arithmetic is in `gaitRate`.
 
 ## Proving it
 

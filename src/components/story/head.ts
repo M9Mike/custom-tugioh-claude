@@ -1169,8 +1169,15 @@ function addMantle(
        * the curtain out to clear the ear only opened that strip wider, and the
        * ear appeared in it. Tucked under the shell there is no gap to appear
        * in, and started above the ear there is no tip to show over the lip.
+       *
+       * 0.68, not 0.58. The shell's hairline is not level: across the azimuths
+       * this curtain spans it peaks at 0.639, at the temple where the long
+       * cut's fringe is highest — so a curtain hung at 0.58 was six hundredths
+       * of a head *below* where the shell begins for part of its width, and
+       * its own top edge was showing there. Above the highest the hairline
+       * ever gets, it cannot be.
        */
-      const top = surface(0.58, a);
+      const top = surface(0.68, a);
       /* Widens to the head's own width within the first fifth of the drop,
          then falls straight with a little flare at the hem. */
       const wide = surface(0.3, a);

@@ -187,12 +187,39 @@ export interface Rig {
   /**
    * Poses the whole body.
    *
-   * @param t      seconds since the rig was built — the only clock it has
+   * @param t      seconds since the rig was built — drives breath, blink, sway
    * @param stride 0 standing, 1 walking at full pace; blended, not switched
+   * @param phase  where the gait is, in radians. **Integrated by the caller**,
+   *               `gaitRate(stride)` a second — see that function for why it
+   *               cannot be computed here as `t` times a rate.
    */
-  pose(t: number, stride: number): void;
+  pose(t: number, stride: number, phase: number): void;
   dispose(): void;
 }
+
+/**
+ * How fast the gait turns over, in radians a second, at a given fraction of
+ * full pace. Exported because whoever moves the duelist has to integrate it.
+ *
+ * **Integrate it.** The gait used to advance as `t × (4.6 + stride × 6.4)`,
+ * and that is not a phase — it is a phase *scaled by the whole elapsed clock*.
+ * `stride` eases from 0 to 1 over about four hundred milliseconds at every
+ * start, so the rate changes while `t` multiplies it, and the product jumps by
+ * `t × Δrate`. Five seconds into a session that is forty gait cycles a second;
+ * ten minutes in it is nearly five thousand. The legs did not walk out of a
+ * standstill, they flickered through random positions for the length of the
+ * ramp, and it got worse the longer the game was left running.
+ *
+ * **The square root.** Ground speed is `WALK_SPEED × stride`, and the distance
+ * a walk covers is its step length times its cadence. Step length is `swing`,
+ * which carries this same factor, so the two together have to come to `stride`
+ * — and √s × √s is the only split that does while both shorten together, as
+ * they do in a person slowing down. Scaled independently they can agree at one
+ * speed and no other: they agreed at full pace, and at half a stick the ground
+ * slid out from under the feet by a fifth of every step.
+ */
+export const gaitRate = (stride: number): number =>
+  10.7 * Math.sqrt(Math.max(0, Math.min(1, stride)));
 
 interface Joints {
   hips: THREE.Group;
@@ -667,12 +694,12 @@ export function buildCharacter(spec: StoryCharacter): Rig {
     lidShut: headRig.lidShut,
   };
 
-  pose(j, 0, 0, hipY, spec);
+  pose(j, 0, 0, 0, hipY, spec);
 
   return {
     root,
     height: stature,
-    pose: (t, stride) => pose(j, t, stride, hipY, spec),
+    pose: (t, stride, phase) => pose(j, t, stride, phase, hipY, spec),
     dispose: () => kept.forEach((k) => k.dispose()),
   };
 }
@@ -1276,13 +1303,16 @@ function footGeometry(ankleY: number, S: number): THREE.BufferGeometry {
  * transition. Standing is the walk with its stride turned to nothing, plus a
  * breath the walk keeps anyway.
  */
-function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCharacter) {
+function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number, spec: StoryCharacter) {
   const s = Math.max(0, Math.min(1, stride));
-  const cycle = t * (4.6 + s * 6.4);
+  const cycle = phase;
   const sway = Math.sin(t * 1.3);
   const breath = Math.sin(t * 1.9);
 
-  const swing = 0.72 * s;
+  /* Step length, scaled the same way the cadence is — see `gaitRate`. The two
+     multiply out to the ground speed only if they share this factor. */
+  const gaitScale = Math.sqrt(s);
+  const swing = 0.72 * gaitScale;
   const gait = Math.sin(cycle);
   const gait2 = Math.sin(cycle * 2);
 
@@ -1290,9 +1320,13 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
   j.legL.rotation.x = gait * swing;
   j.legR.rotation.x = -gait * swing;
   /* A knee only bends one way. Clamping at 0 is what stops the shin snapping
-     through the thigh on the back half of the stride. */
-  j.shinL.rotation.x = -Math.max(0, Math.sin(cycle - 0.9)) * 1.15 * s;
-  j.shinR.rotation.x = -Math.max(0, Math.sin(cycle - 0.9 + Math.PI)) * 1.15 * s;
+     through the thigh on the back half of the stride.
+     Scaled by the same root the step and the cadence carry, so the leg keeps
+     its shape as the pace changes. Scaled by `s` instead, a slow walk kept its
+     knee straighter for longer, which lengthens the part of the cycle the foot
+     is planted for — and lengthening that is exactly what makes a foot slide. */
+  j.shinL.rotation.x = -Math.max(0, Math.sin(cycle - 0.9)) * 1.15 * gaitScale;
+  j.shinR.rotation.x = -Math.max(0, Math.sin(cycle - 0.9 + Math.PI)) * 1.15 * gaitScale;
   /* The ankle keeps the sole flat: it undoes whatever the thigh and shin above
      it have done, plus a push-off at the back of the stride. */
   j.footL.rotation.x = -j.legL.rotation.x - j.shinL.rotation.x + Math.max(0, -gait) * 0.34 * s;
@@ -1363,8 +1397,8 @@ function pose(j: Joints, t: number, stride: number, hipsY: number, spec: StoryCh
   /* Blink: the lids swing down over the eyeballs and back, about every four
      seconds, on a period that is not a round number so it never lines up with
      the step. */
-  const phase = (t % 4.3) / 4.3;
-  const closed = phase > 0.985 ? Math.sin(((phase - 0.985) / 0.015) * Math.PI) : 0;
+  const blink = (t % 4.3) / 4.3;
+  const closed = blink > 0.985 ? Math.sin(((blink - 0.985) / 0.015) * Math.PI) : 0;
   const angle = lerp(j.lidOpen, j.lidShut, closed);
   j.lidL.rotation.x = angle;
   j.lidR.rotation.x = angle;

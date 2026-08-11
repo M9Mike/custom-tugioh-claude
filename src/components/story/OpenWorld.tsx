@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
-import { buildCharacter, type Rig } from './humanoid';
+import { buildCharacter, gaitRate, type Rig } from './humanoid';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
@@ -297,6 +297,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
 
     const clock = new THREE.Clock();
     let stride = 0;
+    /* The direction of travel, held from the last frame there was input, so a
+       stop keeps going the way it was going while the legs slow down. */
+    let heading = here.current.facing;
+    /* Where the gait is. Integrated, never computed from the elapsed clock —
+       see `gaitRate`. */
+    let gait = 0;
     let raf = 0;
     const camPos = new THREE.Vector3();
     const lookAt = new THREE.Vector3();
@@ -331,31 +337,51 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
          * and turned round to do it, so pushing forward marched them into your
          * face.
          */
-        const dir = Math.atan2(ix, iy) + camYaw;
-        const p = here.current;
-        p.x += Math.sin(dir) * WALK_SPEED * mag * dt;
-        p.z += Math.cos(dir) * WALK_SPEED * mag * dt;
-
-        const r = Math.hypot(p.x, p.z);
-        if (r > WORLD_RADIUS) {
-          p.x = (p.x / r) * WORLD_RADIUS;
-          p.z = (p.z / r) * WORLD_RADIUS;
-        }
+        heading = Math.atan2(ix, iy) + camYaw;
+        stride += (mag - stride) * Math.min(1, dt * 8);
 
         /* Turn towards the heading over the shortest arc, so crossing ±π does
            not spin the duelist the long way round. */
-        let d = dir - p.facing;
+        let d = heading - here.current.facing;
         d = Math.atan2(Math.sin(d), Math.cos(d));
-        p.facing += d * Math.min(1, dt * 11);
-        stride += (mag - stride) * Math.min(1, dt * 8);
+        here.current.facing += d * Math.min(1, dt * 11);
       } else {
         stride += (0 - stride) * Math.min(1, dt * 8);
       }
 
       const p = here.current;
+
+      /**
+       * Moved by `stride`, not by the stick.
+       *
+       * The stick is what you are asking for; `stride` is the speed the legs
+       * are actually walking at, and it eases to the ask over about four
+       * hundred milliseconds. Translating on the raw input meant the ground
+       * moved at one speed while the legs stepped at another through every
+       * start — and worse on release, where the input drops to nothing in a
+       * single frame and the duelist stopped dead while its legs kept walking
+       * on the spot for the rest of the ramp. The heading is held from the last
+       * frame there was one, so the last steps of a stop carry on in the
+       * direction they were already going, which is what a person does.
+       */
+      if (stride > 0.002) {
+        p.x += Math.sin(heading) * WALK_SPEED * stride * dt;
+        p.z += Math.cos(heading) * WALK_SPEED * stride * dt;
+        const r = Math.hypot(p.x, p.z);
+        if (r > WORLD_RADIUS) {
+          p.x = (p.x / r) * WORLD_RADIUS;
+          p.z = (p.z / r) * WORLD_RADIUS;
+        }
+      }
+
+      /* Advanced by the rate the current pace asks for, so the phase is
+         continuous through every change of pace — and wrapped, so it stays
+         small however long the game is left running. */
+      gait = (gait + gaitRate(stride) * dt) % (Math.PI * 2);
+
       rig.root.position.set(p.x, 0, p.z);
       rig.root.rotation.y = p.facing;
-      rig.pose(t, stride);
+      rig.pose(t, stride, gait);
 
       /* Shadow box rides along with the duelist. */
       sun.position.set(p.x + 30, 48, p.z + 22);

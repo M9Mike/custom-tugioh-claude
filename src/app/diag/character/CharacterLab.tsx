@@ -38,7 +38,7 @@ import {
   randomCharacter,
   type StoryCharacter,
 } from '@/story/character';
-import { buildCharacter, type Rig } from '@/components/story/humanoid';
+import { buildCharacter, gaitRate, type Rig } from '@/components/story/humanoid';
 
 /** A camera placement: what height it looks at, how far off, and from where. */
 interface View {
@@ -150,8 +150,15 @@ const SWEEPS = {
       { label: 'behind', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
       { label: 'far side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -Math.PI / 2 } },
       { label: 'far three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -0.85 } },
+      /* Front and back for each of the two garments a cape has to share a
+         silhouette with. The four views above already establish the cape's own
+         shape all the way round; what these are asking is a different question
+         — whether a hem and a cape hem can occupy the same air — and that is
+         answered where the two overlap, which is the front and the back. */
       { label: 'over a robe', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+      { label: 'over a robe, behind', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
       { label: 'over a coat', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+      { label: 'over a coat, behind', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
     ],
   },
   'outfit-behind': {
@@ -211,14 +218,24 @@ const MODES: Mode[] = ['sheet', 'seams', 'parts', ...(Object.keys(SWEEPS) as (ke
 const SPACING = 9;
 
 /**
- * How many moments the stride is cut into, and how long one stride lasts.
+ * The most duelists any sweep puts in one row.
  *
- * `pose` advances its gait as `t * (4.6 + stride * 6.4)`, so at full pace a
- * whole cycle is 2π/11 seconds. Feeding it `PHASES` evenly spaced values of `t`
- * across that gives the same set of poses every run.
+ * Derived, not written down: the floor and the shadow frustum are both sized
+ * off it, and a sweep gaining an entry would otherwise leave its outer cells
+ * standing off the end of the ground with no shadow — which reads as a
+ * difference in the duelist rather than in the rig.
+ */
+const WIDEST_SWEEP = Math.max(...Object.values(SWEEPS).map((s) => s.specs.length));
+
+/**
+ * How many moments the stride is cut into.
+ *
+ * `pose` takes the gait's phase directly, so a numbered phase is `n/PHASES` of
+ * a turn and gives the same pose every run — which is what makes two runs
+ * comparable, and what stops a fix being mistaken for a different moment of
+ * the walk.
  */
 const PHASES = 8;
-const CYCLE = (Math.PI * 2) / 11;
 
 type Paint = 'shaded' | 'matte' | 'wire';
 const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
@@ -454,9 +471,18 @@ export default function CharacterLab() {
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.near = 0.5;
     key.shadow.camera.far = 30;
-    /* Wide enough to cover a whole sweep standing in a row. */
-    key.shadow.camera.left = -18;
-    key.shadow.camera.right = 18;
+    /**
+     * Wide enough to cover a whole sweep standing in a row — which is a number
+     * that has to be kept honest against `SPACING`.
+     *
+     * Widening the spacing to 9 m put the outer duelists of a twelve-strong
+     * sweep at ±49 m, well outside a ±18 m frustum: they rendered with no
+     * shadow at all while their neighbours had one. In a tool whose whole job
+     * is comparing one cell against the next, a difference that comes from the
+     * lighting rig rather than from the duelist is worse than no shadow at all.
+     */
+    key.shadow.camera.left = -SPACING * (WIDEST_SWEEP / 2 + 1);
+    key.shadow.camera.right = SPACING * (WIDEST_SWEEP / 2 + 1);
     key.shadow.camera.top = 2.6;
     key.shadow.camera.bottom = -0.4;
     key.shadow.bias = -0.0012;
@@ -467,7 +493,13 @@ export default function CharacterLab() {
     rim.position.set(-2.6, 2.0, -2.4);
     scene.add(rim);
 
-    const floorGeo = new THREE.CircleGeometry(40, 64);
+    /* Wide enough for the longest row this page can lay out, with margin —
+       another number that has to follow `SPACING` rather than sit next to it.
+       At a fixed 40 m the outer duelists of a twelve-strong sweep stood at
+       ±49.5 m, off the end of their own floor: no ground under them and
+       nothing for their shadow to land on, in a tool whose entire purpose is
+       holding one cell against the next. */
+    const floorGeo = new THREE.CircleGeometry(SPACING * (WIDEST_SWEEP / 2 + 2), 64);
     const floorMat = new THREE.MeshStandardMaterial({ color: '#161b22', roughness: 0.85, metalness: 0.05 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -566,7 +598,7 @@ export default function CharacterLab() {
           /* The last pass is the standing pose: a fault that only exists at
              rest is still a fault. */
           const walking = k < STEPS;
-          rig.pose(walking ? (k / STEPS) * CYCLE : 0, walking ? 1 : 0);
+          rig.pose(0, walking ? 1 : 0, walking ? (k / STEPS) * Math.PI * 2 : 0);
           rig.root.updateWorldMatrix(true, true);
 
           for (const { probe, into, otherSideOnly } of CLASHES) {
@@ -597,7 +629,7 @@ export default function CharacterLab() {
       }
 
       sides.forEach((side, mat) => (mat.side = side));
-      rigs.forEach((r) => r.pose(0, 0));
+      rigs.forEach((r) => r.pose(0, 0, 0));
 
       const rows = [...worst.entries()].sort((a, b) => b[1] - a[1]);
       return rows.length
@@ -619,19 +651,27 @@ export default function CharacterLab() {
     ro.observe(el);
 
     const clock = new THREE.Clock();
+    let gait = 0;
+    let elapsed = 0;
     let raf = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
       if (builtFor !== planRef.current) rebuild(planRef.current);
       if (paintedAs !== paintRef.current) repaint(paintRef.current);
+      /* One `getDelta` a frame: it is what advances the clock, so asking for
+         the elapsed time as well would leave the second caller with nothing. */
+      const dt = Math.min(clock.getDelta(), 0.05);
       const held = phaseRef.current;
-      const t =
+      const live = liveRef.current || strideRef.current > 0;
+      if (live) elapsed += dt;
+      /* Held at a number, the phase *is* that number. Running, it is integrated
+         here for the same reason the world integrates it — the workbench has to
+         move the way the game moves, or it is not showing the game. */
+      gait =
         held >= 0
-          ? (held / PHASES) * CYCLE
-          : liveRef.current || strideRef.current > 0
-            ? clock.getElapsedTime()
-            : 0;
-      rigs.forEach((r) => r.pose(t, strideRef.current));
+          ? (held / PHASES) * Math.PI * 2
+          : (gait + gaitRate(strideRef.current) * dt) % (Math.PI * 2);
+      rigs.forEach((r) => r.pose(held >= 0 ? 0 : elapsed, strideRef.current, gait));
 
       const { views, specs } = planRef.current;
       const W = el.clientWidth;
