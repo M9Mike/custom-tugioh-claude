@@ -166,6 +166,19 @@ const FRAME_METRICS = {
   sturdy: { shoulder: 1.11, chest: 1.09, waist: 1.12, hip: 1.06, limb: 1.1 },
 } as const;
 
+/**
+ * What the body plan, and nothing else, decides — applied on top of the frame
+ * so every frame exists in both plans. One table, read by the build *and* by
+ * the pose: the arms' resting splay has to clear whatever hips the plan
+ * actually built, and a copy of these numbers in the pose function is exactly
+ * how the female plan's wider hip swallowed a forearm by most of a
+ * millimetre.
+ */
+const PLAN_METRICS = {
+  male: { shoulder: 1, chest: 1, waist: 1, hip: 1, limb: 1 },
+  female: { shoulder: 0.855, chest: 0.93, waist: 0.85, hip: 1.05, limb: 0.87 },
+} as const;
+
 /** What each outfit id actually changes about the garment. */
 const OUTFIT_SHAPE = {
   duelist: { hem: 0.055, skirt: 0, flare: 1, collar: 0.075, sleeve: 1, pauldron: false, split: 0 },
@@ -277,9 +290,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
    * genuinely reads heavy rather than as a costume change.
    */
   const female = spec.sex === 'female';
-  const X = female
-    ? { shoulder: 0.855, chest: 0.93, waist: 0.85, hip: 1.05, limb: 0.87 }
-    : { shoulder: 1, chest: 1, waist: 1, hip: 1, limb: 1 };
+  const X = PLAN_METRICS[spec.sex] ?? PLAN_METRICS.male;
   const F = {
     shoulder: FR.shoulder * X.shoulder,
     chest: FR.chest * X.chest,
@@ -1433,7 +1444,12 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
      the fallback the body would be built happily and then throw on every
      frame of the pose loop, which is a stranger failure than a wrong hip. */
   const frame = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
-  const rest = 0.11 + 0.11 * spec.build + 0.3 * (frame.hip - 1);
+  /* The hip the *plan* built, not the frame's alone: the female plan widens
+     the hip 5%, and a splay that only knew the frame hung the heavy plan's
+     forearms 0.8 mm inside the torso. Found by the clash audit's bodies
+     sweep, which exists to catch exactly this. */
+  const plan = PLAN_METRICS[spec.sex] ?? PLAN_METRICS.male;
+  const rest = 0.11 + 0.11 * spec.build + 0.3 * (frame.hip * plan.hip - 1);
   j.armL.rotation.x = -gait * 0.4 * gaitScale + sway * 0.03 * (1 - s);
   j.armR.rotation.x = gait * 0.4 * gaitScale - sway * 0.03 * (1 - s);
   /**
