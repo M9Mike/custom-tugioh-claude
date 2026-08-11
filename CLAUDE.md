@@ -99,19 +99,29 @@ Author NPCs by name, not by dice: a named character whose picks are written
 down reads as a person, and a rolled one reads as a roll. Use `randomCharacter`
 for crowds, and only after reading the rest of this file.
 
-## Where the geometry lives
+## The look, and where the geometry lives
 
+The duelist is an **anime game character**, on purpose: six heads tall,
+cel-shaded in three steps, inked along every silhouette, with big painted
+eyes and hair that carries the identity. Realism is not the goal and never
+was reachable at this budget — the model chased it once and read as a
+mannequin. Stylisation is the look; author *to* it.
+
+- `src/components/story/toon.ts` — the style itself: the generated toon ramp
+  (`toonMat`) and the ink (`addOutline`, inverted hulls). Ink hulls are
+  **unnamed meshes** so the clash audit never sees a part inside its own
+  outline.
 - `src/components/story/humanoid.ts` — body, garments, limbs, the pose
-  function. Lofted cross-sections: profile tables of real measurements,
-  interpolated with monotone cubics so a table that is right at its rows is
-  right between them.
-- `src/components/story/head.ts` — skull, face, ears, hair, beard. The face is
-  mostly *paint*: vertex colours doing the work of features, with geometry only
-  where there is a silhouette to change.
+  function. Lofted cross-sections: profile tables in metres, interpolated
+  with monotone cubics, authored to the style's proportions.
+- `src/components/story/head.ts` — skull, the anime face (eye plates, brow
+  strips, wedge nose, drawn mouth), and every hair style built from chunky
+  curved strands over a snug cap.
 - `src/components/story/loft.ts` — `MeshBuilder`, `sample`, `sectionPoint`,
   `domeRings`.
 
-No textures anywhere. Vertex colour is both pigment and ambient occlusion.
+One texture in the whole duelist: the 4-pixel toon ramp, generated in code.
+Everything else is vertex colour on generated geometry.
 
 ## The standard
 
@@ -129,21 +139,24 @@ looking wrong and had to be found in a photograph.
    front hung two loose flaps beside the duelist's hands for four rounds of
    review because the outfit sweep shot the front without a cape and the back
    with one.
-4. **A mask that is a sum of lobes will draw its lobes.** Beard height followed
-   its own five-lobe mask and came out as five balls of clay round a mouth. Map
-   coverage to height through a narrow band so the interior is a plateau.
+4. **Hair chunks must share their edges.** The first fringe spaced its
+   strands apart and the forehead wore a row of teeth; overlapping them by
+   half their width is what makes separate wedges read as one mass. The same
+   failure inverted: a cap inflated for "volume" swallowed every strand on
+   the crown — the cap stays snug, the strands carry the silhouette.
 5. **Anything defined by azimuth is degenerate at the crown**, where every
    azimuth meets one point. A mohawk driven by azimuth is a traffic cone. Drive
    crests, partings and anything else on the midline by distance from it.
-6. **A piecewise curve must actually meet itself.** The hairline was four
-   branches each adding the style's shift at its own strength; every boundary
-   was a step, and a step in a hairline is a notch cut out of the fringe.
+6. **A feature is a decal, not a recess.** The eyes are elliptical painted
+   plates sitting proud of the face — geometry clamped to the ellipse so no
+   card corner ever shows — and the mouth is a drawn line. Anything built by
+   carving the skull re-enters the valley this model climbed out of.
 7. **Tints are multipliers on skin.** A colour chosen to read as hair does not
-   read as *beard* — short hair shows skin through it, and a beard at the head's
-   own saturation gave a redhead a tongue and a blond a beige chin. Darken,
-   desaturate, and floor the contrast against skin.
-8. **Detail finer than the mesh cannot be drawn by the mesh.** It aliases. Keep
-   every modulation frequency well under the ring count.
+   read as *beard*. Darken and desaturate what derives from hair, and grey
+   the source colour with age before anything derives from it.
+8. **Detail finer than the mesh cannot be drawn by the mesh.** It aliases. The
+   iris rings needed a 28×20 eye grid before they read as drawn curves at the
+   booth's face framing — the closest look the game ever takes.
 9. **A phase is integrated, never `time × rate`.** If the rate depends on
    anything that changes — and a gait's rate depends on how fast you are
    walking — then `t × rate` jumps by `t × Δrate` whenever it changes, and `t`
