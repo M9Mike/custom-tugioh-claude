@@ -93,42 +93,75 @@ async function devRead(): Promise<Record<string, StoryProfile>> {
   }
 }
 
+/**
+ * One writer to the dev file at a time.
+ *
+ * `devWrite` and `devDelete` are both whole-file read-modify-writes with
+ * awaits in the middle, so two in flight interleave and the later read
+ * overwrites the earlier write — a save could resurrect a profile mid-delete.
+ * A promise chain serialises them within this process, and this process is
+ * the only one `next dev` runs; the failure of one job must not poison the
+ * chain for the next, hence the swallowed tail.
+ */
+let devFileTurn: Promise<unknown> = Promise.resolve();
+function devFileQueue<T>(job: () => Promise<T>): Promise<T> {
+  const run = devFileTurn.then(job, job);
+  devFileTurn = run.catch(() => {});
+  return run;
+}
+
 async function devWrite(profile: StoryProfile): Promise<void> {
-  try {
-    const fs = await import('node:fs/promises');
-    const path = await import('node:path');
-    const all = await devRead();
-    all[fold(profile.username)] = profile;
-    await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
-    await fs.writeFile(DEV_FILE, JSON.stringify(all, null, 2));
-  } catch {
-    /* Read-only filesystem, or no filesystem at all. The in-memory copy still
-       serves this process, which is all the fallback ever promised. */
-  }
+  await devFileQueue(async () => {
+    try {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const all = await devRead();
+      all[fold(profile.username)] = profile;
+      await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
+      await fs.writeFile(DEV_FILE, JSON.stringify(all, null, 2));
+    } catch {
+      /* Read-only filesystem, or no filesystem at all. The in-memory copy
+         still serves this process, which is all the fallback ever promised. */
+    }
+  });
 }
 
 async function devDelete(username: string): Promise<void> {
-  const all = await devRead();
-  /* Nothing stored, nothing to resurrect: a file that never held this profile
-     needs no rewrite, and failing here would 503 a deletion that has in fact
-     fully happened. */
-  if (!(fold(username) in all)) return;
-  delete all[fold(username)];
-  try {
+  await devFileQueue(async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
-    await fs.writeFile(DEV_FILE, JSON.stringify(all, null, 2));
-  } catch (err) {
-    /* NOT devWrite's shrug. A save that fails to persist is progress lost on
-       restart, which the fallback accepts — but a deletion that fails to
-       persist is the profile coming back, which breaks the one promise the
-       confirm sheet makes. Thrown so the route answers 503 and the player
-       gets to try again, rather than being told a save is gone while the file
-       still holds it. */
-    console.error(`story: could not delete from ${DEV_FILE}`, err);
-    throw err;
-  }
+    /* Read strictly, not through devRead: that helper answers "no file" and
+       "unreadable file" the same way, which is right for loading — the game
+       must open — and wrong for erasing, where an unreadable file still holds
+       the profile and would bring it back on the next restart. Only a file
+       that does not exist proves there is nothing to remove. */
+    let all: Record<string, StoryProfile>;
+    try {
+      all = JSON.parse(await fs.readFile(DEV_FILE, 'utf8')) as Record<string, StoryProfile>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return;
+      console.error(`story: could not read ${DEV_FILE} to delete from it`, err);
+      throw err;
+    }
+    /* Nothing stored, nothing to resurrect: a file that never held this
+       profile needs no rewrite, and failing here would 503 a deletion that
+       has in fact fully happened. */
+    if (!(fold(username) in all)) return;
+    delete all[fold(username)];
+    try {
+      await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
+      await fs.writeFile(DEV_FILE, JSON.stringify(all, null, 2));
+    } catch (err) {
+      /* NOT devWrite's shrug. A save that fails to persist is progress lost
+         on restart, which the fallback accepts — but a deletion that fails to
+         persist is the profile coming back, which breaks the one promise the
+         confirm sheet makes. Thrown so the route answers 503 and the player
+         gets to try again, rather than being told a save is gone while the
+         file still holds it. */
+      console.error(`story: could not delete from ${DEV_FILE}`, err);
+      throw err;
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -231,6 +264,11 @@ export async function updateProfile(
  * race, which `next dev` accepts: the window is one in-flight request wide.
  */
 export async function deleteProfile(canonical: string): Promise<void> {
-  await deleteKey(key(canonical));
+  /* The dev file goes first. It is the one copy that survives a restart, so
+     it is the one copy an interruption between these two lines must not
+     leave behind — the in-memory key dies with the process anyway, so
+     removing it second risks nothing. On durable stores there is only the
+     one delete and the ordering question does not exist. */
   if (!durable) await devDelete(canonical);
+  await deleteKey(key(canonical));
 }
