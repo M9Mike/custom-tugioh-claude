@@ -829,7 +829,16 @@ function hairlineAt(S: HairShape, a: number): number {
      sawtooth, right along the one line a haircut is judged by. It showed at
      the fringe and worse across the nape. Detail finer than the mesh cannot
      be drawn by the mesh — it can only corrupt it. */
-  const grain = 0.013 * (Math.sin(a * 5.3) * 0.6 + Math.sin(a * 9.7 + 1.1) * 0.4);
+  /**
+   * Whole numbers of cycles, or the curve does not close.
+   *
+   * At 5.3 and 9.7 neither wave completes over a full turn, so the value at
+   * azimuth 0 and the value at 2π disagree — and the loft joins those two
+   * columns. That is a fifth discontinuity in this function, on the front
+   * midline, sitting between the other four it took this long to find.
+   * Integers are the only frequencies that survive a wrap.
+   */
+  const grain = 0.013 * (Math.sin(a * 5) * 0.6 + Math.sin(a * 9 + 1.1) * 0.4);
   /**
    * One curve, in four pieces that meet.
    *

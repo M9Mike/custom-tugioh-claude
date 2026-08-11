@@ -92,10 +92,13 @@ looking wrong and had to be found in a photograph.
 Assertions are necessary and are not sufficient. Everything above passed every
 assertion in the repo on the day it shipped.
 
-```
+```shell
 npm run clash                      # nothing intersects, standing or walking
 npm run character                  # every mode, one sheet per mode
-npm run character -- --seed 3      # a *randomised* duelist, which is what an NPC is
+npm run character -- --seed 1      # a rolled duelist. Do 1 through 4 at least:
+npm run character -- --seed 2      # between them they cover a cape, a full
+npm run character -- --seed 3      # beard, a goatee, a mohawk and a robe, and
+npm run character -- --seed 4      # every one of those was broken on 2026-08-11
 npm run character -- --paint --walk
 npm run story                      # the flow end to end, two phone sizes
 npm run handling                   # every control driven by hand, frame by frame
@@ -115,7 +118,9 @@ duelist. Three habits, each of which caught something nothing else did:
 
 - **Shoot randomised seeds, not the default.** The default duelist has dark
   hair, a clean chin and a plain jumper, and is the one character on which
-  every bug listed above is invisible. Four seeds found five.
+  every bug listed above is invisible. Four seeds found six. Rolled duelists
+  are not how to *author* an NPC — see above — but they are how to cover the
+  space one might land anywhere in.
 - **Magnify.** The booth's Face framing gets closer to the head than any lab
   view; an ear that reads as a slab at 40 px reads as a slab at 400.
 - **Photograph the angle the game actually uses.** The open world is behind and

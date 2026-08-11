@@ -144,7 +144,12 @@ const SWEEPS = {
       { label: 'front', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: 0 } },
       { label: 'three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: 0.85 } },
       { label: 'side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI / 2 } },
-      { label: 'behind', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI - 0.35 } },
+      /* Square on, not near it. A rear view a fifth of a radian off centre is
+         the one place a cape's two halves cannot be compared against each
+         other, which is the only way an asymmetry shows. */
+      { label: 'behind', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
+      { label: 'far side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -Math.PI / 2 } },
+      { label: 'far three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -0.85 } },
       { label: 'over a robe', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
       { label: 'over a coat', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
     ],
