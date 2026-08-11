@@ -137,8 +137,12 @@ const SWEEPS = {
   },
   'hair-behind': {
     /* Half the cuts put their mass at the back — a tail, a knot, a curtain
-       down the spine — and none of it exists in a front view. */
-    view: { y: 1.5, dist: 0.95, yaw: Math.PI - 0.5, pitch: 0.08 },
+       down the spine — and none of it exists in a front view.
+       Looking down, at the angle the open world looks down from. Its camera
+       starts 16° above the duelist and a drag takes it to 49°, so the crown is
+       ordinary game footage rather than an edge case — and shot level, from
+       0.08, it had never appeared in a photograph at all. */
+    view: { y: 1.5, dist: 0.95, yaw: Math.PI - 0.5, pitch: 0.34 },
     specs: HAIR_STYLES.map((h) => ({ label: h.id, over: { hair: h.id } as Partial<StoryCharacter> })),
   },
   beard: {
