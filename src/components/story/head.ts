@@ -649,6 +649,29 @@ const EAR: Profile = [
   [1.0, 0.19, 0.044, 0.004],
 ];
 
+/**
+ * How deep the bowl of the ear is cut, as a fraction of the ear's own
+ * thickness, at each height from lobe to helix.
+ *
+ * This is the whole shape. Everything else about an ear — where it sits, how
+ * far it stands off, how long it is — was already right, and the ear still
+ * read as a pale rounded slab stuck to the side of the head, because a solid
+ * convex blade catches light evenly all over and an ear never does. What names
+ * an ear at a glance is one dark hollow ringed by one bright rim, and both come
+ * out of the same cut: press the middle of the outer face in, and what is left
+ * standing round the edge *is* the helix. Nothing at the lobe, which is solid
+ * flesh; nothing at the very top, where the rim rolls over and closes.
+ */
+const CONCHA: Profile = [
+  [0.0, 0.0],
+  [0.2, 0.1],
+  [0.42, 0.92],
+  [0.6, 1.0],
+  [0.8, 0.66],
+  [0.93, 0.22],
+  [1.0, 0.0],
+];
+
 function addEars(
   m: MeshBuilder,
   H: number,
@@ -661,26 +684,43 @@ function addEars(
      can name. */
   const top = EYE_V + 0.035;
   const bottom = 0.285;
-  const SEG = 18;
+  /* The bowl needs vertices across it to be a bowl rather than a facet, and it
+     only spans half the section. */
+  const SEG = 28;
+  const RINGS = 20;
 
   for (const side of [-1, 1] as const) {
     const rings: number[][] = [];
-    for (let s = 0; s <= 14; s++) {
-      const t = s / 14;
-      const v = lerp(bottom, top, t);
-      const thick = sample(EAR, t, 1) * 0.045 * H;
+    for (let s = 0; s <= RINGS; s++) {
+      const t = s / RINGS;
+      /* Thicker than it was, because a bowl pressed into a 4 mm blade has
+         nowhere to go: the rim has to have something to stand out of. The
+         standoff below carries the extra outwards so the *floor* of the bowl
+         lands where the whole ear used to sit, rather than the ear moving out
+         from the head. */
+      const thick = sample(EAR, t, 1) * 0.064 * H;
       const depth = sample(EAR, t, 2) * H;
       const dz = sample(EAR, t, 3) * H;
+      const bowl = sample(CONCHA, t, 1);
+      const v = lerp(bottom, top, t);
       const at = surface(v, (side * Math.PI) / 2);
       /* Set slightly back from the widest point of the skull and canted out at
          the top, which is the difference between an ear and a handle. */
-      const cx = at.x * 0.94 + side * thick * 1.4 * (0.5 + t * 0.9);
+      const cx = at.x * 0.94 + side * thick * (0.48 + t * 0.5);
       const cz = at.z - 0.14 * H + dz;
       const ring: number[] = [];
       for (let k = 0; k < SEG; k++) {
         const a = (k / SEG) * Math.PI * 2;
         const p = sectionPoint(thick, depth, depth, 2.4, a);
-        ring.push(m.vertex(cx + p.x, y(v), cz + p.z, s > 2 && s < 12 ? UNDER : undefined));
+        /* Positive on the outer face of this ear, whichever side it is on. */
+        const outward = Math.max(0, side * Math.sin(a));
+        const cut = bowl * 0.82 * thick * outward ** 1.5;
+        /* The floor of the bowl is in shadow all day; the rim is not. Tinting
+           by the same number that cuts it keeps the two in step, so the shade
+           lands on the hollow rather than on a band of rings that happens to
+           be near it. */
+        const shade = bowl * outward ** 1.5;
+        ring.push(m.vertex(cx + p.x - side * cut, y(v), cz + p.z, shade > 0.25 ? UNDER : undefined));
       }
       rings.push(ring);
     }
@@ -991,14 +1031,27 @@ function addMantle(
     const t = i / ROWS;
     const line: number[] = [];
     for (let k = 0; k <= COLS; k++) {
-      /* The back two-thirds of the head: hair falls behind the ears, not over
-         the face. */
-      const a = lerp(0.95, Math.PI * 2 - 0.95, k / COLS);
-      /* Hung from ear level, the same height all the way round. Hung from the
-         hairline instead — which for a long cut runs from the temple down to
-         the nape — the top of the curtain rose and fell by most of a head, and
-         the hem inherited every wobble of it. */
-      const top = surface(0.44, a);
+      /* The back two-thirds of the head: hair falls past the temple, not over
+         the face. Started at 0.95 the free edge landed just behind the ear's
+         own front, so the ear surfaced along it at the silhouette. */
+      const a = lerp(0.8, Math.PI * 2 - 0.8, k / COLS);
+      /**
+       * Hung the same height all the way round, above both the ear and the
+       * scalp shell's hairline.
+       *
+       * The same height all the way round because the alternative is the
+       * hairline, which for a long cut runs from the temple down to the nape:
+       * the top of the curtain then rose and fell by most of a head and the hem
+       * inherited every wobble of it.
+       *
+       * Above those two things because of what is otherwise between them. Hung
+       * at ear level the curtain's free edge sat *below* where the shell stops
+       * growing, and the strip of head between the two showed through; pushing
+       * the curtain out to clear the ear only opened that strip wider, and the
+       * ear appeared in it. Tucked under the shell there is no gap to appear
+       * in, and started above the ear there is no tip to show over the lip.
+       */
+      const top = surface(0.58, a);
       /* Widens to the head's own width within the first fifth of the drop,
          then falls straight with a little flare at the hem. */
       const wide = surface(0.3, a);
@@ -1007,13 +1060,29 @@ function addMantle(
          drops *inside* the jacket and is swallowed by the shoulders, which
          reads as a hood rather than as hair. */
       const flare = 1 + 0.95 * t * t;
-      line.push(
-        m.vertex(
-          lerp(top.x, wide.x * flare, blend),
-          top.y - t * len * H,
-          lerp(top.z, wide.z * flare, blend)
-        )
-      );
+      const x = lerp(top.x, wide.x * flare, blend);
+      const z = lerp(top.z, wide.z * flare, blend);
+      /**
+       * A bulge over the ear, and nothing at the top edge.
+       *
+       * Flush against the scalp the ear came straight through this curtain — a
+       * skin-coloured blob with a torn outline in the middle of a head of black
+       * hair, at the one angle the open world always shows. So it stands off.
+       * But the standoff has to be *zero where the curtain ends*: a free edge
+       * held a centimetre off the head is a ledge running round the skull, and
+       * the ear reappears over the top of it. Start at the shell's own
+       * thickness, swell past the ear, settle.
+       *
+       * Centred on 2.0 radians, not on the ear's nominal π/2. An ear is set
+       * back from the skull's widest point by 0.14 H, which puts the azimuth it
+       * actually occupies well round towards the nape; a bulge centred where
+       * the ear ought to be misses it by most of its width, and leaves exactly
+       * the torn patch it was added to close.
+       */
+      const bulge = 0.055 * win(fromFront(a), 0.85, 3.05) * smooth(t / 0.07) * (1 - smooth((t - 0.3) / 0.3));
+      const off = (0.012 + bulge) * H;
+      const rlen = Math.hypot(x, z) || 1;
+      line.push(m.vertex(x + (x / rlen) * off, top.y - t * len * H, z + (z / rlen) * off));
     }
     grid.push(line);
   }

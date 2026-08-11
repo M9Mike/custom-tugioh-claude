@@ -44,6 +44,18 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'style', label: 'Attire' },
 ];
 
+/**
+ * How far the pinch may take the camera, as a multiple of the framing's own
+ * distance.
+ *
+ * It used to run to 2.2, which on the body framing is seven metres from a
+ * 1.78 m duelist: the character you are making becomes a speck on an empty
+ * stage, and there is no button that says "come back". A range you cannot get
+ * lost in is worth more than one that goes further.
+ */
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 1.6;
+
 /** Where the camera sits for each framing, as (height, distance, pitch). */
 const SHOTS = {
   /* Framed with headroom. The viewport runs under the screen's title, so a
@@ -202,12 +214,18 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
     /* ---- pointer control: drag to turn, pinch to zoom ---- */
     let yaw = 0.35;
+    /* `pitchGoal` is what the drag writes; `pitch` chases it. The gap is five
+       frames at 60Hz, which is under the threshold of feeling like lag, and it
+       buys the framing buttons a way to put the camera back on the level
+       without the picture jumping. */
+    let pitchGoal = 0;
     let pitch = 0;
     let zoom = 1;
     let idleUntil = 0;
     const pointers = new Map<number, { x: number; y: number }>();
     let pinchStart = 0;
     let zoomStart = 1;
+    let lastShot = shotRef.current;
 
     const canvas = renderer.domElement;
     const onDown = (e: PointerEvent) => {
@@ -227,11 +245,11 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       if (pointers.size >= 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (pinchStart > 0) zoom = Math.min(2.2, Math.max(0.45, zoomStart * (pinchStart / d)));
+        if (pinchStart > 0) zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomStart * (pinchStart / d)));
         return;
       }
       yaw -= (e.clientX - prev.x) * 0.009;
-      pitch = Math.min(0.5, Math.max(-0.35, pitch + (e.clientY - prev.y) * 0.004));
+      pitchGoal = Math.min(0.5, Math.max(-0.35, pitchGoal + (e.clientY - prev.y) * 0.004));
     };
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
@@ -240,7 +258,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       idleUntil = performance.now() + 3000;
-      zoom = Math.min(2.2, Math.max(0.45, zoom * (1 + e.deltaY * 0.0012)));
+      zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * (1 + e.deltaY * 0.0012)));
     };
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
@@ -276,13 +294,32 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
       if (performance.now() > idleUntil && pointers.size === 0) yaw += 0.0035;
 
+      /**
+       * A new framing starts at its own distance and on its own level.
+       *
+       * Both of these persisted across a framing change, and both quietly broke
+       * the promise the two buttons make. `zoom` multiplies whatever the framing
+       * asks for, so after a pinch outwards "Face" put the camera at 0.66 m
+       * times the zoom the player happened to be left at — a distant torso. And
+       * a drag downwards leaves the camera 29° up, from where "Face" frames the
+       * top of the head: the one shot in the booth that has to show a face
+       * showed a scalp instead. Neither is a state a player can name or undo;
+       * the buttons are presets, so they reset what a preset owns and leave yaw,
+       * which is the player turning the model, alone.
+       */
+      if (shotRef.current !== lastShot) {
+        lastShot = shotRef.current;
+        zoom = 1;
+        pitchGoal = 0;
+      }
       const target = SHOTS[shotRef.current];
       camY += (target.y - camY) * 0.12;
       camDist += (target.dist * zoom - camDist) * 0.12;
+      pitch += (pitchGoal - pitch) * 0.12;
 
       pivot.rotation.y = yaw;
       camera.position.set(
-        Math.sin(pitch) * 0,
+        0,
         camY + Math.sin(pitch + target.pitch) * camDist,
         Math.cos(pitch + target.pitch) * camDist
       );

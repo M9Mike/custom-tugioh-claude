@@ -69,6 +69,12 @@ const SHEET: View[] = [
  */
 const PARTS: View[] = [
   { y: 1.63, dist: 0.55, yaw: 0.4, pitch: 0.02, label: 'head' },
+  /* Square onto the side of the head, because that is the one angle an ear has
+     a shape from — and every other view here is three-quarter or front, so
+     until this was added the ear had never been photographed at all. It is not
+     an obscure angle: the booth's Face framing is closer than this, and turning
+     the model is the first thing anyone does with it. */
+  { y: 1.615, dist: 0.44, yaw: 1.52, pitch: 0.02, label: 'ear' },
   { y: 1.47, dist: 0.6, yaw: 0.85, pitch: 0.12, label: 'neck · collar' },
   { y: 1.38, dist: 0.9, yaw: 0.35, pitch: 0.22, label: 'shoulders' },
   { y: 1.2, dist: 1.0, yaw: 0.1, pitch: 0.04, label: 'chest' },

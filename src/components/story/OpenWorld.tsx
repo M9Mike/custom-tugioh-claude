@@ -527,8 +527,13 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
       <div ref={holder} className="absolute inset-0" />
 
       {/* corner menu */}
+      {/* `items-end` is load-bearing. The box is only as wide as its widest
+          child, so opening the panel widened it to 14rem and left the button —
+          now a narrow ✕ rather than ☰ Menu — sitting against the box's left
+          edge, a third of the way across the screen. The button you press to
+          close a menu cannot walk out of the corner you pressed to open it. */}
       <div
-        className="absolute right-0 top-0 p-3"
+        className="absolute right-0 top-0 flex flex-col items-end p-3"
         style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingRight: 'calc(var(--safe-right) + 12px)' }}
       >
         <button

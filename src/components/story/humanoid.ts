@@ -821,7 +821,7 @@ function collarGeometry(
 ): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const N = 7;
-  const base = neckBase - 0.035 * S;
+  const base = neckBase - 0.055 * S;
   const rings: number[][] = [];
   for (let i = 0; i <= N * 2; i++) {
     const outside = i <= N;
@@ -843,7 +843,20 @@ function collarGeometry(
        * pale sliver at the back of every duelist was this.
        */
       const t = Math.max(0, Math.min(1, (y - neckBase) / neckLen));
-      const r = (sample(NECK, t, 1) * neckG + 0.01 * S) * (1 + 0.15 * up * up) * (outside ? 1 : 0.84);
+      /**
+       * The bottom of the band closes in on the neck before it disappears.
+       *
+       * Held at full radius all the way down, the last ring is a circle centred
+       * on the torso's axis while the chest it is buried in falls away in front
+       * of it — and at the front of the shoulder the rim came back out through
+       * the jumper. What it left there was worse than a seam: a curved sliver of
+       * a second surface lying on the chest with a free edge and a torn outline,
+       * which at the booth's own framing reads as the cloth being ripped. Tucked
+       * to four fifths it is inside the *neck* at the bottom, and there is
+       * nothing left that can surface.
+       */
+      const tuck = 0.8 + 0.2 * smoothstep(up / 0.35);
+      const r = (sample(NECK, t, 1) * neckG + 0.01 * S) * tuck * (1 + 0.15 * up * up) * (outside ? 1 : 0.84);
       const p = sectionPoint(r, r * 0.97, r * 0.97, 2.1, a);
       ring.push(m.vertex(p.x, y, p.z));
     }
@@ -893,20 +906,32 @@ function pauldronGeometry(S: number): THREE.BufferGeometry {
  * of cloth on a person takes the shape of what it is draped over, and a plane
  * behind the shoulders reads as a sheet of card every time. The fold term is
  * what stops the cone reading as a lampshade.
+ *
+ * The top edge falls away towards the ends, and the amount it falls by is the
+ * whole difference between a cape and a costume. It used to *rise* there, by
+ * 2 cm, and the two ends of a rising edge meet the side seams at a right angle:
+ * from behind — which in the open world is the only angle there is — the
+ * duelist wore two horns at the collarbone. Cloth hung on a person is longest
+ * where the shoulders are highest, so the edge drops instead, and drops on a
+ * curve steep enough at the ends that the corner rounds off rather than
+ * pointing.
  */
 function capeGeometry(stature: number, S: number): THREE.BufferGeometry {
   const m = new MeshBuilder();
   const len = 0.46 * stature;
+  const END = 1.95;
   sheet(m, 20, 34, (u, v) => {
-    const a = lerp(-1.95, 1.95, v);
+    const a = lerp(-END, END, v);
     const r = (0.17 + 0.2 * u * u) * S;
     /* Vertical folds, deepest at the hem, where the cloth has slack. */
     const fold = 0.02 * S * Math.sin(a * 4.5) * u * u;
     /* A hem that is not a circle, because cloth never falls level. */
     const hem = 1 + 0.05 * Math.cos(a * 3.2);
+    /* Flat across the back, then away over the shoulder. */
+    const shoulder = Math.pow(Math.abs(a) / END, 2.6) * 0.088 * S;
     return {
       x: Math.sin(a) * (r + fold),
-      y: -u * len * hem + (1 - Math.cos(a)) * 0.02 * S,
+      y: -u * len * hem - shoulder,
       z: -Math.cos(a) * (r + fold) - 0.03 * S * u,
     };
   });
