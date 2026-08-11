@@ -30,16 +30,16 @@ import * as THREE from 'three';
 let ramp: THREE.DataTexture | null = null;
 
 /**
- * Three steps and a toe.
+ * Two tones, exactly.
  *
- * The shadow step sits at 0.62, not lower: cel shadow is a colour choice, and
- * at 0.4 every garment's shadow side read as a different, dirtier garment.
- * The narrow toe at the bottom keeps the deepest crease from going flat black
- * under the booth's rim light.
+ * The reference frames this whole style draws with one shadow tone and one
+ * lit tone per surface — the three-step ramp this shipped with was already a
+ * step too painterly, and the mid-band read as airbrushing on every face.
+ * The shadow sits at 0.66: a colour choice, not darkness.
  */
 function toonRamp(): THREE.DataTexture {
   if (ramp) return ramp;
-  const steps = [0.5, 0.62, 0.62, 0.86, 1.0, 1.0];
+  const steps = [0.66, 0.66, 0.66, 1.0, 1.0, 1.0];
   const data = new Uint8Array(steps.length * 4);
   steps.forEach((s, i) => {
     data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = Math.round(s * 255);

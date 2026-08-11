@@ -72,7 +72,7 @@ const SKULL_SEG = 44;
  * skull chart does.
  */
 const EYE_V = 0.46;
-const BROW_V = 0.565;
+const BROW_V = 0.54;
 const MOUTH_V = 0.19;
 const NOSE_V = 0.35;
 
@@ -152,7 +152,6 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
      faint blush — and states each with a hard edge. */
   const MOUTH_INK = new THREE.Color(0.32, 0.18, 0.2);
   const LIP = new THREE.Color(1.0, 0.72, 0.68);
-  const BLUSH = new THREE.Color(1.05, 0.9, 0.9);
   const STUBBLE = new THREE.Color(0.88, 0.84, 0.84);
 
   const mouthHalf = lerp(0.085, 0.125, spec.mouth) * H;
@@ -171,13 +170,6 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     const my = y(MOUTH_V) + mouthCurve * (ax / mouthHalf) ** 2;
     if (ax < mouthHalf && Math.abs(py - my) < 0.012 * H) return MOUTH_INK;
     if (female && ax < mouthHalf * 0.82 && py < my && py > my - 0.032 * H) return LIP;
-
-    /* Blush, high on the cheek, young faces only. */
-    if (female && spec.age < 0.55) {
-      const bx = ax - 0.2 * H;
-      const by = py - y(0.36);
-      if ((bx * bx) / (0.052 * H * 0.052 * H) + (by * by) / (0.03 * H * 0.03 * H) < 1) return BLUSH;
-    }
 
     /* Stubble: a *suggestion* — a slightly cooler band hugging the jaw's
        edge, not a painted bib. The first pass masked the whole lower face
@@ -256,8 +248,8 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
 
   /* ---------------- eyes ---------------- */
 
-  const eyeW = lerp(0.225, 0.19, spec.eyeShape) * H * (female ? 1.05 : 1);
-  const eyeH = lerp(0.17, 0.115, spec.eyeShape) * H * (female ? 1.1 : 1);
+  const eyeW = 0.24 * H;
+  const eyeH = lerp(0.15, 0.1, spec.eyeShape) * H * (female ? 1.16 : 1);
   const eyeX = 0.152 * H;
   const eyeColor = new THREE.Color(EYE_COLORS[spec.eyeColor] ?? EYE_COLORS[0]);
   const irisDark = eyeColor.clone().multiplyScalar(0.42);
@@ -271,23 +263,24 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
   const faceZ = skullAt(EYE_V, 2) * 0.93;
 
   /**
-   * One eye: an elliptical painted plate, shallow-domed, sitting proud of
-   * the face like the decal it is in every game this style comes from.
+   * One eye, drawn the way the reference draws one: **wide and flat, under
+   * one straight heavy lash line**, with the iris hanging from that line
+   * like a lantern. Not a round doll eye — the top of the shape is a
+   * plateau, the bottom a shallow arc, and the lash bar carries the whole
+   * expression.
    *
-   * The geometry is a grid *clamped to the ellipse* — vertices outside r = 1
-   * collapse onto the rim — so the plate's edge IS the eye's outline and no
-   * rectangle corner ever shows. The paint is a fixed stack, innermost
-   * winning: sclera, iris (light at the centre, ringed dark), pupil, one
-   * catchlight, and the dark rim drawn last so it always closes the shape.
-   * The catchlight sits top-left in *view* on both eyes — shared, not
-   * mirrored — which is the convention every animated face is read by.
+   * The geometry is a grid clamped to the ellipse and then flattened along
+   * the top, so the plate's edge IS the drawn shape. Paint is a fixed
+   * stack, innermost winning: sclera, iris (top-shaded, ringed), pupil, one
+   * catchlight shared between both eyes, then the rim — a heavy straight
+   * bar along the top, a thin line elsewhere.
    */
   const eyePlate = (side: 1 | -1) => {
     const m = new MeshBuilder();
-    /* Dense enough that the iris rings read as drawn curves at the booth's
-       face framing — the closest look the game ever takes. */
     const NU = 28;
     const NV = 20;
+    /* Where the top flattens into the lash plateau. */
+    const P = 0.38;
     const grid: number[][] = [];
     for (let iv = 0; iv <= NV; iv++) {
       const w0 = (iv / NV) * 2 - 1;
@@ -295,33 +288,34 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
       for (let iu = 0; iu <= NU; iu++) {
         const u0 = (iu / NU) * 2 - 1;
         const r0 = Math.hypot(u0, w0);
-        /* Clamp to the ellipse: the plate is eye-shaped, not card-shaped. */
         const cl = r0 > 1 ? 1 / r0 : 1;
         const u = u0 * cl;
         const w = w0 * cl;
+        /* Flatten the top: everything above the plateau squashes onto it. */
+        const ws = w > P ? P + (w - P) * 0.22 : w;
         const r = Math.min(1, r0);
-        const bulge = Math.sqrt(Math.max(0, 1 - r * r)) * 0.016 * H;
+        const bulge = Math.sqrt(Math.max(0, 1 - r * r)) * 0.014 * H;
 
         /* ---- the paint stack ---- */
         let tint = SCLERA;
-        const iu2 = (u + side * 0.08) / 0.5;
-        const iw2 = (w + 0.04) / 0.8;
+        const iu2 = (u + side * 0.06) / 0.44;
+        const iw2 = (w - 0.12) / 0.86;
         const ir = Math.hypot(iu2, iw2);
         if (ir < 1) {
           tint = irisLight.clone().lerp(eyeColor, smooth(ir * 1.05));
-          if (ir > 0.78) tint = irisDark;
-          /* Lash shadow across the top of the iris. */
-          if (iw2 > 0.42) tint = irisDark;
-          if (Math.hypot(iu2 / 0.44, iw2 / 0.5) < 1) tint = PUPIL;
-          if (Math.hypot((u + side * 0.08 - 0.13) / 0.13, (w - 0.3) / 0.16) < 1) tint = GLINT;
+          if (ir > 0.76) tint = irisDark;
+          /* The iris darkens where it slides under the lash bar. */
+          if (iw2 > 0.28) tint = irisDark;
+          if (Math.hypot(iu2 / 0.5, iw2 / 0.52) < 1) tint = PUPIL;
+          if (Math.hypot((u + side * 0.06 - 0.12) / 0.12, (w - 0.14) / 0.2) < 1) tint = GLINT;
         }
-        /* The rim, always last: the drawn outline of the eye, heavier along
-           the top where the lashes are. */
-        if (r0 > 0.86) tint = RIM;
-        if (w > 0.6 && r0 > 0.5) tint = RIM;
-        if (female && w < -0.6 && u * side > 0.5) tint = RIM;
+        /* The lash bar: one straight heavy line along the flat top. */
+        if (w > 0.44) tint = RIM;
+        /* Elsewhere the rim is a thin closing line. */
+        if (r0 > 0.9) tint = RIM;
+        if (female && w < -0.55 && u * side > 0.55) tint = RIM;
 
-        row.push(m.vertex(u * eyeW * 0.5, w * eyeH * 0.5, bulge, tint));
+        row.push(m.vertex(u * eyeW * 0.5, ws * eyeH * 0.5, bulge, tint));
       }
       grid.push(row);
     }
@@ -332,7 +326,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     }
     const mesh = add(group, m.build(), eyeMat);
     mesh.position.set(side * eyeX, y(EYE_V), faceZ);
-    mesh.rotation.y = side * 0.22;
+    mesh.rotation.y = side * 0.2;
     mesh.rotation.x = -0.05;
     return mesh;
   };
@@ -412,9 +406,12 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     const rows: number[][] = [];
     for (let i = 0; i <= 4; i++) {
       const t = i / 4;
-      const v = NOSE_V - 0.045 + t * 0.085;
-      const w = lerp(0.034, 0.008, t) * H;
-      const stand = Math.sin(Math.PI * Math.min(1, 0.2 + t * 0.85)) * 0.058 * H;
+      const v = NOSE_V - 0.05 + t * 0.1;
+      /* The point is at the BOTTOM — the tip — and the wedge widens as it
+         climbs into the bridge. The first cut had it upside down, and an
+         upward point is a horn, not a nose. */
+      const w = lerp(0.007, 0.024, t) * H;
+      const stand = lerp(0.054, 0.012, smooth(t * 1.1)) * H;
       const ring: number[] = [];
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
@@ -429,7 +426,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
 
   /* ---------------- hair ---------------- */
 
-  const TIPDARK = new THREE.Color(0.8, 0.78, 0.82);
+  const TIPDARK = new THREE.Color(0.9, 0.88, 0.92);
   let hairGroup: THREE.Group | null = null;
 
   /** One chunky strand: a curved, tapering wedge from a scalp point. */
@@ -517,9 +514,33 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
       }
       rings.push(ring);
     }
+    /* Closed with an arc, exactly like the skull it covers: a straight fan
+       from the last ring undercuts the dome beneath it, and the skull's own
+       crown surfaced through the hair as a crescent of scalp. */
+    const swellTop = inflate * 0.7;
+    const rTop = skullAt(0.99, 1) + swellTop;
+    const slope = (skullAt(0.99, 1) - skullAt(0.94, 1)) / (0.05 * H);
+    const dome = domeRings(rTop, Math.min(-0.25, slope), 4);
+    for (let d = 1; d < dome.length; d++) {
+      const { scale, rise } = dome[d];
+      const ring: number[] = [];
+      for (let k = 0; k < SKULL_SEG; k++) {
+        const a = (k / SKULL_SEG) * Math.PI * 2;
+        const q = sectionPoint(
+          rTop * scale,
+          (skullAt(0.99, 2) + swellTop) * scale,
+          (skullAt(0.99, 3) + swellTop) * scale,
+          2,
+          a
+        );
+        ring.push(m.vertex(q.x, y(0.99) + inflate * 0.5 + rise, q.z));
+      }
+      rings.push(ring);
+    }
+    /* One continuous loft, hairline to dome apex. */
     m.loft(rings);
-    const apex = m.vertex(0, y(0.99) + inflate * 1.1, -0.015 * H);
-    m.cap(rings[STEPS], apex, 1);
+    const apex = m.vertex(0, y(0.99) + inflate * 0.5 + dome[dome.length - 1].rise + 0.004 * H, 0);
+    m.cap(rings[rings.length - 1], apex, 1);
   };
 
   const buildHair = () => {
@@ -529,22 +550,38 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
     group.add(g);
     const m = new MeshBuilder();
 
-    /* The fringe: a solid bang of *overlapping* wide strands. The first
-       pass spaced them apart and the forehead wore a row of teeth; hair
-       chunks have to share their edges to read as one mass. */
+    /**
+     * The fringe: a few BIG pointed lobes falling over the brow — the
+     * reference's whole face is framed by five shapes, not fifty. Each lobe
+     * is wide enough to overlap its neighbours by half, roots buried deep
+     * in the cap, tips reaching the brow line. `len` is how far past the
+     * hairline they fall; big styles send them to the eyes.
+     */
     const fringe = (n: number, v: number, len: number, w: number) => {
       for (let i = 0; i < n; i++) {
-        const a = ((i + 0.5) / n - 0.5) * 1.45;
+        const a = ((i + 0.5) / n - 0.5) * 1.5;
         const p = scalp(a, v);
-        const stagger = 1 + 0.15 * Math.sin(i * 2.6);
-        strand(m, p.x, p.y + 0.02 * H, p.z - 0.012 * H, p.nx * 0.22, -0.85, p.nz * 0.38, len * stagger, w * 2.1, 0.08);
+        const stagger = 1 + 0.22 * Math.sin(i * 2.1 + 0.6);
+        const sweep = Math.sin(i * 1.7) * 0.15;
+        strand(
+          m,
+          p.x,
+          p.y + 0.03 * H,
+          p.z - 0.02 * H,
+          p.nx * 0.18 + sweep,
+          -0.9,
+          p.nz * 0.42,
+          len * stagger,
+          w * 3.1,
+          0.06
+        );
       }
     };
 
     switch (id) {
       case 'crop': {
-        cap(m, 0.62, 0.032 * H);
-        fringe(5, 0.64, 0.1 * H, 0.045 * H);
+        cap(m, 0.6, 0.032 * H);
+        fringe(4, 0.6, 0.17 * H, 0.055 * H);
         break;
       }
       case 'swept': {
@@ -584,7 +621,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
           const p = scalp(a, v);
           strand(m, p.x, p.y - 0.012 * H, p.z, p.nx * 0.55, up, p.nz * 0.55 - back, len * H, 0.098 * H, 0.06);
         }
-        fringe(5, 0.62, 0.14 * H, 0.052 * H);
+        fringe(4, 0.6, 0.19 * H, 0.058 * H);
         break;
       }
       case 'curtain': {
@@ -609,12 +646,12 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
           const up = 0.5 + 0.6 * Math.abs(Math.sin(i * 1.9));
           strand(m, p.x, p.y, p.z, p.nx * 0.85, up, p.nz * 0.85, (0.3 + 0.12 * Math.sin(i * 3.1)) * H, 0.065 * H, 0.22);
         }
-        fringe(5, 0.62, 0.14 * H, 0.05 * H);
+        fringe(4, 0.6, 0.2 * H, 0.055 * H);
         break;
       }
       case 'long': {
-        cap(m, 0.62, 0.036 * H);
-        fringe(6, 0.64, 0.12 * H, 0.05 * H);
+        cap(m, 0.6, 0.036 * H);
+        fringe(5, 0.62, 0.14 * H, 0.05 * H);
         /* Big face-framing curtains falling past the jaw to the chest, then
            a full back mass ending in points. The curtains are what read
            from the front — they are most of what "long" means there. */
@@ -632,8 +669,8 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
         break;
       }
       case 'ponytail': {
-        cap(m, 0.64, 0.034 * H);
-        fringe(6, 0.66, 0.12 * H, 0.048 * H);
+        cap(m, 0.6, 0.034 * H);
+        fringe(4, 0.62, 0.13 * H, 0.05 * H);
         const p = scalp(Math.PI, 0.88);
         /* The tie. */
         const tie = keep(new THREE.SphereGeometry(0.05 * H, 10, 8));
@@ -656,7 +693,7 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
       }
       case 'braids': {
         cap(m, 0.62, 0.03 * H);
-        fringe(4, 0.64, 0.09 * H, 0.045 * H);
+        fringe(4, 0.6, 0.15 * H, 0.05 * H);
         for (let i = 0; i < 4; i++) {
           const a = Math.PI + (i / 3 - 0.5) * 1.7;
           const p = scalp(a, 0.6);
@@ -687,8 +724,8 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
         break;
       }
       case 'bun': {
-        cap(m, 0.62, 0.032 * H);
-        fringe(5, 0.64, 0.1 * H, 0.045 * H);
+        cap(m, 0.6, 0.032 * H);
+        fringe(4, 0.62, 0.13 * H, 0.05 * H);
         const bun = keep(new THREE.SphereGeometry(0.14 * H, 14, 10));
         const bunMesh = new THREE.Mesh(bun, hairMat);
         bunMesh.castShadow = true;
