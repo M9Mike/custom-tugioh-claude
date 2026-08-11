@@ -42,9 +42,19 @@ const PHONES = {
   iphone17promax: { viewport: { width: 440, height: 956 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
 };
 
+/* A name that matches nothing would filter every phone out, and the run would
+   then finish with a cheerful line about frames in a directory that has none.
+   A tool whose whole job is to photograph things must not report success for
+   having photographed nothing. */
+if (ONLY && !(ONLY in PHONES)) {
+  console.error(`handling: no phone called "${ONLY}". Try: ${Object.keys(PHONES).join(', ')}`);
+  process.exit(2);
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: EXEC });
-let notes = 0;
+/** Anything that should make this run fail: a page error, or a missing control. */
+let faults = 0;
 
 try {
   for (const [phone, profile] of Object.entries(PHONES)) {
@@ -54,8 +64,20 @@ try {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => {
       console.log(`  ! page error: ${e.message}`);
-      notes++;
+      faults++;
     });
+    /* A control with no box is a control that is not on the screen. Say which
+       one and carry on to the rest — but the run has failed, because the
+       alternative is a directory of frames with a gesture quietly missing from
+       it and nothing to say so. */
+    const boxOf = async (locator, what) => {
+      const box = await locator.boundingBox().catch(() => null);
+      if (!box) {
+        console.log(`  ! no ${what} to drive`);
+        faults++;
+      }
+      return box;
+    };
     const cdp = await ctx.newCDPSession(page);
     /* The dev overlay parks itself over the bottom-left corner, which is where
        Back lives — it would read as the button being obscured. */
@@ -101,11 +123,13 @@ try {
     await page.waitForTimeout(2500);
 
     const inBooth = await page.locator('h1:has-text("Make your duelist")').isVisible().catch(() => false);
+    const box = inBooth ? await boxOf(page.locator('canvas').first(), 'booth canvas') : null;
     if (!inBooth) {
       console.log('  (already past the booth — world only)');
+    } else if (!box) {
+      console.log('  (skipping the booth gestures — there is nothing to drive)');
     } else {
       await shot('booth-open');
-      const box = await page.locator('canvas').first().boundingBox();
       const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
       /* ---- drag to turn ---- */
@@ -252,7 +276,11 @@ try {
     await shot('world-open');
 
     /* ---- the stick, pushed to each quarter ---- */
-    const sb = await page.locator('[aria-label="Move"]').boundingBox();
+    const sb = await boxOf(page.locator('[aria-label="Move"]'), 'thumb stick');
+    if (!sb) {
+      await ctx.close();
+      continue;
+    }
     const c = { x: sb.x + sb.width / 2, y: sb.y + sb.height / 2 };
     const R = 44;
     const dirs = [
@@ -305,5 +333,5 @@ try {
   await browser.close();
 }
 
-console.log(`\nhandling: frames in ${OUT}${notes ? ` — ${notes} page error(s)` : ''}`);
-if (notes) process.exit(1);
+console.log(`\nhandling: frames in ${OUT}${faults ? ` — ${faults} fault(s), see above` : ''}`);
+if (faults) process.exit(1);
