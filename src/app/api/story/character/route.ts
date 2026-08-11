@@ -1,6 +1,6 @@
 import { canonicalUsername, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
-import { normaliseCharacter } from '@/story/character';
+import { normalisePremade } from '@/story/premade';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
         return { ok: true, profile };
       }
       locked = false;
-      return { ok: true, profile: { ...profile, character: normaliseCharacter(body.character, canonical) } };
+      return { ok: true, profile: { ...profile, character: normalisePremade(body.character, canonical) } };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });
     return Response.json({ ok: true, locked, profile: result.profile, stage: stageFor(result.profile) });

@@ -47,7 +47,8 @@
     "ra": "tsx scripts/ra-lethal-check.ts",
     "story": "node scripts/story-check.mjs",
     "clash": "node scripts/clash-check.mjs",
-    "handling": "node scripts/handling-check.mjs"
+    "handling": "node scripts/handling-check.mjs",
+    "premade": "tsx scripts/premade-audit.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

@@ -1,54 +1,57 @@
 # Duelists
 
 Everything that stands on two legs in Story Mode — the player, and any NPC —
-is one system. This is how to use it and, more importantly, how to know when
-what you have made is finished.
+is one system, and since the model swap that system is: a **vendored, rigged,
+animated model** plus a small stored record saying which one and how it is
+dressed. This is how to use it and, more importantly, how to know when what
+you have made is finished.
+
+The characters are no longer generated geometry. Six finished models —
+Warrior, Rogue, Ranger, Wizard, Monk, Cleric, from Quaternius' RPG Character
+Pack, CC0 — live in `public/models/duelists/` with a `LICENSE.md` recording
+exactly where they came from and under what terms. Do not add a model whose
+license you cannot quote in that file. The old procedural system (the lofted
+bodies, the painted faces) is retired from the game but still in the tree —
+see the end of this file before touching it.
 
 ## Asking for people
 
-"Create three NPCs", "add a shopkeeper", "populate the plaza" all mean: pick a
-`CharacterPick` from the preset tables and `resolvePick` it — or, where a
-character needs something the presets do not offer, write `StoryCharacter`
-values directly. Either way the result is handed to `buildCharacter`. There is
-no second character system and there must never be one. A duelist authored for
-an NPC and a duelist authored in the booth go down the same code path, get the
-same walk cycle, and are held to the same standard.
-
-Prefer the presets. Every preset combination is photographed by the lab's
-sweeps, so a shopkeeper assembled from them is standing on proven ground; a
-hand-written spec is a new character nobody has looked at yet, and it owes the
-photographs below before it ships.
+"Create three NPCs", "add a shopkeeper", "populate the plaza" all mean: write
+a `PremadeCharacter` — a catalog id, one tint per slot, a stature, a name —
+and hand it to `buildPremadeRig`. There is no second character system and
+there must never be one. A duelist authored for an NPC and a duelist authored
+in the booth go down the same code path, play the same clips, and are held to
+the same standard.
 
 An NPC is four things, and only the first of them exists:
 
-- **Who** — a `StoryCharacter`, exactly as the booth writes one. Done, and it
-  is the whole of what is done.
+- **Who** — a `PremadeCharacter`, exactly as the booth writes one. Done, and
+  it is the whole of what is done.
 - **Where** — a position and a facing in the field. Nothing places anything in
   the world; `OpenWorld` builds one rig, the player's.
-- **What it does** — stand, pace a route, turn to face you, say something. There
-  is no interaction of any kind: no proximity, no prompt, no dialogue.
+- **What it does** — stand, pace a route, turn to face you, say something. The
+  models ship far more than the game plays: attacks, hit reactions, rolls,
+  deaths, spell casts are all aboard every `.glb`, waiting for the duel
+  cutscene that will want them. There is no interaction of any kind yet.
 - **What it plays** — a deck of card slugs. `validateDeck` checks a *player's*
   deck against the collection they own; an authored one has no collection to
   check against and wants checking against `CARDS` instead.
 
 The last of those is nearer than it looks. `createDuel` and `applyAction` in
 `src/game/engine.ts` run a duel, and `planTurn` with `AI_LEVELS` — rookie ·
-duelist · champion — in `src/game/ai.ts` already plays one properly. An NPC you
-can duel is a bridge from the field into the engine, not a new opponent.
-
-So "add a shopkeeper" is one line of appearance and four pieces of system. Say
-which of the four a request needs and which of them do not exist yet, rather
-than building the model and calling it the job.
+duelist · champion — in `src/game/ai.ts` already plays one properly. An NPC
+you can duel is a bridge from the field into the engine, not a new opponent.
 
 ## The player's own flow
 
 Story Mode opens, the booth makes a duelist, the deck is cut, the world opens —
 and the deck belongs to that duelist from then on.
 
-- The booth is a **preset picker**, nothing customisable: a body plan (male ·
-  female), three faces per plan, three hairs per plan, five hair colours,
-  three bodies, five outfits, and one young–old slider. Every option is a
-  finished, photographed thing; the player combines them and names the result.
+- The booth is a **model picker**: six duelists, two tintable garments each,
+  one stature slider, a name. Every choice is a finished, photographed thing;
+  the player combines them and names the result. "As made" — the model's own
+  paint, byte for byte — is a real choice on every garment, not a swatch that
+  happens to sit close.
 - Appearance binds **permanently** at the booth. Nothing can change it after.
 - The first deck is cut from `STARTER_POOL` and *becomes* the collection: what
   is written back is the 25 that went in and nothing else.
@@ -63,151 +66,129 @@ the 25 you chose, so there is nothing to swap in. It starts meaning something
 the moment a collection can grow — and the obvious thing that grows one is
 beating an NPC. Those two gaps are the same gap.
 
-## The spec, and the presets over it
+## The record, and the catalog under it
 
-`src/story/character.ts` — `StoryCharacter` is the whole description of a
-person. Every field, and nothing outside it, reaches the model.
+`src/story/premade.ts` — everything the server and the booth agree on, and
+no three.js anywhere in it.
 
-- **Plan** — `sex` (male · female), a set of geometry multipliers applied
-  before everything else: shoulders, chest, waist, hips, limbs, neck, brow.
-- **Body** — `frame` (lean · balanced · sturdy), `build` 0–1, `height` 0–1.
-- **Face** — `jaw`, `eyeShape`, `brow`, `nose`, `mouth`, `age`, all 0–1.
-- **Colour** — `skin`, `eyeColor`, `hairColor`, `primary`, `secondary`,
-  `trim`, `trouser`, `boots`, `capeColor`. All **indices into palettes**, never
-  hex. A swatch can be re-tuned later without rewriting anybody, and a corrupt
+- **`PremadeCharacter`** is the whole stored description of a person: `model`
+  (a catalog id), `tints` (one entry per tint slot — `AS_AUTHORED` or an index
+  into that slot's palette), `stature` (0..1 around the model's own height),
+  `name`. Flat, small, validatable — written once, stored for good.
+- **`DUELIST_MODELS`** is the catalog: file, display label, target height in
+  metres, the ground speed its Walk and Run clips cover at playback rate 1,
+  and the tint slots. Growing the roster is adding a row and a file, never a
+  new code path.
+- **Tint slots are windows, not meshes.** Each slot claims a box in
+  hue/saturation/lightness that catches its garment's pixels on the atlas and
+  nothing else's — authored by looking at the atlas, verified by photographing
+  the repaint. Repainting keeps every caught pixel's lightness, so the
+  painting (brush strokes, baked shadow) survives the recolour. The windows
+  are data about the vendored file, exactly like its height: swap the file,
+  re-check the windows.
+- **Palettes are indices, never hex** — the same `CLOTH_COLORS` /
+  `TRIM_COLORS` the rest of the game draws from (`src/story/character.ts`).
+  A swatch can be re-tuned later without rewriting anybody, and a corrupt
   value can only ever be out of range.
-- **Kit** — `hair` (12), `facialHair` (6), `outfit` (5), `gauntlet`, `cape`.
+- **`normalisePremade`** is the one door: the booth's POST goes through it on
+  write, and `loadProfile` runs every stored character through it on read. A
+  malformed field costs the field, never the run — a character can only be
+  created once, so rejection is not an option. It also seats saves from
+  before the swap (old procedural-spec records) on a model, deterministically,
+  so nothing downstream ever meets the old shape.
 
-`src/story/presets.ts` — `CharacterPick` is the *player's* (and normally the
-author's) surface over that: `{sex, face, hair, hairColor, body, outfit, age}`,
-indices into `FACE_PRESETS` · `HAIR_PRESETS` · `HAIR_COLOR_CHOICES` ·
-`BODY_PRESETS` · `OUTFIT_PRESETS`. `resolvePick(pick, name)` is the single
-seam that turns one into a `StoryCharacter`; the booth edits nothing else.
-Skin rides with the face and height with the plan, on purpose: a face is
-authored *on* its skin, and a separate picker would put it on tones it was
-never tuned against.
-
-`defaultCharacter(name)` is the spec's neutral point; `defaultPick()` is the
-booth's. `randomCharacter(name, rnd)` rolls **within the preset space** — pass
-a seeded generator to get the same person twice. `normaliseCharacter` clamps
-anything loaded from storage — loaded profiles bypass the booth, so **every
-lookup keyed on a spec field needs a fallback** (`FRAME_METRICS[spec.frame] ??
-FRAME_METRICS.balanced`). An unknown value from a stored profile would
-otherwise throw once per animation frame.
-
-Author NPCs by name, not by dice: a named character whose picks are written
-down reads as a person, and a rolled one reads as a roll. Use `randomCharacter`
-for crowds, and only after reading the rest of this file.
+`defaultPremade(name)` is the booth's starting point; `randomPremade(name,
+rnd)` rolls across everything the booth offers — pass a seeded generator to
+get the same person twice. A third of rolled slots keep the vendored paint,
+because the authored looks are part of the space.
 
 ## Where the geometry lives
 
-- `src/components/story/humanoid.ts` — body, garments, limbs, the pose
-  function. Lofted cross-sections: profile tables of real measurements,
-  interpolated with monotone cubics so a table that is right at its rows is
-  right between them.
-- `src/components/story/head.ts` — skull, face, ears, hair, beard. The face is
-  mostly *paint*: vertex colours doing the work of features, with geometry only
-  where there is a silhouette to change.
-- `src/components/story/loft.ts` — `MeshBuilder`, `sample`, `sectionPoint`,
-  `domeRings`.
-
-No textures anywhere. Vertex colour is both pigment and ambient occlusion.
+- `public/models/duelists/*.glb` — the models themselves: mesh, rig, atlas,
+  and every animation clip. Self-contained; nothing fetches anything else.
+- `src/components/story/premadeRig.ts` — turns a record into a duelist in a
+  scene: loads and caches one template per model, repaints the atlas where
+  the player tinted, scales to catalog height, and plays Idle/Walk/Run
+  through an `AnimationMixer`. The seam it exposes is the old one: a `root`
+  to add, one call per frame, a `dispose`.
+- The files ship unlit materials; the rig rehangs the maps on lit standard
+  materials so the booth's key and the field's sun actually land.
 
 ## The standard
 
-These are not style preferences. Every one of them is something that shipped
-looking wrong and had to be found in a photograph.
+The old system's list was ten lessons long and most of them were about
+generated meshes. These are the ones that transfer, and every one of them
+still shipped wrong once before it was written down:
 
-1. **Nothing passes through anything.** `npm run clash` proves it, standing and
-   walking, across every mode. It must exit clean before anything ships.
-2. **No free edge may surface.** A sheet buried inside a body — a collar's
-   rim, a cape's hem, a hair curtain's top — is invisible until the body curves
-   away from it, and then it is a torn sliver lying on the chest. Bury edges
-   deep enough that no *profile* brings them out, not just the one you looked
-   at.
-3. **A garment that wraps gets photographed all the way round.** The cape's
-   front hung two loose flaps beside the duelist's hands for four rounds of
-   review because the outfit sweep shot the front without a cape and the back
-   with one.
-4. **A mask that is a sum of lobes will draw its lobes.** Beard height followed
-   its own five-lobe mask and came out as five balls of clay round a mouth. Map
-   coverage to height through a narrow band so the interior is a plateau.
-5. **Anything defined by azimuth is degenerate at the crown**, where every
-   azimuth meets one point. A mohawk driven by azimuth is a traffic cone. Drive
-   crests, partings and anything else on the midline by distance from it.
-6. **A piecewise curve must actually meet itself.** The hairline was four
-   branches each adding the style's shift at its own strength; every boundary
-   was a step, and a step in a hairline is a notch cut out of the fringe.
-7. **Tints are multipliers on skin.** A colour chosen to read as hair does not
-   read as *beard* — short hair shows skin through it, and a beard at the head's
-   own saturation gave a redhead a tongue and a blond a beige chin. Darken,
-   desaturate, and floor the contrast against skin.
-8. **Detail finer than the mesh cannot be drawn by the mesh.** It aliases. Keep
-   every modulation frequency well under the ring count.
-9. **A phase is integrated, never `time × rate`.** If the rate depends on
-   anything that changes — and a gait's rate depends on how fast you are
-   walking — then `t × rate` jumps by `t × Δrate` whenever it changes, and `t`
-   only grows. The walk cycle was written that way: ten minutes into a session,
-   easing out of a standstill drove the legs through five thousand gait cycles
-   a second. `gaitRate(stride)` exists to be integrated by whoever is moving
-   the duelist, and the lab integrates it the same way so the workbench moves
-   the way the game does.
-10. **Feet must not slide.** Ground speed is step length × cadence, so both
-    have to be derived from the same speed. Scale them independently and they
-    agree at exactly one pace: the walk was correct at a full stick and skated
-    by up to two fifths of every step at anything less, which nobody can name
-    and everybody feels. `scripts/` has no check for this — it is arithmetic,
-    and the arithmetic is in `gaitRate`.
+1. **Feet must not slide.** Ground speed is the one truth: the clip's playback
+   rate is real ground speed divided by the catalog's `walkSpeed` — the speed
+   that clip covers at rate 1. Scale them independently and they agree at one
+   pace and skate at every other. Same arithmetic the old `gaitRate` wrote
+   down, new home in `premadeRig.update`.
+2. **Nothing advances by `time × rate`.** The mixer integrates `dt`. If a
+   rate ever multiplies the elapsed clock anywhere near a duelist again, read
+   the old lesson: ten minutes in, easing out of a standstill drove the legs
+   through five thousand cycles a second.
+3. **A tint must never touch the skin.** The atlases are paintings with faces
+   in them; a tint that multiplies the whole image recolours the face with
+   the coat. Windows are authored against the atlas and photographed proving
+   they catch the garment and nothing else. If a repaint ever catches a face,
+   the window is wrong, not the face.
+4. **The authored look stays reachable, exactly.** `AS_AUTHORED` reuses the
+   file's own texture byte for byte. A "default" that is a nearby swatch is a
+   drifting copy of a finished thing.
+5. **The model on screen is the model that ships.** The booth previews with
+   `buildPremadeRig` and the world walks with `buildPremadeRig`; what you
+   approve is literally what you get. Anything previewed by a different code
+   path will drift.
 
 ## Proving it
 
-Assertions are necessary and are not sufficient. Everything above passed every
-assertion in the repo on the day it shipped.
+Assertions are necessary and are not sufficient. Photographs are the other
+half, and both halves are one command each:
 
 ```shell
-npm run clash                      # nothing intersects, standing or walking
-npm run character                  # every mode, one sheet per mode
-npm run character -- --seed 1      # a rolled duelist, from the preset space.
-npm run character -- --seed 2      # Do 1 through 4 at least: rolls cover the
-npm run character -- --seed 3      # combinations no sweep shows side by side,
-npm run character -- --seed 4      # and four of them found six shipped bugs
-npm run character -- --paint --walk
+npm run premade                    # the files hold what the catalog claims —
+                                   # rigged, Idle/Walk/Run aboard — and every
+                                   # tint window's catch is written out as a
+                                   # sheet: atlas · magenta mask · repaints.
+                                   # Look at the sheets, not the exit code.
 npm run story                      # the flow end to end, two phone sizes
-npm run handling                   # every control driven by hand, frame by frame
+npm run handling                   # every control driven by hand, frame by
+                                   # frame — including every duelist in the
+                                   # catalog, read off the page, so a new row
+                                   # is photographed without touching the script
 npm run build && npx tsc --noEmit && npx eslint
 ```
 
-The spec still holds styles the presets do not reach — the mohawk, the goatee,
-the capes outside Road Warden's. They are for authored NPCs, the `hair` /
-`beard` / `outfit` sweeps still photograph all of them, and `clash` still
-audits them; a hand-written NPC that uses one owes those pictures a look.
+**Then look at the pictures.** Not at whether the command exited zero — at
+the duelist. The habits that keep catching things:
 
-`/diag/character` is the instrument: `sheet` (six angles), `parts` (eleven
-regions close up, including the ear), `seams` (the joints two parts can pass
-through, walking), the preset sweeps — `faces` (every face preset on its own
-skin, both plans), `bodies` (every body preset, both plans), `looks` (every
-outfit preset) — and a sweep per spec axis: `outfit`, `cape`, `hair`,
-`hair-behind`, `beard`, `frame`, `gauntlet`, `skin`. `matte` strips the
-material so a crease in geometry cannot hide as a step in a vertex colour;
-`wire` shows which mesh a mark belongs to; the eight numbered stride phases
-make two runs comparable.
+- **Photograph every model, not the default.** The handling run taps every
+  `data-pick` it finds; the sheet per duelist is where a bad scale, a wrong
+  facing or a lost weapon shows first.
+- **Check the repaint sheets at full size.** A stray pixel in a mask is
+  invisible at thumbnail size and is exactly the thing the sheet exists to
+  show.
+- **Photograph the angle the game actually uses.** The open world is behind
+  and above the duelist; the booth is in front. A model can be right in one
+  and wrong in the other.
 
-**Then look at the pictures.** Not at whether the command exited zero — at the
-duelist. Three habits, each of which caught something nothing else did:
+If a defect is found, build the view that shows it into `npm run premade` (or
+the driving scripts) before fixing it. A fix nobody can re-photograph is a fix
+that comes back.
 
-- **Shoot randomised seeds, not the default.** The default duelist has dark
-  hair, a clean chin and a plain jumper, and is the one character on which
-  every bug listed above is invisible. Four seeds found six. Rolled duelists
-  are not how to *author* an NPC — see above — but they are how to cover the
-  space one might land anywhere in.
-- **Magnify.** The booth's Face framing gets closer to the head than any lab
-  view; an ear that reads as a slab at 40 px reads as a slab at 400.
-- **Photograph the angle the game actually uses.** The open world is behind and
-  16° above the duelist, and a drag takes it to 49°. The crown of the head had
-  never been in a photograph.
+## The retired system
 
-If a defect is found, build the view that shows it and check it into the lab
-before fixing it. A fix nobody can re-photograph is a fix that comes back.
+`src/components/story/humanoid.ts`, `head.ts`, `loft.ts`, `src/story/
+presets.ts`, the `/diag/character` lab and its sweeps (`npm run clash`,
+`npm run character`) are the old procedural duelists: bodies lofted from
+cross-sections, faces painted in vertex colour. They are no longer reachable
+from the game — the booth, the world and the server all speak
+`PremadeCharacter` — but they still compile, their lab still runs, and their
+ten-lesson standard is still written in that lab's files. They stay until
+their removal is decided deliberately; nothing new may be built on them, and
+"there must never be a second character system" now cuts against *them*.
 
 ## Verifying against production
 

@@ -22,7 +22,7 @@ import dynamic from 'next/dynamic';
 import DeckBuilder from '@/components/story/DeckBuilder';
 import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
 import { STARTER_POOL } from '@/story/roster';
-import type { StoryCharacter } from '@/story/character';
+import type { PremadeCharacter } from '@/story/premade';
 import { primeAudio, sfx } from '@/lib/sfx';
 
 const CharacterCreator = dynamic(() => import('@/components/story/CharacterCreator'), {
@@ -101,7 +101,7 @@ export default function StoryMode() {
     setScreen(res.data.stage);
   };
 
-  const saveCharacter = async (character: StoryCharacter): Promise<string | null> => {
+  const saveCharacter = async (character: PremadeCharacter): Promise<string | null> => {
     const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/character', {
       username: profile?.username,
       character,
