@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
-import { buildCharacter, type Rig } from './humanoid';
+import { buildCharacter, gaitRate, type Rig } from './humanoid';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
@@ -297,6 +297,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
 
     const clock = new THREE.Clock();
     let stride = 0;
+    /* Where the gait is. Integrated, never computed from the elapsed clock —
+       see `gaitRate`. */
+    let gait = 0;
     let raf = 0;
     const camPos = new THREE.Vector3();
     const lookAt = new THREE.Vector3();
@@ -352,10 +355,15 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
         stride += (0 - stride) * Math.min(1, dt * 8);
       }
 
+      /* Advanced by the rate the current pace asks for, so the phase is
+         continuous through every change of pace — and wrapped, so it stays
+         small however long the game is left running. */
+      gait = (gait + gaitRate(stride) * dt) % (Math.PI * 2);
+
       const p = here.current;
       rig.root.position.set(p.x, 0, p.z);
       rig.root.rotation.y = p.facing;
-      rig.pose(t, stride);
+      rig.pose(t, stride, gait);
 
       /* Shadow box rides along with the duelist. */
       sun.position.set(p.x + 30, 48, p.z + 22);

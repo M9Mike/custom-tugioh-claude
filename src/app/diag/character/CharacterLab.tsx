@@ -38,7 +38,7 @@ import {
   randomCharacter,
   type StoryCharacter,
 } from '@/story/character';
-import { buildCharacter, type Rig } from '@/components/story/humanoid';
+import { buildCharacter, gaitRate, type Rig } from '@/components/story/humanoid';
 
 /** A camera placement: what height it looks at, how far off, and from where. */
 interface View {
@@ -211,14 +211,14 @@ const MODES: Mode[] = ['sheet', 'seams', 'parts', ...(Object.keys(SWEEPS) as (ke
 const SPACING = 9;
 
 /**
- * How many moments the stride is cut into, and how long one stride lasts.
+ * How many moments the stride is cut into.
  *
- * `pose` advances its gait as `t * (4.6 + stride * 6.4)`, so at full pace a
- * whole cycle is 2π/11 seconds. Feeding it `PHASES` evenly spaced values of `t`
- * across that gives the same set of poses every run.
+ * `pose` takes the gait's phase directly, so a numbered phase is `n/PHASES` of
+ * a turn and gives the same pose every run — which is what makes two runs
+ * comparable, and what stops a fix being mistaken for a different moment of
+ * the walk.
  */
 const PHASES = 8;
-const CYCLE = (Math.PI * 2) / 11;
 
 type Paint = 'shaded' | 'matte' | 'wire';
 const PAINTS: Paint[] = ['shaded', 'matte', 'wire'];
@@ -566,7 +566,7 @@ export default function CharacterLab() {
           /* The last pass is the standing pose: a fault that only exists at
              rest is still a fault. */
           const walking = k < STEPS;
-          rig.pose(walking ? (k / STEPS) * CYCLE : 0, walking ? 1 : 0);
+          rig.pose(0, walking ? 1 : 0, walking ? (k / STEPS) * Math.PI * 2 : 0);
           rig.root.updateWorldMatrix(true, true);
 
           for (const { probe, into, otherSideOnly } of CLASHES) {
@@ -597,7 +597,7 @@ export default function CharacterLab() {
       }
 
       sides.forEach((side, mat) => (mat.side = side));
-      rigs.forEach((r) => r.pose(0, 0));
+      rigs.forEach((r) => r.pose(0, 0, 0));
 
       const rows = [...worst.entries()].sort((a, b) => b[1] - a[1]);
       return rows.length
@@ -619,19 +619,27 @@ export default function CharacterLab() {
     ro.observe(el);
 
     const clock = new THREE.Clock();
+    let gait = 0;
+    let elapsed = 0;
     let raf = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
       if (builtFor !== planRef.current) rebuild(planRef.current);
       if (paintedAs !== paintRef.current) repaint(paintRef.current);
+      /* One `getDelta` a frame: it is what advances the clock, so asking for
+         the elapsed time as well would leave the second caller with nothing. */
+      const dt = Math.min(clock.getDelta(), 0.05);
       const held = phaseRef.current;
-      const t =
+      const live = liveRef.current || strideRef.current > 0;
+      if (live) elapsed += dt;
+      /* Held at a number, the phase *is* that number. Running, it is integrated
+         here for the same reason the world integrates it — the workbench has to
+         move the way the game moves, or it is not showing the game. */
+      gait =
         held >= 0
-          ? (held / PHASES) * CYCLE
-          : liveRef.current || strideRef.current > 0
-            ? clock.getElapsedTime()
-            : 0;
-      rigs.forEach((r) => r.pose(t, strideRef.current));
+          ? (held / PHASES) * Math.PI * 2
+          : (gait + gaitRate(strideRef.current) * dt) % (Math.PI * 2);
+      rigs.forEach((r) => r.pose(held >= 0 ? 0 : elapsed, strideRef.current, gait));
 
       const { views, specs } = planRef.current;
       const W = el.clientWidth;
