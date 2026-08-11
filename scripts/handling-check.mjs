@@ -1,0 +1,337 @@
+/**
+ * Photographs Story Mode being *used*.
+ *
+ * `story-check` asserts that the controls work: it taps a thing and checks the
+ * screen changed. That is a different question from whether they feel right,
+ * and it is blind to everything this is for — a slider that jumps rather than
+ * follows, a drag that turns the wrong way, a pinch that runs away, a stick
+ * that walks the duelist towards the camera, a menu sitting where a thumb goes.
+ * None of that fails an assertion. All of it is obvious in a strip of frames.
+ *
+ * So this drives each control the way a player would, through real touch events
+ * rather than synthetic ones, and writes a numbered sequence per interaction
+ * that can be flipped through.
+ *
+ * Touch goes through CDP on purpose. Dispatching `PointerEvent`s from
+ * `page.evaluate` looks equivalent and is not: `setPointerCapture` throws for a
+ * pointer id the browser never issued, which kills the very handler under test.
+ * `Input.dispatchTouchEvent` produces pointers the browser owns, which is also
+ * the only way to get two of them at once for a pinch.
+ *
+ *   npm run handling
+ *   npm run handling -- --base http://localhost:3000 --out /tmp/handling
+ *   npm run handling -- --only iphone14
+ */
+
+import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
+
+const argv = process.argv.slice(2);
+const flag = (name, fallback) => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
+};
+
+const BASE = flag('base', 'http://localhost:3000');
+const OUT = flag('out', '/tmp/handling');
+const ONLY = flag('only', '');
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+
+const PHONES = {
+  iphone14: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  iphone17promax: { viewport: { width: 440, height: 956 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+};
+
+/* A name that matches nothing would filter every phone out, and the run would
+   then finish with a cheerful line about frames in a directory that has none.
+   A tool whose whole job is to photograph things must not report success for
+   having photographed nothing. */
+if (ONLY && !(ONLY in PHONES)) {
+  console.error(`handling: no phone called "${ONLY}". Try: ${Object.keys(PHONES).join(', ')}`);
+  process.exit(2);
+}
+
+await fs.mkdir(OUT, { recursive: true });
+const browser = await chromium.launch({ executablePath: EXEC });
+/** Anything that should make this run fail: a page error, or a missing control. */
+let faults = 0;
+
+try {
+  for (const [phone, profile] of Object.entries(PHONES)) {
+    if (ONLY && phone !== ONLY) continue;
+    console.log(`\n── ${phone} ──`);
+    const ctx = await browser.newContext(profile);
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => {
+      console.log(`  ! page error: ${e.message}`);
+      faults++;
+    });
+    /* A control with no box is a control that is not on the screen. Say which
+       one and carry on to the rest — but the run has failed, because the
+       alternative is a directory of frames with a gesture quietly missing from
+       it and nothing to say so. */
+    const boxOf = async (locator, what) => {
+      const box = await locator.boundingBox().catch(() => null);
+      if (!box) {
+        console.log(`  ! no ${what} to drive`);
+        faults++;
+      }
+      return box;
+    };
+    const cdp = await ctx.newCDPSession(page);
+    /* The dev overlay parks itself over the bottom-left corner, which is where
+       Back lives — it would read as the button being obscured. */
+    await ctx.addInitScript(() => {
+      const strip = () => document.querySelectorAll('nextjs-portal').forEach((el) => el.remove());
+      new MutationObserver(strip).observe(document, { childList: true, subtree: true });
+      strip();
+    });
+
+    /* Real touch, owned by the browser. `touchPoints` carries as many as the
+       gesture needs, which is what makes a pinch possible at all. */
+    const touch = (type, points) =>
+      cdp.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: points.map((p, i) => ({ x: p.x, y: p.y, id: i })),
+      });
+
+    let n = 0;
+    const shot = async (label) => {
+      const name = `${phone}-${String(++n).padStart(3, '0')}-${label}`;
+      await fs.writeFile(`${OUT}/${name}.png`, await page.screenshot());
+      return name;
+    };
+
+    /** A drag, captured every step, so the *motion* is the record. */
+    const dragCapture = async (from, to, steps, label) => {
+      await touch('touchStart', [from]);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        await touch('touchMove', [{ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }]);
+        await page.waitForTimeout(70);
+        await shot(`${label}-${i}`);
+      }
+      await touch('touchEnd', []);
+    };
+
+    /* ---------------- into the booth ---------------- */
+
+    await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1200);
+    await page.locator('input[placeholder="Enter your name"]').fill('Mike');
+    await page.locator('button:has-text("Enter Story Mode")').tap();
+    await page.waitForTimeout(2500);
+
+    const inBooth = await page.locator('h1:has-text("Make your duelist")').isVisible().catch(() => false);
+    const box = inBooth ? await boxOf(page.locator('canvas').first(), 'booth canvas') : null;
+    if (!inBooth) {
+      console.log('  (already past the booth — world only)');
+    } else if (!box) {
+      console.log('  (skipping the booth gestures — there is nothing to drive)');
+    } else {
+      await shot('booth-open');
+      const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+      /* ---- drag to turn ---- */
+      await dragCapture({ x: mid.x - 90, y: mid.y }, { x: mid.x + 90, y: mid.y }, 6, 'booth-turn');
+      await page.waitForTimeout(500);
+      await shot('booth-turn-settled');
+
+      /* ---- drag up and down, which moves the camera's pitch ---- */
+      await dragCapture({ x: mid.x, y: mid.y - 60 }, { x: mid.x, y: mid.y + 60 }, 4, 'booth-pitch');
+
+      /* ---- pinch: two fingers apart, then together ---- */
+      const spread = [
+        { x: mid.x - 40, y: mid.y },
+        { x: mid.x + 40, y: mid.y },
+      ];
+      await touch('touchStart', spread);
+      for (let i = 1; i <= 5; i++) {
+        const g = 40 + i * 22;
+        await touch('touchMove', [
+          { x: mid.x - g, y: mid.y },
+          { x: mid.x + g, y: mid.y },
+        ]);
+        await page.waitForTimeout(80);
+        await shot(`booth-pinch-out-${i}`);
+      }
+      for (let i = 1; i <= 5; i++) {
+        const g = 150 - i * 26;
+        await touch('touchMove', [
+          { x: mid.x - g, y: mid.y },
+          { x: mid.x + g, y: mid.y },
+        ]);
+        await page.waitForTimeout(80);
+        await shot(`booth-pinch-in-${i}`);
+      }
+      await touch('touchEnd', []);
+      await page.waitForTimeout(600);
+      await shot('booth-pinch-settled');
+
+      /* ---- the framing toggle ---- */
+      for (const s of ['face', 'full']) {
+        await page.locator(`[data-shot="${s}"]`).tap();
+        await page.waitForTimeout(260);
+        await shot(`booth-shot-${s}-a`);
+        await page.waitForTimeout(700);
+        await shot(`booth-shot-${s}-b`);
+      }
+
+      /* ---- every tab ---- */
+      /* Long enough for the camera to arrive. The framing eases at 0.12 a
+         frame, and a headless phone renders this scene nowhere near 60 of
+         them a second: at 700 ms the Face tab was photographed two thirds of
+         the way in, which reads as the tab framing a torso. A shot of a camera
+         in transit says nothing about where it was going. */
+      const tabs = await page.$$eval('[data-tab]', (els) => els.map((e) => e.dataset.tab));
+      for (const t of tabs) {
+        await page.locator(`[data-tab="${t}"]`).tap();
+        await page.waitForTimeout(1600);
+        await shot(`booth-tab-${t}`);
+      }
+
+      /* ---- a slider, dragged: does the model follow or jump? ----
+         Back to Body first: the last tab visited is Attire, which is all
+         swatches, and a slider drag there finds nothing to drag. */
+      await page.locator('[data-tab="body"]').tap();
+      await page.waitForTimeout(500);
+      const sliders = page.locator('input[type="range"]');
+      if (await sliders.count()) {
+        const sb = await sliders.first().boundingBox();
+        if (sb) {
+          await dragCapture(
+            { x: sb.x + sb.width * 0.15, y: sb.y + sb.height / 2 },
+            { x: sb.x + sb.width * 0.95, y: sb.y + sb.height / 2 },
+            6,
+            'booth-slider'
+          );
+        }
+      }
+
+      /* ---- surprise me, three times ---- */
+      for (let i = 1; i <= 3; i++) {
+        await page.locator('button:has-text("Surprise me")').tap();
+        await page.waitForTimeout(900);
+        await shot(`booth-surprise-${i}`);
+      }
+
+      /* ---- the confirmation, opened and dismissed ---- */
+      const bind = page.locator('button:has-text("This is my duelist")').first();
+      if (await bind.isVisible().catch(() => false)) {
+        await bind.tap();
+        await page.waitForTimeout(600);
+        await shot('booth-confirm');
+        const cancel = page.locator('button:has-text("Keep editing")').first();
+        if (await cancel.isVisible().catch(() => false)) {
+          await cancel.tap();
+          await page.waitForTimeout(500);
+          await shot('booth-confirm-dismissed');
+        }
+        /* Then go through for real, because the world is the other half of
+           what this is for — and only ever against a local store.
+           Binding is permanent: the appearance a duelist is bound with cannot
+           be changed afterwards, by anything. Pointed at a deployment this
+           script would spend the real account's one chance on whatever the
+           booth happened to be showing. There is no flag for that, because a
+           flag is a thing you can forget. */
+        if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE)) {
+          console.log(`  (stopping at the booth — ${BASE} is not local, and binding cannot be undone)`);
+          await ctx.close();
+          continue;
+        }
+        await bind.tap();
+        await page.waitForTimeout(600);
+        await page.locator('button:has-text("Bind")').last().tap();
+        await page.waitForTimeout(2500);
+        await shot('deck-open');
+        const cards = page.locator('main button[aria-pressed]');
+        for (let i = 0; i < 25; i++) {
+          await cards.nth(i).scrollIntoViewIfNeeded();
+          await cards.nth(i).tap();
+        }
+        await page.waitForTimeout(300);
+        await shot('deck-chosen');
+        await page.locator('button:has-text("This is my deck")').first().tap();
+        await page.waitForTimeout(400);
+        await page.locator('button:has-text("Sleeve it")').first().tap();
+        await page.waitForTimeout(3500);
+      }
+      console.log('  booth captured');
+    }
+
+    /* ---------------- into the world ---------------- */
+
+    await page
+      .locator('[aria-label="Move"]')
+      .waitFor({ state: 'visible', timeout: 20000 })
+      .catch(() => {});
+    const world = await page.locator('[aria-label="Move"]').isVisible().catch(() => false);
+    if (!world) {
+      console.log('  (not in the world — the account has not bound a duelist)');
+      await ctx.close();
+      continue;
+    }
+
+    await page.waitForTimeout(1200);
+    await shot('world-open');
+
+    /* ---- the stick, pushed to each quarter ---- */
+    const sb = await boxOf(page.locator('[aria-label="Move"]'), 'thumb stick');
+    if (!sb) {
+      await ctx.close();
+      continue;
+    }
+    const c = { x: sb.x + sb.width / 2, y: sb.y + sb.height / 2 };
+    const R = 44;
+    const dirs = [
+      ['up', 0, -1],
+      ['upright', 0.7, -0.7],
+      ['right', 1, 0],
+      ['down', 0, 1],
+      ['left', -1, 0],
+    ];
+    for (const [name, dx, dy] of dirs) {
+      await touch('touchStart', [c]);
+      await touch('touchMove', [{ x: c.x + dx * R, y: c.y + dy * R }]);
+      for (let i = 1; i <= 4; i++) {
+        await page.waitForTimeout(230);
+        await shot(`world-stick-${name}-${i}`);
+      }
+      await touch('touchEnd', []);
+      await page.waitForTimeout(400);
+    }
+
+    /* ---- drag to look, away from the stick ---- */
+    const vp = page.viewportSize();
+    const look = { x: vp.width * 0.6, y: vp.height * 0.35 };
+    await dragCapture(look, { x: look.x - 150, y: look.y }, 5, 'world-look');
+    await page.waitForTimeout(400);
+    await shot('world-look-settled');
+
+    /* ---- the keyboard, which the desktop player uses ---- */
+    await page.keyboard.down('w');
+    for (let i = 1; i <= 4; i++) {
+      await page.waitForTimeout(240);
+      await shot(`world-key-w-${i}`);
+    }
+    await page.keyboard.up('w');
+    await page.waitForTimeout(500);
+    await shot('world-key-released');
+
+    /* ---- the corner menu ---- */
+    await page.locator('[aria-label="Menu"]').tap();
+    await page.waitForTimeout(500);
+    await shot('world-menu-open');
+    await page.locator('[aria-label="Menu"]').tap();
+    await page.waitForTimeout(500);
+    await shot('world-menu-closed');
+
+    console.log('  world captured');
+    await ctx.close();
+  }
+} finally {
+  await browser.close();
+}
+
+console.log(`\nhandling: frames in ${OUT}${faults ? ` — ${faults} fault(s), see above` : ''}`);
+if (faults) process.exit(1);
