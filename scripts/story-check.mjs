@@ -11,6 +11,12 @@
  * bring back the same duelist and never offer to make another. So the second
  * half of this script throws the browser away and signs in from nothing.
  *
+ * The one sanctioned way back — Delete Character — is exercised at the end,
+ * against local stores only: the confirm has to hold the door, the deletion
+ * has to land on the sign-in screen, and signing in again has to start over
+ * in the booth. It doubles as the reset that lets the next phone run the
+ * whole journey too.
+ *
  * It also checks the trick, from the outside, the way a player would find it:
  * after the first deck is sleeved, Edit Deck offers 25 cards and not 34.
  *
@@ -44,6 +50,12 @@ const OUT = args[1] ?? '/tmp/story';
  * rest of the check runs exactly as it does without the flag.
  */
 const NO_CREATE = process.argv.includes('--no-create');
+/* Delete Character is exercised only against a local store, for the same
+   reason handling-check refuses to bind against anything else: pointed at a
+   deployment it would erase a real account's duelist, deck and progress, and
+   there is no flag for that because a flag is a thing you can forget. Checking
+   that the menu *offers* deletion is safe anywhere and still happens. */
+const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE);
 /* The container's browser may be a different build from the one this copy of
    Playwright would download; both this and `channel` are honoured. */
 const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH;
@@ -202,25 +214,52 @@ async function run(phoneName) {
     check(first.length > RENDERED_BYTES, 'the duelist is drawn', `${first.length} bytes`);
     await fs.writeFile(`${OUT}/${phoneName}-2-booth.png`, await page.screenshot());
 
-    /* Every tab opens, which is the cheapest way to catch a control that throws
-       on a value the default character never has.
+    /* The booth offers exactly what was designed: two body plans, three faces,
+       three hairs, five hair colours, three bodies, five outfits. Counted
+       rather than assumed, because a preset table losing a row is invisible to
+       every other check — the booth still works, just smaller. */
+    const offer = async (selector, want, what) => {
+      const n = await page.locator(selector).count();
+      check(n === want, `the booth offers ${want} ${what}`, `saw ${n}`);
+    };
+    await offer('[data-pick^="body-plan:"]', 2, 'body plans');
+    await offer('[data-pick^="face:"]', 3, 'faces');
+    await offer('[data-pick^="hair:"]', 3, 'hairs');
+    await offer('[aria-label^="Hair colour"]', 5, 'hair colours');
+    await offer('[data-pick^="body:"]', 3, 'bodies');
+    await offer('[data-pick^="outfit:"]', 5, 'outfits');
 
-       Selected by `data-tab` rather than by text: the viewport's own framing
-       buttons also read "Body" and "Face", they come first in the document, and
-       `.first()` duly tapped those instead — so this check passed for a while
-       without ever opening a tab. */
-    for (const tab of ['face', 'hair', 'style', 'body']) {
-      await page.locator(`button[data-tab="${tab}"]`).tap();
-      await page.waitForTimeout(200);
+    /* Every kind of pick has to reach the model, or the booth is a picture of
+       a default duelist with buttons next to it. Each tap is compared against
+       the frame before it, so the one control that does nothing is named
+       rather than hidden behind the ones that work. Framing-preserving picks
+       come first: the face pick also moves the camera, which would make its
+       own comparison pass for the wrong reason, so everything after it is
+       checked within the face framing it switched to. */
+    let before = first;
+    for (const [selector, what] of [
+      ['[data-pick="body-plan:female"]', 'a body plan'],
+      ['[data-pick="body:2"]', 'a body'],
+      ['[data-pick="outfit:3"]', 'an outfit'],
+      ['[data-pick="face:2"]', 'a face'],
+      ['[data-pick="hair:2"]', 'a hair'],
+      ['[aria-label="Hair colour 4"]', 'a hair colour'],
+    ]) {
+      await page.locator(selector).tap();
+      await page.waitForTimeout(1400);
+      const after = await canvasShot(page);
+      check(!after.equals(before), `picking ${what} changes the model`);
+      before = after;
     }
-    ok('every panel of the booth opens');
+    const age = page.locator('input[type="range"]').first();
+    await age.scrollIntoViewIfNeeded();
+    await age.fill('0.85');
+    await page.waitForTimeout(1100);
+    check(!(await canvasShot(page)).equals(before), 'age reaches the model');
+    await fs.writeFile(`${OUT}/${phoneName}-3-picked.png`, await page.screenshot());
 
-    /* A change to the character has to reach the model, or the booth is a
-       picture of a default duelist with sliders next to it. */
     await page.locator('button:has-text("Surprise me")').first().tap();
-    await page.waitForTimeout(900);
-    const changed = await canvasShot(page);
-    check(!changed.equals(first), 'changing the character changes the model');
+    await page.waitForTimeout(1100);
     await fs.writeFile(`${OUT}/${phoneName}-3-surprise.png`, await page.screenshot());
 
     await page.locator('input[placeholder="Mike"]').first().fill('Mike');
@@ -343,7 +382,7 @@ async function run(phoneName) {
   await page.waitForTimeout(300);
   check(await page.locator('text=Mike').first().isVisible().catch(() => false), 'the menu names the character');
   check(await page.locator('text=Level 1').first().isVisible().catch(() => false), 'the menu shows the level');
-  for (const item of ['Edit Deck', 'Save', 'Return to the Main Menu']) {
+  for (const item of ['Edit Deck', 'Save', 'Return to the Main Menu', 'Delete Character']) {
     check(
       await page.locator(`button:has-text("${item}")`).first().isVisible().catch(() => false),
       `the menu offers ${item}`
@@ -392,6 +431,42 @@ async function run(phoneName) {
       'and it is the same duelist'
     );
     await fs.writeFile(`${OUT}/${phoneName}-9-returned.png`, await fresh.screenshot());
+  }
+
+  /* ---- Delete Character: the one sanctioned way back ----
+
+     Local stores only — see LOCAL above. Running it here, at the end, also
+     resets the account for the next phone, so every size gets the whole
+     journey from the booth onwards instead of only the first one. */
+  if (back === 'world' && !NO_CREATE && LOCAL) {
+    await fresh.locator('button:has-text("Delete Character")').first().tap();
+    await fresh.waitForTimeout(400);
+    check(
+      await fresh.locator('text=starts the story over').first().isVisible().catch(() => false),
+      'deleting asks first, in plain words'
+    );
+    await fresh.locator('button:has-text("Keep playing")').first().tap();
+    await fresh.waitForTimeout(400);
+    check(
+      await fresh.locator('[aria-label="Move"]').isVisible().catch(() => false),
+      'and backing out of it keeps the save'
+    );
+
+    await fresh.locator('button[aria-label="Menu"]').first().tap();
+    await fresh.waitForTimeout(250);
+    await fresh.locator('button:has-text("Delete Character")').first().tap();
+    await fresh.waitForTimeout(400);
+    await fresh.locator('button:has-text("Delete for ever")').first().tap();
+    const gone = await stage(fresh, 'signin');
+    check(gone === 'signin', 'deleting lands back on the sign-in screen', `landed on "${gone}"`);
+    await fs.writeFile(`${OUT}/${phoneName}-10-deleted.png`, await fresh.screenshot());
+
+    /* And the account really is new again — the booth, not the world. */
+    await signIn(fresh, 'Mike');
+    const reborn = await stage(fresh, 'character');
+    check(reborn === 'character', 'signing back in starts the story over', `landed on "${reborn}"`);
+  } else if (back === 'world' && (NO_CREATE || !LOCAL)) {
+    log('leaving Delete Character untouched — it would erase a real save');
   }
   await stranger.close();
 }

@@ -6,11 +6,18 @@ what you have made is finished.
 
 ## Asking for people
 
-"Create three NPCs", "add a shopkeeper", "populate the plaza" all mean: write
-`StoryCharacter` values and hand them to `buildCharacter`. There is no second
-character system and there must never be one. A duelist authored for an NPC
-and a duelist authored in the booth go down the same code path, get the same
-walk cycle, and are held to the same standard.
+"Create three NPCs", "add a shopkeeper", "populate the plaza" all mean: pick a
+`CharacterPick` from the preset tables and `resolvePick` it — or, where a
+character needs something the presets do not offer, write `StoryCharacter`
+values directly. Either way the result is handed to `buildCharacter`. There is
+no second character system and there must never be one. A duelist authored for
+an NPC and a duelist authored in the booth go down the same code path, get the
+same walk cycle, and are held to the same standard.
+
+Prefer the presets. Every preset combination is photographed by the lab's
+sweeps, so a shopkeeper assembled from them is standing on proven ground; a
+hand-written spec is a new character nobody has looked at yet, and it owes the
+photographs below before it ships.
 
 An NPC is four things, and only the first of them exists:
 
@@ -38,22 +45,31 @@ than building the model and calling it the job.
 Story Mode opens, the booth makes a duelist, the deck is cut, the world opens —
 and the deck belongs to that duelist from then on.
 
+- The booth is a **preset picker**, nothing customisable: a body plan (male ·
+  female), three faces per plan, three hairs per plan, five hair colours,
+  three bodies, five outfits, and one young–old slider. Every option is a
+  finished, photographed thing; the player combines them and names the result.
 - Appearance binds **permanently** at the booth. Nothing can change it after.
 - The first deck is cut from `STARTER_POOL` and *becomes* the collection: what
   is written back is the 25 that went in and nothing else.
 - **Edit Deck** in the world menu posts to the same endpoint, which re-validates
   against the collection rather than the pool.
+- **Delete Character** in the world menu is the one way back: it erases the
+  whole save — duelist, deck, collection, progress — and the next sign-in
+  starts in the booth. Erasure, not editing, is what keeps the bind honest.
 
 Which means Edit Deck is a real door with nothing yet behind it: you own exactly
 the 25 you chose, so there is nothing to swap in. It starts meaning something
 the moment a collection can grow — and the obvious thing that grows one is
 beating an NPC. Those two gaps are the same gap.
 
-## The spec
+## The spec, and the presets over it
 
 `src/story/character.ts` — `StoryCharacter` is the whole description of a
 person. Every field, and nothing outside it, reaches the model.
 
+- **Plan** — `sex` (male · female), a set of geometry multipliers applied
+  before everything else: shoulders, chest, waist, hips, limbs, neck, brow.
 - **Body** — `frame` (lean · balanced · sturdy), `build` 0–1, `height` 0–1.
 - **Face** — `jaw`, `eyeShape`, `brow`, `nose`, `mouth`, `age`, all 0–1.
 - **Colour** — `skin`, `eyeColor`, `hairColor`, `primary`, `secondary`,
@@ -62,14 +78,24 @@ person. Every field, and nothing outside it, reaches the model.
   value can only ever be out of range.
 - **Kit** — `hair` (12), `facialHair` (6), `outfit` (5), `gauntlet`, `cape`.
 
-`defaultCharacter(name)` is the booth's starting point. `randomCharacter(name,
-rnd)` rolls one; pass a seeded generator to get the same person twice.
-`normaliseCharacter` clamps anything loaded from storage — loaded profiles
-bypass the booth, so **every lookup keyed on a spec field needs a fallback**
-(`FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced`). An unknown value from
-a stored profile would otherwise throw once per animation frame.
+`src/story/presets.ts` — `CharacterPick` is the *player's* (and normally the
+author's) surface over that: `{sex, face, hair, hairColor, body, outfit, age}`,
+indices into `FACE_PRESETS` · `HAIR_PRESETS` · `HAIR_COLOR_CHOICES` ·
+`BODY_PRESETS` · `OUTFIT_PRESETS`. `resolvePick(pick, name)` is the single
+seam that turns one into a `StoryCharacter`; the booth edits nothing else.
+Skin rides with the face and height with the plan, on purpose: a face is
+authored *on* its skin, and a separate picker would put it on tones it was
+never tuned against.
 
-Author NPCs by name, not by dice: a named character whose values are written
+`defaultCharacter(name)` is the spec's neutral point; `defaultPick()` is the
+booth's. `randomCharacter(name, rnd)` rolls **within the preset space** — pass
+a seeded generator to get the same person twice. `normaliseCharacter` clamps
+anything loaded from storage — loaded profiles bypass the booth, so **every
+lookup keyed on a spec field needs a fallback** (`FRAME_METRICS[spec.frame] ??
+FRAME_METRICS.balanced`). An unknown value from a stored profile would
+otherwise throw once per animation frame.
+
+Author NPCs by name, not by dice: a named character whose picks are written
 down reads as a person, and a rolled one reads as a roll. Use `randomCharacter`
 for crowds, and only after reading the rest of this file.
 
@@ -141,19 +167,26 @@ assertion in the repo on the day it shipped.
 ```shell
 npm run clash                      # nothing intersects, standing or walking
 npm run character                  # every mode, one sheet per mode
-npm run character -- --seed 1      # a rolled duelist. Do 1 through 4 at least:
-npm run character -- --seed 2      # between them they cover a cape, a full
-npm run character -- --seed 3      # beard, a goatee, a mohawk and a robe, and
-npm run character -- --seed 4      # every one of those was broken on 2026-08-11
+npm run character -- --seed 1      # a rolled duelist, from the preset space.
+npm run character -- --seed 2      # Do 1 through 4 at least: rolls cover the
+npm run character -- --seed 3      # combinations no sweep shows side by side,
+npm run character -- --seed 4      # and four of them found six shipped bugs
 npm run character -- --paint --walk
 npm run story                      # the flow end to end, two phone sizes
 npm run handling                   # every control driven by hand, frame by frame
 npm run build && npx tsc --noEmit && npx eslint
 ```
 
+The spec still holds styles the presets do not reach — the mohawk, the goatee,
+the capes outside Road Warden's. They are for authored NPCs, the `hair` /
+`beard` / `outfit` sweeps still photograph all of them, and `clash` still
+audits them; a hand-written NPC that uses one owes those pictures a look.
+
 `/diag/character` is the instrument: `sheet` (six angles), `parts` (eleven
 regions close up, including the ear), `seams` (the joints two parts can pass
-through, walking), and a sweep per axis — `outfit`, `cape`, `hair`,
+through, walking), the preset sweeps — `faces` (every face preset on its own
+skin, both plans), `bodies` (every body preset, both plans), `looks` (every
+outfit preset) — and a sweep per spec axis: `outfit`, `cape`, `hair`,
 `hair-behind`, `beard`, `frame`, `gauntlet`, `skin`. `matte` strips the
 material so a crease in geometry cannot hide as a step in a vertex colour;
 `wire` shows which mesh a mark belongs to; the eight numbered stride phases
@@ -181,6 +214,8 @@ before fixing it. A fix nobody can re-photograph is a fix that comes back.
 Story Mode has no auth: one hardcoded name is admitted (`AUTHORISED` in
 `src/server/story.ts`), and any caller stating a username is believed. Binding
 a duelist is **permanent** — appearance cannot be changed afterwards, by
-anything. `handling-check` refuses to bind against any host that is not
-localhost for that reason, and no script should ever be pointed at a deployment
-in a way that spends a real account's one chance.
+anything; the only way back is Delete Character, which erases the whole save.
+`handling-check` therefore refuses to *bind* against any host that is not
+localhost, `story-check` refuses to *delete* against one, and no script should
+ever be pointed at a deployment in a way that spends — or erases — a real
+account's progress.

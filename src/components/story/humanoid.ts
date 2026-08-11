@@ -218,8 +218,14 @@ export interface Rig {
  * speed and no other: they agreed at full pace, and at half a stick the ground
  * slid out from under the feet by a fifth of every step.
  */
-export const gaitRate = (stride: number): number =>
-  10.7 * Math.sqrt(Math.max(0, Math.min(1, stride)));
+export const gaitRate = (stride: number): number => {
+  const s = Math.max(0, Math.min(1, stride));
+  /* Fitted against the stride the legs actually sweep — see the slip table in
+     the commit that rebuilt the gait. The small linear term is the knee: its
+     loading and push-off events grow with `s` rather than √s, so the planted
+     arc lengthens slightly and the cadence has to give a little back. */
+  return (8.4 - 0.55 * s) * Math.sqrt(s);
+};
 
 interface Joints {
   hips: THREE.Group;
@@ -260,7 +266,27 @@ export function buildCharacter(spec: StoryCharacter): Rig {
      legs, not a bigger head — so this deliberately lags behind S. It is what
      makes the tall end of the slider read as tall rather than as zoomed in. */
   const H = 0.234 * (0.42 + 0.58 * S);
-  const F = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
+  const FR = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
+  /**
+   * The body plan, applied on top of the frame so every frame exists in both.
+   *
+   * These are the population-level differences and nothing else: shoulders
+   * narrower than hips rather than wider, a higher-set narrower waist, lighter
+   * limbs and neck. Everything about the *person* — heavy, slight, broad —
+   * still comes from the frame and build, which is why a heavy female duelist
+   * genuinely reads heavy rather than as a costume change.
+   */
+  const female = spec.sex === 'female';
+  const X = female
+    ? { shoulder: 0.855, chest: 0.93, waist: 0.85, hip: 1.05, limb: 0.87 }
+    : { shoulder: 1, chest: 1, waist: 1, hip: 1, limb: 1 };
+  const F = {
+    shoulder: FR.shoulder * X.shoulder,
+    chest: FR.chest * X.chest,
+    waist: FR.waist * X.waist,
+    hip: FR.hip * X.hip,
+    limb: FR.limb * X.limb,
+  };
   const O = OUTFIT_SHAPE[spec.outfit] ?? OUTFIT_SHAPE.duelist;
   /* Girth, which is `build`. Kept off the shoulders: a heavier duelist is
      thicker through the middle and the limbs, not broader across the frame —
@@ -271,7 +297,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   const LS = S * F.limb * lerp(0.93, 1.14, spec.build);
 
   /** The neck's own girth, which the collar has to be cut to fit. */
-  const neckG = S * lerp(0.95, 1.1, spec.build);
+  const neckG = S * lerp(0.95, 1.1, spec.build) * (female ? 0.88 : 1);
 
   const hipY = 0.52 * stature;
   /** Shoulders to the head's own pivot. Declared here because the collar is
@@ -377,7 +403,23 @@ export function buildCharacter(spec: StoryCharacter): Rig {
   /* ---------------- torso and garment ---------------- */
 
   /** The torso profile, after the frame and the build have had their say. */
+  /**
+   * The bust, as extra *front* depth only.
+   *
+   * The torso loft is nearly fore-aft symmetric, so depth added to the shared
+   * column would round the upper back by the same amount and read as a barrel
+   * chest. Column 4 is "the front's own depth": the loft and the jacket's
+   * placket ask for it, the belt and collar keep asking for the symmetric one.
+   */
+  const bustAt = (t: number) => {
+    if (!female) return 0;
+    if (t <= 0.29 || t >= 0.46) return 0;
+    const u = Math.sin((Math.PI * (t - 0.29)) / 0.17);
+    return u * u * (0.021 + 0.008 * (G - 0.9)) * S;
+  };
   const torsoAt = (y: number, col: number) => {
+    const front = col === 4;
+    if (front) col = 2;
     const raw = sample(TORSO, y / S, col);
     if (col === 0) return raw;
     const t = y / S;
@@ -393,7 +435,7 @@ export function buildCharacter(spec: StoryCharacter): Rig {
             ? lerp(F.waist, F.chest, (t - 0.175) / 0.205)
             : lerp(F.chest, F.shoulder, Math.min(1, (t - 0.38) / 0.14));
     const girth = 1 + (G - 1) * (t < 0.42 ? 1 : Math.max(0, 1 - (t - 0.42) / 0.16));
-    return raw * w * girth * S;
+    return raw * w * girth * S + (front ? bustAt(t) : 0);
   };
 
   const torsoLoft = (
@@ -418,11 +460,12 @@ export function buildCharacter(spec: StoryCharacter): Rig {
       const flare = flareBelow > 0 ? Math.max(0, 1 - Math.max(0, y - y0) / flareBelow) ** 2 * 0.008 * S : 0;
       const hw = torsoAt(y, 1) + inflate + flare;
       const hd = torsoAt(y, 2) + inflate + flare * 0.7;
+      const hf = torsoAt(y, 4) + inflate + flare * 0.7;
       const sq = sample(TORSO, y / S, 3);
       const ring: number[] = [];
       for (let k = 0; k < 30; k++) {
         const a = (k / 30) * Math.PI * 2;
-        const p = sectionPoint(hw, hd, hd * 1.02, sq, a);
+        const p = sectionPoint(hw, hf, hd * 1.02, sq, a);
         ring.push(m.vertex(p.x, y, p.z));
       }
       rings.push(ring);
@@ -748,7 +791,7 @@ function panelGeometry(at: TorsoAt, y0: number, y1: number, S: number): THREE.Bu
        is cut and is enough to stop the strip reading as a stripe. */
     const half = lerp(0.15, 0.2, u);
     const a = lerp(-half, half, v);
-    const p = sectionPoint(at(y, 1) + 0.006 * S, at(y, 2) + 0.006 * S, 0, sampleSq(y, S), a);
+    const p = sectionPoint(at(y, 1) + 0.006 * S, at(y, 4) + 0.006 * S, 0, sampleSq(y, S), a);
     return { x: p.x, y, z: p.z };
   });
   return m.build();
@@ -1312,25 +1355,61 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
   /* Step length, scaled the same way the cadence is — see `gaitRate`. The two
      multiply out to the ground speed only if they share this factor. */
   const gaitScale = Math.sqrt(s);
-  const swing = 0.72 * gaitScale;
   const gait = Math.sin(cycle);
-  const gait2 = Math.sin(cycle * 2);
 
-  /* legs */
-  j.legL.rotation.x = gait * swing;
-  j.legR.rotation.x = -gait * swing;
-  /* A knee only bends one way. Clamping at 0 is what stops the shin snapping
-     through the thigh on the back half of the stride.
-     Scaled by the same root the step and the cadence carry, so the leg keeps
-     its shape as the pace changes. Scaled by `s` instead, a slow walk kept its
-     knee straighter for longer, which lengthens the part of the cycle the foot
-     is planted for — and lengthening that is exactly what makes a foot slide. */
-  j.shinL.rotation.x = -Math.max(0, Math.sin(cycle - 0.9)) * 1.15 * gaitScale;
-  j.shinR.rotation.x = -Math.max(0, Math.sin(cycle - 0.9 + Math.PI)) * 1.15 * gaitScale;
-  /* The ankle keeps the sole flat: it undoes whatever the thigh and shin above
-     it have done, plus a push-off at the back of the stride. */
-  j.footL.rotation.x = -j.legL.rotation.x - j.shinL.rotation.x + Math.max(0, -gait) * 0.34 * s;
-  j.footR.rotation.x = -j.legR.rotation.x - j.shinR.rotation.x + Math.max(0, gait) * 0.34 * s;
+  /**
+   * A smooth window on the cycle: 0 outside `lo..hi`, a sin² hump inside,
+   * wrapped so a window may straddle 2π. Every event in a stride — the knee's
+   * swing flexion, the loading dip, push-off, heel strike — is one of these,
+   * which keeps the whole gait smooth everywhere: there is nothing here for a
+   * clamp to put a corner into.
+   */
+  const TAU = Math.PI * 2;
+  const wsin = (c: number, lo: number, hi: number) => {
+    const d = (((c - lo) % TAU) + TAU) % TAU;
+    if (d >= hi - lo) return 0;
+    const u = Math.sin((Math.PI * d) / (hi - lo));
+    return u * u;
+  };
+
+  /**
+   * The stride, rebuilt around where a leg actually bends.
+   *
+   * The old cycle was two straight legs scissoring ±41° with the soles held
+   * parallel to the ground — a goose-step, which everyone who watched it walk
+   * could feel and nobody could name. What a walk is instead: the thigh
+   * sweeps a modest arc; the knee is never locked; it dips as the planted leg
+   * takes the body's weight and bends deep while the free leg swings under —
+   * which is what clears the ground at half the lift the goose-step needed;
+   * the heel strikes with the toe up, the foot rolls flat, and the heel rises
+   * into push-off.
+   *
+   * Convention, decoded from the photographs: rotation.x positive swings the
+   * limb backward, a knee flexes negative, a foot rotates toe-up positive.
+   * The left leg strikes at 3π/2 and toes off at π/2; the right is the same
+   * half a turn later.
+   */
+  const leg = (c: number) => {
+    const thigh = Math.sin(c) * 0.5 * gaitScale - 0.05 * s;
+    const knee =
+      -0.06 * s -
+      0.98 * gaitScale * wsin(c, Math.PI * 0.38, Math.PI * 1.42) -
+      0.2 * s * wsin(c, Math.PI * 1.5, Math.PI * 2.1);
+    const foot =
+      -thigh -
+      knee -
+      0.34 * s * wsin(c, Math.PI * 0.14, Math.PI * 0.58) +
+      0.12 * s * wsin(c, Math.PI * 1.32, Math.PI * 1.72);
+    return { thigh, knee, foot };
+  };
+  const L = leg(cycle);
+  const R = leg(cycle + Math.PI);
+  j.legL.rotation.x = L.thigh;
+  j.legR.rotation.x = R.thigh;
+  j.shinL.rotation.x = L.knee;
+  j.shinR.rotation.x = R.knee;
+  j.footL.rotation.x = L.foot;
+  j.footR.rotation.x = R.foot;
 
   /* arms: counter-swing, plus a resting angle so they never clip the coat */
   /* Arms hang a little away from the body, not flat against it. Too little
@@ -1355,8 +1434,8 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
      frame of the pose loop, which is a stranger failure than a wrong hip. */
   const frame = FRAME_METRICS[spec.frame] ?? FRAME_METRICS.balanced;
   const rest = 0.11 + 0.11 * spec.build + 0.3 * (frame.hip - 1);
-  j.armL.rotation.x = -gait * swing * 0.72 + sway * 0.03 * (1 - s);
-  j.armR.rotation.x = gait * swing * 0.72 - sway * 0.03 * (1 - s);
+  j.armL.rotation.x = -gait * 0.4 * gaitScale + sway * 0.03 * (1 - s);
+  j.armR.rotation.x = gait * 0.4 * gaitScale - sway * 0.03 * (1 - s);
   /**
    * Away from the body, which is the opposite of what this used to do.
    *
@@ -1372,15 +1451,30 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
   const out = rest + 0.1 * s;
   j.armL.rotation.z = -out;
   j.armR.rotation.z = out;
-  j.foreL.rotation.x = -0.22 - Math.max(0, -gait) * 0.5 * s;
-  j.foreR.rotation.x = -0.22 - Math.max(0, gait) * 0.5 * s;
+  /**
+   * An elbow that bends the way a person's does. Its extra fold was keyed to
+   * the *backward* half of the arm's arc, so the forward arm speared out
+   * straight while the trailing one folded — exactly backwards, and most of
+   * why the old walk read stiff-armed. It rides at ~17°, folds towards 40° as
+   * the arm comes forward, and never locks at any point of the cycle.
+   */
+  j.foreL.rotation.x = -0.3 - 0.1 * s - Math.max(0, gait) * 0.38 * s;
+  j.foreR.rotation.x = -0.3 - 0.1 * s - Math.max(0, -gait) * 0.38 * s;
 
-  /* body: bob twice per stride, roll into each step, lean into the walk */
-  j.hips.position.y = hipsY - Math.abs(gait2) * 0.028 * s;
-  j.hips.rotation.y = gait * 0.14 * s;
-  j.hips.rotation.z = gait2 * 0.03 * s;
-  j.spine.rotation.x = 0.1 * s + breath * 0.006 * (1 - s);
-  j.spine.rotation.y = -gait * 0.1 * s;
+  /**
+   * The body over the legs. Three corrections, all of frequency or phase:
+   * the centre of mass is lowest at double support and highest passing over
+   * the planted leg — the old bob had it high at both, which is a hover; the
+   * pelvis lists once per *step*, towards the swinging leg, not twice; and
+   * the shoulders counter-rotate a little harder against the pelvis, which is
+   * where the visible life of a walk comes from.
+   */
+  j.hips.position.y = hipsY - (1 - Math.cos(cycle * 2)) * 0.016 * s;
+  j.hips.rotation.y = gait * 0.11 * s;
+  j.hips.rotation.z = gait * 0.038 * s;
+  j.spine.rotation.x = 0.09 * s + breath * 0.006 * (1 - s);
+  j.spine.rotation.y = -gait * 0.13 * s;
+  j.spine.rotation.z = -gait * 0.022 * s;
   j.torso.scale.set(1, 1 + breath * 0.008 * (1 - s * 0.7), 1 + breath * 0.016 * (1 - s * 0.7));
 
   /* head: stays level while the shoulders move under it, and looks around a
@@ -1390,7 +1484,7 @@ function pose(j: Joints, t: number, stride: number, phase: number, hipsY: number
   j.head.rotation.x = (1 - s) * Math.sin(t * 0.31) * 0.06;
 
   if (j.cape) {
-    j.cape.rotation.x = -0.05 - 0.22 * s - gait2 * 0.05 * s;
+    j.cape.rotation.x = -0.05 - 0.22 * s - Math.sin(cycle * 2) * 0.05 * s;
     j.cape.rotation.z = sway * 0.03 * (1 - s) + gait * 0.06 * s;
   }
 

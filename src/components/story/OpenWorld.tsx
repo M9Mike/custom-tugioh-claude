@@ -25,19 +25,33 @@ import { sfx } from '@/lib/sfx';
 /** Matches the clamp in `/api/story/save`; the field ends here. */
 export const WORLD_RADIUS = 120;
 
-const WALK_SPEED = 2.9;
+/**
+ * 2.35 m/s, down from 2.9 — because 2.9 is not a walking speed. It is 10.4
+ * km/h, which a human can only do by jogging, and the old goose-step stride
+ * was the shape that contradiction took: no honest walk cycle can cover that
+ * much ground. 2.35 is the top of the genuinely brisk range, quick enough for
+ * traversal at 2.5 steps a second without the legs having to lie.
+ */
+const WALK_SPEED = 2.35;
 
 interface Props {
   profile: StoryProfile;
   onEditDeck: () => void;
   /** Returns an error to show, or null when the save landed. */
   onSave: (world: { x: number; z: number; facing: number }) => Promise<string | null>;
+  /**
+   * Erases the whole save. Returns an error to show, or null — in which case
+   * the caller swaps this screen out, the same contract as the booth's bind.
+   */
+  onDelete: () => Promise<string | null>;
   onExit: () => void;
 }
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [askingDelete, setAskingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   /* Asked before the field is built; see `canDraw3d`. */
   const [webglFailed, setWebglFailed] = useState(() => !canDraw3d());
@@ -531,6 +545,39 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
     noteTimer.current = setTimeout(() => setNote(null), 2600);
   }, [onSave]);
 
+  /* A ref, not `deleting`: state does not update until the next render, so a
+     fast double-tap can fire twice through a button reading `disabled=`. The
+     booth's bind has the same guard for the same reason — the two decisions
+     that cannot be taken back are the two that must fire exactly once. */
+  const erasing = useRef(false);
+
+  const eraseSave = async () => {
+    if (erasing.current) return;
+    erasing.current = true;
+    setDeleting(true);
+    let problem: string | null;
+    try {
+      problem = await onDelete();
+    } catch (err) {
+      /* `onDelete` is contracted to *resolve* a problem; a rejection is a
+         broken caller. Caught here because nothing else would re-enable the
+         sheet, and an erase stuck on "Deleting…" for ever is this screen's
+         version of the booth's stuck bind. */
+      console.error('open world: onDelete rejected', err);
+      problem = 'Could not delete. Try again in a moment.';
+    }
+    /* No success branch, deliberately: the caller has already unmounted this
+       screen, and touching state on the way down would only flash the sheet. */
+    if (!problem || !alive.current) return;
+    setNote(problem);
+    sfx.error();
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(null), 2600);
+    setDeleting(false);
+    setAskingDelete(false);
+    erasing.current = false;
+  };
+
   if (!character) return null;
 
   if (webglFailed) {
@@ -600,9 +647,49 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onExit }: Props
             >
               Return to the Main Menu
             </button>
+            <div className="brass-rule my-2.5" />
+            <button
+              className="btn btn-danger w-full rounded px-3 py-2 text-[11px]"
+              onClick={() => {
+                sfx.click();
+                setMenuOpen(false);
+                setAskingDelete(true);
+              }}
+            >
+              Delete Character
+            </button>
           </div>
         )}
       </div>
+
+      {askingDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-5">
+          <div className="panel grain w-full max-w-sm rounded p-5">
+            <h2 className="font-display text-lg text-brassbright">Delete {character.name}?</h2>
+            <div className="brass-rule my-3" />
+            <p className="text-xs leading-relaxed text-ptext/85">
+              This erases the whole save for <span className="text-parchment">{profile.username}</span> — duelist,
+              deck, collection and progress — and starts the story over from the beginning. There is no way to bring
+              them back.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                className="btn flex-1 rounded px-4 py-2 text-xs"
+                onClick={() => {
+                  sfx.click();
+                  setAskingDelete(false);
+                }}
+                disabled={deleting}
+              >
+                Keep playing
+              </button>
+              <button className="btn btn-danger flex-1 rounded px-4 py-2 text-xs" onClick={eraseSave} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete for ever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {note && (
         <div className="pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2">

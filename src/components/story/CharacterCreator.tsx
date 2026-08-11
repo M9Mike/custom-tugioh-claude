@@ -3,45 +3,42 @@
 /**
  * The creation booth.
  *
- * A live 3D duelist on one half of the screen and every knob that shapes them
- * on the other. Nothing here is previewed as an icon or a paper doll: the model
- * on screen is the model that walks into the world, built by the same function
- * from the same record, so what you approve is literally what you get.
+ * A live 3D duelist on one half of the screen and a short list of finished
+ * choices on the other: a body plan, three faces, three hairs, five hair
+ * colours, three bodies, five outfits, one age slider. Every option is a
+ * preset that was authored and photographed as a whole — nothing on this
+ * screen mixes into a combination nobody has looked at. Nothing here is
+ * previewed as an icon or a paper doll either: the model on screen is the
+ * model that walks into the world, built by the same function from the same
+ * record, so what you approve is literally what you get.
  *
  * The confirmation is deliberately heavy, because the decision is: a duelist is
- * bound to the name that made them and there is no way back from this screen.
+ * bound to the name that made them, and the only way back is Delete Character,
+ * which starts the whole story over.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { HAIR_COLORS, MAX_CHARACTER_NAME, type SexId, type StoryCharacter } from '@/story/character';
 import {
-  CLOTH_COLORS,
-  EYE_COLORS,
-  FACIAL_HAIR,
-  FRAMES,
-  GAUNTLETS,
-  HAIR_COLORS,
-  HAIR_STYLES,
-  MAX_CHARACTER_NAME,
-  OUTFITS,
-  SKIN_TONES,
-  TRIM_COLORS,
-  defaultCharacter,
-  randomCharacter,
-  type StoryCharacter,
-} from '@/story/character';
+  BODY_PRESETS,
+  FACE_PRESETS,
+  HAIR_COLOR_CHOICES,
+  HAIR_PRESETS,
+  OUTFIT_PRESETS,
+  defaultPick,
+  randomPick,
+  resolvePick,
+  type CharacterPick,
+} from '@/story/presets';
 import { buildCharacter, type Rig } from './humanoid';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
-type Tab = 'body' | 'face' | 'hair' | 'style';
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'body', label: 'Body' },
-  { id: 'face', label: 'Face' },
-  { id: 'hair', label: 'Hair' },
-  { id: 'style', label: 'Attire' },
+const SEXES: { id: SexId; label: string }[] = [
+  { id: 'male', label: 'Male' },
+  { id: 'female', label: 'Female' },
 ];
 
 /**
@@ -62,6 +59,10 @@ const SHOTS = {
      shot tight enough to fill it puts the duelist's head behind the words —
      and the head is the half of the model anybody is actually judging. */
   full: { y: 1.0, dist: 3.25, pitch: 0.05 },
+  /* The face framing's height is a fallback only: the booth spans two body
+     plans and an age slider, which is a real spread of statures, so the render
+     loop reads eye level off the rig it actually built. A fixed 1.63 was eye
+     level for exactly one of them and forehead for the rest. */
   face: { y: 1.63, dist: 0.66, pitch: 0.0 },
 } as const;
 type Shot = keyof typeof SHOTS;
@@ -74,8 +75,8 @@ interface Props {
 }
 
 export default function CharacterCreator({ username, onConfirm, onBack }: Props) {
-  const [spec, setSpec] = useState<StoryCharacter>(() => defaultCharacter(username));
-  const [tab, setTab] = useState<Tab>('body');
+  const [pick, setPick] = useState<CharacterPick>(() => defaultPick());
+  const [name, setName] = useState('');
   const [shot, setShot] = useState<Shot>('full');
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,9 +87,21 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
      would mean rendering a viewport that can never contain anything. */
   const [webglFailed, setWebglFailed] = useState(() => !canDraw3d());
 
-  const set = useCallback(<K extends keyof StoryCharacter>(key: K, value: StoryCharacter[K]) => {
-    setSpec((s) => ({ ...s, [key]: value }));
-  }, []);
+  /* The booth edits a handful of preset indices; the rich record the world
+     runs on is derived from them in exactly one place. What is previewed is
+     `resolvePick(pick)` and what is bound is `resolvePick(pick)`, so the two
+     cannot drift. */
+  const spec = useMemo(() => resolvePick(pick, name.trim() || username), [pick, name, username]);
+
+  /* Picking is also framing. Choosing a face zooms to the face and choosing an
+     outfit pulls back to the body, so every option is inspected at the
+     distance it actually reads at — a face swap seen from three metres is a
+     guess, not a choice. */
+  const choose = (next: CharacterPick, framing: Shot) => {
+    sfx.click();
+    setPick(next);
+    setShot(framing);
+  };
 
   /* ---------------- the viewport ---------------- */
 
@@ -201,6 +214,9 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
     let rig: Rig | null = null;
     let built: StoryCharacter | null = null;
+    /* Eye level of whoever is actually standing on the plinth, kept fresh by
+       every rebuild so the face framing follows a change of body plan. */
+    let faceY = SHOTS.face.y;
     const rebuild = (next: StoryCharacter) => {
       if (rig) {
         pivot.remove(rig.root);
@@ -209,6 +225,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       rig = buildCharacter(next);
       pivot.add(rig.root);
       built = next;
+      faceY = rig.height - 0.15;
     };
     rebuild(specRef.current);
 
@@ -313,7 +330,8 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         pitchGoal = 0;
       }
       const target = SHOTS[shotRef.current];
-      camY += (target.y - camY) * 0.12;
+      const goalY = shotRef.current === 'face' ? faceY : target.y;
+      camY += (goalY - camY) * 0.12;
       camDist += (target.dist * zoom - camDist) * 0.12;
       pitch += (pitchGoal - pitch) * 0.12;
 
@@ -370,7 +388,9 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     setBusy(true);
     setError(null);
     try {
-      const problem = await onConfirm({ ...spec, name: spec.name.trim() || username });
+      /* `spec` is already the resolved record, name and all — the same object
+         the viewport has been rendering. */
+      const problem = await onConfirm(spec);
       if (problem) {
         setError(problem);
         setBusy(false);
@@ -443,116 +463,71 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
       {/* ---- controls ---- */}
       <div className="flex min-h-0 flex-1 flex-col border-t border-stoneline lg:w-[420px] lg:flex-none lg:border-l lg:border-t-0">
-        <div className="flex shrink-0 gap-1 p-2">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              data-tab={t.id}
-              onClick={() => {
-                sfx.click();
-                setTab(t.id);
-                setShot(t.id === 'face' || t.id === 'hair' ? 'face' : 'full');
-              }}
-              className={`btn flex-1 rounded px-2 py-2 text-[10px] ${tab === t.id ? 'btn-primary' : ''}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-2">
+          <Field label="Name">
+            <input
+              value={name}
+              maxLength={MAX_CHARACTER_NAME}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={username}
+              className="w-full rounded border border-stoneline bg-black/30 px-3 py-2 text-sm text-parchment outline-none focus:border-brassdim"
+            />
+          </Field>
 
-        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          {tab === 'body' && (
-            <>
-              <Field label="Name">
-                <input
-                  value={spec.name}
-                  maxLength={MAX_CHARACTER_NAME}
-                  onChange={(e) => set('name', e.target.value)}
-                  placeholder={username}
-                  className="w-full rounded border border-stoneline bg-black/45 px-3 py-2 text-sm text-parchment outline-none focus:border-brass"
-                />
-              </Field>
-              <Choices
-                label="Frame"
-                options={FRAMES.map((f) => ({ id: f.id, label: f.label, note: f.note }))}
-                value={spec.frame}
-                onPick={(v) => set('frame', v)}
-              />
-              <Slider label="Build" hint="Slight — heavy-set" value={spec.build} onChange={(v) => set('build', v)} />
-              <Slider label="Height" hint="Short — tall" value={spec.height} onChange={(v) => set('height', v)} />
-              <Swatches label="Skin" colors={SKIN_TONES} value={spec.skin} onPick={(i) => set('skin', i)} />
-            </>
-          )}
+          <PickRow
+            label="Body plan"
+            options={SEXES.map((s) => ({ key: s.id, label: s.label }))}
+            value={pick.sex}
+            onPick={(k) => {
+              /* Faces and hair are per-plan lists, so switching plans re-reads
+                 the same slots in the other plan's tables — the choice you made
+                 stays "second face, first hair" rather than snapping back. */
+              choose({ ...pick, sex: k as SexId }, 'full');
+            }}
+          />
 
-          {tab === 'face' && (
-            <>
-              <Slider label="Jaw" hint="Tapered — square" value={spec.jaw} onChange={(v) => set('jaw', v)} />
-              <Slider label="Eye shape" hint="Round — narrow" value={spec.eyeShape} onChange={(v) => set('eyeShape', v)} />
-              <Swatches label="Eyes" colors={EYE_COLORS} value={spec.eyeColor} onPick={(i) => set('eyeColor', i)} />
-              <Slider label="Brow" hint="Light — heavy" value={spec.brow} onChange={(v) => set('brow', v)} />
-              <Slider label="Nose" hint="Small — strong" value={spec.nose} onChange={(v) => set('nose', v)} />
-              <Slider label="Mouth" hint="Narrow — wide" value={spec.mouth} onChange={(v) => set('mouth', v)} />
-              <Slider label="Years" hint="Young — weathered" value={spec.age} onChange={(v) => set('age', v)} />
-            </>
-          )}
+          <PickRow
+            label="Face"
+            options={FACE_PRESETS[pick.sex].map((f, i) => ({ key: String(i), label: f.label, note: f.note }))}
+            value={String(pick.face)}
+            onPick={(k) => choose({ ...pick, face: Number(k) }, 'face')}
+          />
 
-          {tab === 'hair' && (
-            <>
-              <Choices
-                label="Hair"
-                options={HAIR_STYLES}
-                value={spec.hair}
-                onPick={(v) => set('hair', v)}
-              />
-              <Swatches label="Hair colour" colors={HAIR_COLORS} value={spec.hairColor} onPick={(i) => set('hairColor', i)} />
-              <Choices
-                label="Facial hair"
-                options={FACIAL_HAIR}
-                value={spec.facialHair}
-                onPick={(v) => set('facialHair', v)}
-              />
-            </>
-          )}
+          <PickRow
+            label="Hair"
+            options={HAIR_PRESETS[pick.sex].map((h, i) => ({ key: String(i), label: h.label }))}
+            value={String(pick.hair)}
+            onPick={(k) => choose({ ...pick, hair: Number(k) }, 'face')}
+          />
+          <Swatches
+            label="Hair colour"
+            colors={HAIR_COLOR_CHOICES.map((i) => HAIR_COLORS[i])}
+            value={pick.hairColor}
+            onPick={(i) => choose({ ...pick, hairColor: i }, 'face')}
+          />
 
-          {tab === 'style' && (
-            <>
-              <Choices
-                label="Attire"
-                options={OUTFITS.map((o) => ({ id: o.id, label: o.label, note: o.note }))}
-                value={spec.outfit}
-                onPick={(v) => set('outfit', v)}
-              />
-              <Swatches label="Main colour" colors={CLOTH_COLORS} value={spec.primary} onPick={(i) => set('primary', i)} />
-              <Swatches label="Under layer" colors={CLOTH_COLORS} value={spec.secondary} onPick={(i) => set('secondary', i)} />
-              <Swatches label="Fittings" colors={TRIM_COLORS} value={spec.trim} onPick={(i) => set('trim', i)} />
-              <Swatches label="Trousers" colors={CLOTH_COLORS} value={spec.trouser} onPick={(i) => set('trouser', i)} />
-              <Swatches label="Boots" colors={CLOTH_COLORS} value={spec.boots} onPick={(i) => set('boots', i)} />
-              <Choices label="Gauntlet" options={GAUNTLETS} value={spec.gauntlet} onPick={(v) => set('gauntlet', v)} />
-              <Field label="Cape">
-                <div className="flex gap-2">
-                  <button
-                    className={`btn flex-1 rounded px-3 py-2 text-[10px] ${spec.cape ? 'btn-primary' : ''}`}
-                    onClick={() => {
-                      sfx.click();
-                      set('cape', !spec.cape);
-                    }}
-                  >
-                    {spec.cape ? 'Worn' : 'None'}
-                  </button>
-                </div>
-              </Field>
-              {spec.cape && (
-                <Swatches label="Cape colour" colors={CLOTH_COLORS} value={spec.capeColor} onPick={(i) => set('capeColor', i)} />
-              )}
-            </>
-          )}
+          <PickRow
+            label="Body"
+            options={BODY_PRESETS.map((b, i) => ({ key: String(i), label: b.label }))}
+            value={String(pick.body)}
+            onPick={(k) => choose({ ...pick, body: Number(k) }, 'full')}
+          />
+
+          <PickRow
+            label="Outfit"
+            options={OUTFIT_PRESETS.map((o, i) => ({ key: String(i), label: o.label, note: o.note }))}
+            value={String(pick.outfit)}
+            onPick={(k) => choose({ ...pick, outfit: Number(k) }, 'full')}
+          />
+
+          <Slider label="Age" hint="Young — old" value={pick.age} onChange={(v) => setPick((c) => ({ ...c, age: v }))} />
 
           <div className="mt-4 flex gap-2">
             <button
               className="btn flex-1 rounded px-3 py-2 text-[10px]"
               onClick={() => {
                 sfx.click();
-                setSpec(randomCharacter(spec.name || username));
+                setPick(randomPick());
               }}
             >
               Surprise me
@@ -561,7 +536,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
               className="btn flex-1 rounded px-3 py-2 text-[10px]"
               onClick={() => {
                 sfx.click();
-                setSpec(defaultCharacter(spec.name || username));
+                setPick(defaultPick());
               }}
             >
               Reset
@@ -598,8 +573,8 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
             <div className="brass-rule my-3" />
             <p className="text-xs leading-relaxed text-ptext/85">
               Your duelist is written against the name <span className="text-parchment">{username}</span> and comes
-              back with it on any device. Their appearance cannot be changed afterwards — not by refreshing, not by
-              signing in somewhere else.
+              back with it on any device. Their appearance cannot be changed afterwards — the only way back is Delete
+              Character in the story menu, which erases them and starts the story over.
             </p>
             <div className="mt-4 flex gap-2">
               <button className="btn flex-1 rounded px-4 py-2 text-xs" onClick={() => setAsking(false)} disabled={busy}>
@@ -679,10 +654,10 @@ function Swatches({
           <button
             key={c + i}
             aria-label={`${label} ${i + 1}`}
-            onClick={() => {
-              sfx.click();
-              onPick(i);
-            }}
+            aria-pressed={value === i}
+            /* No click sound here: the caller's `choose` already plays it, and
+               a picker that clicks twice per tap sounds broken. */
+            onClick={() => onPick(i)}
             className={`h-7 w-7 rounded border transition-transform ${
               value === i ? 'scale-110 border-brassbright ring-1 ring-brass' : 'border-stoneline'
             }`}
@@ -694,30 +669,38 @@ function Swatches({
   );
 }
 
-function Choices<T extends string>({
+/**
+ * One row of the picker: a label and a handful of finished options.
+ *
+ * `data-pick` names each button `group:key` (the group is the slugged label)
+ * because the driving scripts need a selector that survives a wording change
+ * to the visible text, and two rows both containing a button that says
+ * "Balanced" need telling apart.
+ */
+function PickRow({
   label,
   options,
   value,
   onPick,
 }: {
   label: string;
-  options: readonly { id: T; label: string; note?: string }[];
-  value: T;
-  onPick: (v: T) => void;
+  options: { key: string; label: string; note?: string }[];
+  value: string;
+  onPick: (key: string) => void;
 }) {
-  const note = options.find((o) => o.id === value)?.note;
+  const slug = label.toLowerCase().replace(/\s+/g, '-');
+  const note = options.find((o) => o.key === value)?.note;
   return (
     <div className="mt-3">
       <p className="mb-1 font-display text-[10px] uppercase tracking-widest text-ptextdim">{label}</p>
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => (
           <button
-            key={o.id}
-            onClick={() => {
-              sfx.click();
-              onPick(o.id);
-            }}
-            className={`btn rounded px-2.5 py-1.5 text-[10px] ${value === o.id ? 'btn-primary' : ''}`}
+            key={o.key}
+            data-pick={`${slug}:${o.key}`}
+            aria-pressed={value === o.key}
+            onClick={() => onPick(o.key)}
+            className={`btn rounded px-2.5 py-1.5 text-[10px] ${value === o.key ? 'btn-primary' : ''}`}
           >
             {o.label}
           </button>

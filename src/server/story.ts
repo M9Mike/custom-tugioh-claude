@@ -14,7 +14,7 @@
  * adding them is a change to this one function.
  */
 
-import { durable, readJson, writeJsonIf } from './store';
+import { deleteKey, durable, readJson, writeJsonIf } from './store';
 import { newProfile, type StoryProfile } from '@/story/profile';
 
 /** Ten years. Long enough that "permanent" is a fair description. */
@@ -107,6 +107,19 @@ async function devWrite(profile: StoryProfile): Promise<void> {
   }
 }
 
+async function devDelete(username: string): Promise<void> {
+  try {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const all = await devRead();
+    delete all[fold(username)];
+    await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
+    await fs.writeFile(DEV_FILE, JSON.stringify(all, null, 2));
+  } catch {
+    /* Same shrug as devWrite: the in-memory copy is already gone. */
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
@@ -187,4 +200,26 @@ export async function updateProfile(
     }
   }
   return { ok: false, status: 409, error: 'Your save is busy elsewhere. Try again in a moment.' };
+}
+
+/**
+ * Erases the whole save: character, deck, collection, progress, position.
+ *
+ * This is the one sanctioned way back from a bound duelist. Appearance is
+ * never editable — that promise is what makes binding mean something — so
+ * starting over is the entire profile going at once, not any part of it being
+ * rewritten in place. The next login finds nothing and walks into the creation
+ * booth exactly as on day one.
+ *
+ * No compare-and-set here, deliberately. Deletion is not a lost-update hazard:
+ * whatever a racing write was doing to this profile, the player has just said
+ * the profile should not exist. On MongoDB a stale write cannot resurrect the
+ * old save either — its revision guard matches nothing once the document is
+ * gone, so the writer re-reads and finds only the fresh empty profile. The
+ * memory fallback's guard treats a missing key as new and *can* lose that
+ * race, which `next dev` accepts: the window is one in-flight request wide.
+ */
+export async function deleteProfile(canonical: string): Promise<void> {
+  await deleteKey(key(canonical));
+  if (!durable) await devDelete(canonical);
 }
