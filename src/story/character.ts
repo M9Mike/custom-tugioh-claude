@@ -84,12 +84,19 @@ export const EYE_COLORS = [
   '#2f5f9e', '#5a4b8f', '#8a2f3a', '#6e6e78', '#b08a2a',
 ] as const;
 
-/** Cloth. Muted and slightly desaturated, to sit beside the arena's palette. */
+/**
+ * Cloth. The first two rows are the original muted set; the last row was
+ * added with the cel-shaded look, which wants garments that state their
+ * colour — a toon jacket in heather grey reads as an unlit bug, not a
+ * jacket. Appended, never reordered: these are indices in every saved
+ * character.
+ */
 export const CLOTH_COLORS = [
   '#1b2029', '#232b38', '#2f3a4a', '#3d4a5e', '#14181f', '#2a2320',
   '#3d2e26', '#5a3f2e', '#6d5320', '#8a6134', '#93313a', '#6b1f28',
   '#2f7d7a', '#1f5c4a', '#6a4b8f', '#43304f', '#4a5a2e', '#7a7060',
   '#cfc6b0', '#e8dfc9', '#8c8f96', '#5c6068', '#d2673a', '#a83b6b',
+  '#c22e35', '#2456b0', '#1f8a4c', '#6a35b8', '#f2ead8', '#20242c',
 ] as const;
 
 /** Metals only — buckles, studs, the edge of a collar. */

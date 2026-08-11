@@ -1,180 +1,88 @@
 /**
- * The duelist's head.
+ * The head, drawn the way an anime game draws one.
  *
- * This is the part of the model people actually look at, so it is the part
- * that gets the measurements. Everything below is in *head units*: the table
- * is written against a head of height 1, and multiplied by `H` at the end, so
- * the numbers can be checked against a life-drawing canon rather than against
- * whatever looked right in one render at one distance.
+ * The old head chased skull anatomy and painted features on with soft
+ * airbrushed tints, and it landed in the valley: too real to be a character,
+ * too simple to be a person. This one states its stylisation outright:
  *
- * The canon this follows, chin at 0 and crown at 1:
+ * - The **eyes are the face**. Each is a big, flat, painted plate — white,
+ *   bold dark rim heavier along the top, a tall iris with a ring, a pupil,
+ *   and one bright catchlight — sitting proud of the skull like a decal,
+ *   which is exactly how the games this look comes from build theirs.
+ * - The **nose is a suggestion**: one small wedge. The **mouth is a drawn
+ *   line**. The **brows are solid strips** that float just off the skin, so
+ *   they read at any distance and never alias into the mesh.
+ * - The **hair is the character**. Every style is a mass of big, chunky,
+ *   curved strands with real silhouettes — spikes, sweeps, tails — built
+ *   from lofted wedges, cel-shaded, inked round the outside, and sprung by
+ *   the pose so it follows a beat behind the body.
  *
- *   0.00  chin        0.29  base of the nose   0.65  mid-forehead
- *   0.17  mouth       0.50  eye line           0.74  hairline
- *   0.09  chin front  0.57  brow ridge         1.00  crown
- *
- * and the two ratios that decide whether a head reads as a head at all:
- * breadth is 0.66 of height, and depth — glabella to the back of the skull —
- * is 0.83. A head modelled from a sphere gets both of those wrong at once,
- * which is why it always comes out looking like an egg with a face drawn on.
- *
- * The skull, the lips, the chin and the brow are all one lofted surface. The
- * nose and the ears are separate closed forms that intersect it. That is a
- * deliberate cheat and a very old one: an opaque surface poking through
- * another opaque surface has no seam to give it away, and it buys a nose with
- * a real underside and real nostrils instead of a bump on a cheek.
+ * Everything is still generated geometry and vertex colour; the only texture
+ * anywhere is the shared 4-pixel toon ramp.
  */
 
 import * as THREE from 'three';
 import { EYE_COLORS, HAIR_COLORS, type StoryCharacter } from '@/story/character';
-import { MeshBuilder, type Profile, domeRings, fromFront, sample, sectionPoint } from './loft';
+import { MeshBuilder, domeRings, sectionPoint, type Profile, sample } from './loft';
+import { addOutline, toonMat } from './toon';
 
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const smooth = (v: number) => {
-  const t = clamp01(v);
-  return t * t * (3 - 2 * t);
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp01(t);
+const smooth = (t: number) => {
+  const x = clamp01(t);
+  return x * x * (3 - 2 * x);
 };
 
-/**
- * A soft window: 0 outside `lo..hi`, 1 in the middle, smooth at both edges.
- *
- * Every facial feature below is a window in height crossed with a window in
- * either azimuth or width. Saying "the brow ridge lives between 0.53 and 0.64
- * and stops before the temple" is a thing you can read and argue with; a sum
- * of Gaussians with hand-tuned sigmas is not.
- */
-const win = (v: number, lo: number, hi: number) => {
-  if (v <= lo || v >= hi) return 0;
-  const t = (v - lo) / (hi - lo);
-  return Math.sin(Math.PI * t) ** 2;
-};
-
-const smoothEdge = (v: number, a: number, b: number) => smooth((v - a) / (b - a));
+/* ------------------------------------------------------------------ */
+/* The skull                                                           */
+/* ------------------------------------------------------------------ */
 
 /**
- * Overlapping regions, combined without a crease.
+ * Chin to crown in H units: half-width, front, back, squareness.
  *
- * `Math.max` is the obvious way to say "the beard grows here *or* here", and
- * it is wrong: where the winning term changes the result has a kink, and a
- * kink in a mask is a visible line across the cheek — which is how a clean
- * stubble ended up looking like a scar. This is the probabilistic union, which
- * is smooth wherever its inputs are.
- */
-const union = (...xs: number[]): number => 1 - xs.reduce((p, x) => p * (1 - clamp01(x)), 1);
-
-/**
- * How far forward of the head's mid-plane a point lies, 0..1.
- *
- * Every feature on a face — the socket shadow, the warmth over the cheekbone,
- * the brow, a beard — belongs to the front of the head and has to stop
- * somewhere on the way round. `z > 0 ? 1 : 0` is the obvious way to say that,
- * and it is a cliff: the plane it stops on runs from the temple, down in front
- * of the ear and along the jaw, and at sixty segments around the head a
- * full-strength colour that ends on it is a staircase cut into the side of the
- * face. It looked like the face had been masked off and sprayed. A ramp about
- * a centimetre wide reads as the same boundary and has no edge in it.
- */
-const frontness = (z: number, H: number) => smooth(z / (0.07 * H));
-
-/** Where the head group's origin sits, as a fraction of head height. */
-const PIVOT_V = 0.32;
-
-/**
- * The skull's tessellation — shared, not a local choice.
- *
- * The beard is a shell that lifts out of the skin, so its visible edge is
- * wherever it crosses the skull. Two grids of flat facets sampled at different
- * places cross each other unevenly, and the edge comes out as a torn stair —
- * which is what a full beard looked like at 76 × 36 against a 60 × 66 head.
- * Sampled at the *same* points the two surfaces differ only by a radial
- * offset, so the crossing follows one grid and reads as a shaved line.
- */
-/* Raised from 66. One ring was 3.5 mm of head, and a lip seam, an eyelid rim
-   and the crease under a nostril all want finer than that — at 66 the mouth
-   could only ever be a soft smear, however the tints were tuned. At 84 a ring
-   is 2.7 mm, which is what the features below were written expecting. */
-const SKULL_RINGS = 84;
-const SKULL_SEG = 60;
-
-/** The eye line, which is the vertical middle of every head there has ever been. */
-const EYE_V = 0.5;
-/** Half the distance between the pupils. 63 mm on a 230 mm head. */
-const EYE_X = 0.139;
-/** The eyeball. 12 mm across on that same head, and unforgiving about it. */
-const EYE_R = 0.052;
-/** The opening between the lids, as half-width and half-height. */
-const FISSURE_W = 0.055;
-const FISSURE_H = 0.021;
-
-/**
- * The skull in section: height, half-breadth, how far the front reaches, how
- * far the back reaches, and how square the corner is.
- *
- * The squareness column is what gives the lower face its planes. A jaw at 2.8
- * has a corner you can see turn; the same jaw at 2.0 is a cylinder, and the
- * face above it has nothing to sit on.
+ * Anime skull: a wide, round cranium over a face that tapers hard to a small
+ * chin. The front column is deliberately flat through the eye band so the
+ * eye plates have a wall to sit against, and the occiput carries real depth
+ * so the profile is a character's, not an egg's.
  */
 const SKULL: Profile = [
-  /* v      hw     front   back    square */
-  [0.0, 0.085, 0.235, 0.075, 2.3],
-  [0.04, 0.132, 0.286, 0.15, 2.5],
-  [0.1, 0.17, 0.302, 0.225, 2.7], // chin
-  [0.165, 0.208, 0.306, 0.298, 2.8], // mouth
-  [0.235, 0.243, 0.298, 0.362, 2.95], // jaw, at its corner
-  [0.295, 0.276, 0.288, 0.412, 2.7], // base of the nose
-  [0.365, 0.302, 0.278, 0.458, 2.5],
-  [0.44, 0.324, 0.268, 0.5, 2.3], // cheekbone
-  [0.5, 0.332, 0.256, 0.521, 2.2], // eye line
-  [0.575, 0.331, 0.278, 0.535, 2.2], // brow
-  [0.65, 0.332, 0.282, 0.54, 2.1], // widest, and the back of the skull
-  [0.74, 0.325, 0.268, 0.534, 2.05],
-  [0.83, 0.299, 0.234, 0.497, 2.0],
-  [0.905, 0.25, 0.188, 0.424, 2.0],
-  [0.96, 0.184, 0.136, 0.322, 2.0],
-  [1.0, 0.062, 0.046, 0.128, 2.0],
+  /* v      hw     front   back   square */
+  [0.0, 0.09, 0.1, 0.055, 1.7],
+  [0.06, 0.145, 0.175, 0.105, 1.8],
+  [0.16, 0.215, 0.255, 0.17, 1.9],
+  [0.28, 0.265, 0.285, 0.24, 2.0],
+  [0.4, 0.315, 0.302, 0.315, 2.05],
+  [0.52, 0.35, 0.315, 0.37, 2.1],
+  [0.66, 0.378, 0.315, 0.41, 2.1],
+  [0.78, 0.385, 0.3, 0.418, 2.05],
+  [0.9, 0.35, 0.26, 0.38, 2.0],
+  [0.97, 0.29, 0.208, 0.31, 2.0],
 ];
+
+const SKULL_RINGS = 56;
+const SKULL_SEG = 44;
 
 /**
- * The nose, as its own stack of rings: height, half-width, how far it stands
- * off the face, and how deep the ring is.
+ * The eye line and the face features, in skull v.
  *
- * Read bottom-up it is the columella, the nostril plane, the wings, the tip,
- * then the bridge thinning back into the brow. The first and last rows stand
- * off by a negative amount, which parks their end caps safely inside the skull
- * where nobody can see them.
+ * High, all of them: an anime face is a short lower face under big eyes, and
+ * the first render of this head put the eyes at the anatomy books' 0.42 with
+ * the mouth at 0.155 — which read as a long, mournful mid-face the moment it
+ * was photographed. The features sit where the style says, not where the
+ * skull chart does.
  */
-const NOSE: Profile = [
-  /* v      halfW   stand   depth */
-  [0.283, 0.05, -0.026, 0.026],
-  [0.292, 0.062, 0.016, 0.032],
-  [0.301, 0.074, 0.046, 0.044],
-  [0.312, 0.071, 0.06, 0.05], // wings
-  [0.332, 0.056, 0.071, 0.052], // tip — narrower than the wings and further out
-  [0.365, 0.046, 0.055, 0.045],
-  [0.41, 0.039, 0.043, 0.04],
-  [0.46, 0.036, 0.029, 0.041],
-  [0.508, 0.037, 0.015, 0.043],
-  [0.548, 0.04, -0.018, 0.046], // the nasion, buried
-];
-
-/* Multipliers on the skin material. Tints, not colours: a lip written as a
-   factor stays a lip on every skin tone in the palette, where a hex value is
-   only ever right for one of them. */
-const LIP = new THREE.Color(1.0, 0.68, 0.63);
-const SEAM = new THREE.Color(0.44, 0.27, 0.26);
-const LASH = new THREE.Color(0.24, 0.17, 0.16);
-const WARM = new THREE.Color(1.08, 0.94, 0.92);
-/** Occlusion: what collects in a crease. Cool, because skin in shadow is. */
-const SHADE = new THREE.Color(0.6, 0.53, 0.53);
-const NOSTRIL = new THREE.Color(0.3, 0.2, 0.19);
-const UNDER = new THREE.Color(0.88, 0.84, 0.83);
+const EYE_V = 0.46;
+const BROW_V = 0.54;
+const MOUTH_V = 0.19;
+const NOSE_V = 0.35;
 
 export interface HeadRig {
   /** Origin at the top of the neck, which is what the head turns about. */
   group: THREE.Group;
   /** Local y of the top of the skull, hair excluded. */
   crown: number;
+  /** The hair mass, for the pose's follow-through spring. Null when shaved. */
+  hair: THREE.Group | null;
   lidL: THREE.Group;
   lidR: THREE.Group;
   lidOpen: number;
@@ -183,7 +91,8 @@ export interface HeadRig {
 }
 
 /**
- * Builds the whole head: skull, nose, ears, brows, eyes, lids, hair, beard.
+ * Builds the whole head: skull, eyes, lids, brows, nose, mouth, ears, hair,
+ * facial hair.
  *
  * @param H head height in metres, chin to crown
  */
@@ -195,1316 +104,722 @@ export function buildHead(spec: StoryCharacter, H: number, skinColor: THREE.Colo
   };
 
   const female = spec.sex === 'female';
-  const hairHex = HAIR_COLORS[spec.hairColor] ?? HAIR_COLORS[0];
-  const hairColor = new THREE.Color(hairHex);
-  /**
-   * Age greys the hair, because a slider called young–old that only wrinkles
-   * the skin is doing half its job. Applied to the source colour before the
-   * brows, beard and shell tints are derived from it, so all of them grey
-   * together — a dark beard under white hair is a disguise, not an age.
-   */
-  hairColor.lerp(new THREE.Color('#b9b6b2'), smooth((spec.age - 0.45) / 0.5) * 0.85);
-  /* Brows and stubble are hair lying on skin, so their tint is whatever turns
-     this face's skin into this character's hair — which is a division, and is
-     the reason it stays correct for every pairing in the palette rather than
-     for the one it was eyeballed against. */
-  const hairOnSkin = new THREE.Color(
-    Math.min(4, hairColor.r / Math.max(0.04, skinColor.r)),
-    Math.min(4, hairColor.g / Math.max(0.04, skinColor.g)),
-    Math.min(4, hairColor.b / Math.max(0.04, skinColor.b))
-  );
-  /**
-   * A beard is darker than the head it is under, and less of a colour.
-   *
-   * At the head's own tint a blond duelist wore mustard and a redhead wore
-   * a bright orange tongue on the chin — the palette is chosen to read as
-   * *hair*, at hair's scale and in hair's light, and a beard is neither: it is
-   * a small patch on skin, shaded by the jaw above it. Darkened and pulled
-   * towards its own grey it reads as growth on a face instead of as paint.
-   */
-  const beardOnSkin = hairOnSkin.clone().multiplyScalar(0.72);
-  /**
-   * Desaturated hard, and towards its own brightness rather than towards a
-   * grey.
-   *
-   * Towards a fixed grey it *lightened* every dark beard, and near-black hair
-   * came out mid-brown. And at the head's own saturation a red-haired duelist
-   * wore a patch on its chin within a few degrees of hue of its own lips,
-   * which is how a goatee ended up reading as a tongue stuck out. Beard hair
-   * is short, and short hair shows scalp through it: the colour that reaches
-   * the eye is most of the way back to the skin's own.
-   */
-  const lum = beardOnSkin.r * 0.3 + beardOnSkin.g * 0.59 + beardOnSkin.b * 0.11;
-  beardOnSkin.lerp(new THREE.Color(lum, lum, lum), 0.45);
-  /**
-   * And never within a fifth of the skin it grows on.
-   *
-   * The tint is a multiplier, so a fair duelist with fair hair got a beard a
-   * few per cent off the colour of its own cheek: what that draws is not a
-   * blond beard but a beige mass with a mouth in the middle of it. Hair at
-   * this scale has no texture to give itself away — contrast is the only thing
-   * telling the eye that the bottom of the face is not more face.
-   */
-  const lightest = Math.max(beardOnSkin.r, beardOnSkin.g, beardOnSkin.b);
-  if (lightest > 0.8) beardOnSkin.multiplyScalar(0.8 / lightest);
-
-  const y = (v: number) => (v - PIVOT_V) * H;
-
-  /* ---------------- the skull surface ---------------- */
-
-  /**
-   * How far a point is from the centre of the nearest eye, as a fraction of
-   * the palpebral fissure. 1 is the lid margin.
-   *
-   * The tilt term raises the outer corner of the eye above the inner one,
-   * which every face has and no face looks right without — level eyes read as
-   * a mask even when everything around them is correct.
-   */
-  const eyeD = (v: number, x: number) => {
-    const off = Math.abs(x) / H - EYE_X;
-    return Math.hypot(off / FISSURE_W, (v - EYE_V - off * 0.11) / FISSURE_H);
-  };
-
-  const jaw = spec.jaw;
-  const brow = spec.brow;
-  const age = spec.age;
-  const mouthHalf = 0.086 + 0.046 * spec.mouth;
-
-  /**
-   * A point on the face, by height and azimuth.
-   *
-   * Azimuth is measured from straight ahead, so 0 is the tip of the nose and
-   * ±π/2 the ears. Everything from the table is anatomy that every head has;
-   * everything after it is this particular head.
-   */
-  const surface = (v: number, a: number) => {
-    let hw = sample(SKULL, v, 1) * H;
-    let front = sample(SKULL, v, 2) * H;
-    const back = sample(SKULL, v, 3) * H;
-    let sq = sample(SKULL, v, 4);
-
-    /* The jaw knob widens and squares the mandible and pushes the chin
-       forward, fading out before it reaches the cheekbone — a heavy jaw is a
-       heavy *jaw*, and letting it leak upwards is how you get a face that
-       changes width rather than shape. */
-    const jawZone = win(v, -0.15, 0.44);
-    hw *= 1 + (jaw - 0.5) * 0.32 * jawZone;
-    sq += (jaw - 0.5) * 0.75 * jawZone;
-    front += (jaw - 0.5) * 0.02 * H * win(v, -0.06, 0.26);
-
-    const p = sectionPoint(hw, front, back, sq, a);
-    let { x, z } = p;
-    const ax = fromFront(a);
-    const bx = Math.abs(x) / H;
-
-    /* Brow ridge. Two lobes over the eyes and a lower bridge between them —
-       the glabella — because a single band across the forehead reads as a
-       headache rather than a skull. */
-    const ridge =
-      0.5 * win(ax, -0.26, 0.26) + win(ax, 0.08, 0.82) * (0.55 + 0.45 * brow);
-    /* Softer on the female plan: the supraorbital ridge is one of the loudest
-       skeletal differences a face has, and at full depth it reads male whatever
-       the rest of the face says. */
-    z += 0.034 * H * ridge * win(v, 0.515, 0.645) * (female ? 0.55 : 1);
-
-    /* Eye sockets, cut back under the ridge so the eyeball has somewhere to
-       sit, and the nasion pinched in between them. */
-    /* Stops under the lower lid, not down the cheek. Cut to 0.44 the recess
-       ran a fingertip below the eye, and its lower boundary was a crease
-       across each cheek that no amount of paint-calming could remove — the
-       matte view is what finally named it as geometry. */
-    z -= 0.023 * H * win(v, 0.468, 0.552) * win(ax, 0.06, 0.8);
-    z -= 0.016 * H * win(v, 0.5, 0.585) * win(ax, -0.17, 0.17);
-
-    /* Cheekbone out, and the hollow under it that deepens with age. */
-    const zygo = win(v, 0.392, 0.502) * win(ax, 0.28, 1.06);
-    x += Math.sign(x || 1) * 0.024 * H * zygo;
-    z += 0.016 * H * zygo;
-    /* Almost nothing on a young face. At a constant base this scooped every
-       cheek regardless of the age slider, and under the booth's key light the
-       scoop's shading read as gauntness — worst on the fair faces, where every
-       young duelist looked drawn and ill. Cheek hollows are what age *does*;
-       they are not what a cheek is. */
-    const hollow = win(v, 0.25, 0.398) * win(ax, 0.34, 0.98);
-    x -= Math.sign(x || 1) * (0.0015 + 0.02 * age) * H * hollow;
-    z -= (0.002 + 0.022 * age) * H * hollow;
-
-    /* Temples, which are flat-to-hollow on everyone and are most of what makes
-       a forehead look like bone rather than a dome. */
-    x -= Math.sign(x || 1) * 0.013 * H * win(v, 0.5, 0.72) * win(ax, 0.7, 1.24);
-
-    /* Lips: two cushions, the seam between them, the philtrum above and the
-       crease below. All of it stops at the corner of the mouth. */
-    const lipW = win(bx, -mouthHalf, mouthHalf);
-    /* The philtrum notches the upper lip down at the centre line — a cupid's
-       bow. Two millimetres, and the mouth stops being a stripe. */
-    const bow = 0.009 * win(bx, -0.032, 0.032);
-    z += 0.026 * H * lipW * (0.92 * win(v + bow, 0.208, 0.262) + 1.08 * win(v, 0.15, 0.212));
-    /* The corners tuck back into the cheek — a mouth ends by turning in, not
-       by fading out. */
-    z -= 0.005 * H * win(bx, mouthHalf * 0.78, mouthHalf * 1.12) * win(v, 0.178, 0.24);
-    /* The seam is a line, not a slot. At 3 mm deep it read as an open mouth. */
-    z -= 0.012 * H * lipW * win(v, 0.194, 0.218);
-    z -= 0.011 * H * win(bx, -0.032, 0.032) * win(v, 0.252, 0.3);
-    z -= 0.009 * H * win(bx, -mouthHalf * 0.8, mouthHalf * 0.8) * win(v, 0.132, 0.168);
-
-    /* The chin's own bump, which is not the same thing as the jaw. */
-    z += 0.015 * H * win(bx, -0.1, 0.1) * win(v, 0.03, 0.14);
-
-    /* Nasolabial fold — the line from the wing of the nose to the corner of
-       the mouth. Barely there on a young face, unmissable on an old one. */
-    z -= (0.001 + 0.018 * age) * H * win(bx, 0.05, 0.115) * win(v, 0.2, 0.32);
-
-    /**
-     * The opening between the lids, cut into the skull.
-     *
-     * Without it the head is a closed surface that runs straight across the
-     * socket and the eyeball merely pokes through, which shows as a small
-     * circle of iris in an otherwise blank face — no sclera, no corners, no
-     * eye. Retreating the surface behind the ball inside the fissure turns the
-     * rim of that retreat into the lid margin, so the lids come free with the
-     * hole they surround. Front of the face only: the arithmetic finds the
-     * same |x| on the back of the skull and would put an eye behind each ear.
-     */
-    if (z > 0) z -= 0.075 * H * (1 - smooth((eyeD(v, x) - 0.7) / 0.55));
-
-    return { x, y: y(v), z };
-  };
-
-  /**
-   * The tint at a point of the face. White means "leave the skin alone".
-   *
-   * Two jobs, and the second one is the one that matters. The first is
-   * pigment: lips, brows, lashes, the warmth over the cheekbone. The second is
-   * *occlusion* — the shadow that collects in the corner of an eye socket, at
-   * the wing of the nose, under the lower lip, beneath the jaw. A real-time
-   * face gets that from a baked ambient-occlusion map, and without it a head
-   * lit from one side is a smooth pale mass with features drawn on: every
-   * plane reads at the same brightness, so none of them read at all. Painting
-   * it into the vertex colours costs nothing and is most of the difference
-   * between a face and a mask.
-   */
-  const scratch = new THREE.Color();
-  const tintAt = (v: number, x: number, z: number) => {
-    /* One colour, reused. The booth rebuilds the whole duelist on every frame
-       of a slider drag, and a fresh `Color` per vertex is four thousand
-       allocations per frame for a value the mesh builder copies out
-       immediately. */
-    const c = scratch.setRGB(1, 1, 1);
-    const bx = Math.abs(x) / H;
-    const front = frontness(z, H);
-    const lipW = win(bx, -mouthHalf, mouthHalf) * front;
-    const d = eyeD(v, x);
-
-    /* --- occlusion, before anything is coloured --- */
-    let ao = 0;
-    /* The socket, deepest at the inner corner and along the upper lid — the
-       upper/lower difference ramped across the lid rather than switched at the
-       eye line, which would draw a horizontal step across the socket. */
-    /* Tight to the socket. Run out to 2.6 fissure-radii this reached most of
-       the way down the cheek, and its lower boundary was the diagonal smudge
-       that made every face look unwashed. A socket's shadow ends at the
-       socket. */
-    ao += 0.34 * front * win(d, 0.85, 1.9) * lerp(0.45, 1, smooth((v - EYE_V) / 0.05 + 0.5));
-    /* Where the wing of the nose meets the cheek — mostly an old face's
-       line. At half strength on a young face it was a permanent grey smudge
-       beside the nose, and it was the loudest of the marks that made every
-       face look unwashed at the booth's own framing. */
-    ao += (0.08 + 0.45 * spec.age) * front * win(bx, 0.03, 0.13) * win(v, 0.27, 0.37);
-    /* Under the lower lip, and the crease under the nose. */
-    ao += 0.45 * lipW * win(v, 0.118, 0.168);
-    ao += 0.35 * win(bx, -0.05, 0.05) * win(v, 0.255, 0.295) * front;
-    /* Under the jaw and back towards the neck, which is the darkest place on
-       any head and the one that gives the chin an edge against the throat. */
-    ao += 1.0 * win(v, -0.16, 0.1);
-    /* The temple, and the hollow in front of the ear. */
-    ao += 0.2 * win(bx, 0.24, 0.34) * win(v, 0.42, 0.68);
-    c.lerp(SHADE, clamp01(ao));
-
-    /* Brows. The band rises and thins as it runs outward, which is the
-       difference between an eyebrow and a smear. */
-    const bc = 0.556 + 0.03 * smooth((bx - 0.05) / 0.22);
-    /**
-     * Never thinner than the mesh can draw. The band used to taper to 0.015
-     * of a head — one and a bit rings at this density — and a stripe one ring
-     * tall painted along a diagonal is a row of dashes, which is why every
-     * brow looked moth-eaten at the booth's Face framing. Rule 8: detail finer
-     * than the mesh cannot be drawn by the mesh.
-     */
-    const bh = lerp(0.032, 0.026, clamp01((bx - 0.05) / 0.24)) * (0.8 + 0.4 * brow);
-    const browW = win(v, bc - bh, bc + bh) * win(bx, 0.032, 0.3) * front;
-    c.lerp(hairOnSkin, clamp01(browW * 1.15));
-
-    const bow = 0.009 * win(bx, -0.032, 0.032);
-    /**
-     * The vermilion, saturating inside the cushions it sits on.
-     *
-     * At 1.35 over windows wider than the lip geometry, the colour faded out
-     * across the skin around the mouth — a soft-edged patch, which at the
-     * booth's Face framing reads as a bruise, not a mouth. Steeper and
-     * narrower, the painted region and the modelled region are the same
-     * region, and the boundary between lip and skin is the *vermilion
-     * border* a mouth actually has.
-     */
-    const lipPaint = lipW * (win(v + bow, 0.206, 0.26) + win(v, 0.15, 0.208));
-    c.lerp(LIP, clamp01(smooth(lipPaint * 2.4) * (female ? 1.15 : 0.95)));
-    c.lerp(SEAM, clamp01(lipW * win(v, 0.197, 0.215) * 2.4));
-
-    /* Lashes, at the rim of the fissure — heavier above than below, as they
-       are. An eye without a dark edge has nothing to hold it in the face. */
-    c.lerp(LASH, clamp01(front * win(d, 0.82, 1.18) * (v > EYE_V ? 1.7 : 0.8) * (female ? 1.35 : 1)));
-    /* A quarter of what it was: at 0.5 the warmth over the cheekbone had a
-       visible boundary, and a patch of colour with an edge is a blotch. */
-    c.lerp(WARM, clamp01(win(v, 0.3, 0.48) * win(bx, 0.1, 0.31) * 0.25 * front));
-
-    /**
-     * The beard, as colour on skin.
-     *
-     * This is where a beard's *edge* lives, not on the shell that gives it
-     * thickness. The shell has to cross out of the skin somewhere, and two
-     * surfaces crossing produce a staircase at whatever the mesh resolution
-     * is — visible at any density worth shipping. Painting the skull itself
-     * the full hair colour, and sinking the shell far enough that it only
-     * emerges well inside the painted region, means the crossing happens
-     * between two surfaces of the same colour and there is no edge to see.
-     * The shaved line the eye reads is the tint's own gradient, which is as
-     * smooth as the vertex colours are.
-     *
-     * Stubble stays a shadow: it has no silhouette, so it never gets a shell
-     * and never goes to full strength.
-     */
-    const shave = beardMask(spec.facialHair, v, bx, front);
-    if (shave > 0) {
-      const solid = spec.facialHair === 'stubble' ? 0.5 : 1;
-      /**
-       * A long fade in, saturating before the shell starts to lift.
-       *
-       * Saturating at 0.385 of the mask put the whole colour change inside a
-       * band a few vertices wide, and sixty segments drew that as a torn edge
-       * along the top of the beard — the cheek line came out looking cut with
-       * scissors out of paper. A beard does not end; it thins. Fully coloured
-       * by 0.28 it is still saturated everywhere the shell exists, which is
-       * the one thing this ramp is not allowed to break: an edge that lifts
-       * out of skin that is not yet hair-coloured is a visible seam.
-       */
-      c.lerp(beardOnSkin, clamp01(smooth((shave - 0.02) / 0.26)) * solid);
-    }
-
-    /* The scalp, for the same reason and by the same means — see `hairPaint`. */
-    const cut = HAIR_SHAPE[spec.hair];
-    if (cut) c.lerp(hairOnSkin, clamp01(hairPaint(spec, cut, H, v, x, z)));
-    return c;
-  };
-
-  /* ---------------- the mesh ---------------- */
-
-  const m = new MeshBuilder();
-  const RINGS = SKULL_RINGS;
-  const SEG = SKULL_SEG;
-  const rings: number[][] = [];
-  for (let i = 0; i <= RINGS; i++) {
-    const v = i / RINGS;
-    const ring: number[] = [];
-    for (let k = 0; k < SEG; k++) {
-      const a = (k / SEG) * Math.PI * 2;
-      const p = surface(v, a);
-      ring.push(m.vertex(p.x, p.y, p.z, tintAt(v, p.x, p.z)));
-    }
-    rings.push(ring);
-  }
-  /**
-   * The crown, closed as a dome rather than fanned to a point.
-   *
-   * The slope is measured off the surface itself rather than assumed, so the
-   * arc leaves the last ring going exactly where the skull was already going.
-   * See `domeRings`.
-   */
-  const CROWN = 5;
-  const rTop = sample(SKULL, 1, 1) * H;
-  const rBelow = sample(SKULL, 0.99, 1) * H;
-  const dome = domeRings(rTop, (rTop - rBelow) / (0.01 * H), CROWN);
-  const white = new THREE.Color(1, 1, 1);
-  for (let j = 1; j < CROWN; j++) {
-    const { scale, rise } = dome[j];
-    const ring: number[] = [];
-    for (let k = 0; k < SEG; k++) {
-      const a = (k / SEG) * Math.PI * 2;
-      const p = surface(1, a);
-      ring.push(m.vertex(p.x * scale, y(1) + rise, p.z * scale, white));
-    }
-    rings.push(ring);
-  }
-  m.loft(rings);
-  m.cap(rings[0], m.vertex(0, y(-0.05), sample(SKULL, 0, 2) * H * 0.4, UNDER), -1);
-  m.cap(rings[rings.length - 1], m.vertex(0, y(1) + dome[CROWN].rise, 0, white), 1);
-
-  addNose(m, spec, H, y, surface);
-  addEars(m, H, y, surface);
-
-  const face = keep(m.build());
-  const skinFace = keep(
-    new THREE.MeshPhysicalMaterial({
-      color: skinColor,
-      roughness: 0.66,
-      metalness: 0,
-      vertexColors: true,
-      sheen: 0.3,
-      sheenRoughness: 0.7,
-      sheenColor: skinColor.clone().lerp(new THREE.Color('#ffd4c2'), 0.5),
-      specularIntensity: 0.32,
-    })
-  );
   const group = new THREE.Group();
-  const headMesh = new THREE.Mesh(face, skinFace);
-  headMesh.castShadow = true;
-  group.add(headMesh);
 
-  /* ---------------- eyes ---------------- */
+  /* Chin sits just above the neck pivot — an anime chin rides close to the
+     collar, and most of what reads as "neck" belongs to the body's own
+     stub. */
+  const BASE = 0.085 * H;
+  const y = (v: number) => BASE + v * H;
 
-  /* Getting the eyeball's size wrong by even a little is the loudest tell in
-     the whole model: eyes a shade too big read as a doll, a shade too small as
-     a portrait of somebody unwell. */
-  const eyeR = EYE_R * H;
-  const eyeX = EYE_X * H;
-  /* Placed against the socket floor, taken from the table rather than from
-     `surface` — which now has a hole cut in it exactly here, and would report
-     the back of the aperture as the front of the face. The 0.9 foreshortens
-     the skull's front extent to the eye's own azimuth; the second term is the
-     socket recess. The ball then stands about 5 mm proud of the socket, which
-     is where a cornea sits. */
-  const eyeZ = sample(SKULL, EYE_V, 2) * H * 0.9 - 0.026 * H - eyeR;
+  /* ---------------- colours ---------------- */
 
-  const sclera = keep(
-    new THREE.MeshPhysicalMaterial({
-      /* Not white. A sclera is a wet grey-pink thing in a shadowed socket,
-         and painting it paper-white is what gives a model that stare. */
-      color: new THREE.Color('#cfc6bf'),
-      roughness: 0.3,
-      metalness: 0,
-      clearcoat: 1,
-      clearcoatRoughness: 0.06,
-    })
-  );
-  const irisMat = keep(
-    new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(EYE_COLORS[spec.eyeColor] ?? EYE_COLORS[0]),
-      roughness: 0.3,
-      metalness: 0,
-      vertexColors: true,
-      clearcoat: 1,
-      clearcoatRoughness: 0.02,
-    })
-  );
-  const ball = keep(new THREE.SphereGeometry(eyeR, 24, 18));
-  const iris = keep(irisGeometry(eyeR));
+  const hairColor = new THREE.Color(HAIR_COLORS[spec.hairColor] ?? HAIR_COLORS[0]);
+  /* Age greys the hair before anything is derived from it, so brows and
+     beard grey with it. */
+  hairColor.lerp(new THREE.Color('#c9c6c2'), smooth((spec.age - 0.45) / 0.5) * 0.85);
 
-  /**
-   * The blinking lid: a spherical shell sharing the eyeball's centre.
-   *
-   * Now that the fissure is cut into the skull, the *open* eye needs no lid
-   * geometry at all — the rim of the hole is the lid. This exists only to
-   * close it, so at rest it is parked above the aperture, hidden behind the
-   * face, and rotates down over the ball to blink. Rotating about the ball's
-   * centre is exactly what the muscle does, and it keeps the lid the width of
-   * the eye the whole way down; three earlier attempts slid a cap forward
-   * instead and every one ended narrower than the eye it had to cover.
-   */
-  const lidGeo = keep(lidGeometry(eyeR * 1.035, 1.19, true));
-  const lidOpen = lerp(-0.34, -0.12, spec.eyeShape);
-  const lidShut = 0.62;
+  const skinT = keep(toonMat(skinColor, { vertexColors: true }));
+  const eyeMat = keep(toonMat('#ffffff', { vertexColors: true }));
+  const hairMat = keep(toonMat(hairColor, { vertexColors: true }));
 
-  const lids: THREE.Group[] = [];
-  for (const side of [-1, 1] as const) {
-    const eye = new THREE.Group();
-    eye.position.set(side * eyeX, y(EYE_V), eyeZ);
-    /* Toed out very slightly, as eyes are: parallel sockets stare. */
-    eye.rotation.y = side * 0.05;
-    const b = new THREE.Mesh(ball, sclera);
-    const ir = new THREE.Mesh(iris, irisMat);
-    eye.add(b, ir);
+  const LINE = 0.013 * H;
 
-    const lid = new THREE.Group();
-    lid.rotation.x = lidOpen;
-    const lidMesh = new THREE.Mesh(lidGeo, skinFace);
-    lidMesh.castShadow = true;
-    lid.add(lidMesh);
-    eye.add(lid);
-    lids.push(lid);
-
-    group.add(eye);
-  }
-
-  /* ---------------- hair and beard ---------------- */
-
-  const hairMat = keep(
-    new THREE.MeshPhysicalMaterial({
-      color: hairColor,
-      roughness: 0.62,
-      metalness: 0,
-      sheen: 0.9,
-      sheenRoughness: 0.35,
-      sheenColor: hairColor.clone().lerp(new THREE.Color('#ffffff'), 0.45),
-      side: THREE.DoubleSide,
-      vertexColors: true,
-    })
-  );
-  const hairGeo = buildHair(spec, H, y, surface);
-  if (hairGeo) {
-    keep(hairGeo);
-    const hm = new THREE.Mesh(hairGeo, hairMat);
-    hm.castShadow = true;
-    group.add(hm);
-  }
-  const beardGeo = buildBeard(spec, H, surface, beardOnSkin);
-  if (beardGeo) {
-    keep(beardGeo);
-    /* Drawn with the *face's* material, not the hair's. The shell has to cross
-       out of the skin somewhere, and a crossing between two different
-       materials shows as blotches however well the colours match — matching
-       both leaves only a soft change in curvature, which is what a beard's
-       volume looks like anyway. */
-    const bm = new THREE.Mesh(beardGeo, skinFace);
-    bm.castShadow = true;
-    group.add(bm);
-  }
-
-  return {
-    group,
-    crown: y(1),
-    lidL: lids[0],
-    lidR: lids[1],
-    lidOpen,
-    lidShut,
-    dispose: () => kept.forEach((k) => k.dispose()),
+  const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, line = 0) => {
+    keep(geo);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    if (line > 0) addOutline(parent, geo, line, keep);
+    return mesh;
   };
-}
 
-/* ------------------------------------------------------------------ */
-/* The nose                                                            */
-/* ------------------------------------------------------------------ */
+  /* ---------------- the skull ---------------- */
 
-function addNose(
-  m: MeshBuilder,
-  spec: StoryCharacter,
-  H: number,
-  y: (v: number) => number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number }
-): void {
-  const wide = 0.86 + 0.32 * spec.nose;
-  const long = 0.74 + 0.56 * spec.nose;
-  const SEG = 26;
-  const rings: number[][] = [];
-  const steps = (NOSE.length - 1) * 3;
+  /** Jaw: 0 narrow and pointed, 1 wide with a corner. */
+  const jawW = lerp(0.86, 1.14, spec.jaw);
+  const jawSq = lerp(-0.1, 0.3, spec.jaw);
 
-  for (let s = 0; s <= steps; s++) {
-    const t = s / steps;
-    const v = lerp(NOSE[0][0], NOSE[NOSE.length - 1][0], t);
-    const hw = sample(NOSE, v, 1) * H * wide;
-    const stand = sample(NOSE, v, 2) * H * long;
-    const depth = sample(NOSE, v, 3) * H;
-    /* Anchored to the face it grows out of, not to a fixed z, so a heavy jaw
-       or a deep brow carries the nose with it instead of leaving it hanging. */
-    const cz = surface(v, 0).z + stand - depth;
-    const ring: number[] = [];
-    for (let k = 0; k < SEG; k++) {
-      const a = (k / SEG) * Math.PI * 2;
-      /**
-       * Rounder than it was, and far deeper behind than in front.
-       *
-       * At squareness 2.5 with equal front and back the nose is a box on a
-       * stalk: it has a flat front plane, hard corners down both sides, and it
-       * meets the cheek at an angle that says it was stuck on afterwards —
-       * which is exactly how it read. Dropping to 2.05 gives it the rounded
-       * dorsum a nose actually has, and pushing the back nearly twice as deep
-       * buries the root of the form inside the face, so what shows at the
-       * sides is the tail of a curve rather than the edge of a tube.
-       */
-      /**
-       * Roundness that changes along the nose, because a nose is not one tube.
-       *
-       * At a constant 2.05 the whole front was one flat facade with a corner
-       * down each side — at the booth's Face framing it read as a strip of
-       * wood from brow to lip, and it was the first thing anyone saw. The
-       * wings are round (2.2); the bridge is a soft *ridge* (1.6), which is
-       * what puts a single highlight line down the dorsum instead of a plane.
-       */
-      const p = sectionPoint(hw, depth, depth * 1.85, lerp(2.2, 1.6, smooth((t - 0.1) / 0.6)), a);
-      /* The nostrils, as tint on the underside of the wings. */
-      const under = v < 0.3 && p.z > -depth * 0.2 && Math.abs(p.x) > hw * 0.24;
-      ring.push(m.vertex(p.x, y(v), cz + p.z, under ? NOSTRIL : new THREE.Color(1, 1, 1)));
-    }
-    rings.push(ring);
-  }
-  m.loft(rings);
-  m.cap(rings[0], m.vertex(0, y(NOSE[0][0] - 0.02), surface(NOSE[0][0], 0).z - 0.03 * H, NOSTRIL), -1);
-  m.cap(rings[rings.length - 1], m.vertex(0, y(0.57), surface(0.57, 0).z - 0.03 * H), 1);
-}
+  const skullAt = (v: number, col: 1 | 2 | 3) => {
+    let x = sample(SKULL, v, col) * H;
+    if (col !== 2 && v < 0.34) x *= lerp(jawW, 1, v / 0.34);
+    if (col === 1 && v < 0.34) x *= female ? 0.96 : 1;
+    return x;
+  };
+  const skullSq = (v: number) => sample(SKULL, v, 4) + (v < 0.3 ? jawSq * (1 - v / 0.3) : 0);
 
-/* ------------------------------------------------------------------ */
-/* Ears                                                                */
-/* ------------------------------------------------------------------ */
+  /* Paint: the toon face carries almost nothing — a drawn mouth, a lip, a
+     faint blush — and states each with a hard edge. */
+  const MOUTH_INK = new THREE.Color(0.32, 0.18, 0.2);
+  const LIP = new THREE.Color(1.0, 0.72, 0.68);
+  const STUBBLE = new THREE.Color(0.88, 0.84, 0.84);
 
-/** Ear height, from the lobe to the top of the helix, as fractions of H. */
-const EAR: Profile = [
-  [0.0, 0.2, 0.052, 0.0],
-  [0.18, 0.28, 0.064, -0.004],
-  [0.5, 0.34, 0.072, -0.006],
-  [0.82, 0.3, 0.062, -0.002],
-  [1.0, 0.19, 0.044, 0.004],
-];
+  const mouthHalf = lerp(0.085, 0.125, spec.mouth) * H;
+  /** The mouth's cast: 0 a slight frown, 0.5 level, 1 an upturn. */
+  const mouthCurve = lerp(0.016, -0.016, spec.mouth) * H;
 
-/**
- * How deep the bowl of the ear is cut, as a fraction of the ear's own
- * thickness, at each height from lobe to helix.
- *
- * This is the whole shape. Everything else about an ear — where it sits, how
- * far it stands off, how long it is — was already right, and the ear still
- * read as a pale rounded slab stuck to the side of the head, because a solid
- * convex blade catches light evenly all over and an ear never does. What names
- * an ear at a glance is one dark hollow ringed by one bright rim, and both come
- * out of the same cut: press the middle of the outer face in, and what is left
- * standing round the edge *is* the helix. Nothing at the lobe, which is solid
- * flesh; nothing at the very top, where the rim rolls over and closes.
- */
-const CONCHA: Profile = [
-  [0.0, 0.0],
-  [0.2, 0.1],
-  [0.42, 0.92],
-  [0.6, 1.0],
-  [0.8, 0.66],
-  [0.93, 0.22],
-  [1.0, 0.0],
-];
+  const stubbled = spec.facialHair === 'stubble';
 
-function addEars(
-  m: MeshBuilder,
-  H: number,
-  y: (v: number) => number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number }
-): void {
-  /* An ear runs from the eye line down to the base of the nose. That single
-     fact places it correctly on any head, which matters more than its own
-     shape — an ear an inch too high makes a face look wrong in a way nobody
-     can name. */
-  const top = EYE_V + 0.035;
-  const bottom = 0.285;
-  /* The bowl needs vertices across it to be a bowl rather than a facet, and it
-     only spans half the section. */
-  const SEG = 28;
-  const RINGS = 20;
+  const paintSkull = (px: number, py: number, pz: number): THREE.Color | undefined => {
+    const v = (py - BASE) / H;
+    /* Only the front of the face carries paint. */
+    if (pz < 0.05 * H) return undefined;
+    const ax = Math.abs(px);
 
-  for (const side of [-1, 1] as const) {
+    /* The mouth: one drawn line with a hint of curve, and a lip below it. */
+    const my = y(MOUTH_V) + mouthCurve * (ax / mouthHalf) ** 2;
+    if (ax < mouthHalf && Math.abs(py - my) < 0.012 * H) return MOUTH_INK;
+    if (female && ax < mouthHalf * 0.82 && py < my && py > my - 0.032 * H) return LIP;
+
+    /* Stubble: a *suggestion* — a slightly cooler band hugging the jaw's
+       edge, not a painted bib. The first pass masked the whole lower face
+       and read as a muzzle from across the room. */
+    if (stubbled && v < 0.13 && ax > 0.04 * H) return STUBBLE;
+
+    return undefined;
+  };
+
+  {
+    const m = new MeshBuilder();
     const rings: number[][] = [];
-    for (let s = 0; s <= RINGS; s++) {
-      const t = s / RINGS;
-      /* Thicker than it was, because a bowl pressed into a 4 mm blade has
-         nowhere to go: the rim has to have something to stand out of. The
-         standoff below carries the extra outwards so the *floor* of the bowl
-         lands where the whole ear used to sit, rather than the ear moving out
-         from the head. */
-      const thick = sample(EAR, t, 1) * 0.064 * H;
-      const depth = sample(EAR, t, 2) * H;
-      const dz = sample(EAR, t, 3) * H;
-      const bowl = sample(CONCHA, t, 1);
-      const v = lerp(bottom, top, t);
-      const at = surface(v, (side * Math.PI) / 2);
-      /* Set slightly back from the widest point of the skull and canted out at
-         the top, which is the difference between an ear and a handle. */
-      const cx = at.x * 0.94 + side * thick * (0.48 + t * 0.5);
-      const cz = at.z - 0.14 * H + dz;
+    for (let i = 0; i <= SKULL_RINGS; i++) {
+      const v = (i / SKULL_RINGS) * 0.97;
+      const hw = skullAt(v, 1);
+      const fr = skullAt(v, 2);
+      const bk = skullAt(v, 3);
+      const sq = skullSq(v);
       const ring: number[] = [];
-      for (let k = 0; k < SEG; k++) {
-        const a = (k / SEG) * Math.PI * 2;
-        const p = sectionPoint(thick, depth, depth, 2.4, a);
-        /* Positive on the outer face of this ear, whichever side it is on. */
-        const outward = Math.max(0, side * Math.sin(a));
-        const cut = bowl * 0.82 * thick * outward ** 1.5;
-        /* The floor of the bowl is in shadow all day; the rim is not. Tinting
-           by the same number that cuts it keeps the two in step, so the shade
-           lands on the hollow rather than on a band of rings that happens to
-           be near it. */
-        const shade = bowl * outward ** 1.5;
-        ring.push(m.vertex(cx + p.x - side * cut, y(v), cz + p.z, shade > 0.25 ? UNDER : undefined));
+      for (let k = 0; k < SKULL_SEG; k++) {
+        const a = (k / SKULL_SEG) * Math.PI * 2;
+        const q = sectionPoint(hw, fr, bk, sq, a);
+        const tint = paintSkull(q.x, y(v), q.z);
+        ring.push(m.vertex(q.x, y(v), q.z, tint));
       }
       rings.push(ring);
     }
-    m.loft(rings);
-    const a0 = surface(bottom, (side * Math.PI) / 2);
-    m.cap(rings[0], m.vertex(a0.x * 0.94, y(bottom - 0.03), a0.z - 0.14 * H), -1);
-    const a1 = surface(top, (side * Math.PI) / 2);
-    m.cap(rings[rings.length - 1], m.vertex(a1.x * 0.9, y(top + 0.02), a1.z - 0.145 * H), 1);
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Hair                                                                */
-/* ------------------------------------------------------------------ */
-
-/**
- * How each cut behaves.
- *
- * `thick` is how far it stands off the scalp, `line` shifts the hairline,
- * `part` cuts a parting down the middle, `nape` is how far down the back it
- * grows, `tail` picks a mass that is not on the scalp, and `mantle` hangs a
- * curtain from the nape.
- *
- * The numbers are spread much further apart than they look like they need to
- * be. Laid out side by side at 8, 26 and 42 thousandths of a head, a shaved
- * scalp, a crop and a swept cut were the same haircut three times: a knob you
- * cannot tell from its neighbour is not a choice, whatever the label says.
- */
-const HAIR_SHAPE = {
-  shaved: { thick: 0.005, line: 0.05, part: 0, nape: 0.34, tail: 0, mantle: 0 },
-  crop: { thick: 0.024, line: 0.01, part: 0, nape: 0.28, tail: 0, mantle: 0 },
-  swept: { thick: 0.05, line: 0.03, part: 0, nape: 0.3, tail: 0, mantle: 0 },
-  spiked: { thick: 0.062, line: 0.02, part: 0, nape: 0.29, tail: 0, mantle: 0 },
-  curtain: { thick: 0.052, line: -0.06, part: 0.85, nape: 0.26, tail: 0, mantle: 0 },
-  wild: { thick: 0.075, line: -0.03, part: 0.2, nape: 0.24, tail: 0, mantle: 0 },
-  long: { thick: 0.046, line: -0.03, part: 0.35, nape: 0.16, tail: 0, mantle: 1.0 },
-  ponytail: { thick: 0.026, line: 0.03, part: 0, nape: 0.3, tail: 1, mantle: 0 },
-  topknot: { thick: 0.022, line: 0.07, part: 0, nape: 0.32, tail: 2, mantle: 0 },
-  braids: { thick: 0.03, line: -0.02, part: 0.4, nape: 0.22, tail: 3, mantle: 0 },
-  /* `nape` low, not high. At 0.9 the shell did not exist below the crown at
-     the back, so the crest stopped dead at the top of the head and left a
-     notch where its two halves met. The sides are shaved by the crest mask in
-     `hairStand`, not by the hairline — the hairline only has to let the strip
-     reach the nape. */
-  mohawk: { thick: 0.072, line: 0.0, part: 0, nape: 0.3, tail: 0, mantle: 0 },
-  bun: { thick: 0.024, line: 0.05, part: 0, nape: 0.3, tail: 4, mantle: 0 },
-} as const;
-
-type HairShape = (typeof HAIR_SHAPE)[keyof typeof HAIR_SHAPE];
-
-function hairlineAt(S: HairShape, a: number): number {
-  const ax = fromFront(a);
-  /* A little grain, so the fringe is a hairline and not a machined edge.
-     Deterministic — two sines, not a random — because the model is rebuilt
-     on every slider move and hair that reshuffles as you drag a colour is
-     worse than hair that is slightly too tidy.
-
-     Both frequencies are kept well under the ring's own. At 13.7 and 27.3
-     against sixty segments the second wave had barely two samples to a
-     cycle, so what reached the mesh was not grain but its alias: a hard
-     sawtooth, right along the one line a haircut is judged by. It showed at
-     the fringe and worse across the nape. Detail finer than the mesh cannot
-     be drawn by the mesh — it can only corrupt it. */
-  /**
-   * Whole numbers of cycles, or the curve does not close.
-   *
-   * At 5.3 and 9.7 neither wave completes over a full turn, so the value at
-   * azimuth 0 and the value at 2π disagree — and the loft joins those two
-   * columns. That is a fifth discontinuity in this function, on the front
-   * midline, sitting between the other four it took this long to find.
-   * Integers are the only frequencies that survive a wrap.
-   */
-  const grain = 0.013 * (Math.sin(a * 5) * 0.6 + Math.sin(a * 9 + 1.1) * 0.4);
-  /**
-   * One curve, in four pieces that meet.
-   *
-   * They did not meet. Written as four returns, each carrying the style's
-   * `line` shift at its own strength and the grain at its own strength, every
-   * boundary was a step: 0.028 of a head at the brow, `line`/2 at the temple,
-   * `line`/2 again in front of the ear. A step in the hairline is a notch cut
-   * out of the fringe, and one sat on the forehead of every duelist in the
-   * game — the thing that reads, at the booth's own framing, as the haircut
-   * being broken. The pieces now hand off at a shared value, and the two
-   * modifiers are continuous functions of the same angle rather than per-piece
-   * constants.
-   */
-  let base: number;
-  if (ax < 0.62) base = 0.735 - 0.03 * Math.cos(ax * 2.5);
-  else if (ax < 1.02) base = lerp(BROW_END, 0.66, smooth((ax - 0.62) / 0.4));
-  else if (ax < 1.45) base = lerp(0.66, 0.5, smooth((ax - 1.02) / 0.43));
-  else base = lerp(0.5, S.nape, smooth((ax - 1.45) / (Math.PI - 1.45)));
-  /* Both fade out towards the nape, where `nape` is already saying where the
-     hair stops and a shift on top of it would fight with it. */
-  const shift = S.line * (1 - smooth((ax - 1.0) / 0.5));
-  return base + shift + grain * (1 - smooth((ax - 1.2) / 0.6));
-}
-
-/** Where the forehead's own curve leaves off, so the next piece starts there. */
-const BROW_END = 0.735 - 0.03 * Math.cos(0.62 * 2.5);
-
-function hairStand(
-  spec: StoryCharacter,
-  S: HairShape,
-  H: number,
-  a: number,
-  u: number,
-  /** How far off the midline this point is, as a fraction of H. A crest is the
-      one shape that has to be told in those terms rather than in azimuth. */
-  bx: number
-): number {
-  const ax = fromFront(a);
-  let t = S.thick;
-  /**
-   * Negative right at the hairline, so the shell starts *inside* the skull
-   * and crosses out of it in a clean line.
-   *
-   * Tapered to a thin positive instead, it lies half a millimetre proud of
-   * the scalp all along the edge — two near-coincident surfaces, which
-   * speckle where they cross. The line a haircut is judged by is exactly
-   * that edge.
-   */
-  t *= 0.02 + 1.05 * smooth(u * 2.4);
-  /* Volume on the crown, because hair has a mass and gravity gives it a
-     shape; a shell of constant offset never does. */
-  t *= 1 + 0.55 * smooth((u - 0.35) / 0.6);
-  /* A parting: the shell dips towards the scalp along the middle. */
-  if (S.part > 0) t *= 1 - S.part * 0.75 * win(ax, -0.34, 0.34) * smooth(u * 1.6);
-  /**
-   * Mohawks keep the crest and lose the sides.
-   *
-   * A crest is a strip about the midline, and it has to be said in those
-   * terms. Said in azimuth — full at the front and back, nothing at the
-   * sides — it is a strip everywhere except at the crown, where every azimuth
-   * meets at one point: the front and back lifted that point and the sides did
-   * not, so the shell rose to a single peak and the duelist wore a traffic
-   * cone. Which is what it looked like, from every angle, for as long as
-   * nobody photographed a randomised duelist.
-   *
-   * Off the crest the multiplier is a small *negative*, so the shell sits
-   * inside the skull rather than on it — at nominally zero thickness two
-   * near-coincident surfaces speckle.
-   */
-  if (spec.hair === 'mohawk') {
-    /* Rounded across the strip rather than flat-topped: a plateau with a
-       falloff either side is a slab with two corners on it, and hair does not
-       hold a corner. */
-    t *= 0.02 + 2.1 * Math.cos(Math.min(1, bx / 0.082) * (Math.PI / 2)) ** 0.65;
-  }
-  if (spec.hair === 'spiked') t *= 1 + 0.85 * Math.sin(a * 9) ** 2 * smooth((u - 0.3) / 0.6);
-  if (spec.hair === 'wild') t *= 1 + 0.34 * Math.sin(a * 6.3 + u * 7) + 0.2 * Math.sin(a * 11);
-  /**
-   * Sunk a constant millimetre at the end, rather than by a factor.
-   *
-   * The shell has to start inside the skull and cross out of it, or its edge
-   * speckles where two near-coincident surfaces meet. Doing that with a
-   * negative *multiplier* looks equivalent and is not: a mohawk multiplies
-   * by a second negative off the crest, the two cancel, and hair reappears
-   * in a jagged patch exactly where it was supposed to vanish. Subtracting
-   * cannot change sign twice.
-   */
-  return t * H - 0.005 * H;
-}
-
-/**
- * The hair, as colour on the skull under the shell that gives it shape.
- *
- * The shell has to break out of the skin somewhere, and where it does there is
- * a step — a hard line straight across the forehead, which is the one line a
- * haircut is judged by. The beard solved this long ago and the hair never got
- * the same treatment: paint the scalp the hair's own colour *just before* the
- * shell emerges, and the crossing then happens between two surfaces of the
- * same colour with nothing to see.
- *
- * The paint is driven by the shell's own standoff, not by height. Driven by
- * height it is a band of fixed width, and a band of fixed width smears a long
- * way down the temples where the hairline plunges — a dark smudge on the side
- * of the face, which is worse than the edge it was hiding. Driven by the
- * standoff it tracks the shell exactly: full a hair's breadth before the
- * surface breaks, gone a few millimetres below, and absent entirely at an
- * azimuth where no hair grows, so a mohawk's shaved sides stay shaved.
- */
-function hairPaint(spec: StoryCharacter, S: HairShape, H: number, v: number, x: number, z: number): number {
-  const a = Math.atan2(x, z);
-  const hl = hairlineAt(S, a);
-  /* Below the hairline the standoff stops changing, so it cannot end the paint
-     — that has to be said separately, and tightly. */
-  if (v < hl - 0.014) return 0;
-  const u = (v - hl) / Math.max(0.05, 1.005 - hl);
-  const stand = hairStand(spec, S, H, a, Math.max(0, u), Math.abs(x) / H) / H;
-  /**
-   * Kept well short of full strength, which is the difference between this
-   * working and not.
-   *
-   * At full hair colour the painted fringe is a dark band on light skin, and
-   * its boundary is per-vertex: where the hairline plunges at the temple it
-   * runs across the rings rather than along them, so sixty segments draw it as
-   * a staircase. Two attempts at this failed that way. Held at a third, the
-   * same band reads as what a hairline actually casts — a soft shadow — and a
-   * staircase at that contrast is not visible at any distance the game uses.
-   */
-  return 0.34 * smooth((stand + 0.006) / 0.005) * smooth((v - hl + 0.014) / 0.014);
-}
-
-function buildHair(
-  spec: StoryCharacter,
-  H: number,
-  y: (v: number) => number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number }
-): THREE.BufferGeometry | null {
-  const S = HAIR_SHAPE[spec.hair];
-  if (!S) return null;
-  const m = new MeshBuilder();
-  /* The skull's own azimuths, for the same reason the beard uses them: the
-     hairline is where this shell crosses out of the skull, and two lofts on
-     grids that do not line up cross in a zigzag whose period is the beat
-     between them. At 56 against the skull's 60 that beat was the visible edge
-     of the haircut. */
-  const SEG = SKULL_SEG;
-  /* The shell's edge is a contour in `u`, so it runs across the rows rather
-     than along them, and every row is a step in it. At 22 those steps were
-     coarse enough to read as a staircase down the front of a mohawk. */
-  const ROWS = 36;
-  const DARK = new THREE.Color(0.55, 0.55, 0.58);
-
-  /* Both shared with the *paint* under the shell — see `hairPaint`. Two copies
-     of a hairline that disagree by a millimetre put a ring of bare scalp round
-     the whole head. */
-  const hairline = (a: number) => hairlineAt(S, a);
-  const thickness = (a: number, u: number, bx: number) => hairStand(spec, S, H, a, u, bx);
-
-  const rows: number[][] = [];
-  for (let r = 0; r <= ROWS; r++) {
-    const u = r / ROWS;
-    const ring: number[] = [];
-    for (let k = 0; k < SEG; k++) {
-      const a = (k / SEG) * Math.PI * 2;
-      const v0 = hairline(a);
-      const v = lerp(v0, 1.005, u);
-      const p = surface(Math.min(v, 1), a);
-      const off = thickness(a, u, Math.abs(p.x) / H);
-      /* Pushed out along the scalp's own outward direction, so the shell
-         follows the skull instead of inflating away from its centre — and
-         turned upright as it nears the crown, where "outward" is sideways and
-         a purely radial offset would slide the hair off the top of the head. */
-      const len = Math.hypot(p.x, p.z) || 1;
-      /**
-       * A crest stands up wherever on the skull it is.
-       *
-       * Everything else follows the scalp outward, which near the crown means
-       * sideways — hence the blend. But "outward" for a point on the midline
-       * is *forwards and backwards*, so the part of a mohawk crossing the top
-       * of the head was pushed fore and aft instead of up, and the ridge sagged
-       * into two humps with a notch between them at the very crown.
-       */
-      const crest =
-        spec.hair === 'mohawk' ? 1 - smooth((Math.abs(p.x) / H - 0.02) / 0.09) : 0;
-      const up = Math.max(smoothEdge(v, 0.84, 1.0), crest);
-      const side = 1 - up;
-      ring.push(
-        m.vertex(
-          p.x + (p.x / len) * off * side,
-          p.y + off * up,
-          p.z + (p.z / len) * off * side,
-          u < 0.12 ? DARK : undefined
-        )
-      );
-    }
-    rows.push(ring);
-  }
-  m.loft(rows);
-
-  if (S.tail) addHairMass(m, S.tail, H, y, surface);
-  if (S.mantle) addMantle(m, S.mantle, H, surface);
-  const g = m.build();
-  return g;
-}
-
-/** Ponytails, knots, buns and braids: a mass of hair that is not on the scalp. */
-function addHairMass(
-  m: MeshBuilder,
-  kind: number,
-  H: number,
-  y: (v: number) => number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number }
-): void {
-  const anchor = surface(kind === 2 ? 0.99 : 0.78, Math.PI);
-  const SEG = 16;
-
-  /**
-   * A plaited rope from the anchor, drooping as it goes.
-   *
-   * `plait` is what stops it being a spike. Long, thin and smoothly tapered,
-   * two of these hanging down the back read as a pair of chopsticks pushed
-   * into the hair — which is what the braids looked like. A real plait is
-   * short for its width and visibly *segmented*: the light catches a run of
-   * swellings down it, and that texture is the whole of what says "braid" at
-   * any distance where the strands themselves are invisible.
-   */
-  const rope = (x0: number, len: number, r0: number, r1: number, droop: number, plait = 0) => {
-    const rings: number[][] = [];
-    const STEPS = 24;
-    for (let s = 0; s <= STEPS; s++) {
-      const t = s / STEPS;
-      /* Full for most of its length, then rounded off — tapered linearly to a
-         capped point it reads as a spike rather than a plait. */
-      const r =
-        lerp(r0, r1, t ** 2) *
-        (1 + plait * Math.sin(t * 21)) *
-        H *
-        Math.sqrt(Math.max(0.06, 1 - (t > 0.86 ? (t - 0.86) / 0.14 : 0) ** 2));
+    /* Close the crown with an arc, tangent where it leaves the table. */
+    const rTop = skullAt(0.97, 1);
+    const slope = (skullAt(0.97, 1) - skullAt(0.9, 1)) / (0.07 * H);
+    const dome = domeRings(rTop, Math.min(-0.2, slope), 5);
+    for (let d = 1; d < dome.length; d++) {
+      const { scale, rise } = dome[d];
       const ring: number[] = [];
-      for (let k = 0; k < SEG; k++) {
-        const a = (k / SEG) * Math.PI * 2;
+      for (let k = 0; k < SKULL_SEG; k++) {
+        const a = (k / SKULL_SEG) * Math.PI * 2;
+        const q = sectionPoint(rTop * scale, skullAt(0.97, 2) * scale, skullAt(0.97, 3) * scale, 2, a);
+        ring.push(m.vertex(q.x, y(0.97) + rise, q.z));
+      }
+      if (ring.length) rings.push(ring);
+    }
+    m.loft(rings);
+    const apex = m.vertex(0, y(0.97) + dome[dome.length - 1].rise + 0.002 * H, 0);
+    m.cap(rings[rings.length - 1], apex, 1);
+    const chin = m.vertex(0, y(0) - 0.01 * H, 0.02 * H);
+    m.cap(rings[0], chin, -1);
+    add(group, m.build(), skinT, LINE);
+  }
+
+  /* ---------------- ears ---------------- */
+
+  for (const side of [1, -1] as const) {
+    const m = new MeshBuilder();
+    const ex = skullAt(0.44, 1) * 0.98;
+    const rows = 5;
+    const rings: number[][] = [];
+    for (let i = 0; i <= rows; i++) {
+      const t = i / rows;
+      const r = Math.sin(Math.PI * Math.min(1, 0.15 + t * 0.85)) * 0.05 * H;
+      const ring: number[] = [];
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2;
         ring.push(
           m.vertex(
-            anchor.x + x0 * H + Math.sin(a) * r,
-            anchor.y - t * len * H - droop * t * t * H,
-            anchor.z - t * 0.1 * H + Math.cos(a) * r
+            side * (ex + t * 0.028 * H),
+            y(0.4) + Math.cos(a) * r * 1.25 + 0.01 * H,
+            -0.045 * H + Math.sin(a) * r * (side === 1 ? 1 : -1)
           )
         );
       }
       rings.push(ring);
     }
-    m.loft([...rings].reverse());
-    m.cap(rings[rings.length - 1], m.vertex(anchor.x + x0 * H, anchor.y - len * H - droop * H - r1 * H, anchor.z - 0.1 * H), -1);
-  };
-
-  /* Shorter and thicker than they were, and plaited. */
-  if (kind === 1) rope(0, 0.98, 0.132, 0.062, 0.12, 0.05);
-  if (kind === 3) {
-    rope(-0.235, 0.86, 0.105, 0.055, 0.1, 0.1);
-    rope(0.235, 0.86, 0.105, 0.055, 0.1, 0.1);
+    m.loft(rings);
+    add(group, m.build(), skinT);
   }
-  if (kind === 2 || kind === 4) {
-    /* A knot or a bun: a squashed ball sitting on the crown or the nape. */
-    const cy = kind === 2 ? y(1.05) : anchor.y + 0.06 * H;
-    const cz = kind === 2 ? anchor.z * 0.25 : anchor.z - 0.09 * H;
-    const rings: number[][] = [];
-    /* Poles excluded from the loft: at `th` = 0 and π the radius is zero, so
-       those rings would be sixteen vertices on one point. The zero-area quads
-       that makes contribute nothing to `computeVertexNormals`, so the vertices
-       at the top of the bun end up with no normal at all and shade black —
-       which is what the topknot had sitting on its crown. */
-    for (let s = 1; s < 12; s++) {
-      const th = (s / 12) * Math.PI;
-      const r = Math.sin(th) * 0.185 * H;
+
+  /* ---------------- eyes ---------------- */
+
+  const eyeW = 0.24 * H;
+  const eyeH = lerp(0.15, 0.1, spec.eyeShape) * H * (female ? 1.16 : 1);
+  const eyeX = 0.152 * H;
+  const eyeColor = new THREE.Color(EYE_COLORS[spec.eyeColor] ?? EYE_COLORS[0]);
+  const irisDark = eyeColor.clone().multiplyScalar(0.42);
+  const irisLight = eyeColor.clone().lerp(new THREE.Color('#ffffff'), 0.45);
+  const RIM = new THREE.Color(0.14, 0.09, 0.11);
+  const SCLERA = new THREE.Color(0.985, 0.975, 0.965);
+  const PUPIL = new THREE.Color(0.05, 0.04, 0.05);
+  const GLINT = new THREE.Color(1.6, 1.6, 1.6);
+
+  /** Where the face wall is at the eye line, for placing plates and lids. */
+  const faceZ = skullAt(EYE_V, 2) * 0.93;
+
+  /**
+   * One eye, drawn the way the reference draws one: **wide and flat, under
+   * one straight heavy lash line**, with the iris hanging from that line
+   * like a lantern. Not a round doll eye — the top of the shape is a
+   * plateau, the bottom a shallow arc, and the lash bar carries the whole
+   * expression.
+   *
+   * The geometry is a grid clamped to the ellipse and then flattened along
+   * the top, so the plate's edge IS the drawn shape. Paint is a fixed
+   * stack, innermost winning: sclera, iris (top-shaded, ringed), pupil, one
+   * catchlight shared between both eyes, then the rim — a heavy straight
+   * bar along the top, a thin line elsewhere.
+   */
+  const eyePlate = (side: 1 | -1) => {
+    const m = new MeshBuilder();
+    const NU = 28;
+    const NV = 20;
+    /* Where the top flattens into the lash plateau. */
+    const P = 0.38;
+    const grid: number[][] = [];
+    for (let iv = 0; iv <= NV; iv++) {
+      const w0 = (iv / NV) * 2 - 1;
+      const row: number[] = [];
+      for (let iu = 0; iu <= NU; iu++) {
+        const u0 = (iu / NU) * 2 - 1;
+        const r0 = Math.hypot(u0, w0);
+        const cl = r0 > 1 ? 1 / r0 : 1;
+        const u = u0 * cl;
+        const w = w0 * cl;
+        /* Flatten the top: everything above the plateau squashes onto it. */
+        const ws = w > P ? P + (w - P) * 0.22 : w;
+        const r = Math.min(1, r0);
+        const bulge = Math.sqrt(Math.max(0, 1 - r * r)) * 0.014 * H;
+
+        /* ---- the paint stack ---- */
+        let tint = SCLERA;
+        const iu2 = (u + side * 0.06) / 0.44;
+        const iw2 = (w - 0.12) / 0.86;
+        const ir = Math.hypot(iu2, iw2);
+        if (ir < 1) {
+          tint = irisLight.clone().lerp(eyeColor, smooth(ir * 1.05));
+          if (ir > 0.76) tint = irisDark;
+          /* The iris darkens where it slides under the lash bar. */
+          if (iw2 > 0.28) tint = irisDark;
+          if (Math.hypot(iu2 / 0.5, iw2 / 0.52) < 1) tint = PUPIL;
+          if (Math.hypot((u + side * 0.06 - 0.12) / 0.12, (w - 0.14) / 0.2) < 1) tint = GLINT;
+        }
+        /* The lash bar: one straight heavy line along the flat top. */
+        if (w > 0.44) tint = RIM;
+        /* Elsewhere the rim is a thin closing line. */
+        if (r0 > 0.9) tint = RIM;
+        if (female && w < -0.55 && u * side > 0.55) tint = RIM;
+
+        row.push(m.vertex(u * eyeW * 0.5, ws * eyeH * 0.5, bulge, tint));
+      }
+      grid.push(row);
+    }
+    for (let iv = 0; iv < NV; iv++) {
+      for (let iu = 0; iu < NU; iu++) {
+        m.quad(grid[iv][iu], grid[iv][iu + 1], grid[iv + 1][iu + 1], grid[iv + 1][iu]);
+      }
+    }
+    const mesh = add(group, m.build(), eyeMat);
+    mesh.position.set(side * eyeX, y(EYE_V), faceZ);
+    mesh.rotation.y = side * 0.2;
+    mesh.rotation.x = -0.05;
+    return mesh;
+  };
+  eyePlate(1);
+  eyePlate(-1);
+
+  /* Lids: a skin plate hinged at the eye's top edge. Open, it is the upper
+     lid's line; shut, it curtains the whole plate. The blink is a rotation,
+     driven by the body's pose through the joints below. */
+  const lidOpen = -0.18;
+  const lidShut = -1.15;
+  const buildLid = (side: 1 | -1) => {
+    const hinge = new THREE.Group();
+    hinge.position.set(side * eyeX, y(EYE_V) + eyeH * 0.5, faceZ + 0.012 * H);
+    hinge.rotation.y = side * 0.24;
+    group.add(hinge);
+    const m = new MeshBuilder();
+    const NU = 10;
+    const rows: number[][] = [];
+    for (let iv = 0; iv <= 4; iv++) {
+      const t = iv / 4;
+      const row: number[] = [];
+      for (let iu = 0; iu <= NU; iu++) {
+        const u = (iu / NU) * 2 - 1;
+        const wobble = Math.sqrt(Math.max(0, 1 - u * u));
+        row.push(m.vertex(u * eyeW * 0.56, -t * eyeH * 1.08 * wobble, 0.012 * H * wobble * (1 - t * 0.4)));
+      }
+      rows.push(row);
+    }
+    for (let iv = 0; iv < 4; iv++) {
+      for (let iu = 0; iu < NU; iu++) {
+        m.quad(rows[iv][iu], rows[iv][iu + 1], rows[iv + 1][iu + 1], rows[iv + 1][iu]);
+      }
+    }
+    add(hinge, m.build(), skinT);
+    hinge.rotation.x = lidOpen;
+    return hinge;
+  };
+  const lidL = buildLid(1);
+  const lidR = buildLid(-1);
+
+  /* ---------------- brows ---------------- */
+
+  const browTint = new THREE.Color(0.42, 0.35, 0.36);
+  for (const side of [1, -1] as const) {
+    const m = new MeshBuilder();
+    const len = eyeW * 1.15;
+    const thick = lerp(0.02, 0.034, spec.brow) * H * (female ? 0.7 : 1);
+    /** Brow cast: 0 a gentle arc, 1 a hard determined slant. */
+    const slant = lerp(-0.008, 0.045, spec.brow) * H;
+    const rows: number[][] = [];
+    for (let iv = 0; iv <= 1; iv++) {
+      const row: number[] = [];
+      for (let iu = 0; iu <= 8; iu++) {
+        const t = iu / 8;
+        const bx = side * (eyeX - eyeW * 0.55 + t * len);
+        const arch = Math.sin(t * Math.PI) * 0.012 * H;
+        const by = y(BROW_V) + arch - t * slant + iv * thick;
+        row.push(m.vertex(bx, by, faceZ + 0.016 * H - t * 0.012 * H, browTint));
+      }
+      rows.push(row);
+    }
+    for (let iu = 0; iu < 8; iu++) {
+      if (side === 1) m.quad(rows[0][iu], rows[0][iu + 1], rows[1][iu + 1], rows[1][iu]);
+      else m.quad(rows[0][iu + 1], rows[0][iu], rows[1][iu], rows[1][iu + 1]);
+    }
+    const mesh = add(group, m.build(), hairMat);
+    mesh.material = hairMat;
+  }
+
+  /* ---------------- nose ---------------- */
+
+  {
+    /* The anime nose: one small, sharp wedge — its point is the whole
+       feature, and the profile is where it earns its place. */
+    const m = new MeshBuilder();
+    const rows: number[][] = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4;
+      const v = NOSE_V - 0.05 + t * 0.1;
+      /* The point is at the BOTTOM — the tip — and the wedge widens as it
+         climbs into the bridge. The first cut had it upside down, and an
+         upward point is a horn, not a nose. */
+      const w = lerp(0.007, 0.024, t) * H;
+      const stand = lerp(0.054, 0.012, smooth(t * 1.1)) * H;
       const ring: number[] = [];
-      for (let k = 0; k < SEG; k++) {
-        const a = (k / SEG) * Math.PI * 2;
-        ring.push(m.vertex(Math.sin(a) * r, cy - Math.cos(th) * 0.14 * H, cz + Math.cos(a) * r));
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const q = sectionPoint(w, stand + 0.004 * H, 0.002 * H, 1.7, a);
+        ring.push(m.vertex(q.x, y(v), skullAt(v, 2) * 0.97 + q.z));
+      }
+      rows.push(ring);
+    }
+    m.loft(rows);
+    add(group, m.build(), skinT);
+  }
+
+  /* ---------------- hair ---------------- */
+
+  const TIPDARK = new THREE.Color(0.9, 0.88, 0.92);
+  let hairGroup: THREE.Group | null = null;
+
+  /** One chunky strand: a curved, tapering wedge from a scalp point. */
+  const strand = (
+    m: MeshBuilder,
+    px: number,
+    py: number,
+    pz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    len: number,
+    w: number,
+    curl: number
+  ) => {
+    const d = Math.hypot(dx, dy, dz) || 1;
+    const ux = dx / d;
+    const uy = dy / d;
+    const uz = dz / d;
+    /* A side vector for the ribbon's width. */
+    let sx = -uz;
+    let sz = ux;
+    const sl = Math.hypot(sx, 0, sz) || 1;
+    sx /= sl;
+    sz /= sl;
+    const rings: number[][] = [];
+    const ROWS = 5;
+    for (let i = 0; i <= ROWS; i++) {
+      const t = i / ROWS;
+      const taper = 1 - t * t;
+      const wt = w * Math.max(0.06, taper);
+      /* The curl bends the strand tip-down (or wherever `curl` points). */
+      const cx = px + ux * len * t;
+      const cy = py + uy * len * t - curl * len * t * t;
+      const cz = pz + uz * len * t - curl * len * t * t * 0.3;
+      const ring: number[] = [];
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const q = sectionPoint(wt, wt * 0.62, wt * 0.62, 1.7, a);
+        const tint = t > 0.7 ? TIPDARK : undefined;
+        ring.push(m.vertex(cx + sx * q.x + ux * 0, cy + q.z * 0.4, cz + sz * q.x + q.z * 0.6, tint));
       }
       rings.push(ring);
     }
     m.loft(rings);
-    m.cap(rings[0], m.vertex(0, cy - 0.14 * H, cz), -1);
-    m.cap(rings[rings.length - 1], m.vertex(0, cy + 0.14 * H, cz), 1);
-  }
-}
+    const tip = m.vertex(px + ux * len, py + uy * len - curl * len, pz + uz * len - curl * len * 0.3, TIPDARK);
+    m.cap(rings[ROWS], tip, 1);
+  };
 
-/**
- * Long hair: a curtain hung from the nape, down the back and over the
- * shoulders.
- *
- * A scalp shell cannot be long. However far the hairline is pushed down the
- * neck, hair that follows the skull is a hat — the thing that reads as length
- * is mass *leaving* the head, falling past the jaw and breaking on the
- * shoulders. Drawn with the hair material, which is double-sided, so the
- * inside of the curtain is there when the head turns.
- */
-function addMantle(
-  m: MeshBuilder,
-  len: number,
-  H: number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number }
-): void {
-  const ROWS = 20;
-  const COLS = 34;
-  const grid: number[][] = [];
-  for (let i = 0; i <= ROWS; i++) {
-    const t = i / ROWS;
-    const line: number[] = [];
-    for (let k = 0; k <= COLS; k++) {
-      /* The back two-thirds of the head: hair falls behind the ears, not over
-         the face. Brought forward to 0.8 while the ear was still surfacing at
-         the free edge, it put a hard-edged sheet across the brow instead —
-         the clearance belongs in the standoff below, not in how far round the
-         face the cloth reaches. */
-      const a = lerp(0.95, Math.PI * 2 - 0.95, k / COLS);
-      /**
-       * Hung the same height all the way round, above both the ear and the
-       * scalp shell's hairline.
-       *
-       * The same height all the way round because the alternative is the
-       * hairline, which for a long cut runs from the temple down to the nape:
-       * the top of the curtain then rose and fell by most of a head and the hem
-       * inherited every wobble of it.
-       *
-       * Above those two things because of what is otherwise between them. Hung
-       * at ear level the curtain's free edge sat *below* where the shell stops
-       * growing, and the strip of head between the two showed through; pushing
-       * the curtain out to clear the ear only opened that strip wider, and the
-       * ear appeared in it. Tucked under the shell there is no gap to appear
-       * in, and started above the ear there is no tip to show over the lip.
-       *
-       * 0.68, not 0.58. The shell's hairline is not level: across the azimuths
-       * this curtain spans it peaks at 0.639, at the temple where the long
-       * cut's fringe is highest — so a curtain hung at 0.58 was six hundredths
-       * of a head *below* where the shell begins for part of its width, and
-       * its own top edge was showing there. Above the highest the hairline
-       * ever gets, it cannot be.
-       */
-      const top = surface(0.68, a);
-      /* Widens to the head's own width within the first fifth of the drop,
-         then falls straight with a little flare at the hem. */
-      const wide = surface(0.3, a);
-      const blend = Math.min(1, t * 4.5);
-      /* Standing well off the body as it falls. At a gentler flare the curtain
-         drops *inside* the jacket and is swallowed by the shoulders, which
-         reads as a hood rather than as hair. */
-      const flare = 1 + 0.95 * t * t;
-      const x = lerp(top.x, wide.x * flare, blend);
-      const z = lerp(top.z, wide.z * flare, blend);
-      /**
-       * A bulge over the ear, and nothing at the top edge.
-       *
-       * Flush against the scalp the ear came straight through this curtain — a
-       * skin-coloured blob with a torn outline in the middle of a head of black
-       * hair, at the one angle the open world always shows. So it stands off.
-       * But the standoff has to be *zero where the curtain ends*: a free edge
-       * held a centimetre off the head is a ledge running round the skull, and
-       * the ear reappears over the top of it. Start at the shell's own
-       * thickness, swell past the ear, settle.
-       *
-       * Centred on 2.0 radians, not on the ear's nominal π/2. An ear is set
-       * back from the skull's widest point by 0.14 H, which puts the azimuth it
-       * actually occupies well round towards the nape; a bulge centred where
-       * the ear ought to be misses it by most of its width, and leaves exactly
-       * the torn patch it was added to close.
-       *
-       * The window opens at 0.5, not at the 0.85 it was written with, because
-       * the ear is not the only thing standing proud of the skull under this
-       * cloth. The lid caps wrap round to the eye's outer corner, which sits
-       * at ~0.9–1.1 radians from the front — right where a window opening at
-       * 0.85 is still at zero — and on the far side of a three-quarter view
-       * the corner of the eye surfaced through the curtain as a row of
-       * skin-coloured dashes at the temple. Opening earlier puts real
-       * clearance over the eye corner while the front edge itself, at 0.95,
-       * still carries only a third of the swell.
-       */
-      const bulge = 0.055 * win(fromFront(a), 0.5, 3.05) * smooth(t / 0.07) * (1 - smooth((t - 0.3) / 0.3));
-      const off = (0.012 + bulge) * H;
-      const rlen = Math.hypot(x, z) || 1;
-      line.push(m.vertex(x + (x / rlen) * off, top.y - t * len * H, z + (z / rlen) * off));
-    }
-    grid.push(line);
-  }
-  for (let i = 0; i < ROWS; i++) {
-    for (let k = 0; k < COLS; k++) {
-      m.quad(grid[i][k], grid[i][k + 1], grid[i + 1][k + 1], grid[i + 1][k]);
-    }
-  }
-}
+  /** A point on the scalp with its outward direction, by azimuth and v. */
+  const scalp = (a: number, v: number) => {
+    const hw = skullAt(v, 1);
+    const fr = skullAt(v, 2);
+    const bk = skullAt(v, 3);
+    const q = sectionPoint(hw, fr, bk, skullSq(v), a);
+    const r = Math.hypot(q.x, q.z) || 1;
+    return { x: q.x, y: y(v), z: q.z, nx: q.x / r, nz: q.z / r };
+  };
 
-/* ------------------------------------------------------------------ */
-/* Facial hair                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Where a given beard grows, as a 0..1 mask over the face.
- *
- * Used twice: as a tint, so stubble is a shadow rather than a shape, and as a
- * height, so a full beard has a silhouette. Sharing one mask is what keeps the
- * shaved edge of a goatee in the same place in both.
- */
-function beardMask(kind: StoryCharacter['facialHair'], v: number, bx: number, fz: number): number {
-  if (kind === 'none' || fz <= 0) return 0;
-  /* Stops at the chin. Below v = 0 the skull table is being extrapolated and
-     the surface is a small ring around the throat — a beard grown there is a
-     black collar on the neck, which is exactly how it looked. */
-  const jawline = win(v, 0.0, 0.36) * win(bx, -0.28, 0.28);
-  /* Wide enough to be a chin, not a chin-shaped lozenge. Narrower than this it
-     stopped short of the jaw on both sides, and what was left hanging under
-     the lower lip — rounded, and in a warm hair colour a shade off the lips
-     themselves — read as a tongue stuck out. */
-  const chin = win(v, 0.0, 0.22) * win(bx, -0.15, 0.15);
-  const tache = win(v, 0.232, 0.3) * win(bx, -0.105, 0.105);
-  const cheek = win(v, 0.16, 0.44) * win(bx, 0.1, 0.32);
-  /* In front of the ear, not beside the eye: at bx 0.19 this reached the
-     outer corner of the socket and speckled it. */
-  const burns = win(v, 0.27, 0.5) * win(bx, 0.25, 0.37);
-  let m: number;
-  switch (kind) {
-    case 'stubble':
-      m = union(jawline * 0.85, chin * 0.7, tache * 0.7, cheek * 0.55);
-      break;
-    case 'moustache':
-      m = tache;
-      break;
-    case 'goatee':
-      m = union(chin, tache * 0.85);
-      break;
-    case 'full':
-      m = union(jawline, chin, tache, cheek * 0.9, burns * 0.7);
-      break;
-    case 'sideburns':
-      m = burns;
-      break;
-    default:
-      return 0;
-  }
-  /* Nothing grows on the lips. Left in, a full beard swallows the mouth and
-     the duelist ends up wearing its own face as a scarf. */
-  /* Faded round the side of the head rather than cut off at the mid-plane —
-     see `frontness`. A beard that stopped dead there had a vertical edge in
-     front of the ear, on the shell as well as in the tint. */
-  return Math.max(0, m - win(v, 0.145, 0.268) * win(bx, -0.1, 0.1) * 1.3) * fz;
-}
-
-/**
- * The part of a beard that has to be geometry rather than tint.
- *
- * Stubble stays flat — it is a shadow, and giving it thickness makes a face
- * look dusty. Everything longer gets a shell lifted off the skin by the mask,
- * so the silhouette changes too.
- */
-function buildBeard(
-  spec: StoryCharacter,
-  H: number,
-  surface: (v: number, a: number) => { x: number; y: number; z: number },
-  tint: THREE.Color
-): THREE.BufferGeometry | null {
-  const kind = spec.facialHair;
   /**
-   * Only what has a silhouette gets geometry.
-   *
-   * Stubble is a shadow. So, at this scale, are a moustache and a pair of
-   * sideburns: their mask covers so little of the face that the shell emerges
-   * as a few islands with holes between them, which reads as damage rather
-   * than hair. They are painted instead; a full beard and a goatee have real
-   * mass and keep their shell.
+   * The base cap: an inflated copy of the scalp above the hairline, so the
+   * strands always have a solid mass under them and scalp never shows
+   * through. The hairline sits *low* — an anime forehead is mostly fringe —
+   * and drops further at the temples and nape.
    */
-  if (kind === 'none' || kind === 'stubble' || kind === 'moustache' || kind === 'sideburns') return null;
-  const height = kind === 'full' ? 0.026 : 0.02;
-
-  const m = new MeshBuilder();
-  const V0 = 0.0;
-  /**
-   * High enough that the mask has died before the last row.
-   *
-   * The shell's edge is supposed to fall out of the arithmetic: where the mask
-   * is small the surface sits inside the skin and cannot be seen. That only
-   * works if the range covers the whole mask. Cut at 0.34 it did not — the
-   * cheek window is still at two-thirds of its peak there, so the top row stood
-   * 0.018 H proud of the face and the loft left it open, which is a hole at the
-   * top of the cheek looking into the inside of the beard. By 0.47 the last
-   * surviving term is under the lift threshold everywhere, so the final row is
-   * back under the skin where an edge cannot be seen. It also lets a full
-   * beard's sideburn exist as geometry at all, instead of being sheared off
-   * halfway up.
-   */
-  const V1 = 0.46;
-  const rings: number[][] = [];
-
-  /* Rows snapped to the skull's own rings, and only those inside the beard's
-     range — see `SKULL_RINGS`. */
-  for (let i = Math.floor(V0 * SKULL_RINGS); i <= Math.ceil(V1 * SKULL_RINGS); i++) {
-    const v = i / SKULL_RINGS;
-    const ring: number[] = [];
-    for (let k = 0; k < SKULL_SEG; k++) {
-      const a = (k / SKULL_SEG) * Math.PI * 2;
-      const p = surface(v, a);
-      /* Sunk half a millimetre-of-a-head into the skin before the mask lifts
-         it out, so the shell only exists where the beard does. Where the mask
-         is zero the surface is inside the skull and cannot be seen; where it
-         is one the beard stands proud. The cut edge falls out of the
-         arithmetic instead of needing a separate outline. */
-      /* Raised only where the tint has already saturated, so the shell's own
-         edge — the place two surfaces cross, and the place a staircase would
-         show — is buried well inside a region that is already hair-coloured. */
-      /**
-       * Full height as soon as the beard is there at all, rather than
-       * following the mask up.
-       *
-       * The mask is five overlapping lobes — jaw, chin, moustache, cheek,
-       * sideburn — and mapping its whole range onto the shell's height gave
-       * each lobe its own dome. What that draws is not a beard: it is five
-       * balls of clay stuck round a mouth, which is exactly what a randomised
-       * duelist with a full beard was wearing. Hair grown to one length is one
-       * mass at one thickness with an edge round it, so the band that maps
-       * mask to height is narrow and everything inside it is a plateau.
-       */
-      const mask = beardMask(kind, v, Math.abs(p.x) / H, frontness(p.z, H));
-      const off = (smooth(clamp01((mask - 0.3) / 0.17)) * height - 0.003) * H;
-      const len = Math.hypot(p.x, p.z) || 1;
-      ring.push(m.vertex(p.x + (p.x / len) * off, p.y, p.z + (p.z / len) * off, tint));
+  const cap = (m: MeshBuilder, hairlineFront: number, inflate: number) => {
+    const rings: number[][] = [];
+    const STEPS = 12;
+    for (let i = 0; i <= STEPS; i++) {
+      const t = i / STEPS;
+      const ring: number[] = [];
+      for (let k = 0; k < SKULL_SEG; k++) {
+        const a = (k / SKULL_SEG) * Math.PI * 2;
+        const away = Math.abs(a > Math.PI ? a - Math.PI * 2 : a) / Math.PI;
+        const v0 = hairlineFront - 0.3 * smooth(away * 1.4);
+        const v = lerp(v0, 0.99, t);
+        /* Snug at the crown: the cap is the base coat, and the strands are
+           the silhouette — a cap that balloons swallows them whole. */
+        const swell = inflate * (1 - 0.3 * t);
+        const hw = skullAt(v, 1) + swell;
+        const fr = skullAt(v, 2) + swell * (v > hairlineFront + 0.04 ? 1 : 0.35);
+        const bk = skullAt(v, 3) + swell;
+        const q = sectionPoint(hw, fr, bk, skullSq(v), a);
+        ring.push(m.vertex(q.x, y(v) + t * inflate * 0.5, q.z));
+      }
+      rings.push(ring);
     }
-    rings.push(ring);
-  }
-  m.loft(rings);
-  return m.build();
-}
-
-/* ------------------------------------------------------------------ */
-/* Lids                                                                */
-/* ------------------------------------------------------------------ */
-
-/**
- * A lid: a spherical cap around +Y, painted dark along its rim.
- *
- * The dark rim is the lash line, and it is doing a job out of all proportion
- * to its cost. An eye with no lash line has no edge to it, and a face whose
- * eyes have no edge looks embalmed no matter what the rest of the head does.
- * It has to be geometry-aware rather than a ring of its own, so it stays put
- * when the lid rotates.
- */
-function lidGeometry(r: number, half: number, lash: boolean): THREE.BufferGeometry {
-  const g = new THREE.SphereGeometry(r, 28, 18, 0, Math.PI * 2, 0, half);
-  const p = g.attributes.position;
-  const col: number[] = [];
-  for (let i = 0; i < p.count; i++) {
-    const th = Math.acos(Math.max(-1, Math.min(1, p.getY(i) / r)));
-    const rim = smoothEdge(th, half - 0.2, half);
-    /* Only the front half: the rest of the shell is buried in the socket, and
-       darkening it there would show as a bruise above the eye. */
-    const front = smoothEdge(p.getZ(i) / r, -0.1, 0.35);
-    const k = 1 - rim * front * (lash ? 0.86 : 0.42);
-    col.push(k, k * 0.97, k * 0.95);
-  }
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  return g;
-}
-
-/* ------------------------------------------------------------------ */
-/* The iris                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * A disc of iris lying *on* the eyeball rather than in front of it.
- *
- * Every vertex sits on a sphere a hair larger than the ball, which sounds
- * fussy until you get it wrong: a flat disc pushed forward until its centre
- * clears the sclera leaves its rim buried, and all that shows through is the
- * pupil — which reads, convincingly, as an eye with no iris at all.
- */
-function irisGeometry(eyeR: number): THREE.BufferGeometry {
-  const R = eyeR * 0.56;
-  const RINGS = 9;
-  const SEG = 32;
-  const shell = eyeR * 1.006;
-  const pos: number[] = [];
-  const col: number[] = [];
-  const idx: number[] = [];
-
-  for (let j = 0; j <= RINGS; j++) {
-    const t = j / RINGS;
-    const r = R * t;
-    const z = Math.sqrt(Math.max(0, shell * shell - r * r));
-    for (let i = 0; i <= SEG; i++) {
-      const a = (i / SEG) * Math.PI * 2;
-      pos.push(Math.cos(a) * r, Math.sin(a) * r, z);
-      /* Pupil at the centre, a darker limbal ring at the edge, and fibres
-         between them — the three things the eye actually notices. */
-      const pupil = t < 0.42 ? 1 : 0;
-      const limb = smoothEdge(t, 0.86, 1);
-      const fibre = 0.86 + 0.28 * Math.sin(a * 22) * (t > 0.45 ? 1 : 0);
-      const k = pupil ? 0.04 : fibre * (1 - limb * 0.75);
-      col.push(k, k, k);
+    /* Closed with an arc, exactly like the skull it covers: a straight fan
+       from the last ring undercuts the dome beneath it, and the skull's own
+       crown surfaced through the hair as a crescent of scalp. */
+    const swellTop = inflate * 0.7;
+    const rTop = skullAt(0.99, 1) + swellTop;
+    const slope = (skullAt(0.99, 1) - skullAt(0.94, 1)) / (0.05 * H);
+    const dome = domeRings(rTop, Math.min(-0.25, slope), 4);
+    for (let d = 1; d < dome.length; d++) {
+      const { scale, rise } = dome[d];
+      const ring: number[] = [];
+      for (let k = 0; k < SKULL_SEG; k++) {
+        const a = (k / SKULL_SEG) * Math.PI * 2;
+        const q = sectionPoint(
+          rTop * scale,
+          (skullAt(0.99, 2) + swellTop) * scale,
+          (skullAt(0.99, 3) + swellTop) * scale,
+          2,
+          a
+        );
+        ring.push(m.vertex(q.x, y(0.99) + inflate * 0.5 + rise, q.z));
+      }
+      rings.push(ring);
     }
-  }
-  for (let j = 0; j < RINGS; j++) {
-    for (let i = 0; i < SEG; i++) {
-      const a = j * (SEG + 1) + i;
-      const b = a + SEG + 1;
-      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    /* One continuous loft, hairline to dome apex. */
+    m.loft(rings);
+    const apex = m.vertex(0, y(0.99) + inflate * 0.5 + dome[dome.length - 1].rise + 0.004 * H, 0);
+    m.cap(rings[rings.length - 1], apex, 1);
+  };
+
+  const buildHair = () => {
+    const id = spec.hair;
+    if (id === 'shaved') return null;
+    const g = new THREE.Group();
+    group.add(g);
+    const m = new MeshBuilder();
+
+    /**
+     * The fringe: a few BIG pointed lobes falling over the brow — the
+     * reference's whole face is framed by five shapes, not fifty. Each lobe
+     * is wide enough to overlap its neighbours by half, roots buried deep
+     * in the cap, tips reaching the brow line. `len` is how far past the
+     * hairline they fall; big styles send them to the eyes.
+     */
+    const fringe = (n: number, v: number, len: number, w: number) => {
+      for (let i = 0; i < n; i++) {
+        const a = ((i + 0.5) / n - 0.5) * 1.5;
+        const p = scalp(a, v);
+        const stagger = 1 + 0.22 * Math.sin(i * 2.1 + 0.6);
+        const sweep = Math.sin(i * 1.7) * 0.15;
+        strand(
+          m,
+          p.x,
+          p.y + 0.03 * H,
+          p.z - 0.02 * H,
+          p.nx * 0.18 + sweep,
+          -0.9,
+          p.nz * 0.42,
+          len * stagger,
+          w * 3.1,
+          0.06
+        );
+      }
+    };
+
+    switch (id) {
+      case 'crop': {
+        cap(m, 0.6, 0.032 * H);
+        fringe(4, 0.6, 0.17 * H, 0.055 * H);
+        break;
+      }
+      case 'swept': {
+        cap(m, 0.64, 0.038 * H);
+        /* Swept back: ridges rising off the forehead, streaming over the
+           crown, tips kicking *up* at the back — the flick is the style. */
+        for (let i = 0; i < 6; i++) {
+          const a = ((i + 0.5) / 6 - 0.5) * 1.9;
+          const p = scalp(a, 0.84);
+          strand(m, p.x, p.y - 0.005 * H, p.z + 0.02 * H, p.nx * 0.25, 0.85, -0.9, 0.38 * H, 0.08 * H, -0.16);
+        }
+        for (let i = 0; i < 3; i++) {
+          const a = Math.PI + (i / 2 - 0.5) * 1.2;
+          const p = scalp(a, 0.52);
+          strand(m, p.x, p.y, p.z, p.nx * 0.3, -0.35, p.nz * 0.9, 0.2 * H, 0.06 * H, -0.22);
+        }
+        break;
+      }
+      case 'spiked': {
+        cap(m, 0.6, 0.034 * H);
+        /* The hero head: big spikes swept up and back, smaller at the
+           temples, every one placed by hand off the midline. */
+        const spikes: [number, number, number, number, number][] = [
+          /* a, v, up, back, len */
+          [0.0, 0.86, 1.15, -0.2, 0.42],
+          [0.55, 0.83, 1.0, -0.05, 0.38],
+          [-0.55, 0.83, 1.0, -0.05, 0.38],
+          [1.1, 0.74, 0.8, 0.15, 0.34],
+          [-1.1, 0.74, 0.8, 0.15, 0.34],
+          [1.9, 0.76, 0.75, 0.5, 0.36],
+          [-1.9, 0.76, 0.75, 0.5, 0.36],
+          [2.7, 0.8, 0.9, 0.65, 0.4],
+          [-2.7, 0.8, 0.9, 0.65, 0.4],
+          [Math.PI, 0.84, 1.0, 0.75, 0.44],
+        ];
+        for (const [a, v, up, back, len] of spikes) {
+          const p = scalp(a, v);
+          strand(m, p.x, p.y - 0.012 * H, p.z, p.nx * 0.55, up, p.nz * 0.55 - back, len * H, 0.098 * H, 0.06);
+        }
+        fringe(4, 0.6, 0.19 * H, 0.058 * H);
+        break;
+      }
+      case 'curtain': {
+        cap(m, 0.6, 0.034 * H);
+        for (const side of [1, -1] as const) {
+          const p = scalp(side * 0.75, 0.6);
+          strand(m, p.x, p.y, p.z + 0.01 * H, side * 0.25, -1, 0.06, 0.42 * H, 0.085 * H, 0.05);
+        }
+        for (let i = 0; i < 5; i++) {
+          const a = Math.PI + ((i + 0.5) / 5 - 0.5) * 2.4;
+          const p = scalp(a, 0.5);
+          strand(m, p.x, p.y, p.z, p.nx * 0.3, -1, p.nz * 0.4, 0.3 * H, 0.07 * H, 0.05);
+        }
+        break;
+      }
+      case 'wild': {
+        cap(m, 0.6, 0.036 * H);
+        for (let i = 0; i < 11; i++) {
+          const a = (i / 11) * Math.PI * 2;
+          const v = 0.72 + 0.12 * Math.sin(i * 2.7);
+          const p = scalp(a, v);
+          const up = 0.5 + 0.6 * Math.abs(Math.sin(i * 1.9));
+          strand(m, p.x, p.y, p.z, p.nx * 0.85, up, p.nz * 0.85, (0.3 + 0.12 * Math.sin(i * 3.1)) * H, 0.065 * H, 0.22);
+        }
+        fringe(4, 0.6, 0.2 * H, 0.055 * H);
+        break;
+      }
+      case 'long': {
+        cap(m, 0.6, 0.036 * H);
+        fringe(5, 0.62, 0.14 * H, 0.05 * H);
+        /* Big face-framing curtains falling past the jaw to the chest, then
+           a full back mass ending in points. The curtains are what read
+           from the front — they are most of what "long" means there. */
+        for (const side of [1, -1] as const) {
+          const p = scalp(side * 0.8, 0.58);
+          strand(m, p.x, p.y + 0.02 * H, p.z + 0.03 * H, side * 0.16, -1, 0.03, 0.62 * H, 0.125 * H, 0.03);
+          const p2 = scalp(side * 1.35, 0.55);
+          strand(m, p2.x, p2.y + 0.01 * H, p2.z, side * 0.24, -1, -0.05, 0.55 * H, 0.1 * H, 0.04);
+        }
+        for (let i = 0; i < 7; i++) {
+          const a = Math.PI + ((i + 0.5) / 7 - 0.5) * 2.4;
+          const p = scalp(a, 0.55);
+          strand(m, p.x, p.y, p.z - 0.01 * H, p.nx * 0.22, -1, p.nz * 0.3 - 0.06, 0.66 * H, 0.095 * H, 0.03);
+        }
+        break;
+      }
+      case 'ponytail': {
+        cap(m, 0.6, 0.034 * H);
+        fringe(4, 0.62, 0.13 * H, 0.05 * H);
+        const p = scalp(Math.PI, 0.88);
+        /* The tie. */
+        const tie = keep(new THREE.SphereGeometry(0.05 * H, 10, 8));
+        const tieMesh = new THREE.Mesh(tie, keep(toonMat('#2a2126')));
+        tieMesh.position.set(0, p.y, p.z - 0.01 * H);
+        g.add(tieMesh);
+        strand(m, p.x, p.y + 0.01 * H, p.z - 0.03 * H, 0, -0.35, -1, 0.55 * H, 0.075 * H, 0.5);
+        strand(m, p.x, p.y, p.z - 0.02 * H, 0.12, -0.5, -0.9, 0.45 * H, 0.055 * H, 0.42);
+        break;
+      }
+      case 'topknot': {
+        cap(m, 0.6, 0.03 * H);
+        const p = scalp(0, 0.96);
+        const tie = keep(new THREE.SphereGeometry(0.045 * H, 10, 8));
+        const tieMesh = new THREE.Mesh(tie, keep(toonMat('#2a2126')));
+        tieMesh.position.set(0, p.y + 0.03 * H, -0.045 * H);
+        g.add(tieMesh);
+        strand(m, 0, p.y + 0.02 * H, -0.05 * H, 0, 1, -0.3, 0.26 * H, 0.075 * H, 0.42);
+        break;
+      }
+      case 'braids': {
+        cap(m, 0.62, 0.03 * H);
+        fringe(4, 0.6, 0.15 * H, 0.05 * H);
+        for (let i = 0; i < 4; i++) {
+          const a = Math.PI + (i / 3 - 0.5) * 1.7;
+          const p = scalp(a, 0.6);
+          /* A braid is a strand with a beaded taper — rebuilt as three short
+             strands end to end reads as segments without a new builder. */
+          const px = p.x;
+          let py = p.y;
+          let pz = p.z;
+          for (let seg2 = 0; seg2 < 3; seg2++) {
+            strand(m, px, py, pz, p.nx * 0.08, -1, p.nz * 0.12 - 0.03, 0.17 * H, (0.042 - seg2 * 0.008) * H, 0.05);
+            py -= 0.16 * H;
+            pz -= 0.012 * H;
+          }
+        }
+        break;
+      }
+      case 'mohawk': {
+        cap(m, 0.75, 0.014 * H);
+        /* The crest rides the midline by construction — placed at x = 0,
+           driven by distance along the skull, never by azimuth. */
+        for (let i = 0; i < 6; i++) {
+          const t = i / 5;
+          const v = lerp(0.55, 0.92, 1 - Math.abs(t - 0.5) * 0.5);
+          const front = lerp(0.26, -0.32, t) * H;
+          const p = { x: 0, y: y(Math.min(0.97, v + 0.08)), z: front };
+          strand(m, p.x, p.y, p.z, 0, 1, t < 0.5 ? 0.15 : -0.2, 0.36 * H, 0.062 * H, 0.05);
+        }
+        break;
+      }
+      case 'bun': {
+        cap(m, 0.6, 0.032 * H);
+        fringe(4, 0.62, 0.13 * H, 0.05 * H);
+        const bun = keep(new THREE.SphereGeometry(0.14 * H, 14, 10));
+        const bunMesh = new THREE.Mesh(bun, hairMat);
+        bunMesh.castShadow = true;
+        bunMesh.position.set(0, y(0.9), -skullAt(0.9, 3) - 0.05 * H);
+        g.add(bunMesh);
+        addOutline(g, bun, LINE, keep).position.copy(bunMesh.position);
+        break;
+      }
+      default:
+        cap(m, 0.62, 0.03 * H);
     }
+
+    add(g, m.build(), hairMat, LINE);
+    return g;
+  };
+  hairGroup = buildHair();
+
+  /* ---------------- facial hair ---------------- */
+
+  if (spec.facialHair !== 'none' && spec.facialHair !== 'stubble') {
+    const m = new MeshBuilder();
+    const kind = spec.facialHair;
+    /* Every beard stays clear of the mouth: the drawn line is the face's
+       one expression, and the first full beard buried it under a bib. */
+    const moustache = () => {
+      for (const side of [1, -1] as const) {
+        strand(
+          m,
+          side * 0.012 * H,
+          y(MOUTH_V) + 0.028 * H,
+          skullAt(0.24, 2) * 0.95,
+          side * 0.95,
+          -0.28,
+          0.08,
+          0.062 * H,
+          0.02 * H,
+          0.06
+        );
+      }
+    };
+    if (kind === 'moustache') moustache();
+    if (kind === 'goatee') {
+      moustache();
+      strand(m, 0, y(0.05), skullAt(0.04, 2) * 0.88, 0, -1, 0.3, 0.085 * H, 0.042 * H, -0.04);
+    }
+    if (kind === 'full') {
+      /* A chunky jaw band from below the mouth down round the chin, ending
+         in three points — a drawn beard, not fur. */
+      const rows: number[][] = [];
+      for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const v = lerp(0.15, 0.01, t);
+        const swellT = Math.sin(Math.PI * Math.min(1, 0.25 + t * 0.75));
+        const ring: number[] = [];
+        for (let k = 0; k <= 12; k++) {
+          const a = -1.3 + (2.6 * k) / 12;
+          const hw = skullAt(v, 1) + 0.024 * H * swellT;
+          const fr = skullAt(v, 2) + 0.026 * H * swellT;
+          const q = sectionPoint(hw, fr, fr, skullSq(v), a);
+          ring.push(m.vertex(q.x, y(v) - t * 0.04 * H, q.z));
+        }
+        rows.push(ring);
+      }
+      for (let i = 0; i < 4; i++) {
+        for (let k = 0; k < 12; k++) {
+          m.quad(rows[i][k], rows[i][k + 1], rows[i + 1][k + 1], rows[i + 1][k]);
+        }
+      }
+      for (const side of [0, 1, -1] as const) {
+        strand(m, side * 0.055 * H, y(0.015), skullAt(0.015, 2) * 0.78 + 0.02 * H, side * 0.22, -1, 0.12, 0.08 * H, 0.032 * H, 0);
+      }
+      moustache();
+    }
+    if (kind === 'sideburns') {
+      for (const side of [1, -1] as const) {
+        strand(m, side * skullAt(0.4, 1) * 0.92, y(0.42), 0.02 * H, side * 0.1, -1, 0.35, 0.16 * H, 0.045 * H, 0);
+      }
+    }
+    const beardMat = keep(toonMat(hairColor.clone().multiplyScalar(0.62)));
+    add(group, m.build(), beardMat, LINE * 0.7);
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
+
+  const crown = y(1) + 0.02 * H;
+
+  return {
+    group,
+    crown,
+    hair: hairGroup,
+    lidL,
+    lidR,
+    lidOpen,
+    lidShut,
+    dispose() {
+      kept.forEach((k) => k.dispose());
+    },
+  };
 }
