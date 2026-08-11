@@ -179,7 +179,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     sun.shadow.bias = -0.0018;
     scene.add(sun);
     scene.add(sun.target);
-    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.72));
+    /* 0.95, up from 0.72: the vendored duelists are matte standard materials,
+       not the old sheen-lobed cloth, and at 0.72 the side of the body away
+       from the sun read as a silhouette against the bright grass. The grass
+       takes the same raise and stays grass. */
+    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.95));
 
     /* ---- ground ----
        The texture is painted into a canvas rather than downloaded: five thousand

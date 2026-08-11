@@ -2,8 +2,8 @@
  * Turns a `PremadeCharacter` record into a duelist standing in a scene.
  *
  * The geometry, rig and animations all live in the vendored `.glb` files —
- * this file's whole job is loading one, painting the player's tints into its
- * texture, scaling it to its catalog height, and playing its own clips at the
+ * this file's whole job is loading one, colouring the materials the player
+ * tinted, scaling it to its catalog height, and playing its own clips at the
  * speed the ground is actually moving. It is the heir to `humanoid.ts`'s
  * `buildCharacter`, and it keeps the same shape of seam: a root to add to a
  * scene, one call per frame, a dispose. What changed is where the walking
@@ -19,9 +19,14 @@
  *   derived from it — the same arithmetic `gaitRate` wrote down.
  * - **Nothing here advances by `time × rate`.** The mixer is fed `dt` and
  *   integrates its own clock, which is what a mixer is.
- * - **The default look must be reachable.** Tints of `AS_AUTHORED` reuse the
- *   file's own texture, byte for byte, rather than a repaint that happens to
+ * - **The default look must be reachable.** Tints of `AS_AUTHORED` keep the
+ *   file's own material colour, exactly, rather than a swatch that happens to
  *   land close.
+ *
+ * Tinting is a material recolour and nothing more: these models have no
+ * textures, every part is a named flat-colour material, and a slot names the
+ * materials it owns (`src/story/premade.ts`). Skin and faces are materials no
+ * slot may name, so a tint cannot touch them by construction.
  */
 
 import * as THREE from 'three';
@@ -32,16 +37,13 @@ import {
   modelById,
   paletteFor,
   statureScale,
-  hslOfRgb,
-  windowCatches,
-  type DuelistModel,
   type PremadeCharacter,
 } from '@/story/premade';
 
 export interface PremadeRig {
   /** Add this to a scene. Origin between the feet, on the ground. */
   root: THREE.Group;
-  /** Metres from the ground to the top of the model, tints and all. */
+  /** Metres from the ground to the top of the model, stature and all. */
   height: number;
   /**
    * Advances the duelist.
@@ -56,36 +58,21 @@ export interface PremadeRig {
 }
 
 /* ------------------------------------------------------------------ */
-/* Templates: one fetch and one pixel-read per model, ever             */
+/* Templates: one fetch per model, ever                                */
 /* ------------------------------------------------------------------ */
 
 interface Template {
   gltf: GLTF;
   /** Height of the unscaled rest pose, measured once. */
   rawHeight: number;
-  /** The atlas pixels of every textured material, for repainting. */
-  images: Map<THREE.Texture, ImageData>;
 }
 
 const templates = new Map<string, Promise<Template>>();
 
-/** Reads a texture's pixels into an ImageData the repaint can loop over. */
-function readPixels(tex: THREE.Texture): ImageData | null {
-  const img = tex.image as CanvasImageSource & { width: number; height: number };
-  if (!img || !img.width || !img.height) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0);
-  return ctx.getImageData(0, 0, img.width, img.height);
-}
-
 /**
  * Loads a model once and shares it with every rig built from it. The booth
- * shows six of these and the world shows one; nobody should be re-fetching
- * two megabytes because a tint changed.
+ * shows twelve of these and the world shows one; nobody should be re-fetching
+ * a megabyte because a tint changed.
  */
 export function loadDuelistTemplate(modelId: string): Promise<Template> {
   const model = modelById(modelId);
@@ -96,19 +83,7 @@ export function loadDuelistTemplate(modelId: string): Promise<Template> {
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const rawHeight = Math.max(0.01, box.max.y - box.min.y);
-    const images = new Map<THREE.Texture, ImageData>();
-    gltf.scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-        const map = (mat as THREE.MeshStandardMaterial).map;
-        if (map && !images.has(map)) {
-          const px = readPixels(map);
-          if (px) images.set(map, px);
-        }
-      }
-    });
-    return { gltf, rawHeight, images };
+    return { gltf, rawHeight };
   });
   templates.set(model.id, promise);
   /* A failed fetch must not poison the cache for the retry. */
@@ -121,72 +96,6 @@ export function preloadAllDuelists(): void {
   import('@/story/premade').then(({ DUELIST_MODELS }) => {
     for (const m of DUELIST_MODELS) void loadDuelistTemplate(m.id).catch(() => {});
   });
-}
-
-/* ------------------------------------------------------------------ */
-/* Repainting                                                          */
-/* ------------------------------------------------------------------ */
-
-const hexToRgb = (hex: string): [number, number, number] => [
-  parseInt(hex.slice(1, 3), 16),
-  parseInt(hex.slice(3, 5), 16),
-  parseInt(hex.slice(5, 7), 16),
-];
-
-/**
- * The player's tints, painted into a copy of an atlas.
- *
- * Two passes. The first decides which slot, if any, owns each pixel and takes
- * the mean lightness of everything each slot caught; the second repaints a
- * caught pixel as the chosen swatch scaled by the pixel's own lightness over
- * that mean. Lightness is the painting — the brush strokes, the baked shadow
- * — and scaling by it is what recolours a garment without flattening it. The
- * mean comes from the pixels actually caught in *this* image rather than a
- * number authored per model, so the weapon atlas and the body atlas each keep
- * their own exposure.
- */
-function repaint(src: ImageData, model: DuelistModel, tints: number[]): HTMLCanvasElement | null {
-  const active = model.tintSlots
-    .map((slot, i) => ({ slot, tint: tints[i] ?? AS_AUTHORED }))
-    .filter((s) => s.tint !== AS_AUTHORED);
-  if (active.length === 0) return null;
-
-  const n = src.width * src.height;
-  const px = src.data;
-  const owner = new Uint8Array(n).fill(255);
-  const lum = new Float32Array(n);
-  const sum = new Float64Array(active.length);
-  const count = new Uint32Array(active.length);
-  for (let p = 0; p < n; p++) {
-    const { h, s, l } = hslOfRgb(px[p * 4], px[p * 4 + 1], px[p * 4 + 2]);
-    lum[p] = l;
-    for (let a = 0; a < active.length; a++) {
-      if (windowCatches(active[a].slot.window, h, s, l)) {
-        owner[p] = a;
-        sum[a] += l;
-        count[a] += 1;
-        break;
-      }
-    }
-  }
-
-  const out = new ImageData(new Uint8ClampedArray(px), src.width, src.height);
-  const target = active.map(({ slot, tint }) => hexToRgb(paletteFor(slot)[tint] as string));
-  const ref = active.map((_, a) => (count[a] > 0 ? sum[a] / count[a] : 0.5));
-  for (let p = 0; p < n; p++) {
-    const a = owner[p];
-    if (a === 255) continue;
-    const k = lum[p] / ref[a];
-    out.data[p * 4] = Math.min(255, target[a][0] * k);
-    out.data[p * 4 + 1] = Math.min(255, target[a][1] * k);
-    out.data[p * 4 + 2] = Math.min(255, target[a][2] * k);
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = src.width;
-  canvas.height = src.height;
-  canvas.getContext('2d')?.putImageData(out, 0, 0);
-  return canvas;
 }
 
 /* ------------------------------------------------------------------ */
@@ -208,37 +117,35 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
 
   const body = cloneSkeleton(template.gltf.scene);
 
-  /* The clone shares the template's materials; give it its own, repainted
-     where the player chose and lit by the scene either way. The files ship
-     `KHR_materials_unlit`, which three turns into a material the sun cannot
-     touch — flatly wrong in a field with a sun in it, so the map is rehung
-     on a standard material instead. Cloth-rough on purpose; the painted
-     atlas already carries every highlight the style wants. */
+  /* Which colour each material name ends up, per the player's tints. */
+  const tinted = new Map<string, string>();
+  model.tintSlots.forEach((slot, i) => {
+    const tint = spec.tints[i] ?? AS_AUTHORED;
+    if (tint === AS_AUTHORED) return;
+    const hex = paletteFor(slot)[tint];
+    for (const name of slot.materials) tinted.set(name, hex);
+  });
+
+  /* The clone shares the template's materials; give it its own, recoloured
+     where the player chose and lit by the scene either way. Rebuilt as
+     cloth-rough standard materials on purpose: the files ship PBR defaults
+     tuned for nothing in particular, and the game's two scenes both light a
+     matte duelist well. `AS_AUTHORED` keeps the file's own colour value,
+     untouched. */
   const disposables: { dispose(): void }[] = [];
-  const retinted = new Map<THREE.Texture, THREE.Texture>();
+  const cache = new Map<THREE.Material, THREE.Material>();
   const materialFor = (old: THREE.Material): THREE.Material => {
-    const oldMap = (old as THREE.MeshStandardMaterial).map ?? null;
-    let map = oldMap;
-    if (oldMap) {
-      const cached = retinted.get(oldMap);
-      if (cached) {
-        map = cached;
-      } else {
-        const src = template.images.get(oldMap);
-        const painted = src ? repaint(src, model, spec.tints) : null;
-        if (painted) {
-          map = new THREE.CanvasTexture(painted);
-          /* glTF textures hang with UV (0,0) at the top; a canvas texture
-             defaults to flipping, which would paint every garment on the
-             wrong half of the body. */
-          map.flipY = false;
-          map.colorSpace = THREE.SRGBColorSpace;
-          disposables.push(map);
-        }
-        retinted.set(oldMap, map as THREE.Texture);
-      }
-    }
-    const mat = new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 });
+    const hit = cache.get(old);
+    if (hit) return hit;
+    const source = old as THREE.MeshStandardMaterial;
+    const hex = tinted.get(old.name);
+    const mat = new THREE.MeshStandardMaterial({
+      color: hex ? new THREE.Color(hex) : source.color?.clone() ?? new THREE.Color('#888888'),
+      roughness: 1,
+      metalness: 0,
+    });
+    mat.name = old.name;
+    cache.set(old, mat);
     disposables.push(mat);
     return mat;
   };
@@ -302,8 +209,8 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
     update,
     dispose() {
       mixer.stopAllAction();
-      /* Materials and repainted textures are this rig's own; the geometry and
-         the file's original textures belong to the template and outlive it. */
+      /* Materials are this rig's own; the geometry belongs to the template
+         and outlives it. */
       for (const d of disposables) d.dispose();
     },
   };

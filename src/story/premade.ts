@@ -4,9 +4,9 @@
  * Story Mode's characters are no longer assembled from parts — they are
  * finished, rigged, animated models, made by Quaternius and vendored under CC0
  * into `public/models/duelists/` (see the LICENSE.md beside them for exactly
- * where they came from). The player picks one, tints what the model's own
- * catalog entry says can be tinted, sets a stature, names the result — and
- * that is the whole of what is stored.
+ * where they came from and what was trimmed). The player picks one, tints
+ * what the model's own catalog entry says can be tinted, sets a stature,
+ * names the result — and that is the whole of what is stored.
  *
  * This file is the catalog and the validation and nothing else. It knows no
  * three.js: the same module is imported by the server to sanitise what a
@@ -14,92 +14,46 @@
  * it. The geometry lives in the `.glb` files; the code that turns one of
  * these records into a walking rig is `src/components/story/premadeRig.ts`.
  *
- * Tinting works on the texture, not the mesh. Each model's atlas is a painted
- * thing — brush strokes, baked shadow, a face — so a tint cannot just multiply
- * the whole image (lesson 7 on the old system's list: the skin goes with it).
- * Instead each slot declares a *window* in hue/saturation/lightness that
- * catches its garment's pixels and nothing else's, authored by looking at the
- * atlas, and repainting keeps every caught pixel's lightness so the painting
- * survives the recolour. The windows live here because they are *data about
- * the vendored file*, exactly like its height: change the file, re-check the
- * windows (`npm run premade` photographs them).
+ * Tinting works on materials, not meshes and not textures. These models carry
+ * no texture at all — every part is a named flat-colour material (`Suit`,
+ * `Tie`, `Hair`, `Skin`, `Eye`…) — so a tint slot simply names the materials
+ * it owns and the rig recolours exactly those. Skin and faces are safe *by
+ * construction*: `Skin`, `Eye` and `Eyebrows` are materials no slot is
+ * allowed to name, so the failure mode the old atlas windows guarded against
+ * cannot be expressed. The slot lists are data about the vendored file,
+ * exactly like its height: swap the file, re-check the names (`npm run
+ * premade` asserts every named material exists).
  */
 
-import { CLOTH_COLORS, TRIM_COLORS } from './character';
+import { CLOTH_COLORS, HAIR_COLORS, TRIM_COLORS } from './character';
 
 /** Shown in the world menu; same budget the old booth had. */
 export const MAX_PREMADE_NAME = 18;
 
 /**
- * A tint choice that means "leave the texture exactly as Quaternius painted
+ * A tint choice that means "leave the material exactly as Quaternius coloured
  * it". Every slot offers it first and defaults to it: the vendored look is a
  * finished thing, and the only way to keep a finished thing reachable is for
  * "untouched" to be a value, not a swatch that happens to be close.
  */
 export const AS_AUTHORED = -1;
 
-/* ------------------------------------------------------------------ */
-/* Windows                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * The pixels a tint slot owns, as a box in HSL.
- *
- * `hue` is in degrees and may wrap — `[335, 15]` is the reds astride zero.
- * `sat` and `lum` are 0..1. A window is deliberately a blunt instrument: it
- * was authored by looking at the model's atlas, then checked by photographing
- * the repaint (`npm run premade`), and a window that needs to be cleverer
- * than a box is a window that is catching something it should not.
- */
-export interface TintWindow {
-  hue: [number, number];
-  sat: [number, number];
-  lum: [number, number];
-}
-
-/** HSL of an sRGB pixel, hue in degrees. The one conversion, used by the
-    client repaint and the audit script alike, so they cannot disagree. */
-export function hslOfRgb(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  const d = max - min;
-  if (d === 0) return { h: 0, s: 0, l };
-  const s = d / (1 - Math.abs(2 * l - 1));
-  let h: number;
-  if (max === rn) h = ((gn - bn) / d) % 6;
-  else if (max === gn) h = (bn - rn) / d + 2;
-  else h = (rn - gn) / d + 4;
-  h *= 60;
-  if (h < 0) h += 360;
-  return { h, s, l };
-}
-
-/** Is this pixel the slot's to repaint? */
-export function windowCatches(w: TintWindow, h: number, s: number, l: number): boolean {
-  if (s < w.sat[0] || s > w.sat[1] || l < w.lum[0] || l > w.lum[1]) return false;
-  const [a, b] = w.hue;
-  /* A fully desaturated window does not care what the hue claims to be —
-     greys carry no hue worth trusting. */
-  if (s < 0.02) return true;
-  return a <= b ? h >= a && h <= b : h >= a || h <= b;
-}
+/** Materials no slot may ever name. The face is not a garment. */
+export const UNTINTABLE = ['Skin', 'Eye', 'Eyebrows'] as const;
 
 /* ------------------------------------------------------------------ */
 /* The catalog                                                         */
 /* ------------------------------------------------------------------ */
 
-export type TintPalette = 'cloth' | 'trim';
+export type TintPalette = 'cloth' | 'trim' | 'hair';
 
 export interface TintSlot {
   /** What the booth calls it: the garment, not the colour. */
   label: string;
-  /** Which palette the choices index into — cloth for garments, trim for metal. */
+  /** Which palette the choices index into. */
   palette: TintPalette;
-  window: TintWindow;
+  /** The material names this slot recolours, exactly as the file spells them. */
+  materials: string[];
 }
 
 export interface DuelistModel {
@@ -112,12 +66,11 @@ export interface DuelistModel {
   /** Standing height to scale the model to, in metres, at stature 0.5. */
   height: number;
   /**
-   * Ground the Walk / Run clips cover per second at timeScale 1, in metres,
-   * once the model is scaled to `height`. The rig divides real ground speed
-   * by this to get the playback rate, which is the same arithmetic that kept
-   * the old system's feet from sliding: one speed, both derived from it.
-   * Tuned by watching the handling frames, not measured — retune if a model
-   * is ever swapped.
+   * Ground the Walk / Run clips cover per second at playback rate 1, in
+   * metres, once the model is scaled to `height`. The rig divides real ground
+   * speed by this to get the playback rate — one speed, both derived from it,
+   * which is what keeps the feet from sliding. Tuned by watching the handling
+   * frames, not measured — retune if a model is ever swapped.
    */
   walkSpeed: number;
   runSpeed: number;
@@ -125,91 +78,179 @@ export interface DuelistModel {
 }
 
 /**
- * Every duelist the booth offers. Six for now — the whole of the vendored
- * pack. Order is the booth's display order.
- *
- * The windows were authored against the atlases as shipped and checked by
- * `npm run premade`, which repaints every slot in every swatch and writes the
- * sheets out to be looked at. If a repaint ever catches a face, the window is
- * wrong, not the face.
+ * Every duelist the booth offers: six men and six women from the Ultimate
+ * Modular packs. Order is the booth's display order. The slot material lists
+ * were authored by reading each file's material inventory (`npm run premade`
+ * prints it) against the pack's preview renders; the handling run photographs
+ * every one of them in the booth, which is where a wrong name shows.
  */
 export const DUELIST_MODELS: DuelistModel[] = [
   {
-    id: 'warrior',
-    label: 'Warrior',
-    note: 'Plate and tabard, longsword in hand',
-    file: '/models/duelists/warrior.glb',
-    height: 1.86,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
+    id: 'punk',
+    label: 'Punk',
+    note: 'Torn vest, mohawk, earrings',
+    file: '/models/duelists/m_punk.glb',
+    height: 1.85,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
     tintSlots: [
-      { label: 'Tabard', palette: 'cloth', window: { hue: [330, 8], sat: [0.25, 0.85], lum: [0.08, 0.65] } },
-      { label: 'Plate', palette: 'trim', window: { hue: [0, 360], sat: [0, 0.13], lum: [0.18, 0.8] } },
+      { label: 'Vest', palette: 'cloth', materials: ['Black'] },
+      { label: 'Jeans', palette: 'cloth', materials: ['LightBlue'] },
+      { label: 'Hair', palette: 'hair', materials: ['Red', 'Red_Dark'] },
     ],
   },
   {
-    id: 'rogue',
-    label: 'Rogue',
-    note: 'Crimson leathers, hood and daggers',
-    file: '/models/duelists/rogue.glb',
-    height: 1.74,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
-    tintSlots: [
-      { label: 'Leathers', palette: 'cloth', window: { hue: [335, 9], sat: [0.15, 0.9], lum: [0.06, 0.55] } },
-      { label: 'Hood', palette: 'cloth', window: { hue: [12, 45], sat: [0.1, 0.28], lum: [0.1, 0.32] } },
-    ],
-  },
-  {
-    id: 'ranger',
-    label: 'Ranger',
-    note: 'Hooded cloak, tunic and a bow',
-    file: '/models/duelists/ranger.glb',
+    id: 'suit',
+    label: 'Suit',
+    note: 'Two-piece suit and tie',
+    file: '/models/duelists/m_suit.glb',
     height: 1.8,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
     tintSlots: [
-      { label: 'Tunic', palette: 'cloth', window: { hue: [130, 185], sat: [0.05, 0.3], lum: [0.1, 0.35] } },
-      { label: 'Cloak', palette: 'cloth', window: { hue: [75, 128], sat: [0.05, 0.35], lum: [0.08, 0.35] } },
+      { label: 'Suit', palette: 'cloth', materials: ['Suit'] },
+      { label: 'Tie', palette: 'cloth', materials: ['Tie'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
     ],
   },
   {
-    id: 'wizard',
-    label: 'Wizard',
-    note: 'Long robe, longer beard, pointed hat',
-    file: '/models/duelists/wizard.glb',
+    id: 'hoodie',
+    label: 'Hoodie',
+    note: 'Hoodie over a tee',
+    file: '/models/duelists/m_hoodie.glb',
+    height: 1.8,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Hoodie', palette: 'cloth', materials: ['Purple'] },
+      { label: 'Shirt', palette: 'cloth', materials: ['White'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
+    ],
+  },
+  {
+    id: 'adventurer',
+    label: 'Adventurer',
+    note: 'Field jacket and bedroll pack',
+    file: '/models/duelists/m_adventurer.glb',
+    height: 1.8,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Jacket', palette: 'cloth', materials: ['Green', 'LightGreen'] },
+      { label: 'Pack', palette: 'cloth', materials: ['Brown', 'Brown2'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
+    ],
+  },
+  {
+    id: 'king',
+    label: 'King',
+    note: 'Crown, pauldrons and a robe',
+    file: '/models/duelists/m_king.glb',
+    height: 1.84,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Robe', palette: 'cloth', materials: ['Blue'] },
+      { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
+      { label: 'Crown', palette: 'trim', materials: ['Gold'] },
+    ],
+  },
+  {
+    id: 'astronaut',
+    label: 'Astronaut',
+    note: 'Sealed suit, tinted visor',
+    file: '/models/duelists/m_spacesuit.glb',
     height: 1.82,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
     tintSlots: [
-      { label: 'Robe', palette: 'cloth', window: { hue: [198, 252], sat: [0.2, 0.8], lum: [0.1, 0.7] } },
-      { label: 'Trim', palette: 'trim', window: { hue: [36, 58], sat: [0.35, 0.9], lum: [0.25, 0.75] } },
+      { label: 'Suit', palette: 'cloth', materials: ['SciFi_Main', 'SciFi_MainDark'] },
+      { label: 'Panels', palette: 'cloth', materials: ['SciFi_Light', 'SciFi_Light_Accent'] },
+      { label: 'Visor', palette: 'trim', materials: ['Grey'] },
     ],
   },
   {
-    id: 'monk',
-    label: 'Monk',
-    note: 'Travelling robe and sash, bare fists',
-    file: '/models/duelists/monk.glb',
+    id: 'wanderer',
+    label: 'Wanderer',
+    note: 'Hood, blade and road gear',
+    file: '/models/duelists/w_medieval.glb',
+    height: 1.8,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Hood', palette: 'cloth', materials: ['DarkBrown'] },
+      { label: 'Tunic', palette: 'cloth', materials: ['LightBrown', 'Brown'] },
+      { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
+    ],
+  },
+  {
+    id: 'witch',
+    label: 'Witch',
+    note: 'Wide hat, gold-trimmed robe',
+    file: '/models/duelists/w_witch.glb',
+    height: 1.95,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Robe', palette: 'cloth', materials: ['Purple'] },
+      { label: 'Trim', palette: 'trim', materials: ['Gold'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
+    ],
+  },
+  {
+    id: 'rebel',
+    label: 'Rebel',
+    note: 'Crop top, torn trousers, mohawk',
+    file: '/models/duelists/w_punk.glb',
+    height: 1.84,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Outfit', palette: 'cloth', materials: ['Black'] },
+      { label: 'Boots', palette: 'cloth', materials: ['Brown'] },
+      { label: 'Hair', palette: 'hair', materials: ['Pink'] },
+    ],
+  },
+  {
+    id: 'executive',
+    label: 'Executive',
+    note: 'Sharp jacket over a blouse',
+    file: '/models/duelists/w_formal.glb',
     height: 1.78,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
     tintSlots: [
-      { label: 'Robe', palette: 'cloth', window: { hue: [22, 46], sat: [0.22, 0.6], lum: [0.14, 0.38] } },
-      { label: 'Sash', palette: 'cloth', window: { hue: [32, 48], sat: [0.2, 0.45], lum: [0.38, 0.55] } },
+      { label: 'Jacket', palette: 'cloth', materials: ['Red'] },
+      { label: 'Blouse', palette: 'cloth', materials: ['LimeGreen'] },
+      { label: 'Trim', palette: 'trim', materials: ['Gold'] },
     ],
   },
   {
-    id: 'cleric',
-    label: 'Cleric',
-    note: 'Vestments, white beard and a staff',
-    file: '/models/duelists/cleric.glb',
-    height: 1.76,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
+    id: 'pilot',
+    label: 'Pilot',
+    note: 'Flight suit with hard plating',
+    file: '/models/duelists/w_scifi.glb',
+    height: 1.79,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
     tintSlots: [
-      { label: 'Vestment', palette: 'cloth', window: { hue: [40, 80], sat: [0.03, 0.14], lum: [0.28, 0.62] } },
-      { label: 'Cloak', palette: 'cloth', window: { hue: [20, 42], sat: [0.1, 0.35], lum: [0.12, 0.34] } },
+      { label: 'Suit', palette: 'cloth', materials: ['Blue', 'LightBlue'] },
+      { label: 'Under-layer', palette: 'cloth', materials: ['Black'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
+    ],
+  },
+  {
+    id: 'casual',
+    label: 'Casual',
+    note: 'Tee and everyday trousers',
+    file: '/models/duelists/w_casual.glb',
+    height: 1.78,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [
+      { label: 'Top', palette: 'cloth', materials: ['White'] },
+      { label: 'Trousers', palette: 'cloth', materials: ['Orange'] },
+      { label: 'Hair', palette: 'hair', materials: ['Hair_Blond', 'Hair_Brown'] },
     ],
   },
 ];
@@ -220,7 +261,9 @@ export function modelById(id: unknown): DuelistModel {
 
 /** The swatches a slot's choices index into. */
 export function paletteFor(slot: TintSlot): readonly string[] {
-  return slot.palette === 'trim' ? TRIM_COLORS : CLOTH_COLORS;
+  if (slot.palette === 'trim') return TRIM_COLORS;
+  if (slot.palette === 'hair') return HAIR_COLORS;
+  return CLOTH_COLORS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -289,20 +332,20 @@ const clamp01 = (v: unknown, fallback: number): number => {
 };
 
 /**
- * What a profile written before the swap looked like, as much of it as the
- * mapping below needs. The old records are procedural-spec characters; they
- * cannot be drawn any more, but the people they belong to still exist, so a
- * loaded one is seated on the nearest model rather than erased. The mapping
- * is arbitrary — an outfit is not a class — but it is *stable*, which is the
- * only property it needs: the same old save maps to the same duelist every
- * time it is read.
+ * What a profile written before the model swap looked like, as much of it as
+ * the mapping below needs. The old records are procedural-spec characters;
+ * they cannot be drawn any more, but the people they belong to still exist,
+ * so a loaded one is seated on the nearest model rather than erased. The
+ * mapping is arbitrary — an outfit is not a person — but it is *stable*,
+ * which is the only property it needs: the same old save maps to the same
+ * duelist every time it is read.
  */
 const LEGACY_OUTFIT_TO_MODEL: Record<string, string> = {
-  duelist: 'rogue',
-  traveller: 'ranger',
-  scholar: 'wizard',
-  warden: 'warrior',
-  street: 'monk',
+  duelist: 'suit',
+  traveller: 'adventurer',
+  scholar: 'witch',
+  warden: 'wanderer',
+  street: 'hoodie',
 };
 
 /**

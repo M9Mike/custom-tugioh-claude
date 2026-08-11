@@ -218,7 +218,7 @@ async function run(phoneName) {
     check(first.length > RENDERED_BYTES, 'the duelist is drawn', `${first.length} bytes`);
     await fs.writeFile(`${OUT}/${phoneName}-2-booth.png`, await page.screenshot());
 
-    /* The booth offers exactly what was designed: six duelists, and two
+    /* The booth offers exactly what was designed: twelve duelists, and three
        tintable garments on the one it opens on. Counted rather than assumed,
        because the catalog losing a row is invisible to every other check —
        the booth still works, just smaller. */
@@ -226,20 +226,20 @@ async function run(phoneName) {
       const n = await page.locator(selector).count();
       check(n === want, `the booth offers ${want} ${what}`, `saw ${n}`);
     };
-    await offer('[data-pick^="duelist:"]', 6, 'duelists');
-    await offer('[data-tint$=":-1"]', 2, 'tintable garments');
+    await offer('[data-pick^="duelist:"]', 12, 'duelists');
+    await offer('[data-tint$=":-1"]', 3, 'tintable garments');
 
     /* Every kind of choice has to reach the model, or the booth is a picture
        of a default duelist with buttons next to it. Each tap is compared
        against the frame before it, so the one control that does nothing is
        named rather than hidden behind the ones that work. The model swap goes
-       first so the tint taps land on a known duelist — the wizard, whose
-       slots are the robe and its trim. */
+       first so the tint taps land on a known duelist — the suit, whose slots
+       are the suit, the tie and the hair. */
     let before = first;
     for (const [selector, what] of [
-      ['[data-pick="duelist:wizard"]', 'a duelist'],
-      ['[data-tint="robe:12"]', 'a garment tint'],
-      ['[data-tint="trim:3"]', 'a trim tint'],
+      ['[data-pick="duelist:suit"]', 'a duelist'],
+      ['[data-tint="suit:12"]', 'a garment tint'],
+      ['[data-tint="hair:8"]', 'a hair tint'],
     ]) {
       await page.locator(selector).tap();
       await page.waitForTimeout(1600);
@@ -249,7 +249,7 @@ async function run(phoneName) {
     }
     /* And back to as-made, which must be a real choice rather than a swatch
        that happens to sit close — the vendored paint has to come back exact. */
-    await page.locator('[data-tint="robe:-1"]').tap();
+    await page.locator('[data-tint="suit:-1"]').tap();
     await page.waitForTimeout(1600);
     const asMade = await canvasShot(page);
     check(!asMade.equals(before), 'as-made brings the original paint back');
