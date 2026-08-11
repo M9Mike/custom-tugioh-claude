@@ -12,10 +12,42 @@ character system and there must never be one. A duelist authored for an NPC
 and a duelist authored in the booth go down the same code path, get the same
 walk cycle, and are held to the same standard.
 
-What exists today: the spec, the builder, the animation, and the booth.
-What does not: any notion of an NPC as a thing in the world — no roster, no
-placement, no schedule, no dialogue. Asking for NPCs therefore means writing
-that as well; say so rather than pretending the model is the whole job.
+An NPC is four things, and only the first of them exists:
+
+- **Who** — a `StoryCharacter`, exactly as the booth writes one. Done, and it
+  is the whole of what is done.
+- **Where** — a position and a facing in the field. Nothing places anything in
+  the world; `OpenWorld` builds one rig, the player's.
+- **What it does** — stand, pace a route, turn to face you, say something. There
+  is no interaction of any kind: no proximity, no prompt, no dialogue.
+- **What it plays** — a deck of card slugs. `validateDeck` checks a *player's*
+  deck against the collection they own; an authored one has no collection to
+  check against and wants checking against `CARDS` instead.
+
+The last of those is nearer than it looks. `createDuel` and `applyAction` in
+`src/game/engine.ts` run a duel, and `planTurn` with `AI_LEVELS` — rookie ·
+duelist · champion — in `src/game/ai.ts` already plays one properly. An NPC you
+can duel is a bridge from the field into the engine, not a new opponent.
+
+So "add a shopkeeper" is one line of appearance and four pieces of system. Say
+which of the four a request needs and which of them do not exist yet, rather
+than building the model and calling it the job.
+
+## The player's own flow
+
+Story Mode opens, the booth makes a duelist, the deck is cut, the world opens —
+and the deck belongs to that duelist from then on.
+
+- Appearance binds **permanently** at the booth. Nothing can change it after.
+- The first deck is cut from `STARTER_POOL` and *becomes* the collection: what
+  is written back is the 25 that went in and nothing else.
+- **Edit Deck** in the world menu posts to the same endpoint, which re-validates
+  against the collection rather than the pool.
+
+Which means Edit Deck is a real door with nothing yet behind it: you own exactly
+the 25 you chose, so there is nothing to swap in. It starts meaning something
+the moment a collection can grow — and the obvious thing that grows one is
+beating an NPC. Those two gaps are the same gap.
 
 ## The spec
 
