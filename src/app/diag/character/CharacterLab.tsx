@@ -150,8 +150,15 @@ const SWEEPS = {
       { label: 'behind', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
       { label: 'far side', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -Math.PI / 2 } },
       { label: 'far three-quarter', over: { cape: true } as Partial<StoryCharacter>, view: { yaw: -0.85 } },
+      /* Front and back for each of the two garments a cape has to share a
+         silhouette with. The four views above already establish the cape's own
+         shape all the way round; what these are asking is a different question
+         — whether a hem and a cape hem can occupy the same air — and that is
+         answered where the two overlap, which is the front and the back. */
       { label: 'over a robe', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+      { label: 'over a robe, behind', over: { cape: true, outfit: 'scholar' } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
       { label: 'over a coat', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: 0.5 } },
+      { label: 'over a coat, behind', over: { cape: true, outfit: 'warden' } as Partial<StoryCharacter>, view: { yaw: Math.PI } },
     ],
   },
   'outfit-behind': {
@@ -454,9 +461,18 @@ export default function CharacterLab() {
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.near = 0.5;
     key.shadow.camera.far = 30;
-    /* Wide enough to cover a whole sweep standing in a row. */
-    key.shadow.camera.left = -18;
-    key.shadow.camera.right = 18;
+    /**
+     * Wide enough to cover a whole sweep standing in a row — which is a number
+     * that has to be kept honest against `SPACING`.
+     *
+     * Widening the spacing to 9 m put the outer duelists of a twelve-strong
+     * sweep at ±49 m, well outside a ±18 m frustum: they rendered with no
+     * shadow at all while their neighbours had one. In a tool whose whole job
+     * is comparing one cell against the next, a difference that comes from the
+     * lighting rig rather than from the duelist is worse than no shadow at all.
+     */
+    key.shadow.camera.left = -SPACING * 6;
+    key.shadow.camera.right = SPACING * 6;
     key.shadow.camera.top = 2.6;
     key.shadow.camera.bottom = -0.4;
     key.shadow.bias = -0.0012;
