@@ -68,6 +68,68 @@ interface Template {
   gltf: GLTF;
   /** Height of the unscaled rest pose, measured once. */
   rawHeight: number;
+  /**
+   * Where this model's feet actually are once it is standing, in file units.
+   *
+   * Not zero, and not the same twice. A rig is placed with its origin on the
+   * ground, which assumes the origin is between the feet — true of the rest
+   * pose, and false of every one of these models the moment the Idle clip
+   * runs. The rips carry their own root motion: the four real duelists are
+   * within 1% of the ground, the generic townspeople stand 4–9% of their own
+   * height *below* it, and `boy1` hovers 4% above.
+   *
+   * Mai was the one that showed, because she is at 9% and stands next to Yugi,
+   * who is at 0.1%. Correcting the clips would mean re-cutting every import
+   * against a baseline the source game never promised; measuring where the
+   * feet end up and lifting the model by that is one number per file and
+   * cannot drift out of step with the animation.
+   */
+  floor: number;
+}
+
+/**
+ * The lowest point the model reaches while standing.
+ *
+ * Measured on a clone, deliberately: posing the template's own scene would
+ * leave its bones out of the rest pose, and every rig built afterwards is
+ * cloned from it — one measurement would bend the whole cast.
+ *
+ * Sampled rather than exhaustive. A few hundred vertices across a handful of
+ * moments through the clip finds the planted foot; the idle on these models is
+ * a breath and a weight shift, so nothing is hiding between the samples.
+ */
+function idleFloor(gltf: GLTF): number {
+  const idle = gltf.animations.find((a) => a.name === 'Idle');
+  if (!idle) return 0;
+
+  const scene = cloneSkeleton(gltf.scene);
+  const skinned: THREE.SkinnedMesh[] = [];
+  scene.traverse((o) => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(o as THREE.SkinnedMesh);
+  });
+  if (!skinned.length) return 0;
+
+  const mixer = new THREE.AnimationMixer(scene);
+  mixer.clipAction(idle).play();
+  const at = new THREE.Vector3();
+  let lowest = Infinity;
+  const MOMENTS = 6;
+  for (let i = 0; i < MOMENTS; i++) {
+    mixer.setTime((idle.duration * i) / MOMENTS);
+    scene.updateMatrixWorld(true);
+    for (const mesh of skinned) {
+      const count = mesh.geometry.attributes.position.count;
+      const step = Math.max(1, Math.floor(count / 400));
+      for (let v = 0; v < count; v += step) {
+        mesh.getVertexPosition(v, at);
+        mesh.localToWorld(at);
+        if (at.y < lowest) lowest = at.y;
+      }
+    }
+  }
+  mixer.stopAllAction();
+  mixer.uncacheRoot(scene);
+  return Number.isFinite(lowest) ? lowest : 0;
 }
 
 const templates = new Map<string, Promise<Template>>();
@@ -86,7 +148,7 @@ export function loadDuelistTemplate(modelId: string): Promise<Template> {
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const rawHeight = Math.max(0.01, box.max.y - box.min.y);
-    return { gltf, rawHeight };
+    return { gltf, rawHeight, floor: idleFloor(gltf) };
   });
   templates.set(model.id, promise);
   /* A failed fetch must not poison the cache for the retry. */
@@ -310,6 +372,9 @@ export async function buildPremadeRig(
 
   const scale = (model.height * statureScale(spec.stature)) / template.rawHeight;
   body.scale.setScalar(scale);
+  /* Stand them on the ground rather than on their origin. Scaled with the
+     model, because `floor` is in the file's own units. */
+  body.position.y = -template.floor * scale;
 
   if (options.build) reshape(body, options.build);
 
