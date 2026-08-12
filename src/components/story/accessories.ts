@@ -33,7 +33,7 @@ export interface AccessorySpec {
   scale?: number;
 }
 
-export type AccessoryKind = 'bandana' | 'beard';
+export type AccessoryKind = 'bandana' | 'beard' | 'mane';
 
 export interface BuiltAccessory {
   object: THREE.Object3D;
@@ -142,6 +142,24 @@ const HEADS: Record<string, HeadMetrics> = {
      */
     noseY: 0.95,
     noseZ: 1.95,
+  },
+  /*
+   * The other imported adult. Scaled from `man1` by the ratio of the two rigs'
+   * units to the metre — 0.0896 against 0.0996 — because the two heads are
+   * within a few millimetres of each other in the world and it is only the
+   * bone unit that differs. Checked against the ladder at
+   * `/diag/npc?only=mai&calib=1&bare=1`.
+   */
+  woman2: {
+    radiusX: 1.5,
+    radiusZ: 1.64,
+    centreZ: 0.135,
+    clearance: 1.34,
+    hemY: 2.47,
+    crownY: 4.41,
+    chinY: 0.22,
+    noseY: 0.86,
+    noseZ: 1.75,
   },
   hoodie: {
     radiusX: 0.092,
@@ -340,6 +358,143 @@ function beard(color: string, scale: number, HEAD: HeadMetrics) {
   return { object: group, dispose: () => disposables.forEach((d) => d.dispose()) };
 }
 
+/**
+ * A mane: the big swept hair some of this cast is drawn with and none of the
+ * generic bodies have.
+ *
+ * Mai's silhouette is most of how she is recognised — a fan of spikes off the
+ * crown and long locks past the shoulders — and the body she is cast on wears
+ * a chin-length bob. Repainting gets her the colour and can do nothing about
+ * the shape.
+ *
+ * **It is built over the bob, not instead of it.** The hair on these models is
+ * part of the body mesh sharing the body texture, so there is no material to
+ * hide and no way to remove it. What there is, once the repaint has run, is a
+ * blonde bob — which is exactly the inner mass a big head of hair needs. So
+ * this adds the volume the bob lacks and lets the bob be the middle of it.
+ *
+ * Every piece is a cone, because at this size and this distance a lock of hair
+ * is a tapered wedge and anything more is polygons nobody sees. The game's own
+ * hair is built the same way, which is the point: it has to sit beside Yugi's
+ * without looking like it came from somewhere else.
+ */
+function mane(color: string, scale: number, HEAD: HeadMetrics) {
+  const group = new THREE.Group();
+  const disposables: { dispose(): void }[] = [];
+  const hair = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: 1,
+    metalness: 0,
+  });
+  disposables.push(hair);
+
+  const r = HEAD.radiusX * scale;
+  const cz = HEAD.centreZ * scale;
+
+  /**
+   * One lock, growing from a point on the skull and pointing where it is told.
+   *
+   * `lean` tips it away from straight up in the plane it sits in, so a lock at
+   * the back leans back and one at the side leans out; `sweep` then tips the
+   * whole thing backwards, which is what makes the fan read as swept rather
+   * than as a crown of thorns.
+   */
+  const lock = (
+    azimuth: number,
+    fromR: number,
+    fromY: number,
+    length: number,
+    width: number,
+    lean: number,
+    sweep: number
+  ) => {
+    const geo = new THREE.ConeGeometry(width, length, 7);
+    /* Base at the origin so the rotation pivots where it leaves the head. */
+    geo.translate(0, length / 2, 0);
+    /* Flattened across the head rather than round: a lock of hair is a broad
+       ribbon with a point on it, and cones left circular read as a crown of
+       needles — a hedgehog rather than a hairstyle. Local x is tangential once
+       the piece is turned to its azimuth, so wide there and thin in z. */
+    geo.scale(1.9, 1, 0.55);
+    disposables.push(geo);
+    const mesh = new THREE.Mesh(geo, hair);
+    mesh.position.set(
+      Math.sin(azimuth) * fromR,
+      fromY,
+      cz + Math.cos(azimuth) * fromR
+    );
+    /* Tilt out along its own azimuth, then lean the lot backwards. */
+    mesh.rotation.order = 'YXZ';
+    mesh.rotation.y = azimuth;
+    mesh.rotation.x = sweep;
+    mesh.rotation.z = -lean;
+    mesh.castShadow = true;
+    group.add(mesh);
+  };
+
+  /*
+   * The crown, nine spikes. Longest at the sides, where the drawing throws two
+   * big wings out past the ears; shortest over the forehead, which is a fringe
+   * rather than a spike and only wants filling in.
+   */
+  const CROWN: [number, number, number][] = [
+    /* azimuth (0 = facing forward), length, width — mirrored where non-zero. */
+    [0, 1.5, 0.2],
+    [0.65, 1.9, 0.23],
+    [1.25, 2.5, 0.26],
+    [1.9, 2.3, 0.25],
+    [2.5, 1.8, 0.23],
+    [Math.PI, 1.6, 0.21],
+  ];
+  for (const [az, len, w] of CROWN) {
+    for (const side of az === 0 || az === Math.PI ? [1] : [1, -1]) {
+      const a = az * side;
+      /* They start at the crown, not below it. Growing them from the middle of
+         the skull buried four fifths of each spike and left a row of slivers
+         poking through the scalp. */
+      lock(a, r * 0.82, HEAD.crownY * scale - r * 0.25, r * len, r * w, 1.02, -0.28);
+    }
+  }
+
+  /*
+   * The locks that fall. Two down each side of the face and two behind, long
+   * enough to pass the shoulders — the bob stops at the jaw, and the length is
+   * the other half of the silhouette.
+   */
+  const FALL: [number, number, number, number][] = [
+    /* azimuth, start radius, length, width. Fuller than a first pass had them:
+       at 0.3 they read as ribbons hung on her rather than as hair. */
+    [1.2, 0.95, 2.4, 0.44],
+    [1.9, 1.0, 2.8, 0.48],
+    [2.7, 0.9, 2.2, 0.46],
+  ];
+  for (const [az, fromR, len, w] of FALL) {
+    for (const side of [1, -1]) {
+      const geo = new THREE.ConeGeometry(r * w, r * len, 7);
+      geo.translate(0, -r * len * 0.5, 0);
+      /* Broad across, thin front to back — same reason as the crown. */
+      geo.scale(1.5, 1, 0.6);
+      disposables.push(geo);
+      const mesh = new THREE.Mesh(geo, hair);
+      mesh.position.set(
+        Math.sin(az * side) * r * fromR,
+        HEAD.hemY * scale - r * 0.35,
+        cz + Math.cos(az * side) * r * fromR
+      );
+      /* Splayed a little off vertical so they hang round the shoulders rather
+         than through them, and flipped so the taper points down. */
+      mesh.rotation.order = 'YXZ';
+      mesh.rotation.y = az * side;
+      mesh.rotation.z = 0.16 * side;
+      mesh.rotation.x = -0.1;
+      mesh.castShadow = true;
+      group.add(mesh);
+    }
+  }
+
+  return { object: group, dispose: () => disposables.forEach((d) => d.dispose()) };
+}
+
 export function buildAccessory(spec: AccessorySpec, head: HeadMetrics): BuiltAccessory | null {
   const scale = spec.scale ?? 1;
   switch (spec.kind) {
@@ -347,6 +502,8 @@ export function buildAccessory(spec: AccessorySpec, head: HeadMetrics): BuiltAcc
       return bandana(spec.color, spec.accent, scale, head);
     case 'beard':
       return beard(spec.color, scale, head);
+    case 'mane':
+      return mane(spec.color, scale, head);
     default:
       return null;
   }
