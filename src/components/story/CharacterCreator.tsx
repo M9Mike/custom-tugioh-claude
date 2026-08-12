@@ -4,42 +4,36 @@
  * The creation booth.
  *
  * A live 3D duelist on one half of the screen and a short list of finished
- * choices on the other: a body plan, three faces, three hairs, five hair
- * colours, three bodies, five outfits, one age slider. Every option is a
- * preset that was authored and photographed as a whole — nothing on this
- * screen mixes into a combination nobody has looked at. Nothing here is
- * previewed as an icon or a paper doll either: the model on screen is the
- * model that walks into the world, built by the same function from the same
+ * choices on the other — but the finished things are no longer assembled from
+ * preset parts. Each duelist is a whole vendored model (see
+ * `src/story/premade.ts` for the catalog and `public/models/duelists/` for
+ * where they came from): the player picks one, tints the garments its catalog
+ * entry says can be tinted, sets a stature, and names the result. Nothing
+ * here is previewed as an icon or a paper doll: the model on screen is the
+ * model that walks into the world, built by the same loader from the same
  * record, so what you approve is literally what you get.
  *
- * The confirmation is deliberately heavy, because the decision is: a duelist is
- * bound to the name that made them, and the only way back is Delete Character,
- * which starts the whole story over.
+ * The confirmation is deliberately heavy, because the decision is: a duelist
+ * is bound to the name that made them, and the only way back is Delete
+ * Character, which starts the whole story over.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { HAIR_COLORS, MAX_CHARACTER_NAME, type SexId, type StoryCharacter } from '@/story/character';
 import {
-  BODY_PRESETS,
-  FACE_PRESETS,
-  HAIR_COLOR_CHOICES,
-  HAIR_PRESETS,
-  OUTFIT_PRESETS,
-  defaultPick,
-  randomPick,
-  resolvePick,
-  type CharacterPick,
-} from '@/story/presets';
-import { buildCharacter, type Rig } from './humanoid';
+  AS_AUTHORED,
+  DUELIST_MODELS,
+  MAX_PREMADE_NAME,
+  defaultPremade,
+  modelById,
+  paletteFor,
+  randomPremade,
+  type PremadeCharacter,
+} from '@/story/premade';
+import { buildPremadeRig, preloadAllDuelists, type PremadeRig } from './premadeRig';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
-
-const SEXES: { id: SexId; label: string }[] = [
-  { id: 'male', label: 'Male' },
-  { id: 'female', label: 'Female' },
-];
 
 /**
  * How far the pinch may take the camera, as a multiple of the framing's own
@@ -59,65 +53,66 @@ const SHOTS = {
      shot tight enough to fill it puts the duelist's head behind the words —
      and the head is the half of the model anybody is actually judging. */
   full: { y: 1.0, dist: 3.25, pitch: 0.05 },
-  /* The face framing's height is a fallback only: the booth spans two body
-     plans and an age slider, which is a real spread of statures, so the render
-     loop reads eye level off the rig it actually built. A fixed 1.63 was eye
-     level for exactly one of them and forehead for the rest. */
-  face: { y: 1.63, dist: 0.66, pitch: 0.0 },
+  /* The face framing's height is a fallback only: the catalog spans a real
+     spread of statures, so the render loop reads head height off the rig it
+     actually built. */
+  face: { y: 1.63, dist: 0.8, pitch: 0.0 },
 } as const;
 type Shot = keyof typeof SHOTS;
 
 interface Props {
   username: string;
   /** Resolves once the server has the character; the caller moves on. */
-  onConfirm: (character: StoryCharacter) => Promise<string | null>;
+  onConfirm: (character: PremadeCharacter) => Promise<string | null>;
   onBack: () => void;
 }
 
 export default function CharacterCreator({ username, onConfirm, onBack }: Props) {
-  const [pick, setPick] = useState<CharacterPick>(() => defaultPick());
+  const [pick, setPick] = useState<PremadeCharacter>(() => defaultPremade(username));
   const [name, setName] = useState('');
   const [shot, setShot] = useState<Shot>('full');
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /* Asked once, before anything is built. Finding out whether this browser can
-     draw at all is a question with an answer, so it is answered up front rather
-     than discovered by a constructor throwing halfway through a mount — which
-     would mean rendering a viewport that can never contain anything. */
+  /* Flipped when the first model lands on the plinth. The driving scripts
+     wait for it before comparing screenshots, and it is honest UI besides:
+     a model is a fetch away, not a constructor away. Binding is gated on it
+     too — nobody may approve a duelist the plinth has never shown. */
+  const [modelReady, setModelReady] = useState(false);
+  /* A first load that failed outright — the plinth is empty and says so. */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /* Asked once, before anything is built — see the note in `canDraw3d`. */
   const [webglFailed, setWebglFailed] = useState(() => !canDraw3d());
 
-  /* The booth edits a handful of preset indices; the rich record the world
-     runs on is derived from them in exactly one place. What is previewed is
-     `resolvePick(pick)` and what is bound is `resolvePick(pick)`, so the two
-     cannot drift.
-
-     The name is deliberately not folded in here. `buildCharacter` never reads
-     it, but the render loop rebuilds on identity — so a spec that changed
-     with the name tore down and rebuilt the whole duelist on every keystroke
-     of it, on the one screen that has to run a live model on a phone. */
-  const spec = useMemo(() => resolvePick(pick, username), [pick, username]);
+  /* The booth edits the record the world runs on, minus the name: the render
+     loop rebuilds on identity, and a spec that changed with the name tore
+     down and rebuilt the whole duelist on every keystroke of it. */
+  const spec = useMemo(
+    () => ({ ...pick, name: username }),
+    [pick, username]
+  );
   /* The same record with the chosen name on it — what binding actually posts. */
   const named = useMemo(
-    () => ({ ...spec, name: (name.trim() || username).slice(0, MAX_CHARACTER_NAME) }),
+    () => ({ ...spec, name: (name.trim() || username).slice(0, MAX_PREMADE_NAME) }),
     [spec, name, username]
   );
 
-  /* Picking is also framing. Choosing a face zooms to the face and choosing an
-     outfit pulls back to the body, so every option is inspected at the
-     distance it actually reads at — a face swap seen from three metres is a
-     guess, not a choice. */
-  const choose = (next: CharacterPick, framing: Shot) => {
+  const model = modelById(pick.model);
+
+  /* Picking a duelist is also framing: it pulls back to the whole body.
+     Tints, stature and the roll buttons keep whatever framing — and zoom —
+     the player has set; a camera that snaps mid-adjustment reads as broken. */
+  const choose = (next: PremadeCharacter, framing?: Shot) => {
     sfx.click();
     setPick(next);
-    setShot(framing);
+    if (framing) setShot(framing);
   };
 
   /* ---------------- the viewport ---------------- */
 
   const holder = useRef<HTMLDivElement>(null);
-  /* The spec is read by the render loop rather than closed over, so changing a
-     knob never tears down and rebuilds the renderer — only the body. */
+  /* The spec is read by the render loop rather than closed over, so changing
+     a knob never tears down and rebuilds the renderer — only the duelist. */
   const specRef = useRef(spec);
   const shotRef = useRef<Shot>(shot);
   useEffect(() => {
@@ -128,6 +123,10 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
   useEffect(() => {
     const el = holder.current;
     if (!el) return;
+
+    /* Warm the cache for the whole roster up front: the first thing every
+       player does is flick through it, and a stall per flick reads as broken. */
+    preloadAllDuelists();
 
     let renderer: THREE.WebGLRenderer;
     try {
@@ -161,16 +160,10 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100);
 
     /**
-     * A key, a rim, a soft front fill — and, carrying more of the image than
-     * any of them, an environment.
-     *
-     * The duelist's skin and cloth are `MeshPhysicalMaterial` with sheen, and
-     * sheen is a broad view-facing lobe: pile enough direct light on it and
-     * every surface saturates towards white, which is how an earlier version
-     * of this booth turned a black coat and a red jacket into the same pale
-     * grey. Most of the light here is therefore image-based and low — it is
-     * what gives a cheekbone a gradient instead of a hotspot — and the
-     * directional lights only have to shape it.
+     * A key, a rim, a soft front fill — and an environment carrying most of
+     * the image, kept from the booth this one replaced: models lit only by
+     * direct light read as cardboard, and the vendored atlases carry their
+     * own painted shading that a hot key would blow out.
      */
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
@@ -222,22 +215,54 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     const pivot = new THREE.Group();
     scene.add(pivot);
 
-    let rig: Rig | null = null;
-    let built: StoryCharacter | null = null;
+    let rig: PremadeRig | null = null;
     /* Eye level of whoever is actually standing on the plinth, kept fresh by
-       every rebuild so the face framing follows a change of body plan. */
+       every swap so the face framing follows a change of model or stature. */
     let faceY = SHOTS.face.y;
-    const rebuild = (next: StoryCharacter) => {
-      if (rig) {
-        pivot.remove(rig.root);
-        rig.dispose();
-      }
-      rig = buildCharacter(next);
-      pivot.add(rig.root);
-      built = next;
-      faceY = rig.height - 0.15;
+
+    /**
+     * Building a duelist is asynchronous — there is a file behind it — so the
+     * loop asks for a build when the spec moves and a sequence number throws
+     * away everything but the newest answer. The old model holds the plinth
+     * until its replacement is actually ready: an empty stage between two
+     * models reads as the booth crashing, twice, on every tap.
+     */
+    let requestedKey: string | null = null;
+    let buildSeq = 0;
+    const rebuild = (next: PremadeCharacter) => {
+      const seq = ++buildSeq;
+      buildPremadeRig(next)
+        .then((fresh) => {
+          if (seq !== buildSeq) {
+            fresh.dispose();
+            return;
+          }
+          if (rig) {
+            pivot.remove(rig.root);
+            rig.dispose();
+          }
+          rig = fresh;
+          pivot.add(rig.root);
+          faceY = rig.height - 0.22;
+          setModelReady(true);
+          setLoadFailed(false);
+        })
+        .catch((err) => {
+          /* A model that cannot be fetched is news from outside, not a render
+             decision. The booth keeps whatever it was showing — but a failed
+             fetch is not a permanent answer, so the ask is re-armed after a
+             beat (a beat, not a frame: cleared per frame it would hammer a
+             dead network sixty times a second). An empty plinth also says
+             so, because a booth that failed silently and a booth still
+             loading look identical from the outside. */
+          console.error('character booth: model failed to load', err);
+          if (seq !== buildSeq) return;
+          setTimeout(() => {
+            if (seq === buildSeq) requestedKey = null;
+          }, 2000);
+          if (!rig) setLoadFailed(true);
+        });
     };
-    rebuild(specRef.current);
 
     /* ---- pointer control: drag to turn, pinch to zoom ---- */
     let yaw = 0.35;
@@ -314,10 +339,21 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     let raf = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
-      const t = clock.getElapsedTime();
+      const dt = Math.min(clock.getDelta(), 0.05);
 
-      /* One rebuild per frame at most, however fast a slider is dragged. */
-      if (built !== specRef.current) rebuild(specRef.current);
+      /* One build in flight per *distinct* duelist, however fast the knobs
+         are worked. Keyed on what actually changes the rig rather than on
+         object identity: a stature drag makes a new object per input event,
+         and rebuilding a full clone per event stuttered the very drag it was
+         following. Stature is quantised in the key — a rebuild a millimetre
+         apart is a clone nobody can see. */
+      const key = `${specRef.current.model}|${specRef.current.tints.join(',')}|${Math.round(
+        specRef.current.stature * 24
+      )}`;
+      if (key !== requestedKey) {
+        requestedKey = key;
+        rebuild(specRef.current);
+      }
 
       if (performance.now() > idleUntil && pointers.size === 0) yaw += 0.0035;
 
@@ -326,12 +362,11 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
        *
        * Both of these persisted across a framing change, and both quietly broke
        * the promise the two buttons make. `zoom` multiplies whatever the framing
-       * asks for, so after a pinch outwards "Face" put the camera at 0.66 m
+       * asks for, so after a pinch outwards "Face" put the camera at 0.8 m
        * times the zoom the player happened to be left at — a distant torso. And
        * a drag downwards leaves the camera 29° up, from where "Face" frames the
-       * top of the head: the one shot in the booth that has to show a face
-       * showed a scalp instead. Neither is a state a player can name or undo;
-       * the buttons are presets, so they reset what a preset owns and leave yaw,
+       * top of the head. Neither is a state a player can name or undo; the
+       * buttons are presets, so they reset what a preset owns and leave yaw,
        * which is the player turning the model, alone.
        */
       if (shotRef.current !== lastShot) {
@@ -353,13 +388,15 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       );
       camera.lookAt(0, camY, 0);
 
-      rig?.pose(t, 0, 0);
+      rig?.update(dt, 0, 0);
       renderer.render(scene, camera);
     };
     frame();
 
     return () => {
       cancelAnimationFrame(raf);
+      /* Anything still being built belongs to nobody now. */
+      buildSeq++;
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
@@ -443,7 +480,14 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     <main className="safe-page flex h-[100svh] w-full flex-col overflow-hidden lg:flex-row">
       {/* ---- viewport ---- */}
       <div className="relative h-[40svh] shrink-0 lg:h-full lg:flex-1">
-        <div ref={holder} className="absolute inset-0" />
+        <div ref={holder} data-ready={modelReady ? 'yes' : undefined} className="absolute inset-0" />
+        {loadFailed && !modelReady && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+            <p className="rounded border border-oxblood bg-[#2a1216]/80 px-3 py-1.5 text-[11px] text-[#f0c9cc]">
+              The duelist could not be loaded — check your connection. Retrying…
+            </p>
+          </div>
+        )}
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
           <div>
             <h1 className="font-display text-lg leading-none text-brassbright">Make your duelist</h1>
@@ -477,7 +521,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
           <Field label="Name">
             <input
               value={name}
-              maxLength={MAX_CHARACTER_NAME}
+              maxLength={MAX_PREMADE_NAME}
               onChange={(e) => setName(e.target.value)}
               placeholder={username}
               className="w-full rounded border border-stoneline bg-black/30 px-3 py-2 text-sm text-parchment outline-none focus:border-brassdim"
@@ -485,59 +529,46 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
           </Field>
 
           <PickRow
-            label="Body plan"
-            options={SEXES.map((s) => ({ key: s.id, label: s.label }))}
-            value={pick.sex}
+            label="Duelist"
+            options={DUELIST_MODELS.map((m) => ({ key: m.id, label: m.label, note: m.note }))}
+            value={pick.model}
             onPick={(k) => {
-              /* Faces and hair are per-plan lists, so switching plans re-reads
-                 the same slots in the other plan's tables — the choice you made
-                 stays "second face, first hair" rather than snapping back. */
-              choose({ ...pick, sex: k as SexId }, 'full');
+              /* Tint slots belong to a model — a new duelist starts as the
+                 file was painted, not wearing the last one's choices. */
+              const next = modelById(k);
+              choose(
+                { ...pick, model: next.id, tints: next.tintSlots.map(() => AS_AUTHORED) },
+                'full'
+              );
             }}
           />
 
-          <PickRow
-            label="Face"
-            options={FACE_PRESETS[pick.sex].map((f, i) => ({ key: String(i), label: f.label, note: f.note }))}
-            value={String(pick.face)}
-            onPick={(k) => choose({ ...pick, face: Number(k) }, 'face')}
-          />
+          {model.tintSlots.map((slot, i) => (
+            <TintRow
+              key={`${model.id}:${slot.label}`}
+              label={slot.label}
+              colors={paletteFor(slot)}
+              value={pick.tints[i] ?? AS_AUTHORED}
+              onPick={(v) => {
+                const tints = model.tintSlots.map((_, j) => (j === i ? v : pick.tints[j] ?? AS_AUTHORED));
+                choose({ ...pick, tints });
+              }}
+            />
+          ))}
 
-          <PickRow
-            label="Hair"
-            options={HAIR_PRESETS[pick.sex].map((h, i) => ({ key: String(i), label: h.label }))}
-            value={String(pick.hair)}
-            onPick={(k) => choose({ ...pick, hair: Number(k) }, 'face')}
+          <Slider
+            label="Stature"
+            hint="Short — tall"
+            value={pick.stature}
+            onChange={(v) => setPick((c) => ({ ...c, stature: v }))}
           />
-          <Swatches
-            label="Hair colour"
-            colors={HAIR_COLOR_CHOICES.map((i) => HAIR_COLORS[i])}
-            value={pick.hairColor}
-            onPick={(i) => choose({ ...pick, hairColor: i }, 'face')}
-          />
-
-          <PickRow
-            label="Body"
-            options={BODY_PRESETS.map((b, i) => ({ key: String(i), label: b.label }))}
-            value={String(pick.body)}
-            onPick={(k) => choose({ ...pick, body: Number(k) }, 'full')}
-          />
-
-          <PickRow
-            label="Outfit"
-            options={OUTFIT_PRESETS.map((o, i) => ({ key: String(i), label: o.label, note: o.note }))}
-            value={String(pick.outfit)}
-            onPick={(k) => choose({ ...pick, outfit: Number(k) }, 'full')}
-          />
-
-          <Slider label="Age" hint="Young — old" value={pick.age} onChange={(v) => setPick((c) => ({ ...c, age: v }))} />
 
           <div className="mt-4 flex gap-2">
             <button
               className="btn flex-1 rounded px-3 py-2 text-[10px]"
               onClick={() => {
                 sfx.click();
-                setPick(randomPick());
+                setPick(randomPremade(username));
               }}
             >
               Surprise me
@@ -546,7 +577,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
               className="btn flex-1 rounded px-3 py-2 text-[10px]"
               onClick={() => {
                 sfx.click();
-                setPick(defaultPick());
+                setPick(defaultPremade(username));
               }}
             >
               Reset
@@ -564,13 +595,16 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
             </button>
             <button
               className="btn btn-primary flex-1 rounded px-4 py-3 text-xs"
-              disabled={busy}
+              /* Also gated on the first model having landed: binding is
+                 permanent, and nobody may approve a duelist the plinth has
+                 never actually shown. */
+              disabled={busy || !modelReady}
               onClick={() => {
                 sfx.click();
                 setAsking(true);
               }}
             >
-              {busy ? 'Binding…' : 'This is my duelist'}
+              {busy ? 'Binding…' : modelReady ? 'This is my duelist' : 'Summoning…'}
             </button>
           </div>
         </div>
@@ -645,7 +679,16 @@ function Slider({
   );
 }
 
-function Swatches({
+/**
+ * One tint slot: the model's own paint first, then the palette.
+ *
+ * "As made" is a real choice with a chip of its own, not a swatch that
+ * happens to match — the vendored look is exact or it is gone. `data-tint`
+ * names every button `slot:index` (−1 for as-made) because the driving
+ * scripts need a selector that survives a wording change, the same contract
+ * `data-pick` makes below.
+ */
+function TintRow({
   label,
   colors,
   value,
@@ -654,16 +697,26 @@ function Swatches({
   label: string;
   colors: readonly string[];
   value: number;
-  onPick: (i: number) => void;
+  onPick: (v: number) => void;
 }) {
+  const slug = label.toLowerCase().replace(/\s+/g, '-');
   return (
     <div className="mt-3">
       <p className="mb-1 font-display text-[10px] uppercase tracking-widest text-ptextdim">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          data-tint={`${slug}:-1`}
+          aria-pressed={value === AS_AUTHORED}
+          onClick={() => onPick(AS_AUTHORED)}
+          className={`btn rounded px-2 py-1.5 text-[9px] ${value === AS_AUTHORED ? 'btn-primary' : ''}`}
+        >
+          As made
+        </button>
         {colors.map((c, i) => (
           <button
             key={c + i}
-            aria-label={`${label} ${i + 1}`}
+            data-tint={`${slug}:${i}`}
+            aria-label={`${label} colour ${i + 1}`}
             aria-pressed={value === i}
             /* No click sound here: the caller's `choose` already plays it, and
                a picker that clicks twice per tap sounds broken. */
@@ -684,8 +737,7 @@ function Swatches({
  *
  * `data-pick` names each button `group:key` (the group is the slugged label)
  * because the driving scripts need a selector that survives a wording change
- * to the visible text, and two rows both containing a button that says
- * "Balanced" need telling apart.
+ * to the visible text.
  */
 function PickRow({
   label,

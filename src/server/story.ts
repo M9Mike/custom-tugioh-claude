@@ -16,6 +16,7 @@
 
 import { deleteKey, durable, readJson, writeJsonIf } from './store';
 import { newProfile, type StoryProfile } from '@/story/profile';
+import { normalisePremade } from '@/story/premade';
 
 /** Ten years. Long enough that "permanent" is a fair description. */
 const FOREVER_SECONDS = 10 * 365 * 24 * 60 * 60;
@@ -173,9 +174,20 @@ async function devDelete(username: string): Promise<void> {
 
 export async function loadProfile(username: string): Promise<StoryProfile | null> {
   const stored = await readJson<StoryProfile>(key(username));
-  if (stored) return stored;
-  if (durable) return null;
-  return (await devRead())[fold(username)] ?? null;
+  const profile = stored ?? (durable ? null : (await devRead())[fold(username)] ?? null);
+  if (!profile) return null;
+  /**
+   * Every stored character leaves through the same door the booth's POST came
+   * in by. This is belt and braces for a record written by an older build of
+   * the booth — including every save from before duelists were vendored
+   * models at all, which `normalisePremade` seats on a model deterministically
+   * — and it means nothing past this line ever meets a shape it does not
+   * expect. The next write persists the seated form as a side effect.
+   */
+  if (profile.character) {
+    profile.character = normalisePremade(profile.character, profile.username);
+  }
+  return profile;
 }
 
 /**

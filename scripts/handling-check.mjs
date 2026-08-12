@@ -129,6 +129,15 @@ try {
     } else if (!box) {
       console.log('  (skipping the booth gestures — there is nothing to drive)');
     } else {
+      /* The first duelist is a fetch away; the booth stamps `data-ready` when
+         one is standing, and frames of an empty plinth photograph nothing —
+         so a booth that never becomes ready is a fault, not a shrug: the run
+         carries on (the empty frames are themselves evidence) but must not
+         end by reporting success. */
+      await page.locator('[data-ready="yes"]').waitFor({ timeout: 30000 }).catch(() => {
+        console.log('  ! the booth never reported a model ready — photographing it anyway');
+        faults++;
+      });
       await shot('booth-open');
       const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
@@ -177,28 +186,38 @@ try {
         await shot(`booth-shot-${s}-b`);
       }
 
-      /* ---- every pick, applied and photographed ---- */
-      /* Long enough for the camera to arrive as well as the model: a face or
-         hair pick re-frames to the face, and the framing eases at 0.12 a
-         frame on a headless phone rendering nowhere near 60 of them a second.
-         A shot of a camera in transit says nothing about where it was going.
-         Read off the page rather than restated here, so a preset added to the
-         tables is photographed without anyone remembering this file. */
+      /* ---- every duelist, applied and photographed ---- */
+      /* Long enough for the fetch as well as the camera: picking a duelist
+         swaps a whole model in, and a shot of an empty plinth says nothing
+         about the model that was coming. Read off the page rather than
+         restated here, so a model added to the catalog is photographed
+         without anyone remembering this file. */
       const picks = await page.$$eval('[data-pick]', (els) => els.map((e) => e.dataset.pick));
       for (const p of picks) {
         await page.locator(`[data-pick="${p}"]`).tap();
-        await page.waitForTimeout(1600);
+        await page.waitForTimeout(2200);
         await shot(`booth-pick-${p.replace(/[^a-z0-9]+/gi, '-')}`);
       }
-      /* The hair colours are swatches, not labelled buttons; two are enough
-         to show the tint landing on whatever hair the loop left selected. */
-      for (const c of [3, 5]) {
-        await page.locator(`[aria-label="Hair colour ${c}"]`).tap();
-        await page.waitForTimeout(900);
-        await shot(`booth-colour-${c}`);
+      /* The tints are swatches per garment, read off the page the same way.
+         One mid-palette swatch per garment shows the repaint landing on
+         whatever duelist the loop left selected; the first garment's as-made
+         chip then has to bring the original paint back. */
+      const tints = await page.$$eval('[data-tint]', (els) => els.map((e) => e.dataset.tint));
+      const slots = [...new Set(tints.map((t) => t.split(':')[0]))];
+      for (const slot of slots) {
+        const mine = tints.filter((t) => t.startsWith(`${slot}:`) && !t.endsWith(':-1'));
+        const swatch = mine[Math.floor(mine.length / 2)];
+        await page.locator(`[data-tint="${swatch}"]`).tap();
+        await page.waitForTimeout(1400);
+        await shot(`booth-tint-${swatch.replace(/[^a-z0-9]+/gi, '-')}`);
+      }
+      if (slots.length) {
+        await page.locator(`[data-tint="${slots[0]}:-1"]`).tap();
+        await page.waitForTimeout(1400);
+        await shot('booth-tint-as-made');
       }
 
-      /* ---- the age slider, dragged: does the model follow or jump? ---- */
+      /* ---- the stature slider, dragged: does the model follow or jump? ---- */
       const sliders = page.locator('input[type="range"]');
       if (await sliders.count()) {
         await sliders.first().scrollIntoViewIfNeeded();
@@ -208,7 +227,7 @@ try {
             { x: sb.x + sb.width * 0.15, y: sb.y + sb.height / 2 },
             { x: sb.x + sb.width * 0.95, y: sb.y + sb.height / 2 },
             6,
-            'booth-age'
+            'booth-stature'
           );
         }
       }

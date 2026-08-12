@@ -210,67 +210,63 @@ async function run(phoneName) {
 
   /* ---- the creation booth ---- */
   if (at === 'character') {
+    /* The duelist is a fetched model, not a constructor call, and the booth
+       says so: it stamps `data-ready` on the viewport when the first one is
+       standing. A booth that never becomes ready is a failure in its own
+       right — every screenshot comparison after it would be of an empty
+       plinth, passing or failing for reasons that have nothing to do with
+       the control being tapped. */
+    const ready = await page
+      .locator('[data-ready="yes"]')
+      .waitFor({ timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    check(ready, 'the booth reports a duelist ready');
     const first = await canvasShot(page);
     check(first.length > RENDERED_BYTES, 'the duelist is drawn', `${first.length} bytes`);
     await fs.writeFile(`${OUT}/${phoneName}-2-booth.png`, await page.screenshot());
 
-    /* The booth offers exactly what was designed: two body plans, three faces,
-       three hairs, five hair colours, three bodies, five outfits. Counted
-       rather than assumed, because a preset table losing a row is invisible to
-       every other check — the booth still works, just smaller. */
+    /* The booth offers exactly what was designed: twelve duelists, and three
+       tintable garments on the one it opens on. Counted rather than assumed,
+       because the catalog losing a row is invisible to every other check —
+       the booth still works, just smaller. */
     const offer = async (selector, want, what) => {
       const n = await page.locator(selector).count();
       check(n === want, `the booth offers ${want} ${what}`, `saw ${n}`);
     };
-    await offer('[data-pick^="body-plan:"]', 2, 'body plans');
-    await offer('[data-pick^="face:"]', 3, 'faces');
-    await offer('[data-pick^="hair:"]', 3, 'hairs');
-    await offer('[aria-label^="Hair colour"]', 5, 'hair colours');
-    await offer('[data-pick^="body:"]', 3, 'bodies');
-    await offer('[data-pick^="outfit:"]', 5, 'outfits');
+    await offer('[data-pick^="duelist:"]', 12, 'duelists');
+    await offer('[data-tint$=":-1"]', 3, 'tintable garments');
 
-    /* Every kind of pick has to reach the model, or the booth is a picture of
-       a default duelist with buttons next to it. Each tap is compared against
-       the frame before it, so the one control that does nothing is named
-       rather than hidden behind the ones that work.
-
-       The body-framed picks come first, checked in a framing the camera never
-       leaves. A face or hair pick also *moves* the camera, and a comparison
-       across that move passes whether or not the model changed — so the first
-       face pick is only the way into the face framing, given long enough for
-       the camera to arrive, and the face check proper is a second face picked
-       inside it. */
+    /* Every kind of choice has to reach the model, or the booth is a picture
+       of a default duelist with buttons next to it. Each tap is compared
+       against the frame before it, so the one control that does nothing is
+       named rather than hidden behind the ones that work. The model swap goes
+       first so the tint taps land on a known duelist — the suit, whose slots
+       are the suit, the tie and the hair. */
     let before = first;
     for (const [selector, what] of [
-      ['[data-pick="body-plan:female"]', 'a body plan'],
-      ['[data-pick="body:2"]', 'a body'],
-      ['[data-pick="outfit:3"]', 'an outfit'],
+      ['[data-pick="duelist:suit"]', 'a duelist'],
+      ['[data-tint="suit:12"]', 'a garment tint'],
+      ['[data-tint="hair:8"]', 'a hair tint'],
     ]) {
       await page.locator(selector).tap();
-      await page.waitForTimeout(1400);
+      await page.waitForTimeout(1600);
       const after = await canvasShot(page);
       check(!after.equals(before), `picking ${what} changes the model`);
       before = after;
     }
-    await page.locator('[data-pick="face:2"]').tap();
-    await page.waitForTimeout(2600);
-    before = await canvasShot(page);
-    for (const [selector, what] of [
-      ['[data-pick="face:1"]', 'a face'],
-      ['[data-pick="hair:2"]', 'a hair'],
-      ['[aria-label="Hair colour 4"]', 'a hair colour'],
-    ]) {
-      await page.locator(selector).tap();
-      await page.waitForTimeout(1400);
-      const after = await canvasShot(page);
-      check(!after.equals(before), `picking ${what} changes the model`);
-      before = after;
-    }
-    const age = page.locator('input[type="range"]').first();
-    await age.scrollIntoViewIfNeeded();
-    await age.fill('0.85');
-    await page.waitForTimeout(1100);
-    check(!(await canvasShot(page)).equals(before), 'age reaches the model');
+    /* And back to as-made, which must be a real choice rather than a swatch
+       that happens to sit close — the vendored paint has to come back exact. */
+    await page.locator('[data-tint="suit:-1"]').tap();
+    await page.waitForTimeout(1600);
+    const asMade = await canvasShot(page);
+    check(!asMade.equals(before), 'as-made brings the original paint back');
+    before = asMade;
+    const stature = page.locator('input[type="range"]').first();
+    await stature.scrollIntoViewIfNeeded();
+    await stature.fill('0.95');
+    await page.waitForTimeout(1600);
+    check(!(await canvasShot(page)).equals(before), 'stature reaches the model');
     await fs.writeFile(`${OUT}/${phoneName}-3-picked.png`, await page.screenshot());
 
     await page.locator('button:has-text("Surprise me")').first().tap();
@@ -360,7 +356,10 @@ async function run(phoneName) {
     return;
   }
 
-  await page.waitForTimeout(1400);
+  /* Long enough for the duelist itself to arrive: the model is fetched, and
+     the walk check below compares against this frame, so a duelist that
+     appears *between* the two shots would pass the walk for the wrong reason. */
+  await page.waitForTimeout(2800);
   const standing = await canvasShot(page);
   check(standing.length > RENDERED_BYTES, 'the field is drawn', `${standing.length} bytes`);
   await fs.writeFile(`${OUT}/${phoneName}-5-world.png`, await page.screenshot());

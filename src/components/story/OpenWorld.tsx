@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
-import { buildCharacter, gaitRate, type Rig } from './humanoid';
+import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
@@ -179,7 +179,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     sun.shadow.bias = -0.0018;
     scene.add(sun);
     scene.add(sun.target);
-    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.72));
+    /* 0.95, up from 0.72: the vendored duelists are matte standard materials,
+       not the old sheen-lobed cloth, and at 0.72 the side of the body away
+       from the sun read as a silhouette against the bright grass. The grass
+       takes the same raise and stays grass. */
+    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.95));
 
     /* ---- ground ----
        The texture is painted into a canvas rather than downloaded: five thousand
@@ -250,11 +254,30 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     tufts.frustumCulled = false;
     scene.add(tufts);
 
-    /* ---- the duelist ---- */
-    const rig: Rig = buildCharacter(character);
-    scene.add(rig.root);
-    rig.root.position.set(here.current.x, 0, here.current.z);
-    rig.root.rotation.y = here.current.facing;
+    /* ---- the duelist ----
+       Fetched, not constructed: the model is a file. The field does not wait
+       for it — ground, sky and grass are all runtime-made and appear at once —
+       and the duelist steps onto it the moment the fetch lands, usually from
+       cache. Until then there is a field with nobody in it, which is a truthful
+       picture of the situation. */
+    let rig: PremadeRig | null = null;
+    let gone = false;
+    buildPremadeRig(character)
+      .then((fresh) => {
+        if (gone) {
+          fresh.dispose();
+          return;
+        }
+        rig = fresh;
+        scene.add(rig.root);
+        rig.root.position.set(here.current.x, 0, here.current.z);
+        rig.root.rotation.y = here.current.facing;
+      })
+      .catch((err) => {
+        /* A world with no duelist in it is broken, but a crash here would take
+           the menu — and Delete Character — down with it. Say so and stand. */
+        console.error('open world: the duelist failed to load', err);
+      });
 
     /* ---- camera control: drag anywhere on the world to look ---- */
     let camYaw = here.current.facing + Math.PI;
@@ -314,9 +337,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
-    /* Where the gait is. Integrated, never computed from the elapsed clock —
-       see `gaitRate`. */
-    let gait = 0;
     let raf = 0;
     const camPos = new THREE.Vector3();
     const lookAt = new THREE.Vector3();
@@ -364,6 +384,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       }
 
       const p = here.current;
+      /* Where the frame started, so the speed handed to the rig below is the
+         ground actually covered — which the world's edge can cut short. */
+      const fromX = p.x;
+      const fromZ = p.z;
 
       /**
        * Moved by `stride`, not by the stick.
@@ -388,14 +412,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         }
       }
 
-      /* Advanced by the rate the current pace asks for, so the phase is
-         continuous through every change of pace — and wrapped, so it stays
-         small however long the game is left running. */
-      gait = (gait + gaitRate(stride) * dt) % (Math.PI * 2);
-
-      rig.root.position.set(p.x, 0, p.z);
-      rig.root.rotation.y = p.facing;
-      rig.pose(t, stride, gait);
+      if (rig) {
+        rig.root.position.set(p.x, 0, p.z);
+        rig.root.rotation.y = p.facing;
+        /* The clips advance by `dt` and play at ground speed over clip speed —
+           the same one-speed arithmetic that kept the old gait's feet from
+           sliding, now living in `premadeRig.ts`. The speed is measured off
+           the position the clamp actually allowed, and the stride handed over
+           is capped to it, so a duelist pinned against the world's edge slows
+           to a stand instead of marching on the spot. */
+        const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
+        rig.update(dt, Math.min(stride, covered / WALK_SPEED), covered);
+      }
 
       /* Shadow box rides along with the duelist. */
       sun.position.set(p.x + 30, 48, p.z + 22);
@@ -429,7 +457,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
-      rig.dispose();
+      gone = true;
+      rig?.dispose();
       tufts.dispose();
       for (const x of trash) x.dispose();
       /* `dispose()` frees three's own objects but leaves the WebGL context

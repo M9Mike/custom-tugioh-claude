@@ -8,7 +8,7 @@
  * duelist, and localStorage cannot keep that promise.
  */
 
-import type { StoryCharacter } from './character';
+import type { PremadeCharacter } from './premade';
 
 export interface WorldPosition {
   x: number;
@@ -24,8 +24,13 @@ export interface StoryProfile {
    * Absent until the creation booth is finished — which is the whole test for
    * "has this player made a character yet". Once present it is never replaced:
    * the routes refuse a second write rather than merging one.
+   *
+   * Saves written before the model swap hold the old procedural spec here;
+   * `loadProfile` runs every stored character through `normalisePremade`,
+   * which seats those on a model, so nothing past the store ever meets the
+   * old shape.
    */
-  character: StoryCharacter | null;
+  character: PremadeCharacter | null;
   /** The 25 the player chose. Absent until the first deck is confirmed. */
   deck: string[] | null;
   /**
