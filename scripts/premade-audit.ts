@@ -44,11 +44,16 @@ interface GlbJson {
   skins?: unknown[];
 }
 
-/** Just enough GLB parsing for an audit: the JSON chunk. */
+/** Just enough GLB parsing for an audit: the JSON chunk. Every throw names
+    what is wrong with the file, because "RangeError" against a truncated
+    download tells nobody which of the twelve to re-fetch. */
 function readGlb(file: string): GlbJson {
   const buf = fs.readFileSync(file);
+  if (buf.length < 20) throw new Error('truncated: too short to hold a GLB header');
   if (buf.readUInt32LE(0) !== 0x46546c67) throw new Error('not a GLB');
   const jsonLen = buf.readUInt32LE(12);
+  if (buf.readUInt32LE(16) !== 0x4e4f534a) throw new Error('first chunk is not JSON');
+  if (20 + jsonLen > buf.length) throw new Error('truncated: JSON chunk runs past the file');
   return JSON.parse(buf.subarray(20, 20 + jsonLen).toString()) as GlbJson;
 }
 
@@ -61,7 +66,15 @@ for (const model of DUELIST_MODELS) {
     bad('the model file exists', file);
     continue;
   }
-  const json = readGlb(file);
+  /* One corrupt file fails its own row and the audit's exit code — it must
+     not take the report for the other eleven down with it. */
+  let json: GlbJson;
+  try {
+    json = readGlb(file);
+  } catch (err) {
+    bad('the model file parses', (err as Error).message);
+    continue;
+  }
 
   check((json.skins?.length ?? 0) > 0, 'the model is rigged');
   const clips = (json.animations ?? []).map((a) => a.name ?? '');

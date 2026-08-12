@@ -130,8 +130,14 @@ try {
       console.log('  (skipping the booth gestures — there is nothing to drive)');
     } else {
       /* The first duelist is a fetch away; the booth stamps `data-ready` when
-         one is standing, and frames of an empty plinth photograph nothing. */
-      await page.locator('[data-ready="yes"]').waitFor({ timeout: 30000 }).catch(() => {});
+         one is standing, and frames of an empty plinth photograph nothing —
+         so a booth that never becomes ready is a fault, not a shrug: the run
+         carries on (the empty frames are themselves evidence) but must not
+         end by reporting success. */
+      await page.locator('[data-ready="yes"]').waitFor({ timeout: 30000 }).catch(() => {
+        console.log('  ! the booth never reported a model ready — photographing it anyway');
+        faults++;
+      });
       await shot('booth-open');
       const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
