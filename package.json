@@ -48,7 +48,8 @@
     "story": "node scripts/story-check.mjs",
     "clash": "node scripts/clash-check.mjs",
     "handling": "node scripts/handling-check.mjs",
-    "premade": "tsx scripts/premade-audit.ts"
+    "premade": "tsx scripts/premade-audit.ts",
+    "faces": "node scripts/npc-face-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

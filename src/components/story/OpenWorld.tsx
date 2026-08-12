@@ -552,12 +552,24 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       /**
        * The conversation camera.
        *
-       * Over the shoulder is the right camera for walking and the wrong one
-       * for talking: the person you came to speak to stands directly behind
-       * your own duelist and you spend the scene looking at the back of your
-       * own head. So while a conversation is open the camera swings round to
-       * one side of the line between the two of you and frames them both,
-       * looking at the midpoint rather than at the player.
+       * The walking camera sits directly behind the duelist, which during a
+       * conversation means staring at the back of your own head while somebody
+       * talks to you from behind it. So the camera steps aside — but only just.
+       *
+       * **It has to be a shoulder shot, and the lens says so.** The first
+       * version swung a little over a right angle off the line between the two
+       * of you and looked at the midpoint, on the theory that side-on shows two
+       * faces. On a phone it showed neither: the field of view is 52° vertical,
+       * and at a portrait aspect that is **under 13° either side of centre**.
+       * Two people three metres apart, viewed square-on from three, sit about
+       * 28° out — so both of them left the frame and the scene played over an
+       * empty field. Fitting them side-on needs the camera six-odd metres back,
+       * which is not a conversation, it is a surveillance photograph.
+       *
+       * So: stay behind the duelist, swing a third of a radian to one side, and
+       * look at *the person speaking*. They land in the middle of the frame,
+       * your own shoulder holds the left edge, and the geometry works at
+       * conversation distance instead of fighting it.
        *
        * Eased, not cut — `talkBlend` crosses over about half a second — and
        * it drives `camYaw` itself rather than overriding it, so when the
@@ -571,17 +583,20 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       let lookY = 1.15;
       let dist = 4.6;
       if (talkBlend > 0.001 && near) {
-        /* Off the axis between them by a little over a right angle, which is
-           the angle that shows two faces rather than two profiles. */
+        /* Behind the duelist (`+ π`) and a third of a radian to the side —
+           enough to clear their head, little enough that the person they are
+           talking to stays inside the lens. */
         const axis = Math.atan2(near.x - p.x, near.z - p.z);
-        let d = axis + 1.15 - camYaw;
+        let d = axis + Math.PI + 0.34 - camYaw;
         d = Math.atan2(Math.sin(d), Math.cos(d));
         camYaw += d * talkBlend * Math.min(1, dt * 3);
-        camPitch += (0.12 - camPitch) * talkBlend * Math.min(1, dt * 3);
-        lookX = p.x + (near.x - p.x) * 0.5 * talkBlend;
-        lookZ = p.z + (near.z - p.z) * 0.5 * talkBlend;
-        lookY = 1.15 + 0.15 * talkBlend;
-        dist = 4.6 - 1.3 * talkBlend;
+        camPitch += (0.1 - camPitch) * talkBlend * Math.min(1, dt * 3);
+        /* All the way to the speaker, not half way: they are the subject. */
+        lookX = p.x + (near.x - p.x) * talkBlend;
+        lookZ = p.z + (near.z - p.z) * talkBlend;
+        /* Their head, and above the panel that covers the bottom third. */
+        lookY = 1.15 + 0.2 * talkBlend;
+        dist = 4.6 - 1.7 * talkBlend;
       }
 
       camPos.set(

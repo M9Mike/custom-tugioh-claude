@@ -39,7 +39,7 @@ import {
   statureScale,
   type PremadeCharacter,
 } from '@/story/premade';
-import { buildAccessory, type AccessorySpec } from './accessories';
+import { buildAccessory, headFor, type AccessorySpec } from './accessories';
 
 export interface PremadeRig {
   /** Add this to a scene. Origin between the feet, on the ground. */
@@ -236,7 +236,14 @@ export async function buildPremadeRig(
         );
         continue;
       }
-      const built = buildAccessory(spec2);
+      /* Accessories are placed in the head's own coordinates, and those differ
+         from model to model. A model nobody has measured cannot be worn on. */
+      const head = headFor(model.id);
+      if (!head) {
+        console.error(`premadeRig: no head metrics for "${model.id}" — cannot fit a ${spec2.kind}`);
+        continue;
+      }
+      const built = buildAccessory(spec2, head);
       if (!built) continue;
       bone.add(built.object);
       worn.push(built);

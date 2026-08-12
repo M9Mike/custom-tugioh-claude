@@ -479,8 +479,21 @@ async function run(phoneName) {
   await fs.writeFile(`${OUT}/${phoneName}-7-menu.png`, await page.screenshot());
 
   await page.locator('button:has-text("Save")').first().tap();
-  await page.waitForTimeout(1200);
-  check(await page.locator('text=Saved.').first().isVisible().catch(() => false), 'Save reports it saved');
+  /* Waited for rather than slept past.
+     A flat 1200ms was enough on a fast machine and nowhere near it on a slow
+     one: the world renders a three-to-four megapixel canvas every frame, and
+     where that is done in software the main thread is busy enough that the
+     round trip takes seven seconds — reliably, and only on the larger phone,
+     which is a quarter more pixels than the smaller. The assertion is that
+     saving reports itself, not that it does so inside a second, so this polls
+     for the answer and still fails if it never comes. */
+  const saidSaved = await page
+    .locator('text=Saved.')
+    .first()
+    .waitFor({ timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  check(saidSaved, 'Save reports it saved');
 
   /* ---- the trick, seen from outside ---- */
   await page.locator('button:has-text("Edit Deck")').first().tap();
