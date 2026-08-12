@@ -39,6 +39,7 @@ import {
   statureScale,
   type PremadeCharacter,
 } from '@/story/premade';
+import { buildAccessory, type AccessorySpec } from './accessories';
 
 export interface PremadeRig {
   /** Add this to a scene. Origin between the feet, on the ground. */
@@ -108,10 +109,38 @@ const smoothstep = (a: number, b: number, x: number): number => {
 };
 
 /**
+ * What an *authored* character may do on top of what the booth offers.
+ *
+ * The booth's tint slots exist to constrain the player: three garments, a
+ * palette each, and the face out of reach. A character somebody wrote down
+ * is under no such constraint — they are meant to look like a particular
+ * person — so they may repaint any material in the file by name, and hide
+ * one outright.
+ *
+ * Hiding is why this is not just "more tints": the closest model to an old
+ * shopkeeper on the roster is a king, and a king is only a king because of
+ * the crown. The crown shares a mesh with his head, so it cannot be removed
+ * by hiding a node — but it has a material of its own, and a material can be
+ * made to draw nothing.
+ */
+export interface RigOptions {
+  /**
+   * Material name → hex to paint it, or `null` to make it invisible.
+   * Applied after the record's own tints, so an override wins.
+   */
+  overrides?: Record<string, string | null>;
+  /** Generated props hung off named bones — see `accessories.ts`. */
+  accessories?: AccessorySpec[];
+}
+
+/**
  * Builds a rig for one duelist. Asynchronous because the model may still be
  * coming down; everything after the fetch is a few milliseconds.
  */
-export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRig> {
+export async function buildPremadeRig(
+  spec: PremadeCharacter,
+  options: RigOptions = {}
+): Promise<PremadeRig> {
   const model = modelById(spec.model);
   const template = await loadDuelistTemplate(model.id);
 
@@ -125,6 +154,12 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
     const hex = paletteFor(slot)[tint];
     for (const name of slot.materials) tinted.set(name, hex);
   });
+  /* An authored character's own painting, last word. */
+  const hidden = new Set<string>();
+  for (const [name, hex] of Object.entries(options.overrides ?? {})) {
+    if (hex === null) hidden.add(name);
+    else tinted.set(name, hex);
+  }
 
   /* The clone shares the template's materials; give it its own, recoloured
      where the player chose and lit by the scene either way. Rebuilt as
@@ -144,6 +179,14 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
       roughness: 1,
       metalness: 0,
     });
+    /* Hidden, not deleted: the polygons stay in the mesh they share with the
+       face, and simply draw nothing. `depthWrite` off as well, or the crown
+       that is no longer there still punches a hole in whatever is behind
+       it. */
+    if (hidden.has(old.name)) {
+      mat.visible = false;
+      mat.depthWrite = false;
+    }
     mat.name = old.name;
     cache.set(old, mat);
     disposables.push(mat);
@@ -173,6 +216,32 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
 
   const root = new THREE.Group();
   root.add(body);
+
+  /* ---- accessories ----
+     Added to the bone itself, so the skeleton carries them through every clip
+     the model has without this file knowing what the clips are. A bone the
+     rig does not have is an authoring mistake and says so, rather than
+     silently dropping the prop that was the whole point of the character. */
+  const worn: { dispose(): void }[] = [];
+  if (options.accessories?.length) {
+    const bones = new Map<string, THREE.Object3D>();
+    body.traverse((o) => {
+      if ((o as THREE.Bone).isBone) bones.set(o.name, o);
+    });
+    for (const spec2 of options.accessories) {
+      const bone = bones.get(spec2.bone);
+      if (!bone) {
+        console.error(
+          `premadeRig: ${model.id} has no bone "${spec2.bone}" for a ${spec2.kind}`
+        );
+        continue;
+      }
+      const built = buildAccessory(spec2);
+      if (!built) continue;
+      bone.add(built.object);
+      worn.push(built);
+    }
+  }
 
   /* ---- animation ---- */
 
@@ -218,6 +287,7 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
       /* Materials and skeletons are this rig's own; the geometry belongs to
          the template and outlives it. */
       for (const d of disposables) d.dispose();
+      for (const w of worn) w.dispose();
       for (const s of skeletons) s.dispose();
     },
   };

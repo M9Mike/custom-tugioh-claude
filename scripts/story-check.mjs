@@ -391,6 +391,80 @@ async function run(phoneName) {
     await fs.writeFile(`${OUT}/${phoneName}-6-walked.png`, await page.screenshot());
   }
 
+  /* ---- the welcome: walk up to Grandpa and talk to him ----
+
+     Driven the way a player does it — push the stick until the prompt shows
+     up — rather than by teleporting the position, because the thing being
+     checked is that walking *towards* somebody is what starts a conversation.
+     The stick is held in bursts and the prompt polled between them: how long
+     the approach takes depends on where the walk check above left us. */
+  if (box) {
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx, box.y - 40, { steps: 6 });
+    let prompted = false;
+    for (let i = 0; i < 24; i++) {
+      await page.waitForTimeout(250);
+      if (await page.locator('[data-talk]').first().isVisible().catch(() => false)) {
+        prompted = true;
+        break;
+      }
+    }
+    await page.mouse.up();
+    check(prompted, 'walking up to somebody offers a conversation');
+
+    if (prompted) {
+      await fs.writeFile(`${OUT}/${phoneName}-6b-near-npc.png`, await page.screenshot());
+      await page.locator('[data-talk]').first().tap();
+      await page.waitForTimeout(500);
+      check(
+        await page.locator('[data-conversation]').first().isVisible().catch(() => false),
+        'the conversation opens'
+      );
+      /* The stick goes away while talking: it can only walk you out of the
+         range that opened the panel. */
+      check(
+        !(await page.locator('[aria-label="Move"]').isVisible().catch(() => true)),
+        'and the stick is out of the way while it is open'
+      );
+
+      /* Page to the end of the greeting, which is where replies appear. */
+      let replies = 0;
+      for (let i = 0; i < 6; i++) {
+        replies = await page.locator('[data-reply]').count();
+        if (replies > 0) break;
+        await page.locator('[aria-label="Continue"]').last().tap();
+        await page.waitForTimeout(300);
+      }
+      check(replies > 0, 'the speech pages through to replies', `saw ${replies}`);
+      await fs.writeFile(`${OUT}/${phoneName}-6c-conversation.png`, await page.screenshot());
+
+      if (replies > 0) {
+        /* A reply has to actually move the conversation on — read off the
+           speech line itself, not the first paragraph in the panel, which is
+           the speaker's name and is the same on every node. */
+        const before = await page.locator('[data-line]').first().textContent();
+        await page.locator('[data-reply]').first().tap();
+        await page.waitForTimeout(400);
+        const after = await page.locator('[data-line]').first().textContent();
+        check(before !== after, 'answering moves the conversation on', `still "${after?.slice(0, 40)}…"`);
+      }
+
+      await page.locator('[aria-label="End the conversation"]').tap();
+      await page.waitForTimeout(400);
+      check(
+        !(await page.locator('[data-conversation]').first().isVisible().catch(() => true)),
+        'and it closes back to the field'
+      );
+      check(
+        await page.locator('[aria-label="Move"]').isVisible().catch(() => false),
+        'which gives the stick back'
+      );
+    }
+  }
+
   /* ---- the corner menu ---- */
   await page.locator('button[aria-label="Menu"]').first().tap();
   await page.waitForTimeout(300);
