@@ -40,6 +40,7 @@ import {
   type PremadeCharacter,
 } from '@/story/premade';
 import { buildAccessory, headFor, type AccessorySpec } from './accessories';
+import { repaintTexture } from './repaint';
 
 export interface PremadeRig {
   /** Add this to a scene. Origin between the feet, on the ground. */
@@ -148,6 +149,17 @@ export async function buildPremadeRig(
 
   const body = cloneSkeleton(template.gltf.scene);
 
+  /*
+   * The textured models take their tints on the texture rather than on the
+   * material, so the choices are resolved here and applied per-map below.
+   * `null` for a slot means as-authored.
+   */
+  const paint = (model.textureTints ?? []).map((slot, i) => {
+    const tint = spec.tints[i] ?? AS_AUTHORED;
+    return tint === AS_AUTHORED ? null : paletteFor(slot)[tint] ?? null;
+  });
+  const repainted = new Map<THREE.Texture, THREE.Texture>();
+
   /* Which colour each material name ends up, per the player's tints. */
   const tinted = new Map<string, string>();
   model.tintSlots.forEach((slot, i) => {
@@ -191,7 +203,19 @@ export async function buildPremadeRig(
        * keeps it, and tinting one is a colour multiplied over that picture,
        * which is why those models declare no tint slots.
        */
-      map: source.map ?? null,
+      map: (() => {
+        if (!source.map) return null;
+        if (!paint.some(Boolean)) return source.map;
+        /* One repaint per distinct source texture, shared by every material
+           that uses it — a body and a face can be the same image. */
+        const done = repainted.get(source.map);
+        if (done) return done;
+        const next = repaintTexture(source.map, model.textureTints, paint, model.skin);
+        if (!next) return source.map;
+        repainted.set(source.map, next);
+        disposables.push(next);
+        return next;
+      })(),
       /* Hair and eyelash cards on the rips are cut-outs, and without the
          threshold they render as opaque rectangles round the head. */
       alphaTest: source.alphaTest || 0,

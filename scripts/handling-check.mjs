@@ -177,14 +177,10 @@ try {
       await page.waitForTimeout(600);
       await shot('booth-pinch-settled');
 
-      /* ---- the framing toggle ---- */
-      for (const s of ['face', 'full']) {
-        await page.locator(`[data-shot="${s}"]`).tap();
-        await page.waitForTimeout(260);
-        await shot(`booth-shot-${s}-a`);
-        await page.waitForTimeout(700);
-        await shot(`booth-shot-${s}-b`);
-      }
+      /* The Body / Face framing toggle used to be driven here. It is gone:
+         it existed to inspect a face the booth could edit, and the imported
+         bodies come with faces nobody can change. Turning and pinching, both
+         exercised above, still reach everything it framed. */
 
       /* ---- every duelist, applied and photographed ---- */
       /* Long enough for the fetch as well as the camera: picking a duelist

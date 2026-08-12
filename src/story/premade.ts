@@ -56,6 +56,29 @@ export interface TintSlot {
   materials: string[];
 }
 
+/**
+ * A recolourable region of a model's *texture*, for models that have one.
+ *
+ * The vendored roster paints each garment as its own flat-colour material, so
+ * a `TintSlot` can just name materials. The imported bodies carry their whole
+ * look in one 256×256 image, so there is no `Jacket` to repaint — what there is
+ * is a block of pixels around one hue. This names that block by the colour it
+ * currently is, and the rig repaints everything within reach of it.
+ *
+ * A hue family is often a whole outfit rather than one garment: these
+ * characters wear blue uniforms where the jacket and the trousers are the same
+ * blue, and splitting them is not possible without hand-painted masks. So the
+ * labels are honest about that — `Outfit`, `Hair`, `Trim` — rather than
+ * claiming a precision the data does not have. `npm run palette` is where
+ * these numbers come from.
+ */
+export interface TextureTint {
+  label: string;
+  palette: TintPalette;
+  /** What that region is painted now. Everything near this hue moves with it. */
+  from: string;
+}
+
 export interface DuelistModel {
   id: string;
   label: string;
@@ -85,6 +108,20 @@ export interface DuelistModel {
    * should be recolouring; they already look like who they are.
    */
   npcOnly?: boolean;
+  /**
+   * What this character's skin is painted, taken from what their *face* texture
+   * is mostly made of.
+   *
+   * Recorded so it can be protected. Recolouring works by hue, and a hue window
+   * wide enough to catch a brown jacket is wide enough to catch a hand — so
+   * anything this close to the skin colour is left alone, whatever the player
+   * picked. The old roster got this for free by forbidding slots from naming
+   * `Skin`; a texture has no material names to forbid, so it is a value here
+   * instead.
+   */
+  skin?: string;
+  /** Recolourable regions of the texture, for models that carry one. */
+  textureTints?: TextureTint[];
 }
 
 /**
@@ -108,6 +145,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Jeans', palette: 'cloth', materials: ['LightBlue'] },
       { label: 'Hair', palette: 'hair', materials: ['Red', 'Red_Dark'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'suit',
@@ -122,6 +160,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Tie', palette: 'cloth', materials: ['Tie'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'hoodie',
@@ -136,6 +175,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Shirt', palette: 'cloth', materials: ['White'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'adventurer',
@@ -150,6 +190,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Pack', palette: 'cloth', materials: ['Brown', 'Brown2'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'king',
@@ -164,6 +205,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
       { label: 'Crown', palette: 'trim', materials: ['Gold'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'astronaut',
@@ -178,6 +220,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Panels', palette: 'cloth', materials: ['SciFi_Light', 'SciFi_Light_Accent'] },
       { label: 'Visor', palette: 'trim', materials: ['Grey'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'wanderer',
@@ -192,6 +235,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Tunic', palette: 'cloth', materials: ['LightBrown', 'Brown'] },
       { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'witch',
@@ -206,6 +250,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Trim', palette: 'trim', materials: ['Gold'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'rebel',
@@ -220,6 +265,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Boots', palette: 'cloth', materials: ['Brown'] },
       { label: 'Hair', palette: 'hair', materials: ['Pink'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'executive',
@@ -234,6 +280,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Blouse', palette: 'cloth', materials: ['LimeGreen'] },
       { label: 'Trim', palette: 'trim', materials: ['Gold'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'pilot',
@@ -248,6 +295,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Under-layer', palette: 'cloth', materials: ['Black'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
     ],
+    npcOnly: true,
   },
   {
     id: 'casual',
@@ -262,6 +310,231 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Trousers', palette: 'cloth', materials: ['Orange'] },
       { label: 'Hair', palette: 'hair', materials: ['Hair_Blond', 'Hair_Brown'] },
     ],
+    npcOnly: true,
+  },
+  /* ---------------------------------------------------------------- *
+   * The people a player may be.                                       *
+   *                                                                   *
+   * Converted from the same game as the named cast, so a duelist the  *
+   * player builds stands beside Yugi without looking like a visitor   *
+   * from another game. Nine to pick from; the four children are here  *
+   * for the world to use and are kept out of the booth.               *
+   *                                                                   *
+   * They carry their look in a texture rather than in materials, so   *
+   * `tintSlots` is empty and recolouring goes through `textureTints`  *
+   * below — see `npm run palette` for where those numbers come from.  *
+   * ---------------------------------------------------------------- */
+  {
+    id: 'rookie',
+    label: 'Rookie',
+    note: 'Red jacket, ready to duel',
+    file: '/models/duelists/rookie.glb',
+    height: 1.7,
+    walkSpeed: 1.5,
+    runSpeed: 3.4,
+    tintSlots: [],
+    skin: '#e69763',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#e60724' },
+      { label: 'Trim', palette: 'cloth', from: '#ab1c0b' },
+      { label: 'Detail', palette: 'trim', from: '#1a1a1b' },
+    ],
+  },
+  {
+    id: 'student1',
+    label: 'Student',
+    note: 'Blazer and slacks',
+    file: '/models/duelists/student1.glb',
+    height: 1.68,
+    walkSpeed: 1.45,
+    runSpeed: 3.3,
+    tintSlots: [],
+    skin: '#fdd5a3',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#091f9f' },
+      { label: 'Hair', palette: 'hair', from: '#523e6e' },
+      { label: 'Trim', palette: 'cloth', from: '#5466ad' },
+    ],
+  },
+  {
+    id: 'student2',
+    label: 'Student',
+    note: 'Uniform, tie',
+    file: '/models/duelists/student2.glb',
+    height: 1.7,
+    walkSpeed: 1.45,
+    runSpeed: 3.3,
+    tintSlots: [],
+    skin: '#fdae7d',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#091f9f' },
+      { label: 'Trim', palette: 'cloth', from: '#bc832a' },
+      { label: 'Detail', palette: 'trim', from: '#4559aa' },
+    ],
+  },
+  {
+    id: 'student3',
+    label: 'Student',
+    note: 'Skirt and blazer',
+    file: '/models/duelists/student3.glb',
+    height: 1.63,
+    walkSpeed: 1.4,
+    runSpeed: 3.2,
+    tintSlots: [],
+    skin: '#f7af89',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#e2335f' },
+      { label: 'Trim', palette: 'cloth', from: '#2e5bab' },
+      { label: 'Detail', palette: 'trim', from: '#343f88' },
+    ],
+  },
+  {
+    id: 'student4',
+    label: 'Student',
+    note: 'Uniform, ribbon',
+    file: '/models/duelists/student4.glb',
+    height: 1.62,
+    walkSpeed: 1.4,
+    runSpeed: 3.2,
+    tintSlots: [],
+    skin: '#f0a680',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#a04f27' },
+      { label: 'Trim', palette: 'cloth', from: '#eb4373' },
+      { label: 'Detail', palette: 'trim', from: '#1959b0' },
+    ],
+  },
+  {
+    id: 'man1',
+    label: 'Adult',
+    note: 'Casual jacket',
+    file: '/models/duelists/man1.glb',
+    height: 1.76,
+    walkSpeed: 1.55,
+    runSpeed: 3.5,
+    tintSlots: [],
+    skin: '#fbd4a2',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#5c321f' },
+      { label: 'Trim', palette: 'cloth', from: '#6b903d' },
+      { label: 'Detail', palette: 'trim', from: '#5a7c3d' },
+    ],
+  },
+  {
+    id: 'man2',
+    label: 'Adult',
+    note: 'Shirt and slacks',
+    file: '/models/duelists/man2.glb',
+    height: 1.75,
+    walkSpeed: 1.55,
+    runSpeed: 3.5,
+    tintSlots: [],
+    skin: '#fca970',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#504751' },
+      { label: 'Trim', palette: 'cloth', from: '#1e3265' },
+      { label: 'Detail', palette: 'trim', from: '#181718' },
+    ],
+  },
+  {
+    id: 'woman1',
+    label: 'Adult',
+    note: 'Blouse and skirt',
+    file: '/models/duelists/woman1.glb',
+    height: 1.66,
+    walkSpeed: 1.45,
+    runSpeed: 3.3,
+    tintSlots: [],
+    skin: '#eeab8c',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#ce5757' },
+      { label: 'Trim', palette: 'cloth', from: '#416eaf' },
+      { label: 'Detail', palette: 'trim', from: '#886554' },
+    ],
+  },
+  {
+    id: 'woman2',
+    label: 'Adult',
+    note: 'Coat and trousers',
+    file: '/models/duelists/woman2.glb',
+    height: 1.67,
+    walkSpeed: 1.45,
+    runSpeed: 3.3,
+    tintSlots: [],
+    skin: '#f7b48c',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#6555a5' },
+      { label: 'Trim', palette: 'cloth', from: '#697692' },
+      { label: 'Detail', palette: 'trim', from: '#b5c3cb' },
+    ],
+  },
+  {
+    id: 'boy1',
+    label: 'Child',
+    note: 'Young, out playing',
+    file: '/models/duelists/boy1.glb',
+    height: 1.3,
+    walkSpeed: 1.1,
+    runSpeed: 2.6,
+    tintSlots: [],
+    skin: '#d0916b',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#0a203f' },
+      { label: 'Trim', palette: 'cloth', from: '#155e73' },
+      { label: 'Detail', palette: 'trim', from: '#a9a8a2' },
+    ],
+    npcOnly: true,
+  },
+  {
+    id: 'boy2',
+    label: 'Child',
+    note: 'Young, satchel',
+    file: '/models/duelists/boy2.glb',
+    height: 1.32,
+    walkSpeed: 1.1,
+    runSpeed: 2.6,
+    tintSlots: [],
+    skin: '#e5976f',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#b50832' },
+      { label: 'Hair', palette: 'hair', from: '#464638' },
+      { label: 'Trim', palette: 'cloth', from: '#4c538e' },
+    ],
+    npcOnly: true,
+  },
+  {
+    id: 'girl1',
+    label: 'Child',
+    note: 'Young, out playing',
+    file: '/models/duelists/girl1.glb',
+    height: 1.28,
+    walkSpeed: 1.1,
+    runSpeed: 2.6,
+    tintSlots: [],
+    skin: '#d8a085',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#bf403f' },
+      { label: 'Trim', palette: 'cloth', from: '#484285' },
+      { label: 'Detail', palette: 'trim', from: '#d36a93' },
+    ],
+    npcOnly: true,
+  },
+  {
+    id: 'girl2',
+    label: 'Child',
+    note: 'Young, satchel',
+    file: '/models/duelists/girl2.glb',
+    height: 1.3,
+    walkSpeed: 1.1,
+    runSpeed: 2.6,
+    tintSlots: [],
+    skin: '#fbb09b',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#6821cc' },
+      { label: 'Trim', palette: 'cloth', from: '#4c4952' },
+      { label: 'Detail', palette: 'trim', from: '#2c64b1' },
+    ],
+    npcOnly: true,
   },
   /* ---------------------------------------------------------------- *
    * The cast.                                                         *
@@ -329,12 +602,40 @@ export const DUELIST_MODELS: DuelistModel[] = [
 /** What the booth may offer: everything that is not somebody in particular. */
 export const BOOTH_MODELS: DuelistModel[] = DUELIST_MODELS.filter((m) => !m.npcOnly);
 
+/**
+ * A model a *player* may be.
+ *
+ * Anything else — a named character, a child, a retired roster body — is seated
+ * on the first booth model instead. Stored records outlive catalogs: a save
+ * written before the import names `punk`, and `punk` is Grandpa's body now.
+ * Nobody should open their character and find they are somebody else's
+ * grandfather.
+ */
+export function playerModelById(id: unknown): DuelistModel {
+  const found = BOOTH_MODELS.find((m) => m.id === id);
+  return found ?? BOOTH_MODELS[0];
+}
+
+/**
+ * The recolourable slots of a model, whichever kind it carries.
+ *
+ * Two mechanisms, one question. The vendored roster recolours named materials;
+ * the imported bodies recolour regions of a texture. Everything above this line
+ * — the booth's swatch rows, the randomiser, the validator, the stored `tints`
+ * array — only ever needs "how many choices, and which palette each", which is
+ * the same for both. Keeping that in one function is what stops the booth from
+ * offering a slot the rig will not paint.
+ */
+export function slotsFor(model: DuelistModel): { label: string; palette: TintPalette }[] {
+  return model.textureTints?.length ? model.textureTints : model.tintSlots;
+}
+
 export function modelById(id: unknown): DuelistModel {
   return DUELIST_MODELS.find((m) => m.id === id) ?? DUELIST_MODELS[0];
 }
 
 /** The swatches a slot's choices index into. */
-export function paletteFor(slot: TintSlot): readonly string[] {
+export function paletteFor(slot: { palette: TintPalette }): readonly string[] {
   if (slot.palette === 'trim') return TRIM_COLORS;
   if (slot.palette === 'hair') return HAIR_COLORS;
   return CLOTH_COLORS;
@@ -372,7 +673,7 @@ export function statureScale(stature: number): number {
 }
 
 export function defaultPremade(name: string): PremadeCharacter {
-  const model = DUELIST_MODELS[0];
+  const model = BOOTH_MODELS[0];
   return {
     name: name.slice(0, MAX_PREMADE_NAME),
     model: model.id,
@@ -383,13 +684,13 @@ export function defaultPremade(name: string): PremadeCharacter {
 
 /** A roll across everything the booth offers — used by Surprise me. */
 export function randomPremade(name: string, rnd: () => number = Math.random): PremadeCharacter {
-  const model = DUELIST_MODELS[Math.floor(rnd() * DUELIST_MODELS.length)];
+  const model = BOOTH_MODELS[Math.floor(rnd() * BOOTH_MODELS.length)];
   return {
     name: name.slice(0, MAX_PREMADE_NAME),
     model: model.id,
     /* A third of rolls keep a slot as authored: the vendored looks are part
        of the space, and a roll that can never land on them says they are not. */
-    tints: model.tintSlots.map((slot) =>
+    tints: slotsFor(model).map((slot) =>
       rnd() < 0.34 ? AS_AUTHORED : Math.floor(rnd() * paletteFor(slot).length)
     ),
     stature: 0.2 + rnd() * 0.6,
@@ -414,12 +715,21 @@ const clamp01 = (v: unknown, fallback: number): number => {
  * which is the only property it needs: the same old save maps to the same
  * duelist every time it is read.
  */
+/**
+ * Where a pre-import save lands.
+ *
+ * These used to name the vendored roster, which the booth no longer offers —
+ * a player cannot be a punk any more, because the punk is Grandpa now. Each
+ * old outfit is seated on the nearest thing a player *can* be, so an existing
+ * save opens as somebody plausible rather than as somebody they could never
+ * have made.
+ */
 const LEGACY_OUTFIT_TO_MODEL: Record<string, string> = {
-  duelist: 'suit',
-  traveller: 'adventurer',
-  scholar: 'witch',
-  warden: 'wanderer',
-  street: 'hoodie',
+  duelist: 'rookie',
+  traveller: 'man1',
+  scholar: 'woman1',
+  warden: 'man2',
+  street: 'student1',
 };
 
 /**
@@ -439,22 +749,22 @@ export function normalisePremade(raw: unknown, username: string): PremadeCharact
 
   /* A pre-swap record: no model id, but the old spec's fields. Seat it. */
   if (typeof c.model !== 'string' && (typeof c.outfit === 'string' || typeof c.sex === 'string')) {
-    const model = modelById(LEGACY_OUTFIT_TO_MODEL[c.outfit as string]);
+    const model = playerModelById(LEGACY_OUTFIT_TO_MODEL[c.outfit as string]);
     return {
       name: name || d.name,
       model: model.id,
-      tints: model.tintSlots.map(() => AS_AUTHORED),
+      tints: slotsFor(model).map(() => AS_AUTHORED),
       /* The one old knob with a direct heir. */
       stature: clamp01(c.height, 0.5),
     };
   }
 
-  const model = modelById(c.model);
+  const model = playerModelById(c.model);
   const rawTints = Array.isArray(c.tints) ? c.tints : [];
   return {
     name: name || d.name,
     model: model.id,
-    tints: model.tintSlots.map((slot, i) => {
+    tints: slotsFor(model).map((slot, i) => {
       const v = rawTints[i];
       /* `Number.isInteger`, not rounding: a value that is not an index at all
          must fall back to "as authored", never quietly land on a swatch

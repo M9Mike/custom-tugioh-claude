@@ -234,19 +234,19 @@ async function run(phoneName) {
       const n = await page.locator(selector).count();
       check(n === want, `the booth offers ${want} ${what}`, `saw ${n}`);
     };
-    await offer('[data-pick^="duelist:"]', 12, 'duelists');
+    await offer('[data-pick^="duelist:"]', 9, 'duelists');
     await offer('[data-tint$=":-1"]', 3, 'tintable garments');
 
     /* Every kind of choice has to reach the model, or the booth is a picture
        of a default duelist with buttons next to it. Each tap is compared
        against the frame before it, so the one control that does nothing is
        named rather than hidden behind the ones that work. The model swap goes
-       first so the tint taps land on a known duelist — the suit, whose slots
-       are the suit, the tie and the hair. */
+       first so the tint taps land on a known duelist — a student, whose three
+       regions the palette tool named Outfit, Hair and Trim. */
     let before = first;
     for (const [selector, what] of [
-      ['[data-pick="duelist:suit"]', 'a duelist'],
-      ['[data-tint="suit:12"]', 'a garment tint'],
+      ['[data-pick="duelist:student1"]', 'a duelist'],
+      ['[data-tint="outfit:12"]', 'a garment tint'],
       ['[data-tint="hair:8"]', 'a hair tint'],
     ]) {
       await page.locator(selector).tap();
@@ -257,7 +257,7 @@ async function run(phoneName) {
     }
     /* And back to as-made, which must be a real choice rather than a swatch
        that happens to sit close — the vendored paint has to come back exact. */
-    await page.locator('[data-tint="suit:-1"]').tap();
+    await page.locator('[data-tint="outfit:-1"]').tap();
     await page.waitForTimeout(1600);
     const asMade = await canvasShot(page);
     check(!asMade.equals(before), 'as-made brings the original paint back');

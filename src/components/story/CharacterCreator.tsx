@@ -24,6 +24,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import {
   AS_AUTHORED,
   BOOTH_MODELS,
+  slotsFor,
   MAX_PREMADE_NAME,
   defaultPremade,
   modelById,
@@ -493,25 +494,11 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
             <h1 className="font-display text-lg leading-none text-brassbright">Make your duelist</h1>
             <p className="mt-1 text-[10px] uppercase tracking-widest text-ptextdim">Drag to turn · pinch to zoom</p>
           </div>
-          <div className="pointer-events-auto flex gap-1">
-            {(['full', 'face'] as Shot[]).map((s) => (
-              <button
-                key={s}
-                /* Named for the tests as well as for a screen reader: the tab
-                   strip below has buttons reading "Body" and "Face" too, and a
-                   text selector cannot tell the two apart. */
-                data-shot={s}
-                aria-label={s === 'full' ? 'Frame the whole body' : 'Frame the face'}
-                onClick={() => {
-                  sfx.click();
-                  setShot(s);
-                }}
-                className={`btn rounded px-2 py-1 text-[9px] ${shot === s ? 'btn-primary' : ''}`}
-              >
-                {s === 'full' ? 'Body' : 'Face'}
-              </button>
-            ))}
-          </div>
+          {/* The Body / Face framing toggle used to live here and is gone.
+              It existed to inspect a face the booth could edit; these models
+              come with faces nobody can change, so a close-up was a button
+              that answered a question the player is not being asked. Turning
+              and pinching still reach everything it framed. */}
         </div>
       </div>
 
@@ -537,20 +524,20 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
                  file was painted, not wearing the last one's choices. */
               const next = modelById(k);
               choose(
-                { ...pick, model: next.id, tints: next.tintSlots.map(() => AS_AUTHORED) },
+                { ...pick, model: next.id, tints: slotsFor(next).map(() => AS_AUTHORED) },
                 'full'
               );
             }}
           />
 
-          {model.tintSlots.map((slot, i) => (
+          {slotsFor(model).map((slot, i) => (
             <TintRow
               key={`${model.id}:${slot.label}`}
               label={slot.label}
               colors={paletteFor(slot)}
               value={pick.tints[i] ?? AS_AUTHORED}
               onPick={(v) => {
-                const tints = model.tintSlots.map((_, j) => (j === i ? v : pick.tints[j] ?? AS_AUTHORED));
+                const tints = slotsFor(model).map((_, j) => (j === i ? v : pick.tints[j] ?? AS_AUTHORED));
                 choose({ ...pick, tints });
               }}
             />
