@@ -18,7 +18,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
+import { WORLD_NPCS, type WorldNpc } from '@/story/npcs';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
+import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
@@ -33,6 +35,16 @@ export const WORLD_RADIUS = 120;
  * traversal at 2.5 steps a second without the legs having to lie.
  */
 const WALK_SPEED = 2.35;
+
+/**
+ * How close you may get to somebody standing in the field, in metres.
+ *
+ * Two shoulders and a bit of manners. Comfortably inside every NPC's talk
+ * range, so bumping into a person is always also close enough to speak to
+ * them — the stop and the prompt happen together rather than the stop
+ * happening first and leaving you pressed against a stranger in silence.
+ */
+const NPC_RADIUS = 1.1;
 
 interface Props {
   profile: StoryProfile;
@@ -55,6 +67,24 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   const [note, setNote] = useState<string | null>(null);
   /* Asked before the field is built; see `canDraw3d`. */
   const [webglFailed, setWebglFailed] = useState(() => !canDraw3d());
+
+  /**
+   * Who is close enough to talk to, and who is being talked to.
+   *
+   * Two pieces of state, not one: the prompt appears on approach and the
+   * conversation opens on a tap, and conflating them would mean walking near
+   * somebody started a conversation at them.
+   */
+  const [nearNpc, setNearNpc] = useState<WorldNpc | null>(null);
+  const [talkingTo, setTalkingTo] = useState<WorldNpc | null>(null);
+  /* What the loop last reported, so it only calls setState when it changes. */
+  const nearRef = useRef<WorldNpc | null>(null);
+  /* Read by the render loop, which must not re-run when a conversation opens:
+     rebuilding the field to show a panel would drop the player at spawn. */
+  const talkingRef = useRef<WorldNpc | null>(null);
+  useEffect(() => {
+    talkingRef.current = talkingTo;
+  }, [talkingTo]);
 
   const holder = useRef<HTMLDivElement>(null);
   const stick = useRef<HTMLDivElement>(null);
@@ -279,6 +309,33 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         console.error('open world: the duelist failed to load', err);
       });
 
+    /* ---- everybody else ----
+       Same builder, same clips, same seam: an NPC is a duelist who is not
+       being driven by a stick. Each is fetched independently and steps into
+       the field when it lands, so one slow model never holds up the rest —
+       and a model that never arrives costs its own character and nothing
+       else. */
+    const npcs: { npc: WorldNpc; rig: PremadeRig }[] = [];
+    for (const npc of WORLD_NPCS) {
+      buildPremadeRig(npc.character, {
+        overrides: npc.overrides,
+        accessories: npc.accessories,
+      })
+        .then((fresh) => {
+          if (gone) {
+            fresh.dispose();
+            return;
+          }
+          fresh.root.position.set(npc.x, 0, npc.z);
+          fresh.root.rotation.y = npc.facing;
+          scene.add(fresh.root);
+          npcs.push({ npc, rig: fresh });
+        })
+        .catch((err) => {
+          console.error(`open world: ${npc.id} failed to load`, err);
+        });
+    }
+
     /* ---- camera control: drag anywhere on the world to look ---- */
     let camYaw = here.current.facing + Math.PI;
     let camPitch = 0.28;
@@ -337,6 +394,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
+    /* 0 walking, 1 talking; eased, and read by the camera below. */
+    let talkBlend = 0;
     let raf = 0;
     const camPos = new THREE.Vector3();
     const lookAt = new THREE.Vector3();
@@ -349,12 +408,19 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       const t = clock.getElapsedTime();
       wind.value = t;
 
-      let ix = move.current.x;
-      let iy = move.current.y;
-      if (held.has('w') || held.has('arrowup')) iy -= 1;
-      if (held.has('s') || held.has('arrowdown')) iy += 1;
-      if (held.has('a') || held.has('arrowleft')) ix -= 1;
-      if (held.has('d') || held.has('arrowright')) ix += 1;
+      /* A conversation holds you still. Not by disabling the controls — the
+         stick is hidden and the keys are simply not read — so that letting go
+         of the stick to tap a reply cannot leave a held direction behind to
+         walk off with when the panel closes. */
+      const talking = talkingRef.current !== null;
+      let ix = talking ? 0 : move.current.x;
+      let iy = talking ? 0 : move.current.y;
+      if (!talking) {
+        if (held.has('w') || held.has('arrowup')) iy -= 1;
+        if (held.has('s') || held.has('arrowdown')) iy += 1;
+        if (held.has('a') || held.has('arrowleft')) ix -= 1;
+        if (held.has('d') || held.has('arrowright')) ix += 1;
+      }
       const mag = Math.min(1, Math.hypot(ix, iy));
 
       if (mag > 0.06) {
@@ -410,6 +476,26 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           p.x = (p.x / r) * WORLD_RADIUS;
           p.z = (p.z / r) * WORLD_RADIUS;
         }
+        /**
+         * People are solid.
+         *
+         * Without this you walk *through* whoever you came to talk to, which
+         * looks exactly as bad as it sounds — the first photograph of the
+         * welcome had the player standing inside Grandpa's chest with his
+         * boots poking out the front. Pushing back out along the line between
+         * them is the whole of it: no physics, no sweeping, just a radius
+         * nobody may be inside of. It stops you at conversation distance by
+         * itself, which is the distance you wanted anyway.
+         */
+        for (const { npc } of npcs) {
+          const dx = p.x - npc.x;
+          const dz = p.z - npc.z;
+          const d = Math.hypot(dx, dz);
+          if (d < NPC_RADIUS && d > 1e-4) {
+            p.x = npc.x + (dx / d) * NPC_RADIUS;
+            p.z = npc.z + (dz / d) * NPC_RADIUS;
+          }
+        }
       }
 
       if (rig) {
@@ -425,12 +511,79 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         rig.update(dt, Math.min(stride, covered / WALK_SPEED), covered);
       }
 
+      /**
+       * Everybody else: standing, and looking at you when you are close.
+       *
+       * The turn is the whole of "this person has noticed me" and it costs a
+       * lerp. Eased rather than snapped, over the shortest arc, and released
+       * back to their own facing when you leave — a character who tracks you
+       * across the field like a turret is worse than one who never moves.
+       */
+      let closest: WorldNpc | null = null;
+      let closestD = Infinity;
+      for (const { npc, rig: theirs } of npcs) {
+        const dx = p.x - npc.x;
+        const dz = p.z - npc.z;
+        const d = Math.hypot(dx, dz);
+        /* Notice a little before the talk range, so they are already looking
+           at you by the time the prompt appears. */
+        const want = d < npc.range * 1.6 ? Math.atan2(dx, dz) : npc.facing;
+        let turn = want - theirs.root.rotation.y;
+        turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        theirs.root.rotation.y += turn * Math.min(1, dt * 3.2);
+        theirs.update(dt, 0, 0);
+        if (d < npc.range && d < closestD) {
+          closest = npc;
+          closestD = d;
+        }
+      }
+      /* Only on a change: this runs sixty times a second, and setting state
+         with the same value every frame is a re-render per frame. */
+      if (closest?.id !== nearRef.current?.id) {
+        nearRef.current = closest;
+        setNearNpc(closest);
+      }
+
       /* Shadow box rides along with the duelist. */
       sun.position.set(p.x + 30, 48, p.z + 22);
       sun.target.position.set(p.x, 0, p.z);
       sun.target.updateMatrixWorld();
 
-      const dist = 4.6;
+      /**
+       * The conversation camera.
+       *
+       * Over the shoulder is the right camera for walking and the wrong one
+       * for talking: the person you came to speak to stands directly behind
+       * your own duelist and you spend the scene looking at the back of your
+       * own head. So while a conversation is open the camera swings round to
+       * one side of the line between the two of you and frames them both,
+       * looking at the midpoint rather than at the player.
+       *
+       * Eased, not cut — `talkBlend` crosses over about half a second — and
+       * it drives `camYaw` itself rather than overriding it, so when the
+       * panel closes the camera stays where the conversation left it instead
+       * of snapping back to a heading the player never chose.
+       */
+      const near = talkingRef.current;
+      talkBlend += ((near ? 1 : 0) - talkBlend) * Math.min(1, dt * 4);
+      let lookX = p.x;
+      let lookZ = p.z;
+      let lookY = 1.15;
+      let dist = 4.6;
+      if (talkBlend > 0.001 && near) {
+        /* Off the axis between them by a little over a right angle, which is
+           the angle that shows two faces rather than two profiles. */
+        const axis = Math.atan2(near.x - p.x, near.z - p.z);
+        let d = axis + 1.15 - camYaw;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        camYaw += d * talkBlend * Math.min(1, dt * 3);
+        camPitch += (0.12 - camPitch) * talkBlend * Math.min(1, dt * 3);
+        lookX = p.x + (near.x - p.x) * 0.5 * talkBlend;
+        lookZ = p.z + (near.z - p.z) * 0.5 * talkBlend;
+        lookY = 1.15 + 0.15 * talkBlend;
+        dist = 4.6 - 1.3 * talkBlend;
+      }
+
       camPos.set(
         p.x + Math.sin(camYaw) * Math.cos(camPitch) * dist,
         1.55 + Math.sin(camPitch) * dist,
@@ -438,7 +591,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       );
       /* Never below the grass, however far the camera is pushed down. */
       camera.position.set(camPos.x, Math.max(0.45, camPos.y), camPos.z);
-      lookAt.set(p.x, 1.15, p.z);
+      lookAt.set(lookX, lookY, lookZ);
       camera.lookAt(lookAt);
       sky.position.set(camera.position.x, 0, camera.position.z);
 
@@ -459,6 +612,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       canvas.removeEventListener('pointercancel', onUp);
       gone = true;
       rig?.dispose();
+      for (const { rig: theirs } of npcs) theirs.dispose();
       tufts.dispose();
       for (const x of trash) x.dispose();
       /* `dispose()` frees three's own objects but leaves the WebGL context
@@ -726,10 +880,30 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         </div>
       )}
 
-      {/* thumb stick */}
+      {/* Somebody within reach. Sits above the stick rather than beside it,
+          because the thumb that walks you over is the thumb that taps it. */}
+      {nearNpc && !talkingTo && (
+        <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center" style={{ marginBottom: 'calc(var(--safe-bottom) + 156px)' }}>
+          <button
+            data-talk={nearNpc.id}
+            className="btn btn-primary rounded px-4 py-2 text-[11px]"
+            onClick={() => {
+              sfx.click();
+              setTalkingTo(nearNpc);
+            }}
+          >
+            Talk to {nearNpc.character.name}
+          </button>
+        </div>
+      )}
+
+      {/* thumb stick — hidden mid-conversation, where it would only walk you
+          out of the range that opened it. */}
       <div
         ref={stick}
-        className="absolute bottom-0 left-0 m-4 grid h-[124px] w-[124px] touch-none place-items-center rounded-full border border-stoneline bg-black/25 backdrop-blur-[2px]"
+        className={`absolute bottom-0 left-0 m-4 grid h-[124px] w-[124px] touch-none place-items-center rounded-full border border-stoneline bg-black/25 backdrop-blur-[2px] ${
+          talkingTo ? 'hidden' : ''
+        }`}
         style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginLeft: 'calc(var(--safe-left) + 16px)' }}
         aria-label="Move"
       >
@@ -739,14 +913,24 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         />
       </div>
 
-      <p
-        className="pointer-events-none absolute bottom-0 right-0 m-4 text-right text-[9px] leading-relaxed text-white/45"
-        style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)' }}
-      >
-        Drag to look · stick to walk
-        <br />
-        WASD on a keyboard
-      </p>
+      {!talkingTo && (
+        <p
+          className="pointer-events-none absolute bottom-0 right-0 m-4 text-right text-[9px] leading-relaxed text-white/45"
+          style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)' }}
+        >
+          Drag to look · stick to walk
+          <br />
+          WASD on a keyboard
+        </p>
+      )}
+
+      {talkingTo && (
+        <Conversation
+          npc={talkingTo}
+          playerName={character.name}
+          onClose={() => setTalkingTo(null)}
+        />
+      )}
     </main>
   );
 }
