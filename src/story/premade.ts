@@ -67,17 +67,41 @@ export interface TintSlot {
  *
  * A hue family is often a whole outfit rather than one garment: these
  * characters wear blue uniforms where the jacket and the trousers are the same
- * blue, and splitting them is not possible without hand-painted masks. So the
- * labels are honest about that — `Outfit`, `Hair`, `Trim` — rather than
- * claiming a precision the data does not have. `npm run palette` is where
- * these numbers come from.
+ * blue. So the labels are honest about that — `Outfit`, `Hair`, `Trim` —
+ * rather than claiming a precision the data does not have.
+ *
+ * Where the same hue *is* two different things at two different lightnesses —
+ * dark hair over a pale top — the `lightness` window separates them, and the
+ * booth offers both. Where it cannot, the booth offers one swatch rather than
+ * two that repaint each other's garment. Every number here is transcribed from
+ * `npm run palette`, which picks the regions and reports their windows.
  */
 export interface TextureTint {
   label: string;
   palette: TintPalette;
   /** What that region is painted now. Everything near this hue moves with it. */
   from: string;
+  /**
+   * The band of lightness the region lives in, 0 black to 1 white.
+   *
+   * Only needed when a body wears the same hue twice. Mai's model is painted
+   * with three blue-ish things a few degrees apart — dark hair, a pale top,
+   * light trousers — and a rule that names only the hue takes all three, so the
+   * hair cannot be recoloured without the trousers going with it. Naming the
+   * band the hair sits in separates them. Omit it whenever the hue is
+   * unambiguous, which is most of the time.
+   */
+  lightness?: readonly [number, number];
 }
+
+/**
+ * A colour-to-colour instruction for an authored character.
+ *
+ * The bare string is the common case — "everything this colour becomes that
+ * colour". The long form adds the same lightness window a tint slot can carry,
+ * for a body that wears one hue in two places.
+ */
+export type RepaintRule = string | { to: string; lightness: readonly [number, number] };
 
 export interface DuelistModel {
   id: string;
@@ -335,9 +359,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#e69763',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#e60724' },
-      { label: 'Trim', palette: 'cloth', from: '#ab1c0b' },
-      { label: 'Detail', palette: 'trim', from: '#1a1a1b' },
+      { label: 'Outfit', palette: 'cloth', from: '#f60929', lightness: [0.43, 0.55] },
+      { label: 'Trim', palette: 'cloth', from: '#1a1a1b', lightness: [0.09, 0.16] },
+      { label: 'Detail', palette: 'trim', from: '#d1d1ec', lightness: [0.73, 0.99] },
     ],
   },
   {
@@ -351,9 +375,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#fdd5a3',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#091f9f' },
-      { label: 'Hair', palette: 'hair', from: '#523e6e' },
-      { label: 'Trim', palette: 'cloth', from: '#5466ad' },
+      { label: 'Outfit', palette: 'cloth', from: '#091f9f', lightness: [0.25, 0.45] },
+      { label: 'Hair', palette: 'hair', from: '#5d477d', lightness: [0.29, 0.48] },
+      { label: 'Detail', palette: 'trim', from: '#39294b', lightness: [0.19, 0.26] },
     ],
   },
   {
@@ -367,9 +391,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#fdae7d',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#091f9f' },
-      { label: 'Trim', palette: 'cloth', from: '#bc832a' },
-      { label: 'Detail', palette: 'trim', from: '#4559aa' },
+      { label: 'Outfit', palette: 'cloth', from: '#091f9f', lightness: [0.23, 0.46] },
+      { label: 'Trim', palette: 'cloth', from: '#bc832a', lightness: [0.27, 0.82] },
+      { label: 'Detail', palette: 'trim', from: '#b9c4d8', lightness: [0.71, 0.91] },
     ],
   },
   {
@@ -381,11 +405,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.4,
     runSpeed: 3.2,
     tintSlots: [],
-    skin: '#f7af89',
+    skin: '#ffd1b8',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#e2335f' },
-      { label: 'Trim', palette: 'cloth', from: '#2e5bab' },
-      { label: 'Detail', palette: 'trim', from: '#343f88' },
+      { label: 'Outfit', palette: 'cloth', from: '#3f6abd', lightness: [0.39, 0.75] },
+      { label: 'Trim', palette: 'cloth', from: '#eb3767', lightness: [0.52, 0.61] },
+      { label: 'Detail', palette: 'trim', from: '#1a2262', lightness: [0.18, 0.36] },
     ],
   },
   {
@@ -397,11 +421,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.4,
     runSpeed: 3.2,
     tintSlots: [],
-    skin: '#f0a680',
+    skin: '#ffd1b8',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#a04f27' },
-      { label: 'Trim', palette: 'cloth', from: '#eb4373' },
-      { label: 'Detail', palette: 'trim', from: '#1959b0' },
+      { label: 'Outfit', palette: 'cloth', from: '#732601', lightness: [0.16, 0.31] },
+      { label: 'Trim', palette: 'cloth', from: '#e02e5e', lightness: [0.48, 0.57] },
+      { label: 'Detail', palette: 'trim', from: '#f34b7c', lightness: [0.58, 0.66] },
     ],
   },
   {
@@ -415,9 +439,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#fbd4a2',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#5c321f' },
-      { label: 'Trim', palette: 'cloth', from: '#6b903d' },
-      { label: 'Detail', palette: 'trim', from: '#5a7c3d' },
+      { label: 'Outfit', palette: 'cloth', from: '#41220f', lightness: [0.07, 0.25] },
+      { label: 'Trim', palette: 'cloth', from: '#6b903d', lightness: [0.28, 0.44] },
+      { label: 'Detail', palette: 'trim', from: '#874c38', lightness: [0.31, 0.75] },
     ],
   },
   {
@@ -431,9 +455,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#fca970',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#504751' },
-      { label: 'Trim', palette: 'cloth', from: '#1e3265' },
-      { label: 'Detail', palette: 'trim', from: '#181718' },
+      { label: 'Outfit', palette: 'cloth', from: '#423d43', lightness: [0.18, 0.33] },
+      { label: 'Trim', palette: 'cloth', from: '#655666', lightness: [0.34, 0.41] },
+      { label: 'Detail', palette: 'trim', from: '#181718', lightness: [0.02, 0.16] },
     ],
   },
   {
@@ -445,11 +469,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.45,
     runSpeed: 3.3,
     tintSlots: [],
-    skin: '#eeab8c',
+    skin: '#f5c3aa',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#ce5757' },
-      { label: 'Trim', palette: 'cloth', from: '#416eaf' },
-      { label: 'Detail', palette: 'trim', from: '#886554' },
+      { label: 'Outfit', palette: 'cloth', from: '#f35e5e', lightness: [0.58, 0.71] },
+      { label: 'Trim', palette: 'cloth', from: '#5f4040', lightness: [0.14, 0.37] },
+      { label: 'Detail', palette: 'trim', from: '#3a62a3', lightness: [0.37, 0.48] },
     ],
   },
   {
@@ -461,11 +485,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.45,
     runSpeed: 3.3,
     tintSlots: [],
-    skin: '#f7b48c',
+    skin: '#f6a474',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#6555a5' },
-      { label: 'Trim', palette: 'cloth', from: '#697692' },
-      { label: 'Detail', palette: 'trim', from: '#b5c3cb' },
+      { label: 'Outfit', palette: 'cloth', from: '#6555a5', lightness: [0.41, 0.53] },
+      { label: 'Hair', palette: 'hair', from: '#464e5e', lightness: [0.23, 0.45] },
+      { label: 'Detail', palette: 'trim', from: '#98aadf', lightness: [0.6, 0.82] },
     ],
   },
   {
@@ -477,11 +501,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.1,
     runSpeed: 2.6,
     tintSlots: [],
-    skin: '#d0916b',
+    skin: '#f5ba8a',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#0a203f' },
-      { label: 'Trim', palette: 'cloth', from: '#155e73' },
-      { label: 'Detail', palette: 'trim', from: '#a9a8a2' },
+      { label: 'Outfit', palette: 'cloth', from: '#e36a09', lightness: [0.38, 0.55] },
+      { label: 'Trim', palette: 'cloth', from: '#0a203f', lightness: [0.1, 0.23] },
+      { label: 'Detail', palette: 'trim', from: '#3a2313', lightness: [0.11, 0.21] },
     ],
     npcOnly: true,
   },
@@ -496,9 +520,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     skin: '#e5976f',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#b50832' },
-      { label: 'Hair', palette: 'hair', from: '#464638' },
-      { label: 'Trim', palette: 'cloth', from: '#4c538e' },
+      { label: 'Outfit', palette: 'cloth', from: '#b50832', lightness: [0.24, 0.58] },
+      { label: 'Hair', palette: 'hair', from: '#464638', lightness: [0.18, 0.47] },
+      { label: 'Detail', palette: 'trim', from: '#40467a', lightness: [0.26, 0.48] },
     ],
     npcOnly: true,
   },
@@ -511,11 +535,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.1,
     runSpeed: 2.6,
     tintSlots: [],
-    skin: '#d8a085',
+    skin: '#f2d0b7',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#bf403f' },
-      { label: 'Trim', palette: 'cloth', from: '#484285' },
-      { label: 'Detail', palette: 'trim', from: '#d36a93' },
+      { label: 'Outfit', palette: 'cloth', from: '#ea3737', lightness: [0.5, 0.61] },
+      { label: 'Trim', palette: 'cloth', from: '#fc6666', lightness: [0.63, 0.87] },
+      { label: 'Detail', palette: 'trim', from: '#613e33', lightness: [0.13, 0.49] },
     ],
     npcOnly: true,
   },
@@ -528,11 +552,28 @@ export const DUELIST_MODELS: DuelistModel[] = [
     walkSpeed: 1.1,
     runSpeed: 2.6,
     tintSlots: [],
-    skin: '#fbb09b',
+    skin: '#ffcebc',
     textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#6821cc' },
-      { label: 'Trim', palette: 'cloth', from: '#4c4952' },
-      { label: 'Detail', palette: 'trim', from: '#2c64b1' },
+      { label: 'Outfit', palette: 'cloth', from: '#621ccb', lightness: [0.35, 0.53] },
+      { label: 'Trim', palette: 'cloth', from: '#0d0d19', lightness: [0.04, 0.44] },
+      { label: 'Detail', palette: 'trim', from: '#8f3af6', lightness: [0.55, 0.76] },
+    ],
+    npcOnly: true,
+  },
+  {
+    id: 'guide',
+    label: 'Guide',
+    note: 'Uniform and cap',
+    file: '/models/duelists/guide.glb',
+    height: 1.72,
+    walkSpeed: 1.5,
+    runSpeed: 3.4,
+    tintSlots: [],
+    skin: '#f0a07f',
+    textureTints: [
+      { label: 'Outfit', palette: 'cloth', from: '#badcf1', lightness: [0.53, 0.89] },
+      { label: 'Trim', palette: 'cloth', from: '#b30f09', lightness: [0.3, 0.65] },
+      { label: 'Detail', palette: 'trim', from: '#9caee2', lightness: [0.71, 0.8] },
     ],
     npcOnly: true,
   },

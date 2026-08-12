@@ -38,6 +38,7 @@ import {
   paletteFor,
   statureScale,
   type PremadeCharacter,
+  type RepaintRule,
 } from '@/story/premade';
 import { buildAccessory, headFor, type AccessorySpec } from './accessories';
 import { repaintTexture } from './repaint';
@@ -134,12 +135,66 @@ export interface RigOptions {
   overrides?: Record<string, string | null>;
   /** Generated props hung off named bones — see `accessories.ts`. */
   accessories?: AccessorySpec[];
+  /**
+   * Colour in the model's texture → colour to repaint it, for the models that
+   * carry their look in an image. The texture's answer to `overrides`.
+   */
+  repaint?: Record<string, RepaintRule>;
+  /** Bone name → local scale, for a character built unlike the body they wear. */
+  build?: Record<string, [number, number, number]>;
 }
 
 /**
  * Builds a rig for one duelist. Asynchronous because the model may still be
  * coming down; everything after the fetch is a few milliseconds.
  */
+/**
+ * Gives one character a different build from the body they share.
+ *
+ * The roster is a dozen bodies and a cast much larger than that, so two
+ * characters who are nothing alike end up on the same mesh. Solomon Muto is
+ * short and stout and Mai Valentine is a grown woman; the generic adults they
+ * are cast on are neither. Scaling a bone scales the skin weighted to it, so
+ * naming a bone and a factor reshapes that segment and nothing else.
+ *
+ * **The children are put back.** A bone's scale runs down the hierarchy, so
+ * widening a ribcage would also widen the arms hanging off it and push the head
+ * up and out — the classic result being a barrel-chested man with balloon hands
+ * and a hat three sizes too big. Each direct child has the factor divided back
+ * out of both its scale and its position, so it keeps its size and stays where
+ * it was. What changes is the one segment asked for.
+ *
+ * The two passes are not tidiness. A build usually names a chain — hips, then
+ * spine, then chest — and doing each bone completely before starting the next
+ * lets the second overwrite the correction the first just applied to it, so
+ * the factors multiply down the chain instead of standing alone. Grandpa's
+ * head came out 1.6× that way. Setting every scale first and correcting
+ * afterwards leaves each named bone at exactly the factor it asked for.
+ *
+ * Applied to the rest pose, before any clip runs, because the clips animate
+ * rotations and positions rather than scale and so leave this alone.
+ */
+function reshape(body: THREE.Object3D, build: Record<string, [number, number, number]>): void {
+  const bones = new Map<string, THREE.Object3D>();
+  body.traverse((o) => {
+    if ((o as THREE.Bone).isBone) bones.set(o.name, o);
+  });
+
+  for (const [name, [x, y, z]] of Object.entries(build)) {
+    const bone = bones.get(name);
+    if (!bone) throw new Error(`build names a bone this model does not have: ${name}`);
+    bone.scale.set(x, y, z);
+  }
+
+  for (const [name, [x, y, z]] of Object.entries(build)) {
+    for (const child of bones.get(name)!.children) {
+      if (!(child as THREE.Bone).isBone) continue;
+      child.scale.set(child.scale.x / x, child.scale.y / y, child.scale.z / z);
+      child.position.set(child.position.x / x, child.position.y / y, child.position.z / z);
+    }
+  }
+}
+
 export async function buildPremadeRig(
   spec: PremadeCharacter,
   options: RigOptions = {}
@@ -205,12 +260,12 @@ export async function buildPremadeRig(
        */
       map: (() => {
         if (!source.map) return null;
-        if (!paint.some(Boolean)) return source.map;
+        if (!paint.some(Boolean) && !options.repaint) return source.map;
         /* One repaint per distinct source texture, shared by every material
            that uses it — a body and a face can be the same image. */
         const done = repainted.get(source.map);
         if (done) return done;
-        const next = repaintTexture(source.map, model.textureTints, paint, model.skin);
+        const next = repaintTexture(source.map, model.textureTints, paint, model.skin, options.repaint);
         if (!next) return source.map;
         repainted.set(source.map, next);
         disposables.push(next);
@@ -255,6 +310,8 @@ export async function buildPremadeRig(
 
   const scale = (model.height * statureScale(spec.stature)) / template.rawHeight;
   body.scale.setScalar(scale);
+
+  if (options.build) reshape(body, options.build);
 
   const root = new THREE.Group();
   root.add(body);

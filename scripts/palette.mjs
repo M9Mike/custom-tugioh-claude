@@ -23,128 +23,8 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { readSmd } from './lib/smd.mjs';
-
-/* ------------------------------------------------------------------ */
-/* Just enough PNG                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * Decodes a non-interlaced 8-bit PNG to RGBA.
- *
- * Hand-rolled rather than pulled in, because the whole job is "read a handful
- * of small textures at build time" and the alternative is a dependency or a
- * headless browser for something `zlib` already does most of.
- */
-function decodePng(buf) {
-  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
-  let pos = 8;
-  let width = 0;
-  let height = 0;
-  let depth = 0;
-  let colour = 0;
-  let interlace = 0;
-  const idat = [];
-  let palette = null;
-  while (pos < buf.length) {
-    const len = buf.readUInt32BE(pos);
-    const type = buf.toString('ascii', pos + 4, pos + 8);
-    const data = buf.subarray(pos + 8, pos + 8 + len);
-    if (type === 'IHDR') {
-      width = data.readUInt32BE(0);
-      height = data.readUInt32BE(4);
-      depth = data[8];
-      colour = data[9];
-      interlace = data[12];
-    } else if (type === 'PLTE') palette = data;
-    else if (type === 'IDAT') idat.push(data);
-    else if (type === 'IEND') break;
-    pos += 12 + len;
-  }
-  if (depth !== 8) throw new Error(`unsupported bit depth ${depth}`);
-  if (interlace !== 0) throw new Error('interlaced PNGs are not supported');
-
-  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colour];
-  if (!channels) throw new Error(`unsupported colour type ${colour}`);
-  const raw = zlib.inflateSync(Buffer.concat(idat));
-  const stride = width * channels;
-  const out = Buffer.alloc(width * height * 4);
-  const line = Buffer.alloc(stride);
-  const prev = Buffer.alloc(stride);
-
-  let r = 0;
-  for (let y = 0; y < height; y++) {
-    const filter = raw[r++];
-    raw.copy(line, 0, r, r + stride);
-    r += stride;
-    /* The five PNG filters, undone in place against the previous scanline. */
-    for (let i = 0; i < stride; i++) {
-      const a = i >= channels ? line[i - channels] : 0;
-      const b = prev[i];
-      const c = i >= channels ? prev[i - channels] : 0;
-      let v = line[i];
-      if (filter === 1) v += a;
-      else if (filter === 2) v += b;
-      else if (filter === 3) v += (a + b) >> 1;
-      else if (filter === 4) {
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-      }
-      line[i] = v & 0xff;
-    }
-    line.copy(prev);
-    for (let x = 0; x < width; x++) {
-      const s = x * channels;
-      const d = (y * width + x) * 4;
-      if (colour === 3) {
-        const p = line[s] * 3;
-        out[d] = palette[p];
-        out[d + 1] = palette[p + 1];
-        out[d + 2] = palette[p + 2];
-        out[d + 3] = 255;
-      } else if (colour === 0 || colour === 4) {
-        out[d] = out[d + 1] = out[d + 2] = line[s];
-        out[d + 3] = channels === 2 ? line[s + 1] : 255;
-      } else {
-        out[d] = line[s];
-        out[d + 1] = line[s + 1];
-        out[d + 2] = line[s + 2];
-        out[d + 3] = channels === 4 ? line[s + 3] : 255;
-      }
-    }
-  }
-  return { width, height, data: out };
-}
-
-/* ------------------------------------------------------------------ */
-/* Clustering                                                          */
-/* ------------------------------------------------------------------ */
-
-const hex = (r, g, b) => '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-
-function rgbToHsl(r, g, b) {
-  r /= 255;
-  g /= 255;
-  b /= 255;
-  const mx = Math.max(r, g, b);
-  const mn = Math.min(r, g, b);
-  const l = (mx + mn) / 2;
-  if (mx === mn) return [0, 0, l];
-  const d = mx - mn;
-  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
-  let h;
-  if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-  else if (mx === g) h = ((b - r) / d + 2) / 6;
-  else h = ((r - g) / d + 4) / 6;
-  return [h, s, l];
-}
-
-/** Below this, a colour has no meaningful hue — it is a grey, a black, a white. */
-const NEUTRAL = 0.16;
+import { NEUTRAL, decodePng, hex, rgbToHsl } from './lib/png.mjs';
 
 /**
  * The garments in an image, largest first.
@@ -160,6 +40,19 @@ const NEUTRAL = 0.16;
  * Near-greys have no reliable hue, so they group by lightness instead — which
  * is right anyway, because black shoes and a white shirt are two things.
  *
+ * **A hue family is not always one garment**, and that is the second pass.
+ * These textures are inked: every region is drawn with near-black lines around
+ * it, and that ink is faintly coloured, so it lands in whatever hue bucket it
+ * happens to be nearest. On Mai it landed in the same bucket as her pale top,
+ * and the cluster came back as `#697692` spanning lightness 0.08 to 0.87 — a
+ * colour that is nowhere on the model, being the average of a light garment and
+ * the black lines around it. A rule authored from a number like that paints
+ * something nobody intended.
+ *
+ * So each bucket's lightness histogram is cut at its valleys, and each peak is
+ * reported separately. A garment with shading is one peak and stays whole; a
+ * garment plus its linework is two, and separates.
+ *
  * Fully transparent pixels are ignored: these textures carry big empty
  * margins, and black nothing would otherwise win every time.
  */
@@ -174,37 +67,119 @@ function cluster(img, { minShare = 0.02 } = {}) {
     const [h, s, l] = rgbToHsl(r, g, b);
     /* 20° of hue for anything coloured; four bands of lightness for the greys. */
     const key = s < NEUTRAL ? `n${Math.round(l * 3)}` : `h${Math.round(h * 18)}`;
-    const hit = buckets.get(key) ?? { key, n: 0, r: 0, g: 0, b: 0, lo: 1, hi: 0, neutral: s < NEUTRAL };
+    let hit = buckets.get(key);
+    if (!hit) {
+      hit = { key, n: 0, neutral: s < NEUTRAL, bins: [] };
+      for (let j = 0; j <= 100; j++) hit.bins.push({ n: 0, r: 0, g: 0, b: 0 });
+      buckets.set(key, hit);
+    }
+    const bin = hit.bins[Math.round(l * 100)];
     hit.n++;
-    hit.r += r;
-    hit.g += g;
-    hit.b += b;
-    hit.lo = Math.min(hit.lo, l);
-    hit.hi = Math.max(hit.hi, l);
-    buckets.set(key, hit);
+    bin.n++;
+    bin.r += r;
+    bin.g += g;
+    bin.b += b;
     counted++;
   }
-  return [...buckets.values()]
-    .filter((c) => c.n / counted >= minShare)
-    .sort((a, b) => b.n - a.n)
-    .map((c) => {
-      const r = Math.round(c.r / c.n);
-      const g = Math.round(c.g / c.n);
-      const b = Math.round(c.b / c.n);
+
+  const out = [];
+  for (const c of buckets.values()) {
+    for (const [i, [from, to]] of segments(c.bins).entries()) {
+      let n = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let j = from; j <= to; j++) {
+        n += c.bins[j].n;
+        r += c.bins[j].r;
+        g += c.bins[j].g;
+        b += c.bins[j].b;
+      }
+      if (n / counted < minShare) continue;
+      r = Math.round(r / n);
+      g = Math.round(g / n);
+      b = Math.round(b / n);
       const [h, s, l] = rgbToHsl(r, g, b);
-      return {
-        key: c.key,
+      /* The 2nd and 98th percentile rather than the extremes: a lone stray
+         texel in an otherwise tight region would otherwise report a span from
+         black to white, which tells an author nothing. */
+      const at = (q) => {
+        let seen = 0;
+        for (let j = from; j <= to; j++) {
+          seen += c.bins[j].n;
+          if (seen >= n * q) return j / 100;
+        }
+        return to / 100;
+      };
+      out.push({
+        key: `${c.key}/${i}`,
+        bucket: c.key,
         hex: hex(r, g, b),
         rgb: [r, g, b],
-        share: c.n / counted,
+        share: n / counted,
         h,
         s,
         l,
-        lo: c.lo,
-        hi: c.hi,
+        lo: at(0.02),
+        hi: at(0.98),
         neutral: c.neutral,
-      };
-    });
+        band: [from / 100, to / 100],
+      });
+    }
+  }
+  return out.sort((a, b) => b.share - a.share);
+}
+
+/**
+ * Where one hue family's lightness histogram should be cut, as `[from, to]`
+ * bin pairs.
+ *
+ * A peak is a garment; the dip between two peaks is the gap between a garment
+ * and the ink around it. Smoothed first because these are 256×256 textures and
+ * a raw histogram of a few thousand texels is spiky enough to invent peaks.
+ *
+ * A dip only counts if it is deep — under half the smaller of the two peaks it
+ * separates. Shading makes a broad, lumpy hump, and cutting a garment in half
+ * at a shallow dimple is exactly the failure this whole file exists to avoid.
+ */
+function segments(bins) {
+  const smooth = bins.map((_, i) => {
+    let sum = 0;
+    for (let j = Math.max(0, i - 2); j <= Math.min(bins.length - 1, i + 2); j++) sum += bins[j].n;
+    return sum;
+  });
+  const top = Math.max(...smooth);
+  if (!top) return [[0, bins.length - 1]];
+
+  const peaks = [];
+  for (let i = 0; i < smooth.length; i++) {
+    if (smooth[i] < top * 0.12) continue;
+    let best = true;
+    for (let j = Math.max(0, i - 3); j <= Math.min(smooth.length - 1, i + 3); j++) {
+      if (smooth[j] > smooth[i]) best = false;
+    }
+    /* A flat top is several equal bins; keep the first and skip the rest. */
+    if (best && (!peaks.length || i - peaks[peaks.length - 1] > 3)) peaks.push(i);
+  }
+  if (peaks.length < 2) return [[0, bins.length - 1]];
+
+  const cuts = [];
+  for (let p = 1; p < peaks.length; p++) {
+    let at = peaks[p - 1];
+    for (let i = peaks[p - 1]; i <= peaks[p]; i++) if (smooth[i] < smooth[at]) at = i;
+    const shallower = Math.min(smooth[peaks[p - 1]], smooth[peaks[p]]);
+    if (smooth[at] <= shallower * 0.5) cuts.push(at);
+  }
+  if (!cuts.length) return [[0, bins.length - 1]];
+
+  const spans = [];
+  let from = 0;
+  for (const at of cuts) {
+    spans.push([from, at]);
+    from = at + 1;
+  }
+  spans.push([from, bins.length - 1]);
+  return spans;
 }
 
 /**
@@ -212,17 +187,18 @@ function cluster(img, { minShare = 0.02 } = {}) {
  *
  * Same hue family as the face's dominant colour, *and* about as light. The hue
  * test alone is not enough: brown hair and skin are both oranges and land in
- * the same 20° bin, so hair would be withheld as though it were an arm. What
+ * the same bin, so hair would be withheld as though it were an arm. What
  * separates them is that skin is pale and hair is not.
+ *
+ * Compared by measurement rather than by bucket key, because the keys carry a
+ * segment number now and the face and the body are cut in different places.
+ * The hue window is the renderer's own, which is the right one: what this has
+ * to predict is whether a recolour of that cluster would reach the skin.
  */
 function isSkin(cluster, skin) {
-  return cluster.key === skin.key && Math.abs(cluster.l - skin.l) < 0.2;
-}
-
-/** The bucket key a single pixel falls in — the same rule `cluster` uses. */
-function keyOf(r, g, b) {
-  const [h, s, l] = rgbToHsl(r, g, b);
-  return s < NEUTRAL ? `n${Math.round(l * 3)}` : `h${Math.round(h * 18)}`;
+  const d = Math.abs(cluster.h - skin.h) % 1;
+  const sameHue = cluster.neutral === skin.neutral && (cluster.neutral || Math.min(d, 1 - d) < 0.055);
+  return sameHue && Math.abs(cluster.l - skin.l) < 0.2;
 }
 
 /**
@@ -239,7 +215,21 @@ function keyOf(r, g, b) {
  * hat from a pair of shoes, and rasterising each one properly is an hour of
  * code for an answer that does not change.
  */
-function placeOnBody(smd, img, bodyMaterial) {
+function placeOnBody(smd, img, bodyMaterial, clusters) {
+  /* Which cluster a texel belongs to: its hue bucket, then the lightness
+     segment of that bucket it falls in. */
+  const byBucket = new Map();
+  for (const c of clusters) {
+    const list = byBucket.get(c.bucket) ?? [];
+    list.push(c);
+    byBucket.set(c.bucket, list);
+  }
+  const keyOf = (r, g, b) => {
+    const [h, s, l] = rgbToHsl(r, g, b);
+    const bucket = s < NEUTRAL ? `n${Math.round(l * 3)}` : `h${Math.round(h * 18)}`;
+    return byBucket.get(bucket)?.find((c) => l >= c.band[0] && l <= c.band[1])?.key;
+  };
+
   const sums = new Map();
   let lo = Infinity;
   let hi = -Infinity;
@@ -262,6 +252,7 @@ function placeOnBody(smd, img, bodyMaterial) {
     const i = (py * img.width + px) * 4;
     if (img.data[i + 3] < 128) continue;
     const key = keyOf(img.data[i], img.data[i + 1], img.data[i + 2]);
+    if (!key) continue;
     const y = (g.verts[0].pos[1] + g.verts[1].pos[1] + g.verts[2].pos[1]) / 3;
     const hit = sums.get(key) ?? { n: 0, y: 0 };
     hit.n++;
@@ -305,7 +296,7 @@ for (const dir of dirs) {
   const body = cluster(bodyImg);
   const face = cluster(decodePng(await fs.readFile(path.join(dir, faceFile))));
   const smd = readSmd(await fs.readFile(path.join(dir, 'Model.smd'), 'utf8'));
-  const heights = placeOnBody(smd, bodyImg, path.parse(bodyFile).name);
+  const heights = placeOnBody(smd, bodyImg, path.parse(bodyFile).name, body);
 
   /* Skin is the biggest thing a face is made of. Anything on the body within
      reach of it is a hand, an arm or a neck, and is never offered. */
@@ -313,31 +304,69 @@ for (const dir of dirs) {
   const wearable = body.filter((c) => !isSkin(c, skin));
 
   /* Two of the same part is "Top" twice in the booth, which is useless — the
-     second becomes its trim. */
+     second becomes its trim, the third its detail. Past that a region is too
+     small to be worth a swatch, and splitting garments from their linework
+     turned up more of them than a booth can sensibly offer. */
   const seen = new Map();
-  const slots = wearable.map((c) => {
+  const PARTS = ['', ' trim', ' detail'];
+  const slots = [];
+  for (const c of wearable) {
     const part = partAt(heights.get(c.key));
-    const n = (seen.get(part) ?? 0) + 1;
-    seen.set(part, n);
-    return {
-      label: n === 1 ? part : `${part} trim`,
+    const n = seen.get(part) ?? 0;
+    if (n >= PARTS.length) continue;
+    seen.set(part, n + 1);
+    slots.push({
+      label: `${part}${PARTS[n]}`,
       from: c.hex,
       share: +c.share.toFixed(3),
       height: heights.has(c.key) ? +heights.get(c.key).toFixed(2) : null,
-    };
-  });
-  report.push({ dir, skin: skin.hex, slots });
+      /* What a rule authored from `from` actually has to cover. A recolour
+         matches on hue and rewrites it, so anything in the region outside the
+         rule's reach keeps the old colour and reads as a stripe. */
+      lightness: [+c.lo.toFixed(2), +c.hi.toFixed(2)],
+      hue: +c.h.toFixed(3),
+    });
+  }
+
+  /*
+   * Two garments in the same hue family.
+   *
+   * A recolour rule names a hue, so when two regions sit within the renderer's
+   * hue reach of each other, one rule takes both — pick a colour for Mai's hair
+   * and her trousers change with it. The fix is a lightness window on the
+   * catalog slot, and this is what says one is needed: it is not visible in the
+   * hexes, which is why it went unnoticed until somebody's hair came out
+   * striped.
+   */
+  const HUE_REACH = 0.055;
+  const clashes = [];
+  for (let i = 0; i < slots.length; i++) {
+    for (let j = i + 1; j < slots.length; j++) {
+      const d = Math.abs(slots[i].hue - slots[j].hue) % 1;
+      if (Math.min(d, 1 - d) < HUE_REACH) clashes.push([slots[i], slots[j]]);
+    }
+  }
+
+  report.push({ dir, skin: skin.hex, slots, clashes: clashes.map(([a, b]) => [a.label, b.label]) });
   if (!asJson) {
     console.log(`${dir}`);
     console.log(`  skin (from the face): ${skin.hex}`);
     for (const s2 of slots) {
       console.log(
         `  ${s2.from}  ${(s2.share * 100).toFixed(1).padStart(5)}%  ` +
-          `y ${s2.height ?? '  ? '}  ${s2.label.padEnd(10)}${'█'.repeat(Math.ceil(s2.share * 30))}`
+          `y ${s2.height ?? '  ? '}  l ${s2.lightness[0].toFixed(2)}–${s2.lightness[1].toFixed(2)}  ` +
+          `${s2.label.padEnd(10)}${'█'.repeat(Math.ceil(s2.share * 30))}`
       );
     }
     const hidden = body.length - wearable.length;
     if (hidden) console.log(`  (${hidden} cluster${hidden > 1 ? 's' : ''} withheld as skin)`);
+    for (const [a, b] of clashes) {
+      console.log(
+        `  ! ${a.from} "${a.label}" and ${b.from} "${b.label}" are one hue family — ` +
+          `a rule for either takes both. Window them: ` +
+          `[${a.lightness[0]}, ${a.lightness[1]}] and [${b.lightness[0]}, ${b.lightness[1]}].`
+      );
+    }
   }
 }
 if (asJson) console.log(JSON.stringify(report, null, 2));
