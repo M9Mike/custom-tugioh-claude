@@ -49,7 +49,9 @@
     "clash": "node scripts/clash-check.mjs",
     "handling": "node scripts/handling-check.mjs",
     "premade": "tsx scripts/premade-audit.ts",
-    "faces": "node scripts/npc-face-check.mjs"
+    "faces": "node scripts/npc-face-check.mjs",
+    "import-rip": "node scripts/import-rip.mjs",
+    "glb": "node scripts/glb-info.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

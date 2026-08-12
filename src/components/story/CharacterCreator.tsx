@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   AS_AUTHORED,
-  DUELIST_MODELS,
+  BOOTH_MODELS,
   MAX_PREMADE_NAME,
   defaultPremade,
   modelById,
@@ -530,7 +530,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
           <PickRow
             label="Duelist"
-            options={DUELIST_MODELS.map((m) => ({ key: m.id, label: m.label, note: m.note }))}
+            options={BOOTH_MODELS.map((m) => ({ key: m.id, label: m.label, note: m.note }))}
             value={pick.model}
             onPick={(k) => {
               /* Tint slots belong to a model — a new duelist starts as the

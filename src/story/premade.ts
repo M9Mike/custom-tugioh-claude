@@ -75,6 +75,16 @@ export interface DuelistModel {
   walkSpeed: number;
   runSpeed: number;
   tintSlots: TintSlot[];
+  /**
+   * A named character rather than an option: in the catalog so the world can
+   * build one, out of the booth so nobody can pick it.
+   *
+   * These are the imported models — real characters, with faces and textures
+   * instead of flat tintable materials, converted by `npm run import-rip`.
+   * They carry no tint slots because there is nothing about them a player
+   * should be recolouring; they already look like who they are.
+   */
+  npcOnly?: boolean;
 }
 
 /**
@@ -253,7 +263,71 @@ export const DUELIST_MODELS: DuelistModel[] = [
       { label: 'Hair', palette: 'hair', materials: ['Hair_Blond', 'Hair_Brown'] },
     ],
   },
+  /* ---------------------------------------------------------------- *
+   * The cast.                                                         *
+   *                                                                   *
+   * Not options — people. These are converted from the character rips *
+   * of Yu-Gi-Oh! Duel Monsters: Saikyo Card Battle (3DS) by           *
+   * `npm run import-rip`, which turns the SMD set into one `.glb`     *
+   * carrying Idle, Walk and Run. They are textured rather than        *
+   * flat-shaded, so they have no tint slots and nothing about them is *
+   * for the player to change.                                         *
+   *                                                                   *
+   * Only Yami was playable in the source game, so only Yami has a     *
+   * walk and a run of his own; the other three borrow his, rotation   *
+   * only, which keeps each of them their own build. Heights are the   *
+   * characters' own — Yugi is famously the shortest person in the     *
+   * room and Kaiba the tallest, and at a shared height they lose most *
+   * of what makes them recognisable at a distance.                    *
+   * ---------------------------------------------------------------- */
+  {
+    id: 'yugi',
+    label: 'Yugi Muto',
+    note: 'Domino High uniform',
+    file: '/models/duelists/yugi.glb',
+    height: 1.53,
+    walkSpeed: 1.35,
+    runSpeed: 3.1,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'yami',
+    label: 'Yami Yugi',
+    note: 'The Pharaoh',
+    file: '/models/duelists/yami.glb',
+    height: 1.75,
+    walkSpeed: 1.5,
+    runSpeed: 3.4,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'kaiba',
+    label: 'Seto Kaiba',
+    note: 'White coat, Kaiba Corp',
+    file: '/models/duelists/kaiba.glb',
+    height: 1.86,
+    walkSpeed: 1.6,
+    runSpeed: 3.6,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'joey',
+    label: 'Joey Wheeler',
+    note: 'Green jacket, blond',
+    file: '/models/duelists/joey.glb',
+    height: 1.78,
+    walkSpeed: 1.55,
+    runSpeed: 3.5,
+    tintSlots: [],
+    npcOnly: true,
+  },
 ];
+
+/** What the booth may offer: everything that is not somebody in particular. */
+export const BOOTH_MODELS: DuelistModel[] = DUELIST_MODELS.filter((m) => !m.npcOnly);
 
 export function modelById(id: unknown): DuelistModel {
   return DUELIST_MODELS.find((m) => m.id === id) ?? DUELIST_MODELS[0];
