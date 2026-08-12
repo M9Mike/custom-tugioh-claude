@@ -86,31 +86,31 @@ export interface WorldNpc {
  * that started all of it. A game that opens with somebody's grandfather
  * explaining the rules is opening the way this one actually did.
  *
- * **On the casting.** The roster has no model of him, so this is the `king` —
- * the only one on it with white hair and a beard — dressed to the reference
- * rather than to his own catalog row:
+ * **On the casting.** There is no model of Solomon Muto anywhere — not on
+ * Sketchfab, not on The Models Resource, not in the Japanese MMD catalogues.
+ * He has never been a playable duelist in a 3D game, so there is nothing to
+ * rip, and the fan sculptors make Yugi and Kaiba. He is a famous character
+ * with no model in existence. So he is assembled: a body off the roster, and a
+ * head built in `accessories.ts`.
  *
- * - the **crown is hidden**, because a crown is the one thing that makes a
- *   king a king and it was the whole reason the first attempt read as "old
- *   monarch" instead of "old shopkeeper";
- * - the robe becomes the **dark green of his overalls**, the undertunic the
- *   **cream of his shirt**, the shoulder plates the same cream so they pass
- *   as sleeves, and the legs the **blue** of his trousers;
- * - and he gets the **orange bandana**, which is the single most
- *   identifiable thing about him and is not something any tint could supply.
+ * The body is the **punk**, which sounds absurd and is the right answer. Strip
+ * the mohawk and the earrings and what is left is the only silhouette on the
+ * roster that matches his: an open garment over a lighter shirt, with
+ * trousers. Repaint the vest the dark green of his overalls and the shirt
+ * cream, and that is what he wears.
  *
- * That is as close as a re-dressed generic model gets: at conversation
- * distance it is a short, stocky old man with a grey beard, a bandana and
- * green overalls, which is his silhouette. It is not a model of his face,
- * and swapping in one later is one `model` id — the overrides and the
- * bandana would simply go away.
+ * It was the `king` first, on the reasoning that he was the only model with
+ * white hair and a beard. That was backwards. Once the head is built rather
+ * than borrowed, hair and beard stop being selection criteria — and the king's
+ * body is pauldrons, greaves and plate, which no amount of repainting stops
+ * reading as armour. Choose the body for the body.
  *
  * Stature 0 is the short end of the range, because he should not tower over
  * the person he is welcoming.
  */
 const GRANDPA_LOOK: PremadeCharacter = {
   name: 'Grandpa Muto',
-  model: 'king',
+  model: 'punk',
   /* The catalog's own slots are left as authored — everything he wears is
      said properly in the overrides below, where it can name materials the
      booth's three slots never reach. */
@@ -118,29 +118,61 @@ const GRANDPA_LOOK: PremadeCharacter = {
   stature: 0,
 };
 
-/** What the king has to stop wearing to become a shopkeeper. */
+/** What the punk has to stop wearing to become a shopkeeper. */
 const GRANDPA_DRESS: Record<string, string | null> = {
-  /* The crown. Gone. */
-  Gold: null,
-  /* Overalls. */
-  Blue: '#1f5c4a',
-  /* Shirt, and the pauldrons repainted to pass as its sleeves. */
-  Beige: '#e8dfc9',
-  Metal: '#e8dfc9',
-  Metal_Dark: '#cfc6b0',
-  /* Trousers under the overalls. */
-  DarkBrown: '#2f3a4a',
-  /* Grey rather than the file's white, which reads younger than he is. */
-  Hair_White: '#a9a49c',
+  /* The mohawk spikes and the earrings. Gone. */
+  Red: null,
+  Earrings: null,
+  /*
+   * The rest of the hair, which on this model is a separate material from the
+   * spikes — so it survives them, and goes grey. Hiding it as well was tried
+   * and is wrong twice over: it leaves an actual hole through the back of the
+   * skull, because there is no scalp modelled under the hair, and it throws
+   * away hair that only needed recolouring.
+   */
+  Red_Dark: '#a8a29a',
+  /* The vest, which on him is the bib of a pair of overalls. */
+  Black: '#2c5c48',
+  /* The shirt under it. */
+  White: '#e6dcc4',
+  /*
+   * Trousers, and the colour is doing a job.
+   *
+   * This model's jeans are torn at the knee — two patches of bare leg, which is
+   * the loudest remaining word of "punk" on him and cannot be painted out,
+   * because the skin showing through is the same material as his face. Against
+   * navy those patches shout. Against worn khaki they read as knees gone thin,
+   * which is what an old man's work trousers look like anyway.
+   */
+  LightBlue: '#7a6a55',
+  /* This model carries its brows as a material of their own, so his go grey
+     here rather than being rebuilt — one fewer piece of geometry for the same
+     result, which is the trade this whole file is trying to make. */
+  Eyebrows: '#8e8981',
 };
 
-/** The bandana, tied at the back, with the pale chevrons across the front. */
-const GRANDPA_BANDANA: AccessorySpec = {
-  kind: 'bandana',
-  bone: 'Head',
-  color: '#d98c26',
-  accent: '#efe3b0',
-};
+/**
+ * The two things the model could not supply.
+ *
+ * Everything else about his head is the punk's own geometry with a different
+ * colour on it. These two are shapes that are not in the file at all, and they
+ * are the two the character is recognised by: the bandana, and the moustache
+ * and beard beneath it.
+ *
+ * Two pieces, and it took getting down to two. Grey hair, sideburns and brows
+ * were all built here at one point and all three are gone — the first two
+ * because this body already has hair worth keeping, the third because it has a
+ * brow material of its own. At conversation distance a face is an outline, and
+ * every piece of detail added below this level has made him worse.
+ */
+const GRANDPA_HEAD: AccessorySpec[] = [
+  /* Plain, and tied at the back. The chevrons the accessory can draw were
+     tried and cut: at this size a pattern is two pale scratches. */
+  { kind: 'bandana', bone: 'Head', color: '#d4842a' },
+  /* The same grey as his hair. Not white — white is a wizard, and he is a
+     shopkeeper who has gone grey. */
+  { kind: 'beard', bone: 'Head', color: '#a8a29a' },
+];
 
 /**
  * What he actually teaches, and why it is him teaching it.
@@ -283,21 +315,218 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* The rest of them                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Five more, standing about the field.
+ *
+ * They say hello and nothing else on purpose. The open world is going to be
+ * rebuilt around a story, and writing five scripts against a world that does
+ * not exist yet would be writing them twice; what is worth having *now* is the
+ * cast — the models chosen, the palettes settled, the placement worked out —
+ * so that when there is something for them to say, saying it is a matter of
+ * adding nodes to a record that already exists.
+ *
+ * Each is the same three decisions Grandpa was: a body off the roster, that
+ * body repainted, and geometry for anything the roster cannot supply. Only the
+ * Mutos need the third, and it is the same thing twice.
+ *
+ * Nobody here is a downloaded model. There are none to download for most of
+ * them, and the ones that do exist are rigged for something else and carry no
+ * clip this game can play — so a likeness is assembled out of what the roster
+ * has, the way a costume department would do it.
+ */
+
+/** The hair both Mutos are recognised by. */
+const STAR_HAIR: AccessorySpec = {
+  kind: 'star-hair',
+  bone: 'Head',
+  color: '#241b33',
+  /* The blond fringe. */
+  accent: '#e8c65a',
+};
+
+/** A whole character in the one thing each of them says for now. */
+const greeting = (lines: string[]): Record<string, DialogueNode> => ({
+  greet: { lines, choices: [] },
+});
+
+const CAST: WorldNpc[] = [
+  {
+    id: 'yugi',
+    /*
+     * Yugi Muto. The `hoodie` body, which under a repaint is a school jacket
+     * over a white shirt — near enough his uniform — and the shortest stature
+     * on the scale, because being small is half of how he is drawn.
+     */
+    character: { name: 'Yugi Muto', model: 'hoodie', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0 },
+    overrides: {
+      /* The jacket. */
+      Purple: '#2f3f8f',
+      /* The shirt under it. */
+      White: '#f2f0e8',
+      /* Trousers. */
+      LightBlue: '#2a2f3d',
+      /* The model's own hair, taken to the near-black his spikes are built in
+         so the join does not show. */
+      Hair: '#241b33',
+    },
+    accessories: [STAR_HAIR],
+    x: -7.5,
+    z: 10.5,
+    facing: Math.PI * 0.85,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Oh — hello! I am Yugi.',
+      'Grandpa said someone new had turned up. Come and find me when there is duelling to be done.',
+    ]),
+  },
+  {
+    id: 'yami',
+    /*
+     * The Pharaoh. The same body and the same hair, because that is exactly
+     * what the story says he is — and then the differences that make him read
+     * as somebody else: the tallest stature, and black where Yugi is blue.
+     */
+    character: { name: 'Yami Yugi', model: 'hoodie', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 1 },
+    overrides: {
+      Purple: '#15161d',
+      White: '#3b3f52',
+      LightBlue: '#15161d',
+      Hair: '#241b33',
+    },
+    accessories: [STAR_HAIR],
+    x: 7.5,
+    z: 10.5,
+    facing: -Math.PI * 0.85,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'So. Another duelist.',
+      'We will play, in time. I look forward to seeing what you are made of.',
+    ]),
+  },
+  {
+    id: 'kaiba',
+    /*
+     * Seto Kaiba. The `suit` in white over black, which is the one outfit on
+     * the roster that a long coat can be read into, at the tallest stature —
+     * he looks down on everybody and the model should too.
+     */
+    character: { name: 'Seto Kaiba', model: 'suit', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 1 },
+    overrides: {
+      /* The coat. */
+      Suit: '#e8e9ef',
+      /* Black shirt under it, and the tie goes with it rather than away —
+         hiding it leaves a gap down the front of the shirt. */
+      White: '#16171d',
+      Tie: '#16171d',
+      /* Trousers and boots. */
+      DarkBrown: '#1b1c24',
+      Grey: '#2a2c36',
+      Black: '#16171d',
+      Hair: '#6a4a30',
+    },
+    x: 13,
+    z: 4.5,
+    facing: -Math.PI * 0.62,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Kaiba. Seto Kaiba — and no, I have not heard of you.',
+      'Come back when you have a deck worth my time.',
+    ]),
+  },
+  {
+    id: 'joey',
+    /*
+     * Joey Wheeler. The `adventurer`, whose field jacket is his green jacket
+     * almost exactly.
+     *
+     * The pack stays, and not by choice: its bag shares `Green`/`LightGreen`
+     * with the jacket, so hiding it hides the jacket too. Hiding `Brown` was
+     * tried on the assumption that brown was the pack — it is the trousers, and
+     * he spent one render as a torso above a pair of floating boots. It is on
+     * his back, he is a teenager, and from the front — which is where every
+     * conversation happens — it is invisible.
+     */
+    character: { name: 'Joey Wheeler', model: 'adventurer', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0.6 },
+    overrides: {
+      /* The jacket. */
+      Green: '#3f7d4e',
+      LightGreen: '#57a06a',
+      /* Boots and belt. */
+      Grey: '#3d4a63',
+      Black: '#20242e',
+      /* Jeans — and the pack, which is painted from the same two. */
+      Brown: '#41506e',
+      Brown2: '#33405a',
+      Gold: '#c9b273',
+      Hair: '#dcb64a',
+    },
+    x: -13,
+    z: 4.5,
+    facing: Math.PI * 0.62,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Hey! Joey Wheeler — good to meet ya.',
+      'Stick around. This place is gonna get a lot more interesting.',
+    ]),
+  },
+  {
+    id: 'mai',
+    /*
+     * Mai Valentine. The `executive`, which is the only jacket-and-blouse on
+     * the roster, in her violet. This model carries no separate eye or brow
+     * material — its face is painted into two, `Brown` for the features and
+     * `Red` for a long fall of hair — so the hair goes blonde by repainting
+     * `Red`, which is worth knowing before anybody tints it as a garment.
+     */
+    character: { name: 'Mai Valentine', model: 'executive', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0.7 },
+    overrides: {
+      /* The jacket. */
+      LimeGreen: '#7d4fa8',
+      /* Trim, and her gloves. */
+      Gold: '#e8dcc0',
+      /* The hair. */
+      Red: '#e6c65e',
+    },
+    x: 0,
+    z: 15.5,
+    facing: Math.PI,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Well, hello. Mai Valentine.',
+      'Do try to be interesting, sweetheart. Most of them are not.',
+    ]),
+  },
+];
+
 /**
  * Everybody standing in the field.
  *
- * Grandpa is placed six and a half metres up the +Z axis, facing back down it
- * — which is directly in front of a duelist arriving at the spawn, at a
- * distance where he is unmistakably *there* without being in the way. New
- * players walk into him on purpose; anyone who would rather not can simply go
- * around.
+ * Grandpa is six and a half metres up the +Z axis, facing back down it — which
+ * is directly in front of a duelist arriving at the spawn, at a distance where
+ * he is unmistakably *there* without being in the way. New players walk into
+ * him on purpose; anyone who would rather not can simply go around.
+ *
+ * The rest stand further out and turned inward, in a rough arc past him, so
+ * that walking on from the first conversation finds a second. They are spread
+ * far enough apart that no two prompts can be live at once — the nearest pair
+ * are seven metres apart against a talking range of three — and all of them sit
+ * well inside the world's 120-metre edge.
  */
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
     character: GRANDPA_LOOK,
     overrides: GRANDPA_DRESS,
-    accessories: [GRANDPA_BANDANA],
+    accessories: GRANDPA_HEAD,
     x: 0,
     z: 6.5,
     facing: Math.PI,
@@ -307,6 +536,7 @@ export const WORLD_NPCS: WorldNpc[] = [
     start: 'greet',
     script: GRANDPA_SCRIPT,
   },
+  ...CAST,
 ];
 
 /** Fills the one token a line may carry. */
