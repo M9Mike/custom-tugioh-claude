@@ -25,7 +25,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { DUELIST_MODELS, UNTINTABLE } from '../src/story/premade';
+import { BOOTH_MODELS, DUELIST_MODELS, UNTINTABLE } from '../src/story/premade';
 
 let failures = 0;
 const ok = (label: string) => console.log(`  ✓ ${label}`);

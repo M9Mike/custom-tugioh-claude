@@ -33,7 +33,7 @@ export interface AccessorySpec {
   scale?: number;
 }
 
-export type AccessoryKind = 'bandana' | 'beard' | 'star-hair';
+export type AccessoryKind = 'bandana' | 'beard';
 
 export interface BuiltAccessory {
   object: THREE.Object3D;
@@ -275,102 +275,6 @@ function beard(color: string, scale: number, HEAD: HeadMetrics) {
   return { object: group, dispose: () => disposables.forEach((d) => d.dispose()) };
 }
 
-/**
- * A crown of big spikes radiating outward, with a fringe hanging over the brow.
- *
- * This is the one silhouette in the whole series that has to be built rather
- * than tinted: no model on the roster has hair that points anywhere but down,
- * and without it the character is a short teenager in a school jacket and
- * nobody in the world. With it, he is recognisable from across the field, which
- * is the entire test.
- *
- * Seven spikes, not seventeen. The lesson every accessory in this file has
- * taught is that a mass of small shapes turns to noise at conversation
- * distance, so these are few and enormous — each about half a head long — and
- * they read as a star from the front and a fan from the side.
- *
- * `accent` is the fringe: the blond bangs that fall forward over the face, and
- * the reason the front of the head is left clear of spikes.
- */
-function starHair(color: string, accent: string | undefined, scale: number, HEAD: HeadMetrics) {
-  const group = new THREE.Group();
-  const disposables: { dispose(): void }[] = [];
-  const hair = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    roughness: 1,
-    metalness: 0,
-  });
-  disposables.push(hair);
-
-  /* Rooted just under the top of the model's own hair, so the spikes grow out
-     of that mass rather than hovering above it — but not so deep that half of
-     each one is buried and only a tip shows, which is what 0.055 down gave. */
-  const root = new THREE.Vector3(0, HEAD.crownY - 0.025, HEAD.centreZ);
-  const up = new THREE.Vector3(0, 1, 0);
-
-  /* Azimuth round the head and how far each spike is tilted up from horizontal.
-     The front (azimuth near 0) is deliberately empty — the fringe is there. */
-  const spikes: [number, number, number][] = [
-    [Math.PI, 0.62, 0.23],
-    [Math.PI * 0.72, 0.5, 0.22],
-    [-Math.PI * 0.72, 0.5, 0.22],
-    [Math.PI * 0.42, 0.44, 0.2],
-    [-Math.PI * 0.42, 0.44, 0.2],
-    [Math.PI * 0.16, 1.15, 0.19],
-    [-Math.PI * 0.16, 1.15, 0.19],
-  ];
-  for (const [az, tilt, len] of spikes) {
-    const dir = new THREE.Vector3(
-      Math.sin(az) * Math.cos(tilt),
-      Math.sin(tilt),
-      Math.cos(az) * Math.cos(tilt)
-    ).normalize();
-    const cone = new THREE.ConeGeometry(0.046 * scale, len * scale, 7);
-    disposables.push(cone);
-    const mesh = new THREE.Mesh(cone, hair);
-    mesh.quaternion.setFromUnitVectors(up, dir);
-    /* Half a length along the spike, so its base is buried in the skull. */
-    mesh.position
-      .copy(root)
-      .addScaledVector(dir, len * 0.42)
-      .multiplyScalar(scale);
-    mesh.castShadow = true;
-    group.add(mesh);
-  }
-
-  /* The fringe: three blades falling down the forehead to the brow. Placed
-     against the brow rather than the crown — the first fit hung them off the
-     top of the skull, where they read as a second set of horns. */
-  if (accent) {
-    const bang = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(accent),
-      roughness: 1,
-      metalness: 0,
-    });
-    disposables.push(bang);
-    for (const [x, len, lean] of [
-      [0, 0.11, 0.12],
-      [-0.05, 0.095, 0.36],
-      [0.05, 0.095, -0.36],
-    ] as const) {
-      const cone = new THREE.ConeGeometry(0.03 * scale, len * scale, 6);
-      disposables.push(cone);
-      const mesh = new THREE.Mesh(cone, bang);
-      mesh.position.set(
-        x * scale,
-        (HEAD.hemY + 0.015) * scale,
-        (HEAD.noseZ - 0.012) * scale
-      );
-      /* Pointing down the face, splayed outward from the middle. */
-      mesh.rotation.set(Math.PI * 0.86, 0, lean);
-      mesh.castShadow = true;
-      group.add(mesh);
-    }
-  }
-
-  return { object: group, dispose: () => disposables.forEach((d) => d.dispose()) };
-}
-
 export function buildAccessory(spec: AccessorySpec, head: HeadMetrics): BuiltAccessory | null {
   const scale = spec.scale ?? 1;
   switch (spec.kind) {
@@ -378,8 +282,6 @@ export function buildAccessory(spec: AccessorySpec, head: HeadMetrics): BuiltAcc
       return bandana(spec.color, spec.accent, scale, head);
     case 'beard':
       return beard(spec.color, scale, head);
-    case 'star-hair':
-      return starHair(spec.color, spec.accent, scale, head);
     default:
       return null;
   }

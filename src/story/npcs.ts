@@ -325,28 +325,28 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
  * They say hello and nothing else on purpose. The open world is going to be
  * rebuilt around a story, and writing five scripts against a world that does
  * not exist yet would be writing them twice; what is worth having *now* is the
- * cast — the models chosen, the palettes settled, the placement worked out —
- * so that when there is something for them to say, saying it is a matter of
- * adding nodes to a record that already exists.
+ * cast, so that when there is something for them to say, saying it is a matter
+ * of adding nodes to a record that already exists.
  *
- * Each is the same three decisions Grandpa was: a body off the roster, that
- * body repainted, and geometry for anything the roster cannot supply. Only the
- * Mutos need the third, and it is the same thing twice.
+ * **Four of them are themselves.** Yugi, Yami, Kaiba and Joey are the real
+ * models, converted from the character rips of *Yu-Gi-Oh! Duel Monsters:
+ * Saikyo Card Battle* (3DS) by `npm run import-rip` — textured, rigged, and
+ * carrying the game's own Idle. Their records are three lines each, because a
+ * model that already looks like somebody needs no dressing and no accessories:
+ * the star hair, the coat and the studded belts are in the file.
  *
- * Nobody here is a downloaded model. There are none to download for most of
- * them, and the ones that do exist are rigged for something else and carry no
- * clip this game can play — so a likeness is assembled out of what the roster
- * has, the way a costume department would do it.
+ * **Two of them are assembled**, and it is not for want of looking. Mai
+ * Valentine and Solomon Muto have no 3D model in existence — not in that game,
+ * not in any other that has been ripped, not on Sketchfab, not in the MMD
+ * catalogues. Neither has ever been a playable duelist in a 3D game, so there
+ * is nothing to extract, and the fan sculptors make Yugi and Kaiba. Those two
+ * stay as they were: a body off the generic roster, repainted, plus geometry
+ * for whatever the roster cannot supply.
+ *
+ * That split is worth keeping in view. Anybody the games shipped as a playable
+ * body can be imported in about a minute; anybody they did not has to be built,
+ * and building is where the hours go.
  */
-
-/** The hair both Mutos are recognised by. */
-const STAR_HAIR: AccessorySpec = {
-  kind: 'star-hair',
-  bone: 'Head',
-  color: '#241b33',
-  /* The blond fringe. */
-  accent: '#e8c65a',
-};
 
 /** A whole character in the one thing each of them says for now. */
 const greeting = (lines: string[]): Record<string, DialogueNode> => ({
@@ -356,24 +356,8 @@ const greeting = (lines: string[]): Record<string, DialogueNode> => ({
 const CAST: WorldNpc[] = [
   {
     id: 'yugi',
-    /*
-     * Yugi Muto. The `hoodie` body, which under a repaint is a school jacket
-     * over a white shirt — near enough his uniform — and the shortest stature
-     * on the scale, because being small is half of how he is drawn.
-     */
-    character: { name: 'Yugi Muto', model: 'hoodie', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0 },
-    overrides: {
-      /* The jacket. */
-      Purple: '#2f3f8f',
-      /* The shirt under it. */
-      White: '#f2f0e8',
-      /* Trousers. */
-      LightBlue: '#2a2f3d',
-      /* The model's own hair, taken to the near-black his spikes are built in
-         so the join does not show. */
-      Hair: '#241b33',
-    },
-    accessories: [STAR_HAIR],
+    /* His own model, so nothing to dress and nothing to build. */
+    character: { name: 'Yugi Muto', model: 'yugi', tints: [], stature: 0.5 },
     x: -7.5,
     z: 10.5,
     facing: Math.PI * 0.85,
@@ -386,19 +370,7 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'yami',
-    /*
-     * The Pharaoh. The same body and the same hair, because that is exactly
-     * what the story says he is — and then the differences that make him read
-     * as somebody else: the tallest stature, and black where Yugi is blue.
-     */
-    character: { name: 'Yami Yugi', model: 'hoodie', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 1 },
-    overrides: {
-      Purple: '#15161d',
-      White: '#3b3f52',
-      LightBlue: '#15161d',
-      Hair: '#241b33',
-    },
-    accessories: [STAR_HAIR],
+    character: { name: 'Yami Yugi', model: 'yami', tints: [], stature: 0.5 },
     x: 7.5,
     z: 10.5,
     facing: -Math.PI * 0.85,
@@ -411,25 +383,7 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'kaiba',
-    /*
-     * Seto Kaiba. The `suit` in white over black, which is the one outfit on
-     * the roster that a long coat can be read into, at the tallest stature —
-     * he looks down on everybody and the model should too.
-     */
-    character: { name: 'Seto Kaiba', model: 'suit', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 1 },
-    overrides: {
-      /* The coat. */
-      Suit: '#e8e9ef',
-      /* Black shirt under it, and the tie goes with it rather than away —
-         hiding it leaves a gap down the front of the shirt. */
-      White: '#16171d',
-      Tie: '#16171d',
-      /* Trousers and boots. */
-      DarkBrown: '#1b1c24',
-      Grey: '#2a2c36',
-      Black: '#16171d',
-      Hair: '#6a4a30',
-    },
+    character: { name: 'Seto Kaiba', model: 'kaiba', tints: [], stature: 0.5 },
     x: 13,
     z: 4.5,
     facing: -Math.PI * 0.62,
@@ -442,31 +396,7 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'joey',
-    /*
-     * Joey Wheeler. The `adventurer`, whose field jacket is his green jacket
-     * almost exactly.
-     *
-     * The pack stays, and not by choice: its bag shares `Green`/`LightGreen`
-     * with the jacket, so hiding it hides the jacket too. Hiding `Brown` was
-     * tried on the assumption that brown was the pack — it is the trousers, and
-     * he spent one render as a torso above a pair of floating boots. It is on
-     * his back, he is a teenager, and from the front — which is where every
-     * conversation happens — it is invisible.
-     */
-    character: { name: 'Joey Wheeler', model: 'adventurer', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0.6 },
-    overrides: {
-      /* The jacket. */
-      Green: '#3f7d4e',
-      LightGreen: '#57a06a',
-      /* Boots and belt. */
-      Grey: '#3d4a63',
-      Black: '#20242e',
-      /* Jeans — and the pack, which is painted from the same two. */
-      Brown: '#41506e',
-      Brown2: '#33405a',
-      Gold: '#c9b273',
-      Hair: '#dcb64a',
-    },
+    character: { name: 'Joey Wheeler', model: 'joey', tints: [], stature: 0.5 },
     x: -13,
     z: 4.5,
     facing: Math.PI * 0.62,

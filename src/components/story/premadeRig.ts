@@ -94,8 +94,10 @@ export function loadDuelistTemplate(modelId: string): Promise<Template> {
 
 /** Warms the cache so the booth can flick between models without a stall. */
 export function preloadAllDuelists(): void {
-  import('@/story/premade').then(({ DUELIST_MODELS }) => {
-    for (const m of DUELIST_MODELS) void loadDuelistTemplate(m.id).catch(() => {});
+  /* Only what the booth shows: the named characters are megabytes nobody
+     picking a duelist is about to look at. */
+  import('@/story/premade').then(({ BOOTH_MODELS }) => {
+    for (const m of BOOTH_MODELS) void loadDuelistTemplate(m.id).catch(() => {});
   });
 }
 
@@ -178,6 +180,22 @@ export async function buildPremadeRig(
       color: hex ? new THREE.Color(hex) : source.color?.clone() ?? new THREE.Color('#888888'),
       roughness: 1,
       metalness: 0,
+      /*
+       * Carried over, not dropped.
+       *
+       * This rebuild exists for the vendored roster, which is untextured — every
+       * part a named flat colour — so for years there was nothing to carry. The
+       * imported characters *are* textured, and rebuilding their materials
+       * without the map turned Yugi into a white statue: correct geometry,
+       * correct animation, no face. A model that came with a picture of itself
+       * keeps it, and tinting one is a colour multiplied over that picture,
+       * which is why those models declare no tint slots.
+       */
+      map: source.map ?? null,
+      /* Hair and eyelash cards on the rips are cut-outs, and without the
+         threshold they render as opaque rectangles round the head. */
+      alphaTest: source.alphaTest || 0,
+      side: source.side ?? THREE.FrontSide,
     });
     /* Hidden, not deleted: the polygons stay in the mesh they share with the
        face, and simply draw nothing. `depthWrite` off as well, or the crown

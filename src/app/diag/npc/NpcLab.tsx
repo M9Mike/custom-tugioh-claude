@@ -318,11 +318,18 @@ export default function NpcLab({
         rig.root.traverse((o) => {
           if ((o as THREE.Bone).isBone && o.name === 'Head') bone = o;
         });
+        const box = new THREE.Box3().setFromObject(rig.root);
         const boneY = bone
           ? (bone as THREE.Object3D).getWorldPosition(new THREE.Vector3()).y
           : rig.height * 0.85;
-        const focusY = body ? rig.height * 0.5 : boneY + 0.1;
-        const dist = body ? rig.height * 2.15 : 0.85;
+        /* Back off by the size of the head, not by a fixed distance.
+           The vendored roster is realistically proportioned and 0.85m framed it
+           well; the imported characters are game-chibi, with a head half again
+           bigger on a shorter body, and the same distance put the camera inside
+           an eyeball. What is above the neck is what wants framing. */
+        const headRise = Math.max(0.12, box.max.y - boneY);
+        const focusY = body ? rig.height * 0.5 : boneY + headRise * 0.42;
+        const dist = body ? rig.height * 2.15 : headRise * 3.1;
 
         VIEWS.forEach((view, i) => {
           const x = (i % COLS) * CELL.w;
