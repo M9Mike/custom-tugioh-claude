@@ -436,8 +436,27 @@ const CAST: WorldNpc[] = [
        * 0.63 is 0.069 away from it, which is clear.
        */
       '#44495b': { to: '#e3c25c', lightness: [0.03, 0.44] },
-      /* Her violet, deepened. */
-      '#6555a5': '#7d3fae',
+      /* The jacket, near enough the purple it is already painted. */
+      '#6555a5': '#6f4d99',
+      /*
+       * Below the waist, the skirt: this body's light blue capris in her
+       * purple. Windowed above the hair, which is only 0.05 away in hue.
+       *
+       * **This rule must come before the top's.** The two regions are 0.07
+       * apart at their centres, which is clear, but the legs carry sub-tones
+       * out at hue 0.578 that fall inside the top rule's reach — so with the
+       * top first she came out with one leg's worth of pink patches. First
+       * match wins, so the legs claim their own tails before the top looks.
+       */
+      '#b5c3cb': { to: '#6d4a91', lightness: [0.5, 1] },
+      /*
+       * The corset, which is pink and is the one part of her nobody misremembers.
+       *
+       * What no repaint supplies is the silhouette. She is drawn with long,
+       * thick, spiked hair and this body has a bob; that is geometry, not
+       * paint, and it waits for a model of her that does not exist yet.
+       */
+      '#98aadf': { to: '#d15c96', lightness: [0.5, 0.95] },
     },
     /*
      * `woman2` is drawn as a slight young adult and Mai is not — she is the
