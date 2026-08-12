@@ -638,6 +638,30 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
+  {
+    /*
+     * The one character in the cast who is neither a rip nor a repaint.
+     *
+     * No model of Mai is available to us, so hers is built: `woman2` with the
+     * bob cut out of the mesh and a mane put in its place, by
+     * `scripts/blender/mai.py`. Same skeleton, same atlas, same three clips —
+     * it is the source model with different hair, not a different model.
+     *
+     * Her colours are still a repaint at runtime rather than a baked texture,
+     * so the blonde and the purple stay authored in one place. That is why she
+     * records a skin colour where the other named characters do not.
+     */
+    id: 'mai',
+    label: 'Mai Valentine',
+    note: 'Purple jacket, blonde',
+    file: '/models/duelists/mai.glb',
+    height: 1.67,
+    walkSpeed: 1.45,
+    runSpeed: 3.3,
+    tintSlots: [],
+    npcOnly: true,
+    skin: '#f6a474',
+  },
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */

@@ -420,7 +420,7 @@ const CAST: WorldNpc[] = [
      * stay clear of the linework and left her with a blonde crown and black
      * ends, because the dark half is not linework — it is the hair, shaded.
      */
-    character: { name: 'Mai Valentine', model: 'woman2', tints: [], stature: 0.7 },
+    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.7 },
     repaint: {
       /*
        * The blonde.
@@ -465,9 +465,7 @@ const CAST: WorldNpc[] = [
      * chest; the shoulders and arms hanging off it keep their own size.
      */
     build: { Spine1: [1.16, 1, 1.3] },
-    /* The hair, which the body cannot supply and the repaint cannot fake. Built
-       over the bob rather than instead of it — see `mane` in `accessories.ts`. */
-    accessories: [{ kind: 'mane', bone: 'Head', color: '#e3c25c' }],
+
     x: 0,
     z: 15.5,
     facing: Math.PI,
