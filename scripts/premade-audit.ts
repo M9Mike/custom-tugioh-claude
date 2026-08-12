@@ -84,6 +84,10 @@ for (const model of DUELIST_MODELS) {
 
   const materials = (json.materials ?? []).map((m) => m.name ?? '');
   console.log(`  · materials: ${materials.join(', ')}`);
+  /* Slot labels double as the booth's `data-tint` selectors and React keys,
+     which is only sound while no model repeats one. */
+  const labels = model.tintSlots.map((s) => s.label.toLowerCase().replace(/\s+/g, '-'));
+  check(new Set(labels).size === labels.length, 'tint slot labels are unique', labels.join(', '));
   for (const slot of model.tintSlots) {
     for (const name of slot.materials) {
       check(materials.includes(name), `"${slot.label}" names a real material (${name})`);

@@ -384,6 +384,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       }
 
       const p = here.current;
+      /* Where the frame started, so the speed handed to the rig below is the
+         ground actually covered — which the world's edge can cut short. */
+      const fromX = p.x;
+      const fromZ = p.z;
 
       /**
        * Moved by `stride`, not by the stick.
@@ -413,8 +417,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         rig.root.rotation.y = p.facing;
         /* The clips advance by `dt` and play at ground speed over clip speed —
            the same one-speed arithmetic that kept the old gait's feet from
-           sliding, now living in `premadeRig.ts`. */
-        rig.update(dt, stride, WALK_SPEED * stride);
+           sliding, now living in `premadeRig.ts`. The speed is measured off
+           the position the clamp actually allowed, and the stride handed over
+           is capped to it, so a duelist pinned against the world's edge slows
+           to a stand instead of marching on the spot. */
+        const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
+        rig.update(dt, Math.min(stride, covered / WALK_SPEED), covered);
       }
 
       /* Shadow box rides along with the duelist. */

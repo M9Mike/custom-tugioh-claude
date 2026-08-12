@@ -212,8 +212,16 @@ async function run(phoneName) {
   if (at === 'character') {
     /* The duelist is a fetched model, not a constructor call, and the booth
        says so: it stamps `data-ready` on the viewport when the first one is
-       standing. Screenshot comparisons taken before that prove nothing. */
-    await page.locator('[data-ready="yes"]').waitFor({ timeout: 30000 }).catch(() => {});
+       standing. A booth that never becomes ready is a failure in its own
+       right — every screenshot comparison after it would be of an empty
+       plinth, passing or failing for reasons that have nothing to do with
+       the control being tapped. */
+    const ready = await page
+      .locator('[data-ready="yes"]')
+      .waitFor({ timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    check(ready, 'the booth reports a duelist ready');
     const first = await canvasShot(page);
     check(first.length > RENDERED_BYTES, 'the duelist is drawn', `${first.length} bytes`);
     await fs.writeFile(`${OUT}/${phoneName}-2-booth.png`, await page.screenshot());

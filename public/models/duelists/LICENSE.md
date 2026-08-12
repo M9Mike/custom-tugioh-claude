@@ -34,8 +34,8 @@ What was changed:
    light (gltf-transform: drop clip, prune orphaned accessors). The clips
    kept aboard every file are: Idle, Idle_Neutral, Walk, Run, Wave, Interact,
    Sword_Slash, Punch_Left, Punch_Right, HitRecieve, HitRecieve_2, Roll,
-   Death. Dropped: the Gun_* family, Idle_Sword, Idle_Gun*, Kick_*, and the
-   directional Run_* variants. Geometry, rig, materials and the kept clips
+   Death. Dropped: the `Gun_*` family, `Idle_Sword`, `Idle_Gun*`, `Kick_*`,
+   and the directional `Run_*` variants. Geometry, rig, materials and the kept clips
    are byte-equivalent in content to the originals.
 
 `scripts/premade-audit.ts` reads these files and is the place to look when a

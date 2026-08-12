@@ -76,8 +76,11 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
   const [error, setError] = useState<string | null>(null);
   /* Flipped when the first model lands on the plinth. The driving scripts
      wait for it before comparing screenshots, and it is honest UI besides:
-     a model is a fetch away, not a constructor away. */
+     a model is a fetch away, not a constructor away. Binding is gated on it
+     too — nobody may approve a duelist the plinth has never shown. */
   const [modelReady, setModelReady] = useState(false);
+  /* A first load that failed outright — the plinth is empty and says so. */
+  const [loadFailed, setLoadFailed] = useState(false);
   /* Asked once, before anything is built — see the note in `canDraw3d`. */
   const [webglFailed, setWebglFailed] = useState(() => !canDraw3d());
 
@@ -96,8 +99,9 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
 
   const model = modelById(pick.model);
 
-  /* Picking is also framing: choosing a duelist or a stature pulls back to
-     the whole body, choosing a tint stays wherever the player was looking. */
+  /* Picking a duelist is also framing: it pulls back to the whole body.
+     Tints, stature and the roll buttons keep whatever framing — and zoom —
+     the player has set; a camera that snaps mid-adjustment reads as broken. */
   const choose = (next: PremadeCharacter, framing?: Shot) => {
     sfx.click();
     setPick(next);
@@ -120,8 +124,8 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     const el = holder.current;
     if (!el) return;
 
-    /* Warm the cache for all six up front: the first thing every player does
-       is flick through the roster, and a stall per flick reads as broken. */
+    /* Warm the cache for the whole roster up front: the first thing every
+       player does is flick through it, and a stall per flick reads as broken. */
     preloadAllDuelists();
 
     let renderer: THREE.WebGLRenderer;
@@ -223,7 +227,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
      * until its replacement is actually ready: an empty stage between two
      * models reads as the booth crashing, twice, on every tap.
      */
-    let requested: PremadeCharacter | null = null;
+    let requestedKey: string | null = null;
     let buildSeq = 0;
     const rebuild = (next: PremadeCharacter) => {
       const seq = ++buildSeq;
@@ -241,11 +245,22 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
           pivot.add(rig.root);
           faceY = rig.height - 0.22;
           setModelReady(true);
+          setLoadFailed(false);
         })
         .catch((err) => {
           /* A model that cannot be fetched is news from outside, not a render
-             decision. The booth keeps whatever it was showing. */
+             decision. The booth keeps whatever it was showing — but a failed
+             fetch is not a permanent answer, so the ask is re-armed after a
+             beat (a beat, not a frame: cleared per frame it would hammer a
+             dead network sixty times a second). An empty plinth also says
+             so, because a booth that failed silently and a booth still
+             loading look identical from the outside. */
           console.error('character booth: model failed to load', err);
+          if (seq !== buildSeq) return;
+          setTimeout(() => {
+            if (seq === buildSeq) requestedKey = null;
+          }, 2000);
+          if (!rig) setLoadFailed(true);
         });
     };
 
@@ -326,10 +341,18 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       raf = requestAnimationFrame(frame);
       const dt = Math.min(clock.getDelta(), 0.05);
 
-      /* One build in flight per spec, however fast the knobs are worked. */
-      if (specRef.current !== requested) {
-        requested = specRef.current;
-        rebuild(requested);
+      /* One build in flight per *distinct* duelist, however fast the knobs
+         are worked. Keyed on what actually changes the rig rather than on
+         object identity: a stature drag makes a new object per input event,
+         and rebuilding a full clone per event stuttered the very drag it was
+         following. Stature is quantised in the key — a rebuild a millimetre
+         apart is a clone nobody can see. */
+      const key = `${specRef.current.model}|${specRef.current.tints.join(',')}|${Math.round(
+        specRef.current.stature * 24
+      )}`;
+      if (key !== requestedKey) {
+        requestedKey = key;
+        rebuild(specRef.current);
       }
 
       if (performance.now() > idleUntil && pointers.size === 0) yaw += 0.0035;
@@ -458,6 +481,13 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       {/* ---- viewport ---- */}
       <div className="relative h-[40svh] shrink-0 lg:h-full lg:flex-1">
         <div ref={holder} data-ready={modelReady ? 'yes' : undefined} className="absolute inset-0" />
+        {loadFailed && !modelReady && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+            <p className="rounded border border-oxblood bg-[#2a1216]/80 px-3 py-1.5 text-[11px] text-[#f0c9cc]">
+              The duelist could not be loaded — check your connection. Retrying…
+            </p>
+          </div>
+        )}
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
           <div>
             <h1 className="font-display text-lg leading-none text-brassbright">Make your duelist</h1>
@@ -565,13 +595,16 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
             </button>
             <button
               className="btn btn-primary flex-1 rounded px-4 py-3 text-xs"
-              disabled={busy}
+              /* Also gated on the first model having landed: binding is
+                 permanent, and nobody may approve a duelist the plinth has
+                 never actually shown. */
+              disabled={busy || !modelReady}
               onClick={() => {
                 sfx.click();
                 setAsking(true);
               }}
             >
-              {busy ? 'Binding…' : 'This is my duelist'}
+              {busy ? 'Binding…' : modelReady ? 'This is my duelist' : 'Summoning…'}
             </button>
           </div>
         </div>

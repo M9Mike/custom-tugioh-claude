@@ -149,9 +149,15 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
     disposables.push(mat);
     return mat;
   };
+  /* Cloning a skinned mesh clones its skeleton, and a skeleton owns a GPU
+     bone texture of its own — one leak per tint change if nobody collects
+     them. Shared between meshes, so a set, not a list. */
+  const skeletons = new Set<THREE.Skeleton>();
   body.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
+    const skinned = o as THREE.SkinnedMesh;
+    if (skinned.isSkinnedMesh) skeletons.add(skinned.skeleton);
     mesh.castShadow = true;
     mesh.material = Array.isArray(mesh.material)
       ? mesh.material.map(materialFor)
@@ -209,9 +215,10 @@ export async function buildPremadeRig(spec: PremadeCharacter): Promise<PremadeRi
     update,
     dispose() {
       mixer.stopAllAction();
-      /* Materials are this rig's own; the geometry belongs to the template
-         and outlives it. */
+      /* Materials and skeletons are this rig's own; the geometry belongs to
+         the template and outlives it. */
       for (const d of disposables) d.dispose();
+      for (const s of skeletons) s.dispose();
     },
   };
 }

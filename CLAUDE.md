@@ -183,8 +183,8 @@ that comes back.
 ## The retired system
 
 `src/components/story/humanoid.ts`, `head.ts`, `loft.ts`, `toon.ts`,
-`src/story/presets.ts`, the `/diag/character` lab and its sweeps (`npm run
-clash`, `npm run character`) are the old procedural duelists — bodies lofted
+`src/story/presets.ts`, the `/diag/character` lab and its sweeps
+(`npm run clash`, `npm run character`) are the old procedural duelists — bodies lofted
 from cross-sections, latterly cel-shaded and inked as an anime character
 (#134 landed that rework in parallel with the model swap; the two answered
 the same complaint, and the vendored models are the answer that stayed).
