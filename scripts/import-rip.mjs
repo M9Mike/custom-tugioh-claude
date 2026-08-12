@@ -37,7 +37,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { readSmd, clipFrames } from './lib/smd.mjs';
+
+/* Resolved from this file, not the working directory: the rips live wherever
+   they were unzipped, and running the importer from there used to serve
+   `three` out of a `node_modules` that was not here. The page then never
+   finished importing and the only symptom was a timeout. */
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -56,92 +64,6 @@ const FPS = 30;
 if (!IN || !ID) {
   console.error('import-rip: --in <folder> --id <model id> [--borrow <folder with WALK/RUN>]');
   process.exit(2);
-}
-
-/* ------------------------------------------------------------------ */
-/* The SMD reader                                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * Valve SMD is a line-oriented text format in three optional blocks.
- *
- * `nodes`     `<index> "<name>" <parentIndex>`
- * `skeleton`  `time <n>` then `<index> <px> <py> <pz> <rx> <ry> <rz>` — local to
- *             the parent, rotations as XYZ Euler in radians
- * `triangles` a material name, then three vertex lines:
- *             `<parent> <pos×3> <normal×3> <u> <v> <links> [<bone> <weight>]…`
- *
- * Bones and dummy nodes share one index space — the mesh nodes are in the list
- * too — so every node becomes a bone here rather than being filtered out. The
- * vertices index into that space and filtering would silently shift them.
- */
-function readSmd(text) {
-  const nodes = [];
-  const frames = new Map();
-  const groups = [];
-  let section = null;
-  let time = -1;
-  let pending = null;
-
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('//')) continue;
-    if (line === 'nodes' || line === 'skeleton' || line === 'triangles') {
-      section = line;
-      continue;
-    }
-    if (line === 'end') {
-      section = null;
-      continue;
-    }
-    if (!section) continue;
-
-    if (section === 'nodes') {
-      const m = line.match(/^(\d+)\s+"([^"]*)"\s+(-?\d+)/);
-      if (m) nodes[+m[1]] = { name: m[2], parent: +m[3] };
-      continue;
-    }
-
-    if (section === 'skeleton') {
-      if (line.startsWith('time')) {
-        time = +line.split(/\s+/)[1];
-        frames.set(time, []);
-        continue;
-      }
-      const p = line.split(/\s+/).map(Number);
-      if (p.length >= 7 && frames.has(time)) {
-        frames.get(time)[p[0]] = { px: p[1], py: p[2], pz: p[3], rx: p[4], ry: p[5], rz: p[6] };
-      }
-      continue;
-    }
-
-    /* triangles: a material line, then exactly three vertex lines under it. */
-    if (!/^-?\d/.test(line)) {
-      pending = { material: line, verts: [] };
-      groups.push(pending);
-      continue;
-    }
-    if (!pending) continue;
-    const p = line.split(/\s+/).map(Number);
-    const links = [];
-    const n = p[9] || 0;
-    for (let i = 0; i < n; i++) links.push({ bone: p[10 + i * 2], weight: p[11 + i * 2] });
-    /* No link list means the vertex rides its `parent` bone outright. */
-    if (!links.length) links.push({ bone: p[0], weight: 1 });
-    pending.verts.push({
-      pos: [p[1], p[2], p[3]],
-      normal: [p[4], p[5], p[6]],
-      uv: [p[7], p[8]],
-      links,
-    });
-  }
-
-  return { nodes, frames, groups };
-}
-
-/** Frames in order, as arrays of per-bone local transforms. */
-function clipFrames(smd) {
-  return [...smd.frames.keys()].sort((a, b) => a - b).map((t) => smd.frames.get(t));
 }
 
 /* ------------------------------------------------------------------ */
@@ -210,7 +132,7 @@ async function build(payload) {
     }
     if (url.startsWith('/three/')) {
       try {
-        const body = await fs.readFile(path.join('node_modules/three', url.slice('/three/'.length)));
+        const body = await fs.readFile(path.join(ROOT, 'node_modules/three', url.slice('/three/'.length)));
         res.writeHead(200, { 'content-type': 'text/javascript' });
         return res.end(body);
       } catch {

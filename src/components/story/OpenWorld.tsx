@@ -320,6 +320,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       buildPremadeRig(npc.character, {
         overrides: npc.overrides,
         accessories: npc.accessories,
+        repaint: npc.repaint,
+        build: npc.build,
       })
         .then((fresh) => {
           if (gone) {

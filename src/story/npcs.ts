@@ -25,7 +25,7 @@
  * between a character and a signpost.
  */
 
-import { AS_AUTHORED, type PremadeCharacter } from './premade';
+import type { PremadeCharacter, RepaintRule } from './premade';
 import type { AccessorySpec } from '@/components/story/accessories';
 
 export interface DialogueChoice {
@@ -61,6 +61,24 @@ export interface WorldNpc {
   overrides?: Record<string, string | null>;
   /** Generated props hung off named bones — a bandana, in time a duel disk. */
   accessories?: AccessorySpec[];
+  /**
+   * Colour in the texture → colour to repaint it, for the imported bodies.
+   *
+   * `overrides` names materials, which is how the untextured roster is dressed.
+   * These models keep their look in an image instead, so an authored character
+   * names the colours themselves.
+   */
+  repaint?: Record<string, RepaintRule>;
+  /**
+   * Bone name → local scale, for a character whose build is not the body's.
+   *
+   * The roster is a dozen generic adults and the cast is larger than that, so
+   * a character often lands on a body shaped nothing like them. This reshapes
+   * one segment at a time — `Spine1` is the ribcage, `Hips` the pelvis — and
+   * the rig puts the children back where they were, so nothing downstream of
+   * the change moves or resizes with it.
+   */
+  build?: Record<string, [number, number, number]>;
   /** Where they stand, in world metres. */
   x: number;
   z: number;
@@ -86,92 +104,68 @@ export interface WorldNpc {
  * that started all of it. A game that opens with somebody's grandfather
  * explaining the rules is opening the way this one actually did.
  *
- * **On the casting.** There is no model of Solomon Muto anywhere — not on
- * Sketchfab, not on The Models Resource, not in the Japanese MMD catalogues.
- * He has never been a playable duelist in a 3D game, so there is nothing to
- * rip, and the fan sculptors make Yugi and Kaiba. He is a famous character
- * with no model in existence. So he is assembled: a body off the roster, and a
- * head built in `accessories.ts`.
+ * **On the casting.** There is no model of Solomon Muto anywhere — not in the
+ * game the rest of the cast came from, not on Sketchfab, not in the MMD
+ * catalogues. He has never been a playable duelist in a 3D game, so there is
+ * nothing to extract. He is assembled: a body, repainted, plus the two shapes
+ * that make him recognisable.
  *
- * The body is the **punk**, which sounds absurd and is the right answer. Strip
- * the mohawk and the earrings and what is left is the only silhouette on the
- * roster that matches his: an open garment over a lighter shirt, with
- * trousers. Repaint the vest the dark green of his overalls and the shirt
- * cream, and that is what he wears.
- *
- * It was the `king` first, on the reasoning that he was the only model with
- * white hair and a beard. That was backwards. Once the head is built rather
- * than borrowed, hair and beard stop being selection criteria — and the king's
- * body is pauldrons, greaves and plate, which no amount of repainting stops
- * reading as armour. Choose the body for the body.
+ * The body is one of that same game's ordinary adults, and that is the whole
+ * point of the change. He was built on the vendored `punk` when the vendored
+ * roster was what the player wore too; now the player is from this game, and a
+ * near-realistic body standing next to a 3DS one reads as a visitor from
+ * somewhere else. Consistency beats the better silhouette: this body already
+ * wears green, which is most of the way to his overalls.
  *
  * Stature 0 is the short end of the range, because he should not tower over
  * the person he is welcoming.
  */
 const GRANDPA_LOOK: PremadeCharacter = {
   name: 'Grandpa Muto',
-  model: 'punk',
-  /* The catalog's own slots are left as authored — everything he wears is
-     said properly in the overrides below, where it can name materials the
+  model: 'man1',
+  /* Everything he wears is said in `repaint` below, which can name colours the
      booth's three slots never reach. */
-  tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED],
+  tints: [],
   stature: 0,
 };
 
-/** What the punk has to stop wearing to become a shopkeeper. */
-const GRANDPA_DRESS: Record<string, string | null> = {
-  /* The mohawk spikes and the earrings. Gone. */
-  Red: null,
-  Earrings: null,
-  /*
-   * The rest of the hair, which on this model is a separate material from the
-   * spikes — so it survives them, and goes grey. Hiding it as well was tried
-   * and is wrong twice over: it leaves an actual hole through the back of the
-   * skull, because there is no scalp modelled under the hair, and it throws
-   * away hair that only needed recolouring.
-   */
-  Red_Dark: '#a8a29a',
-  /* The vest, which on him is the bib of a pair of overalls. */
-  Black: '#2c5c48',
-  /* The shirt under it. */
-  White: '#e6dcc4',
-  /*
-   * Trousers, and the colour is doing a job.
-   *
-   * This model's jeans are torn at the knee — two patches of bare leg, which is
-   * the loudest remaining word of "punk" on him and cannot be painted out,
-   * because the skin showing through is the same material as his face. Against
-   * navy those patches shout. Against worn khaki they read as knees gone thin,
-   * which is what an old man's work trousers look like anyway.
-   */
-  LightBlue: '#7a6a55',
-  /* This model carries its brows as a material of their own, so his go grey
-     here rather than being rebuilt — one fewer piece of geometry for the same
-     result, which is the trade this whole file is trying to make. */
-  Eyebrows: '#8e8981',
+/**
+ * What the adult has to stop wearing to become a shopkeeper.
+ *
+ * Colours, not materials: this model keeps its look in a texture. The brown is
+ * both his hair and his trousers — one hue family, and no amount of window
+ * narrowing separates them, because they are painted the same brown at the same
+ * lightness. Grey is the right answer for both at once, which is luck, and the
+ * kind of luck worth taking.
+ */
+const GRANDPA_DRESS: Record<string, string> = {
+  /* Hair and trousers together, gone grey. */
+  '#5c321f': '#8f8a82',
+  '#5c312a': '#a8a29a',
+  /* The jacket, taken to the dark green of his overalls. */
+  '#6b903d': '#2c5c48',
+  '#5a7c3d': '#24503e',
+  /* Whatever the pink accent is, off to a cream that reads as his shirt. */
+  '#dd76b3': '#e6dcc4',
 };
 
 /**
- * The two things the model could not supply.
+ * The two things no repaint can supply.
  *
- * Everything else about his head is the punk's own geometry with a different
- * colour on it. These two are shapes that are not in the file at all, and they
- * are the two the character is recognised by: the bandana, and the moustache
- * and beard beneath it.
- *
- * Two pieces, and it took getting down to two. Grey hair, sideburns and brows
- * were all built here at one point and all three are gone — the first two
- * because this body already has hair worth keeping, the third because it has a
- * brow material of its own. At conversation distance a face is an outline, and
- * every piece of detail added below this level has made him worse.
+ * Everything else about his head is this model's own geometry in a different
+ * colour. These two are shapes that are not in the file at all, and they are
+ * the two he is recognised by: the bandana, and the moustache and beard under
+ * it. They are built in `accessories.ts` against measurements of *this* body's
+ * head — heads are not interchangeable across the pack, which is why moving him
+ * from one body to another meant measuring again.
  */
 const GRANDPA_HEAD: AccessorySpec[] = [
-  /* Plain, and tied at the back. The chevrons the accessory can draw were
-     tried and cut: at this size a pattern is two pale scratches. */
+  /* Plain, and tied at the back. */
   { kind: 'bandana', bone: 'Head', color: '#d4842a' },
-  /* The same grey as his hair. Not white — white is a wizard, and he is a
-     shopkeeper who has gone grey. */
-  { kind: 'beard', bone: 'Head', color: '#a8a29a' },
+  /* Lighter than his hair, because it hangs under a chin and is lit from
+     above: at the hair's own grey it came out near-black in that shadow.
+     Still not white — white is a wizard, and he is a shopkeeper gone grey. */
+  { kind: 'beard', bone: 'Head', color: '#ded9d1' },
 ];
 
 /**
@@ -410,21 +404,68 @@ const CAST: WorldNpc[] = [
   {
     id: 'mai',
     /*
-     * Mai Valentine. The `executive`, which is the only jacket-and-blouse on
-     * the roster, in her violet. This model carries no separate eye or brow
-     * material — its face is painted into two, `Brown` for the features and
-     * `Red` for a long fall of hair — so the hair goes blonde by repainting
-     * `Red`, which is worth knowing before anybody tints it as a garment.
+     * Mai Valentine, and the same story as Grandpa: no model of her exists
+     * anywhere, so she is an ordinary adult repainted. This body was already
+     * wearing violet, which is the colour she is remembered in; what it needed
+     * was her hair.
+     *
+     * The hair is the reason lightness windows exist. This body is painted with
+     * three blue-ish things within three degrees of each other — hair, a pale
+     * top and light trousers — so naming the hue alone bleaches the lot. What
+     * separates them is that the hair is drawn as a gradient from lightness
+     * 0.05 to 0.42 and the other two never come below 0.6, so the window covers
+     * the whole head and touches neither.
+     *
+     * The window has to cover all of it. A first attempt stopped at 0.17 to
+     * stay clear of the linework and left her with a blonde crown and black
+     * ends, because the dark half is not linework — it is the hair, shaded.
      */
-    character: { name: 'Mai Valentine', model: 'executive', tints: [AS_AUTHORED, AS_AUTHORED, AS_AUTHORED], stature: 0.7 },
-    overrides: {
-      /* The jacket. */
-      LimeGreen: '#7d4fa8',
-      /* Trim, and her gloves. */
-      Gold: '#e8dcc0',
-      /* The hair. */
-      Red: '#e6c65e',
+    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.7 },
+    repaint: {
+      /*
+       * The blonde.
+       *
+       * Her hair is drawn in two blue-greys — the bulk at hue 0.611 and
+       * highlight strands at 0.667 — which are 0.056 apart against a reach of
+       * 0.055, so a rule sitting on either one leaves the other behind as
+       * flecks. `#44495b` is pitched between them at 0.63, within reach of
+       * both; its lightness is the bulk's, so the shading comes out unchanged.
+       *
+       * It cannot simply be moved further: her coat is hue 0.699, and a rule
+       * that reached the strands from the coat's side would take the coat too.
+       * 0.63 is 0.069 away from it, which is clear.
+       */
+      '#44495b': { to: '#e3c25c', lightness: [0.03, 0.44] },
+      /* The jacket, near enough the purple it is already painted. */
+      '#6555a5': '#6f4d99',
+      /*
+       * Below the waist, the skirt: this body's light blue capris in her
+       * purple. Windowed above the hair, which is only 0.05 away in hue.
+       *
+       * **This rule must come before the top's.** The two regions are 0.07
+       * apart at their centres, which is clear, but the legs carry sub-tones
+       * out at hue 0.578 that fall inside the top rule's reach — so with the
+       * top first she came out with one leg's worth of pink patches. First
+       * match wins, so the legs claim their own tails before the top looks.
+       */
+      '#b5c3cb': { to: '#6d4a91', lightness: [0.5, 1] },
+      /*
+       * The corset, which is pink and is the one part of her nobody misremembers.
+       *
+       * What no repaint supplies is the silhouette. She is drawn with long,
+       * thick, spiked hair and this body has a bob; that is geometry, not
+       * paint, and it waits for a model of her that does not exist yet.
+       */
+      '#98aadf': { to: '#d15c96', lightness: [0.5, 0.95] },
     },
+    /*
+     * `woman2` is drawn as a slight young adult and Mai is not — she is the
+     * grown woman of the cast, and her figure is part of how she is drawn.
+     * `Spine1` is the ribcage, so widening and deepening it fills out the
+     * chest; the shoulders and arms hanging off it keep their own size.
+     */
+    build: { Spine1: [1.16, 1, 1.3] },
+
     x: 0,
     z: 15.5,
     facing: Math.PI,
@@ -455,8 +496,19 @@ export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
     character: GRANDPA_LOOK,
-    overrides: GRANDPA_DRESS,
+    repaint: GRANDPA_DRESS,
     accessories: GRANDPA_HEAD,
+    /*
+     * Short and round, which is most of how he is recognised. `man1` is a slim
+     * young adult, so the barrel goes on here: a wide, deep torso above a
+     * pelvis widened to match, and a little taken off the height of both so it
+     * reads as stout rather than merely inflated.
+     */
+    build: {
+      Hips: [1.3, 0.94, 1.3],
+      Spine: [1.24, 0.95, 1.3],
+      Spine1: [1.2, 0.95, 1.26],
+    },
     x: 0,
     z: 6.5,
     facing: Math.PI,

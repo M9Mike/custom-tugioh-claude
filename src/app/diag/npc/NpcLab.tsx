@@ -61,6 +61,8 @@ interface Measurement {
   widthBone: number;
   /** Per-material extents in `Head` bone space. The authoring numbers. */
   head: Map<string, THREE.Box3>;
+  /** Metres per unit for anything parented to the `Head` bone. */
+  boneScale: number;
 }
 
 export default function NpcLab({
@@ -150,6 +152,8 @@ export default function NpcLab({
              only view in which the ruler is not hidden behind the thing being
              measured. */
           accessories: bare ? [] : npc.accessories,
+          repaint: bare ? undefined : npc.repaint,
+          build: bare ? undefined : npc.build,
         });
         if (disposed) {
           rig.dispose();
@@ -172,24 +176,35 @@ export default function NpcLab({
           });
           if (head) {
             const marks = new THREE.Group();
+            /*
+             * The ruler is drawn in **metres**, converted into whatever units
+             * this bone happens to use.
+             *
+             * Accessories are children of the `Head` bone, and a bone's world
+             * scale is not 1 on every rig — the vendored roster runs about
+             * 0.92 units to the metre and the imported bodies about 0.09, a
+             * factor of ten. A ladder authored in raw units is invisible on one
+             * and off-screen on the other, which is exactly what happened.
+             */
+            const k =
+              1 /
+              Math.max(1e-6, (head as THREE.Bone).getWorldScale(new THREE.Vector3()).x);
+            const marks_ = marks;
             const dot = (x: number, y: number, z: number, colour: string, size = 0.006) => {
               const m = new THREE.Mesh(
-                new THREE.SphereGeometry(size, 8, 6),
+                new THREE.SphereGeometry(size * k, 8, 6),
                 new THREE.MeshBasicMaterial({ color: colour })
               );
-              m.position.set(x, y, z);
-              marks.add(m);
+              m.position.set(x * k, y * k, z * k);
+              marks_.add(m);
               rings.push(m);
             };
-            /* A ladder up the front of the face in the accessories' *own*
-               space, which is the only space that matters when placing one.
-               Red every 0.10, white every 0.05. Read the eyes and the chin off
-               this and the constants write themselves. */
+            /* Red every 0.10 m, white every 0.05 m, up the front of the face. */
             for (let i = -4; i <= 6; i++) {
               const y = i * 0.05;
-              dot(0, y, 0.14, i % 2 === 0 ? '#ff3b3b' : '#ffffff', i % 2 === 0 ? 0.008 : 0.005);
+              dot(0, y, 0.16, i % 2 === 0 ? '#ff3b3b' : '#ffffff', i % 2 === 0 ? 0.008 : 0.005);
             }
-            /* Width and depth at the bone's own height: ±0.10 on each axis. */
+            /* Width and depth at the bone's own height: ±0.10 m on each axis. */
             for (const d of [-0.1, -0.05, 0.05, 0.1]) {
               dot(d, 0, 0, '#4dff88', 0.006);
               dot(0, 0, d, '#4db4ff', 0.006);
@@ -286,6 +301,12 @@ export default function NpcLab({
           const bonePos = bone ? bone.getWorldPosition(new THREE.Vector3()) : null;
           /* Bone-space units per metre: the uniform scale on the model group. */
           const k = rig.root.children[0]?.scale.x ?? 1;
+          /* The `Head` bone's own world scale. Accessories are its children, so
+             this is the conversion between the units they are authored in and
+             metres — and it is emphatically not 1 on every rig. */
+          const boneScale = bone
+            ? (bone as THREE.Bone).getWorldScale(new THREE.Vector3()).x
+            : 1;
           return {
             id: cast[i].label,
             scale: k,
@@ -297,6 +318,7 @@ export default function NpcLab({
             skullBone: bonePos ? (box.max.y - bonePos.y) / k : NaN,
             widthBone: (box.max.x - box.min.x) / k,
             head: headBox(rig),
+            boneScale,
           };
         })
       );
@@ -381,7 +403,7 @@ export default function NpcLab({
       <p className="mt-1 text-[11px] text-ptextdim">
         {VIEWS.map((v) => v.label).join(' · ')} — {ready} built
         {body ? '' : ' · ?body=1 for the silhouette'}
-        {calib ? ' · ladder: red every 0.10, white every 0.05; green = ±x, blue = ±z' : ' · ?calib=1 for the ruler'}
+        {calib ? ' · ladder in metres: red every 0.10, white every 0.05; green = ±x, blue = ±z' : ' · ?calib=1 for the ruler'}
         {bare ? ' · accessories off' : ' · ?bare=1 for the undressed head'}
         {models.length ? ` · cast on ${models.join(', ')}` : ' · ?models=hoodie,punk to compare bodies'}
         {only ? ` · only ${only}` : ' · ?only=yugi for one of them'}
@@ -391,7 +413,8 @@ export default function NpcLab({
       <ul className="mt-2 text-[11px] text-ptextdim" data-measures>
         {measure.map((m, i) => (
           <li key={`${m.id}-${i}`}>
-            {m.id} — height {m.height.toFixed(3)}m · bone/m {m.scale.toFixed(4)}
+            {m.id} — height {m.height.toFixed(3)}m · bone/m {m.scale.toFixed(4)} · headBone×
+            {m.boneScale.toFixed(4)}
             {[...m.head.entries()]
               .filter(([, b]) => Number.isFinite(b.min.y))
               .map(([name, b]) => (
