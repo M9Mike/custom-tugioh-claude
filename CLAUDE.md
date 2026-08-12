@@ -182,15 +182,18 @@ that comes back.
 
 ## The retired system
 
-`src/components/story/humanoid.ts`, `head.ts`, `loft.ts`, `src/story/
-presets.ts`, the `/diag/character` lab and its sweeps (`npm run clash`,
-`npm run character`) are the old procedural duelists: bodies lofted from
-cross-sections, faces painted in vertex colour. They are no longer reachable
-from the game — the booth, the world and the server all speak
-`PremadeCharacter` — but they still compile, their lab still runs, and their
-ten-lesson standard is still written in that lab's files. They stay until
-their removal is decided deliberately; nothing new may be built on them, and
-"there must never be a second character system" now cuts against *them*.
+`src/components/story/humanoid.ts`, `head.ts`, `loft.ts`, `toon.ts`,
+`src/story/presets.ts`, the `/diag/character` lab and its sweeps (`npm run
+clash`, `npm run character`) are the old procedural duelists — bodies lofted
+from cross-sections, latterly cel-shaded and inked as an anime character
+(#134 landed that rework in parallel with the model swap; the two answered
+the same complaint, and the vendored models are the answer that stayed).
+They are no longer reachable from the game — the booth, the world and the
+server all speak `PremadeCharacter` — but they still compile, their lab
+still runs, and their ten-lesson standard is still written in that lab's
+files. They stay until their removal is decided deliberately; nothing new
+may be built on them, and "there must never be a second character system"
+now cuts against *them*.
 
 ## Verifying against production
 
