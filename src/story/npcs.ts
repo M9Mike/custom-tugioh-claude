@@ -436,6 +436,18 @@ const CAST: WorldNpc[] = [
        * 0.63 is 0.069 away from it, which is clear.
        */
       '#44495b': { to: '#e3c25c', lightness: [0.03, 0.44] },
+      /*
+       * The same blonde again, for the strands between 0.44 and 0.60.
+       *
+       * That band belongs to neither of the other two and her brighter strands
+       * live in it, so they came out as speckles — first blue-grey, then pink
+       * once the corset rule was widened to reach them. It cannot simply be
+       * added to the rule above, because her jacket carries sub-tones at hue
+       * 0.68, which is 0.05 from that rule and inside its reach: widening it
+       * put gold flecks all over her sleeves instead. Hue 0.60 is 0.08 clear of
+       * the jacket and still reaches the hair.
+       */
+      '#737f91': { to: '#e8ca6a', lightness: [0.44, 0.6] },
       /* The jacket, near enough the purple it is already painted. */
       '#6555a5': '#6f4d99',
       /*
@@ -452,11 +464,17 @@ const CAST: WorldNpc[] = [
       /*
        * The corset, which is pink and is the one part of her nobody misremembers.
        *
+       * Its window starts at 0.60 rather than 0.50, and the blonde's runs up to
+       * 0.58 to meet it. The gap between them used to belong to neither, and
+       * her hair's brighter strands sit in it — so a scatter of pink speckles
+       * came out across her head. Two windows over one hue family have to
+       * touch, or whatever falls between goes to the wrong rule.
+       *
        * What no repaint supplies is the silhouette. She is drawn with long,
        * thick, spiked hair and this body has a bob; that is geometry, not
        * paint, and it waits for a model of her that does not exist yet.
        */
-      '#98aadf': { to: '#d15c96', lightness: [0.5, 0.95] },
+      '#98aadf': { to: '#d15c96', lightness: [0.6, 0.95] },
     },
     /*
      * `woman2` is drawn as a slight young adult and Mai is not — she is the

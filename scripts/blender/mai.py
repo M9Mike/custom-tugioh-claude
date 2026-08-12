@@ -189,14 +189,24 @@ print(f'head: centre ({CX:.2f},{CY:.2f},{CZ:.2f})  rx {RX:.2f}  face y {FRONT:.2
 
 # --------------------------------------------------------- remove the bob
 
-bm = bmesh.new()
-bm.from_mesh(mesh.data)
-bm.faces.ensure_lookup_table()
-bmesh.ops.delete(bm, geom=[bm.faces[i] for i in bob], context='FACES')
-bm.to_mesh(mesh.data)
-bm.free()
 
 # ------------------------------------------------------------ build hair
+
+#
+# The bob stays.
+#
+# Cutting it out and building a cranium in its place was tried and is worse.
+# These heads have no scalp, so removing the bob opens the skull, and the shell
+# that has to close it again is a ball around the whole head — which reads as a
+# helmet with a bite out of it however carefully the face hole is carved, and
+# the face ends up inside it.
+#
+# What the bob actually is, once the repaint has run, is a blonde head of hair
+# that is merely too short. So it is kept as the inner mass and the volume is
+# welded on around it: spikes off the crown, long locks down the sides and
+# back. Nothing is ever placed in front of her face, so nothing can occlude it.
+#
+CAP_C = (CX, CY, CZ)
 
 built = []
 
@@ -221,70 +231,36 @@ def cone(radius, depth, at, rot, squash):
     return add(o)
 
 
-"""
-The cranium: a closed shell round the whole skull, opened at the face.
-
-Solidified rather than left as a surface, because a one-sided shell shows the
-inside of itself the moment the camera passes the ear.
-"""
-
-# Once the bob is gone the only head left is the drawn face, so the cap is not
-# hair laid over a cranium — it *is* the cranium. Sized off the face and given
-# the margin a head of hair has, rather than off the bob, whose depth is mostly
-# the length hanging down the back of the neck.
-HEAD_CY = (FRONT + max(p.y for p in face_pts)) / 2
-HEAD_CZ = (CHIN + BROW) / 2
-CAP_C = (CX, HEAD_CY + RX * 0.19, HEAD_CZ + RX * 0.21)
-bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=16, radius=1, location=CAP_C)
-cap = add(bpy.context.object)
-cap.scale = (RX * 1.16, RX * 0.86, RX * 1.24)
-bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-bm = bmesh.new()
-bm.from_mesh(cap.data)
-opening = []
-for f in bm.faces:
-    c = f.calc_center_median() + Vector(CAP_C)
-    # Everything in front of the ears and below the brow comes out, so the face
-    # is a face rather than something looking through a letterbox. Above the
-    # brow stays: that is her fringe.
-    if c.y < CAP_C[1] - RX * 0.1 and c.z < BROW - RX * 0.06:
-        opening.append(f)
-bmesh.ops.delete(bm, geom=opening, context='FACES')
-bm.to_mesh(cap.data)
-bm.free()
-
-solid = cap.modifiers.new('shell', 'SOLIDIFY')
-solid.thickness = RX * 0.1
-solid.offset = 1.0
-bpy.context.view_layer.objects.active = cap
-bpy.ops.object.modifier_apply(modifier='shell')
-
 # The crown: a fan of spikes, longest at the sides where the drawing throws two
 # big wings out past the ears, and swept back rather than standing up.
+# Nothing at azimuth 0: a spike growing forward off the brow crossed its mirror
+# above her head and read as a tent, and hair does not do that — the front of
+# her head is fringe. These start at the temples and sweep back.
 CROWN = [
-    (0.0, 1.0, 0.2), (0.62, 1.3, 0.22), (1.25, 1.75, 0.25),
-    (1.95, 1.6, 0.24), (2.55, 1.2, 0.22), (math.pi, 1.05, 0.21),
+    (0.8, 0.95, 0.16), (1.35, 1.25, 0.18), (1.95, 1.1, 0.17),
+    (2.5, 0.85, 0.16), (math.pi, 0.75, 0.15),
 ]
 for az, length, width in CROWN:
     for side in ([1] if az in (0.0, math.pi) else [1, -1]):
         a = az * side
         cone(
             RX * width, RX * length,
-            (CX + math.sin(a) * RX * 0.86, CAP_C[1] - math.cos(a) * RX * 0.72, CAP_C[2] + RX * 0.72),
-            (1.02, 0.0, -a),
-            (1.9, 0.55, 1.0),
+            (CX + math.sin(a) * RX * 0.92, CAP_C[1] - math.cos(a) * RX * 0.7, CAP_C[2] + RX * 1.02),
+            (1.05, 0.0, -a),
+            (1.7, 0.5, 1.0),
         )
 
 # The locks that fall. The bob stopped at the jaw; the length past the shoulder
 # is the other half of the silhouette.
-FALL = [(1.15, 2.0, 0.28), (1.85, 2.35, 0.31), (2.65, 1.8, 0.29)]
+# Off the sides and back only. The first pass put one at azimuth 1.15 — x 2.17
+# on a face 2.33 wide — so a broad flat lock hung straight down her cheek.
+FALL = [(1.5, 2.0, 0.26), (2.05, 2.35, 0.28), (2.7, 1.8, 0.27)]
 for az, length, width in FALL:
     for side in [1, -1]:
         a = az * side
         cone(
             RX * width, RX * length,
-            (CX + math.sin(a) * RX * 1.02, CAP_C[1] - math.cos(a) * RX * 0.8, CAP_C[2] - RX * 0.15),
+            (CX + math.sin(a) * RX * 1.12, CAP_C[1] - math.cos(a) * RX * 0.86, CAP_C[2] - RX * 0.2),
             (math.pi - 0.14, 0.0, -a),
             (1.5, 0.6, 1.0),
         )
