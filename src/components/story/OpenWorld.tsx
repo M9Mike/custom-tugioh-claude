@@ -28,13 +28,26 @@ import { sfx } from '@/lib/sfx';
 export const WORLD_RADIUS = 120;
 
 /**
- * 2.35 m/s, down from 2.9 — because 2.9 is not a walking speed. It is 10.4
- * km/h, which a human can only do by jogging, and the old goose-step stride
- * was the shape that contradiction took: no honest walk cycle can cover that
- * much ground. 2.35 is the top of the genuinely brisk range, quick enough for
- * traversal at 2.5 steps a second without the legs having to lie.
+ * Top speed, in metres a second — what a full stick gets you.
+ *
+ * 3.3, and it is a **run**, which is what the rig was already animating: the
+ * legs cross-fade from the Walk clip to the Run clip as the stick passes 0.6,
+ * and the Run clips on this roster cover 3.2–3.5 m of ground a second at
+ * playback rate 1. Holding the top speed at 2.35 meant that clip played at
+ * 0.7× — a running animation in slow motion, and the reason moving around
+ * felt sluggish even though nothing was wrong with the walk.
+ *
+ * Matching the number to the clip fixes both ends at once: full stick now
+ * covers ground at the pace the run was drawn for, and the feet stay honest
+ * because the playback rate lands on 1 rather than being dragged below it.
+ * Half a stick is still a walk at 1.65, which is a brisk one and plays its own
+ * clip at about 1.1×.
+ *
+ * It is one number rather than each model's own `runSpeed` because the field
+ * has to feel the same whoever you picked; the 0.06 spread across the roster
+ * is well inside what a cross-fade hides.
  */
-const WALK_SPEED = 2.35;
+const TOP_SPEED = 3.3;
 
 /**
  * How close you may get to somebody standing in the field, in metres.
@@ -471,8 +484,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * direction they were already going, which is what a person does.
        */
       if (stride > 0.002) {
-        p.x += Math.sin(heading) * WALK_SPEED * stride * dt;
-        p.z += Math.cos(heading) * WALK_SPEED * stride * dt;
+        p.x += Math.sin(heading) * TOP_SPEED * stride * dt;
+        p.z += Math.cos(heading) * TOP_SPEED * stride * dt;
         const r = Math.hypot(p.x, p.z);
         if (r > WORLD_RADIUS) {
           p.x = (p.x / r) * WORLD_RADIUS;
@@ -510,7 +523,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            is capped to it, so a duelist pinned against the world's edge slows
            to a stand instead of marching on the spot. */
         const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
-        rig.update(dt, Math.min(stride, covered / WALK_SPEED), covered);
+        rig.update(dt, Math.min(stride, covered / TOP_SPEED), covered);
       }
 
       /**
