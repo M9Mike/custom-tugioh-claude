@@ -78,24 +78,50 @@ async function readCharacter(dir) {
   if (!modelFile) throw new Error(`${dir}: no Model.smd`);
   const model = readSmd(await fs.readFile(path.join(dir, modelFile), 'utf8'));
 
+  /*
+   * Where a character's motions live, which is not always beside them.
+   *
+   * The named duelists carry their own `Motion*.smd` files. The generic
+   * townspeople do not: each *group* — Adults/Females, Students/Males — keeps
+   * one `SMD Animations` folder beside the numbered character folders, and the
+   * bodies in that group share it.
+   *
+   * Not looking there is why every one of them ended up animating on borrowed
+   * clips. Borrowing is silent by design and rotation-only, so the Protagonist's
+   * idle was replayed on skeletons with different proportions and their feet
+   * drifted while Yugi, who has his own, stood still. A folder of motions two
+   * directories up is not an exotic layout, and finding it is cheaper than
+   * explaining the symptom.
+   */
+  const shared = path.join(path.dirname(dir), 'SMD Animations');
+  const sources = [{ at: dir, files }];
+  try {
+    sources.push({ at: shared, files: await fs.readdir(shared) });
+  } catch {
+    /* No shared folder: this character keeps its own motions, or has none. */
+  }
+
   const motions = {};
-  for (const f of files.slice().sort()) {
-    const m = f.match(/^Motion([A-Z]+)(\d*)\.smd$/i);
-    if (!m) continue;
-    const kind = m[1].toUpperCase();
-    /* The first numbered take of each kind. IDLE02 is usually a fidget — a
-       glance or a shrug — which is worth having later and wrong as the loop. */
-    if (motions[kind]) continue;
-    const smd = readSmd(await fs.readFile(path.join(dir, f), 'utf8'));
-    /*
-     * **A motion file has its own node list, and it is not the model's.**
-     * These rips drop the two `mesh` nodes from the motion files, so every
-     * bone index is shifted by two: read a clip through `Model.smd`'s indices
-     * and the hips drive the left thigh, the spine drives the left shin, and
-     * the character comes apart while still animating smoothly enough to look
-     * deliberate. Each clip carries the names it was written against.
-     */
-    motions[kind] = { nodes: smd.nodes, frames: clipFrames(smd) };
+  for (const source of sources) {
+    for (const f of source.files.slice().sort()) {
+      const m = f.match(/^Motion([A-Z]+)(\d*)\.smd$/i);
+      if (!m) continue;
+      const kind = m[1].toUpperCase();
+      /* The first numbered take of each kind, and a character's own before the
+         group's. IDLE02 is usually a fidget — a glance or a shrug — which is
+         worth having later and wrong as the loop. */
+      if (motions[kind]) continue;
+      const smd = readSmd(await fs.readFile(path.join(source.at, f), 'utf8'));
+      /*
+       * **A motion file has its own node list, and it is not the model's.**
+       * These rips drop the two `mesh` nodes from the motion files, so every
+       * bone index is shifted by two: read a clip through `Model.smd`'s indices
+       * and the hips drive the left thigh, the spine drives the left shin, and
+       * the character comes apart while still animating smoothly enough to look
+       * deliberate. Each clip carries the names it was written against.
+       */
+      motions[kind] = { nodes: smd.nodes, frames: clipFrames(smd) };
+    }
   }
 
   const textures = {};
