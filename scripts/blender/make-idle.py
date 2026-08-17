@@ -54,6 +54,8 @@ OUT = arg('out')
 SECONDS = float(arg('seconds', '4.0'))
 FPS = 30
 STRENGTH = float(arg('strength', '1.0'))
+# how far out from the side the upper arms are left, in degrees
+ARM_DROP = math.radians(float(arg('armDrop', '13.0')))
 
 if not SRC or not OUT:
     raise SystemExit('make-idle: --in <rigged.glb> --out <out.glb> [--seconds 4] [--strength 1]')
@@ -131,7 +133,18 @@ ARM_CHAIN = [
 
 
 def neutral_arms():
-    """Mean armature-space transform of the arm chain across the walk."""
+    """
+    Mean *local* transform of the arm chain across the walk.
+
+    `matrix_basis` rather than `matrix`, and that is the whole difference between
+    an idle that moves and one that does not. A basis is the bone's offset from
+    its own rest, so a child carrying one still inherits everything its parents
+    do; an armature-space `matrix` is an absolute placement, and writing one to
+    every bone pinned each child back to where it started and cancelled its
+    parent's motion outright. The hips swayed thirty-five millimetres and the
+    legs, spine and head stayed exactly where they were, so the only thing that
+    visibly moved was whatever had an offset of its own.
+    """
     source = bpy.data.actions.get('Walk') or bpy.data.actions.get('Run')
     if not source or not ARM_CHAIN:
         return {}
@@ -149,7 +162,7 @@ def neutral_arms():
             pb = arm.pose.bones.get(n)
             if pb is None:
                 continue
-            m = pb.matrix
+            m = pb.matrix_basis
             q = m.to_quaternion()
             a = acc[n]
             if a['q'] is None:
@@ -181,10 +194,59 @@ def neutral_arms():
     return out
 
 
-BASE = dict(rest)
-for name, m in neutral_arms().items():
-    BASE[name] = m
+def lower_arms(base):
+    """
+    Bring the upper arms down against the body.
+
+    Averaging the walk was supposed to supply a resting arm and does not, because
+    these bundles barely swing the arms: Sandra's mean sits about forty degrees
+    out from her side, which is her modelled A-pose almost unchanged. So the idle
+    came out as the pose the model was authored in, standing still — which is
+    exactly the thing it reads as, and exactly what it was written to avoid.
+
+    The abduction angle is measured directly — the angle between the shoulder to
+    elbow direction and straight down — and rotated until it reaches
+    `--armDrop`. Measured rather than assumed, because the amount to remove is
+    different on every character: an A-pose at 45 degrees needs 33 taken off and
+    one already at 15 needs nothing.
+
+    The rotation is about the axis those two directions span, so the arm swings
+    down the shortest way and does not twist. The forearm and hand are children
+    and follow, so the whole limb comes with it.
+    """
+    dropped = 0
+    for upper, lower in ((find('leftarm', 'upperarm.l'), find('leftforearm', 'lowerarm.l')),
+                         (find('rightarm', 'upperarm.r'), find('rightforearm', 'lowerarm.r'))):
+        if not upper or not lower:
+            continue
+        a = rest[upper].translation
+        b = rest[lower].translation
+        limb = (b - a)
+        if limb.length < 1e-6:
+            continue
+        limb.normalize()
+        down = Vector((0.0, 0.0, -1.0))
+        out = limb.angle(down)
+        if out <= ARM_DROP:
+            continue
+        axis = limb.cross(down)
+        if axis.length < 1e-6:
+            continue
+        R = Matrix.Rotation(out - ARM_DROP, 4, axis.normalized())
+        # `about` is defined further down the file, so the pivot is inlined here
+        pivoted = Matrix.Translation(a) @ R @ Matrix.Translation(-a)
+        # a basis delta, conjugated into the bone's own space like every other
+        local = rest[upper].inverted() @ pivoted @ rest[upper]
+        base[upper] = local @ base.get(upper, Matrix.Identity(4))
+        dropped += 1
+        print('make-idle: %s was %.0f deg out, brought to %.0f'
+              % (upper, math.degrees(out), math.degrees(ARM_DROP)))
+    return dropped
+
+
+ARM_BASIS = neutral_arms()
 print('make-idle: arms relaxed from the walk (%d bones)' % len(ARM_CHAIN))
+lower_arms(ARM_BASIS)
 
 order = []
 
@@ -208,12 +270,63 @@ if hasattr(action, 'slots'):
 total = int(SECONDS * FPS)
 # a fraction of body height; every one of these is under a centimetre on a 1.7 m
 # character, which is what standing still actually looks like
-BOB = 0.0045 * height * STRENGTH
-SWAY = 0.0035 * height * STRENGTH
+# world distance -> bone space; see the note on the amplitudes below
+BONE_UNITS = 1.0 / max(1e-9, arm.matrix_world.to_scale().z)
+BOB = 0.0040 * height * STRENGTH * BONE_UNITS
+"""
+Amplitudes, raised until the idle is visible.
+
+The first version of these was a tenth of this size, on the argument that a loop
+is integrated by the eye over many cycles and anything noticeable per-cycle reads
+as swaying. That argument is sound and the numbers were still wrong: at 1.3
+degrees of chest rotation and six millimetres of sway the result was
+indistinguishable from a still model, which is not a subtle idle, it is no idle.
+The reference is the 3DS rips standing next to these characters — Yami visibly
+shifts his weight — and beside him a millimetre of breath reads as a bug.
+
+Set by measurement against the clip the comparison is actually made to. The 3DS
+rips stand next to these characters, so `scripts/blender/idle-motion.py` reports
+how far a sampled vertex travels over one loop as a fraction of the character's
+height: Yugi's median is 1.5%, Yami's 2.4%. The first pass here measured 0.07% —
+twenty times less than the calmer of the two, which is why it read as a still
+model rather than a subtle one.
+
+Most of that gap is in the arms, not the torso, and that is the part worth
+understanding: a real idle's biggest vertex travel is at the hands, because a
+small rotation at the shoulder is amplified along the whole limb. Scaling breath
+alone would have needed thirty-six degrees of chest rotation to move a hand as
+far as thirteen degrees of shoulder does.
+
+The numbers below are what came out of that measurement, not a guess: sway 0.008
+of height puts the median at 2.1%, which sits between Yugi's 1.5% and Yami's
+2.4%. Split across channels so no single one has to carry it:
+the chest breathes, the hips shift and rise, the head settles, and the arms swing
+a little against the body. Several small motions at different phases read as
+alive where one larger motion reads as a metronome.
+"""
+"""
+Translations are in the armature's units, which are not the world's.
+
+These bundles are authored in centimetres: the armature object carries scale 0.01,
+so a bone's `matrix` translation of 1.0 moves the mesh ten millimetres. Every
+translation here was written as a fraction of the character's *world* height and
+handed straight to a bone, so it arrived a hundred times too small — a sway meant
+to be 51 mm reached the mesh as 0.5 mm, and the hips travelled 1.1 mm over the
+whole loop.
+
+That is the whole reason the idle read as a still model. It was not too subtle by
+judgement, it was two orders of magnitude out by arithmetic, and it was invisible
+in review because rotations are scale-invariant: the arm swing worked, so the clip
+was plainly *doing* something and the something looked tiny.
+
+`BONE_UNITS` converts a world-space distance into the bone space that produces it.
+Rotations do not need it and do not get it.
+"""
+SWAY = 0.008 * height * STRENGTH * BONE_UNITS
 LEAN = math.radians(0.9) * STRENGTH
-BREATH = math.radians(1.3) * STRENGTH
-NOD = math.radians(0.7) * STRENGTH
-ARM = math.radians(1.1) * STRENGTH
+BREATH = math.radians(4.0) * STRENGTH
+NOD = math.radians(3.0) * STRENGTH
+ARM = math.radians(8.0) * STRENGTH
 
 
 def about(pivot, rot):
@@ -240,14 +353,37 @@ for f in range(total + 1):
         offsets[HEAD] = about(rest[HEAD].translation, Matrix.Rotation(NOD * 0.6 * shift, 4, 'Z'))
     for side, bone in ((1.0, L_ARM), (-1.0, R_ARM)):
         if bone:
-            offsets[bone] = about(BASE[bone].translation, Matrix.Rotation(side * ARM * breath, 4, 'Y'))
+            offsets[bone] = about(rest[bone].translation, Matrix.Rotation(side * ARM * breath, 4, 'Y'))
 
     bpy.context.scene.frame_set(f)
     for name in order:
         pb = arm.pose.bones.get(name)
         if pb is None:
             continue
-        pb.matrix = offsets[name] @ BASE[name] if name in offsets else BASE[name]
+        """
+        Every write is a *basis* — the bone's own offset from rest — so a parent's
+        motion reaches its children instead of being cancelled by them.
+
+        The offsets are authored in armature space, where +Z is up on every rig
+        (bone local axes are not a convention in these bundles: the tails are
+        synthesised and point nowhere near the limb). Conjugating through the
+        bone's rest matrix turns an armature-space delta into the local one that
+        produces it, which is the only step needed to keep both properties.
+
+        Bones with neither an offset nor a resting-arm pose are not written at
+        all. That is deliberate: an unwritten bone has an identity basis and
+        follows its parent, which is exactly what a knee should do while the hips
+        shift.
+        """
+        basis = ARM_BASIS.get(name, Matrix.Identity(4))
+        delta = offsets.get(name)
+        if delta is not None:
+            R = rest[name].inverted() @ delta @ rest[name]
+            basis = R @ basis
+        elif name not in ARM_BASIS:
+            pb.matrix_basis = Matrix.Identity(4)
+            continue
+        pb.matrix_basis = basis
         bpy.context.view_layer.update()
     for name in order:
         pb = arm.pose.bones.get(name)
