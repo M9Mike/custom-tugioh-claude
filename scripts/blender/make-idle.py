@@ -55,7 +55,19 @@ SECONDS = float(arg('seconds', '4.0'))
 FPS = 30
 STRENGTH = float(arg('strength', '1.0'))
 # how far out from the side the upper arms are left, in degrees
-ARM_DROP = math.radians(float(arg('armDrop', '13.0')))
+"""
+Where the arms come to rest, as degrees out from straight down.
+
+13 first, which was wrong in a way only watching it showed. The swing was
+symmetric then, so the arms spent the loop between 5 and 21 degrees out — and the
+5 was the pose that looked right. Resting them at 13 and lifting from there put
+the whole motion in the half that was already too high.
+
+6 is the low end of that old swing, so the resting pose is now the one that read
+as natural, and `ARM` lifts a few degrees off it. Not lower than that: an arm
+inside about five degrees hangs inside the hip on these builds.
+"""
+ARM_DROP = math.radians(float(arg('armDrop', '6.0')))
 
 if not SRC or not OUT:
     raise SystemExit('make-idle: --in <rigged.glb> --out <out.glb> [--seconds 4] [--strength 1]')
@@ -300,6 +312,10 @@ far as thirteen degrees of shoulder does.
 The numbers below are what came out of that measurement, not a guess: sway 0.008
 of height puts the median at 2.1%, which sits between Yugi's 1.5% and Yami's
 2.4%. Split across channels so no single one has to carry it:
+
+`ARM` is halved against the others because it is one-sided — the arms lift from
+their resting pose and never drop below it, so its whole amplitude is spent in the
+direction that shows. Symmetric, it reached about twice as high as an idle should.
 the chest breathes, the hips shift and rise, the head settles, and the arms swing
 a little against the body. Several small motions at different phases read as
 alive where one larger motion reads as a metronome.
@@ -326,7 +342,7 @@ SWAY = 0.008 * height * STRENGTH * BONE_UNITS
 LEAN = math.radians(0.9) * STRENGTH
 BREATH = math.radians(4.0) * STRENGTH
 NOD = math.radians(3.0) * STRENGTH
-ARM = math.radians(8.0) * STRENGTH
+ARM = math.radians(3.5) * STRENGTH
 
 
 def about(pivot, rot):
@@ -351,9 +367,22 @@ for f in range(total + 1):
         offsets[NECK] = about(rest[NECK].translation, Matrix.Rotation(-NOD * breath, 4, 'X'))
     if HEAD:
         offsets[HEAD] = about(rest[HEAD].translation, Matrix.Rotation(NOD * 0.6 * shift, 4, 'Z'))
+    """
+    The arms rise from their rest and never drop below it.
+
+    `breath` is a sine, so multiplying it swung the arms symmetrically — as far
+    above the resting pose as below. Watched, the low end of that swing was the
+    pose that looked right and the high end was plainly too high: an idle should
+    lift the arms off the body a little, not lever them out and back.
+
+    `(1 - cos)/2` runs 0 -> 1 -> 0 over the loop instead of -1 -> +1 -> -1, so the
+    resting pose *is* the bottom of the motion and the whole amplitude is spent
+    going up. It still starts and ends at zero, so the loop is seamless.
+    """
+    lift = (1.0 - math.cos(phase)) / 2.0
     for side, bone in ((1.0, L_ARM), (-1.0, R_ARM)):
         if bone:
-            offsets[bone] = about(rest[bone].translation, Matrix.Rotation(side * ARM * breath, 4, 'Y'))
+            offsets[bone] = about(rest[bone].translation, Matrix.Rotation(side * ARM * lift, 4, 'Y'))
 
     bpy.context.scene.frame_set(f)
     for name in order:

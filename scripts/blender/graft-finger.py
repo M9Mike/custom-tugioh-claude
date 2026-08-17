@@ -50,6 +50,7 @@ The nub is deleted first, or it pokes out through the new finger.
 import bpy
 import sys
 import bmesh
+import math
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -65,7 +66,9 @@ NUB_MAX = int(arg('nubMax', 70))        # a finger below this is a fragment
 BAND = float(arg('band', 0.62))         # fraction of reach that isolates fingers
 SINK = float(arg('sink', 0.018))        # how far the base goes into the knuckle
 # girth of the copy relative to its donor, across the finger's own axis
-THIN = float(arg('thin', 0.78))
+THIN = float(arg('thin', 0.80))
+# swing the neighbouring fingers apart to make room; see the note below
+SPREAD = float(arg('spread', 0.0))
 
 if not SRC or not OUT:
     raise SystemExit('graft-finger: --in <file.glb> --out <file.glb>')
@@ -230,38 +233,89 @@ for side in ('Left', 'Right'):
     the copy arrives pointing the way a finger in that position points and stays
     the same distance from both neighbours along its whole length.
     """
+    """
+    Make room for it, rather than shaving it down to fit.
+
+    Two earlier versions failed the same way. The slot is the midpoint of the
+    widest gap *measured at the fingertips*, which is where the fan is widest —
+    nearer the knuckle the two bracketing fingers are far closer than that, so a
+    full-girth copy cut through both of them and the overlap rendered as a dark
+    crevice. Thinning the copy to 0.78 helped a little and did not fix it, because
+    the crevice was never about girth: three fingers are spread across the whole
+    width of a hand, and there is simply no room between two of them for a fourth.
+
+    A four-fingered hand does not have thinner fingers than a three-fingered one.
+    It has them spread differently. So the obvious third idea was to swing the two
+    neighbours apart about the wrist and drop the copy into the room that opens.
+
+    **That is off by default, because it is worse.** A finger "island" here is only
+    the part beyond the knuckle — the band that isolates the digits starts at 62%
+    of the reach — so rotating one about the wrist slides it away from the palm it
+    grows out of and tears a gap at its base. At nine degrees it put a visible
+    sliver through the side of the hand. Opening a slot needs the knuckle and the
+    web between the fingers to deform with it, which is a soft-body edit this does
+    not do.
+
+    `--spread 1` re-enables it if a hand ever has the room to make it work.
+
+    So what actually ships is the second-best thing: the copy is thinned across
+    its own axis and placed at the midpoint. The residual is a faint crease where
+    it passes its neighbour, visible at roughly thirty times the size a hand
+    occupies in game, and not resolvable by moving geometry that has nowhere to go.
+    """
     from mathutils import Matrix
+    fan_normal = out_axis.cross(axis)
+    if fan_normal.length < 1e-6:
+        fan_normal = Vector((0.0, 0.0, 1.0))
+    fan_normal.normalize()
+    slot_dir = (slot - wrist).normalized()
+
+    def fan_angle(point):
+        """Signed angle of a direction from the slot, in the plane the fingers fan in."""
+        d = (point - wrist).normalized()
+        return math.atan2(d.cross(slot_dir).dot(fan_normal), d.dot(slot_dir))
+
+    girth = max(
+        (W @ v.co - (base + finger_axis * (W @ v.co - base).dot(finger_axis))).length
+        for v in donor[1]
+    )
+    need = SPREAD * 2.0 * math.atan2(girth, max(1e-6, want_len))
+
+    def swing_island(island, radians):
+        R = Matrix.Rotation(radians, 4, fan_normal)
+        for v in island:
+            p = W @ v.co
+            v.co = W.inverted() @ (wrist + R @ (p - wrist))
+
+    swung = 0.0
+    for bracket in (left, right):
+        a = fan_angle(bracket[0])
+        if abs(a) < 1e-4:
+            continue
+        away = math.copysign(need / 2.0, a)
+        swing_island(bracket[1], away)
+        swung += abs(away)
+
+    """
+    The copy is then rotated from its donor's direction onto the slot, which is
+    now genuinely empty. Length is set about the wrist and the base sunk along the
+    finger's own axis, exactly as before.
+    """
     v_donor = (donor_end - wrist).normalized()
-    v_slot = (slot - wrist).normalized()
-    swing = v_donor.cross(v_slot)
-    if swing.length > 1e-6:
-        angle = v_donor.angle(v_slot)
-        R = Matrix.Rotation(angle, 4, swing.normalized())
+    swing_axis = v_donor.cross(slot_dir)
+    if swing_axis.length > 1e-6:
+        R = Matrix.Rotation(v_donor.angle(slot_dir), 4, swing_axis.normalized())
     else:
         R = Matrix.Identity(4)
 
-    """
-    Thinned across its own axis before it is moved.
-
-    The slot is the midpoint of the widest gap, and the gap is measured at the
-    fingertips — where the fan is at its widest. Nearer the knuckle the two
-    bracketing fingers are much closer than that, so a copy at its donor's full
-    girth cut through both of them, and with double-siding off the overlap
-    rendered as a dark crevice that read as the new finger being cut away.
-
-    The thinning is applied about the finger's own centre line, so its length and
-    its placement are untouched — only how much room it takes between its
-    neighbours. A slightly slim finger beside three full ones is not something
-    anybody looks at a hand and notices; a black gash between two of them is.
-    """
     axis_centre = (base + donor_end) / 2
     for v in new_verts:
         p = W @ v.co
-        # squeeze toward the finger's own centre line
+        # squeeze toward the finger's own centre line, so it fits between two others
         rel = p - axis_centre
         along_axis = rel.dot(finger_axis) * finger_axis
         p = axis_centre + along_axis + (rel - along_axis) * THIN
-        p = wrist + R @ ((p - wrist) * scale)         # fan into the slot, at length
+        p = wrist + R @ ((p - wrist) * scale)         # onto the slot, at length
         p = p - finger_axis * SINK                    # base into the knuckle
         v.co = W.inverted() @ p
 
@@ -313,9 +367,10 @@ for side in ('Left', 'Right'):
 
     report.append(
         '%s: %d fingers + %s -> grafted 1 (donor len %.3f, new len %.3f, slot gap %.3f, '
-        'nub %d verts removed, %d boundary edges closed)'
+        'nub %d verts, %d edges closed, neighbours opened %.1f deg)'
         % (side, len(fingers), 'thumb' if thumb else 'no thumb',
-           (donor_end - wrist).length, want_len, width, len(set(doomed)), filled)
+           (donor_end - wrist).length, want_len, width, len(set(doomed)), filled,
+           math.degrees(swung))
     )
 
 for line in report:
