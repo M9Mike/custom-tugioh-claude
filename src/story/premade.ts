@@ -468,17 +468,24 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * covered the rest of the distance to "somebody".                   *
    *                                                                   *
    * `npcOnly` on every one of them now, which takes them out of the   *
-   * booth. **They are kept rather than deleted, and only for stored   *
-   * saves.** A character bound before this change names one of these  *
-   * ids, and `modelById` searches this whole list — so keeping the    *
-   * entries means an existing duelist still resolves to the model     *
-   * they were bound as. Delete them and that player silently becomes  *
-   * somebody else on their next login, which is the one thing Story   *
-   * Mode promises cannot happen.                                      *
+   * booth — and **that alone already changed anybody bound to one.**  *
    *                                                                   *
-   * They may go for good once no stored profile names one. That also  *
-   * takes `repaint.ts`, `accessories.ts` and the tint machinery with  *
-   * it: nothing else in the game uses any of it any more.             *
+   * Worth being exact, because the first version of this note claimed *
+   * the opposite. `normalisePremade` runs every stored character       *
+   * through `playerModelById` on load, and that searches              *
+   * `BOOTH_MODELS`, not this list, falling back to its first entry.    *
+   * So a save naming `woman1` now loads as `amazoni` whether these     *
+   * entries are here or not: keeping them buys the player nothing.     *
+   * Replacing the roster is what costs the old look, and there is no   *
+   * version of replacing it that does not.                            *
+   *                                                                   *
+   * What they are still good for is `modelById`, which does search     *
+   * this list — an NPC or a diagnostic naming one of these ids gets    *
+   * the right body. Nothing currently does. So they are dead weight    *
+   * with a shallow grave, kept only because deleting them is a         *
+   * separate change with its own `.glb` files to remove, and that      *
+   * change also takes `repaint.ts`, `accessories.ts` and the whole     *
+   * tint machinery with it.                                           *
    * ---------------------------------------------------------------- */
   {
     id: 'rookie',
