@@ -51,7 +51,52 @@ def arg(name, fallback=None):
 
 SRC = arg('in')
 OUT = arg('out')
-SECONDS = float(arg('seconds', '4.0'))
+"""
+Idle personalities.
+
+One idle for everybody was the right place to start and the wrong place to stop.
+Two problems with it, and the second is the one that shows in a field:
+
+**Nobody stands the same way.** Solomon is eighty and stooped; Robert Barathion is
+a slab of a man whose arms cannot hang at his sides because his own back is in the
+way; Sandra stands on heels with her weight on one hip. A single set of amplitudes
+gives all of them the same metronome.
+
+**Identical periods make a crowd uncanny.** Six characters breathing on exactly
+four seconds inhale together, forever, and a field of people moving in lockstep
+reads as a screensaver. Every style has its own period, and they are deliberately
+not multiples of each other, so the cast drifts in and out of phase and never
+resynchronises.
+
+A style is a set of multipliers over the measured base amplitudes, plus a period
+and a resting arm angle. Individual flags still win, so a character that wants one
+number different does not need a style of its own.
+"""
+STYLES = {
+    # the measured baseline, if a character has no opinion
+    'default': dict(period=4.0, sway=1.0, bob=1.0, breath=1.0, nod=1.0, arm=1.0,
+                    lean=1.0, drop=6.0),
+    # weight on one hip, unhurried, small arms — someone standing in heels
+    'poise':   dict(period=4.4, sway=1.30, bob=0.85, breath=0.90, nod=1.15, arm=0.80,
+                    lean=0.7, drop=6.0),
+    # slow, deeper breath, a stoop that never straightens
+    'elder':   dict(period=5.3, sway=0.75, bob=1.15, breath=1.30, nod=0.75, arm=0.65,
+                    lean=2.4, drop=9.0),
+    # a big man: chest does the work, head barely moves, arms held off the ribs
+    'heavy':   dict(period=4.7, sway=1.10, bob=1.25, breath=1.45, nod=0.55, arm=0.85,
+                    lean=0.6, drop=12.0),
+    # quicker, more head, more attitude
+    'brisk':   dict(period=3.7, sway=1.05, bob=0.95, breath=0.95, nod=1.45, arm=1.10,
+                    lean=0.9, drop=6.0),
+}
+
+STYLE = arg('style', 'default')
+if STYLE not in STYLES:
+    raise SystemExit('make-idle: unknown --style %r (have: %s)'
+                     % (STYLE, ', '.join(sorted(STYLES))))
+S = STYLES[STYLE]
+
+SECONDS = float(arg('seconds', S['period']))
 FPS = 30
 STRENGTH = float(arg('strength', '1.0'))
 # how far out from the side the upper arms are left, in degrees
@@ -67,7 +112,7 @@ the whole motion in the half that was already too high.
 as natural, and `ARM` lifts a few degrees off it. Not lower than that: an arm
 inside about five degrees hangs inside the hip on these builds.
 """
-ARM_DROP = math.radians(float(arg('armDrop', '6.0')))
+ARM_DROP = math.radians(float(arg('armDrop', S['drop'])))
 
 if not SRC or not OUT:
     raise SystemExit('make-idle: --in <rigged.glb> --out <out.glb> [--seconds 4] [--strength 1]')
@@ -284,7 +329,7 @@ total = int(SECONDS * FPS)
 # character, which is what standing still actually looks like
 # world distance -> bone space; see the note on the amplitudes below
 BONE_UNITS = 1.0 / max(1e-9, arm.matrix_world.to_scale().z)
-BOB = 0.0040 * height * STRENGTH * BONE_UNITS
+BOB = 0.0040 * height * STRENGTH * BONE_UNITS * S['bob']
 """
 Amplitudes, raised until the idle is visible.
 
@@ -338,11 +383,11 @@ was plainly *doing* something and the something looked tiny.
 `BONE_UNITS` converts a world-space distance into the bone space that produces it.
 Rotations do not need it and do not get it.
 """
-SWAY = 0.008 * height * STRENGTH * BONE_UNITS
-LEAN = math.radians(0.9) * STRENGTH
-BREATH = math.radians(4.0) * STRENGTH
-NOD = math.radians(3.0) * STRENGTH
-ARM = math.radians(3.5) * STRENGTH
+SWAY = 0.008 * height * STRENGTH * BONE_UNITS * S['sway']
+LEAN = math.radians(0.9) * STRENGTH * S['lean']
+BREATH = math.radians(4.0) * STRENGTH * S['breath']
+NOD = math.radians(3.0) * STRENGTH * S['nod']
+ARM = math.radians(3.5) * STRENGTH * S['arm']
 
 
 def about(pivot, rot):
@@ -436,4 +481,5 @@ bpy.ops.export_scene.gltf(
     export_yup=True,
     export_apply=False,
 )
+print('make-idle: style %s, %.1fs period' % (STYLE, SECONDS))
 print('make-idle: wrote %s (%d frames, %.1fs)' % (OUT, total, SECONDS))
