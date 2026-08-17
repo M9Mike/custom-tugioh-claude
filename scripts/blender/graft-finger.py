@@ -64,6 +64,8 @@ OUT = arg('out')
 NUB_MAX = int(arg('nubMax', 70))        # a finger below this is a fragment
 BAND = float(arg('band', 0.62))         # fraction of reach that isolates fingers
 SINK = float(arg('sink', 0.018))        # how far the base goes into the knuckle
+# girth of the copy relative to its donor, across the finger's own axis
+THIN = float(arg('thin', 0.78))
 
 if not SRC or not OUT:
     raise SystemExit('graft-finger: --in <file.glb> --out <file.glb>')
@@ -238,8 +240,27 @@ for side in ('Left', 'Right'):
     else:
         R = Matrix.Identity(4)
 
+    """
+    Thinned across its own axis before it is moved.
+
+    The slot is the midpoint of the widest gap, and the gap is measured at the
+    fingertips — where the fan is at its widest. Nearer the knuckle the two
+    bracketing fingers are much closer than that, so a copy at its donor's full
+    girth cut through both of them, and with double-siding off the overlap
+    rendered as a dark crevice that read as the new finger being cut away.
+
+    The thinning is applied about the finger's own centre line, so its length and
+    its placement are untouched — only how much room it takes between its
+    neighbours. A slightly slim finger beside three full ones is not something
+    anybody looks at a hand and notices; a black gash between two of them is.
+    """
+    axis_centre = (base + donor_end) / 2
     for v in new_verts:
         p = W @ v.co
+        # squeeze toward the finger's own centre line
+        rel = p - axis_centre
+        along_axis = rel.dot(finger_axis) * finger_axis
+        p = axis_centre + along_axis + (rel - along_axis) * THIN
         p = wrist + R @ ((p - wrist) * scale)         # fan into the slot, at length
         p = p - finger_axis * SINK                    # base into the knuckle
         v.co = W.inverted() @ p
@@ -261,7 +282,30 @@ for side in ('Left', 'Right'):
         if (end - slot).length < 0.05:
             doomed.extend(comp)
     if doomed:
+        """
+        Delete the nub, then close the hole it leaves.
+
+        Deleting vertices takes their faces with them, which opens the surface —
+        and `import-rigged` turns off double-siding, so an open surface is a hole
+        you can see straight through into the inside of the hand. It rendered as a
+        dark notch beside the new finger, and read as the grafted finger being cut
+        off at the tip rather than as a hole in the knuckle behind it.
+
+        The boundary is collected *after* the delete, because that is when it
+        exists, and only edges that were not already boundaries before it — a
+        model with pre-existing open edges elsewhere must not have them filled by
+        a finger graft.
+        """
+        was_open = set(e for e in bm.edges if e.is_boundary)
         bmesh.ops.delete(bm, geom=list(set(doomed)), context='VERTS')
+        opened = [e for e in bm.edges if e.is_boundary and e not in was_open]
+        if opened:
+            bmesh.ops.holes_fill(bm, edges=opened, sides=0)
+            filled = len(opened)
+        else:
+            filled = 0
+    else:
+        filled = 0
 
     bm.to_mesh(mesh.data)
     mesh.data.update()
@@ -269,9 +313,9 @@ for side in ('Left', 'Right'):
 
     report.append(
         '%s: %d fingers + %s -> grafted 1 (donor len %.3f, new len %.3f, slot gap %.3f, '
-        'nub %d verts removed)'
+        'nub %d verts removed, %d boundary edges closed)'
         % (side, len(fingers), 'thumb' if thumb else 'no thumb',
-           (donor_end - wrist).length, want_len, width, len(set(doomed)))
+           (donor_end - wrist).length, want_len, width, len(set(doomed)), filled)
     )
 
 for line in report:
