@@ -443,6 +443,35 @@ export async function buildPremadeRig(
        1 when standing so the last steps of a stop do not freeze mid-air. */
     walk?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / model.walkSpeed : 1);
     run?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / model.runSpeed : 1);
+
+    /*
+     * While both leg cycles are playing, they have to be the *same* cycle.
+     *
+     * Each clip is rated to its own ground coverage so its feet do not slide,
+     * and those rates are far apart — a walk covers 1.5 m a second and a run
+     * 3.4, so at a jog the walk plays at 2.2× and the run at 0.97×. Left free
+     * the two drift through each other, and blending two leg cycles in opposite
+     * phase muddles the stride.
+     *
+     * This is a tidy-up, not a bug fix, and it is worth saying which: the
+     * crossed-legged run it was first written to explain turned out to be the
+     * Run clip's own stance, corrected offline by
+     * `scripts/blender/widen-stance.py`. Syncing measurably helps the low end
+     * of the blend and nothing else — around a jog it halves how much of the
+     * loop has the legs together.
+     *
+     * Matching on *normalised* phase works here because both clips are a single
+     * gait cycle and both open on the same foot — checked, not assumed. The
+     * louder clip leads, so the quieter one is the one being bent.
+     */
+    if (walk && run && running > 0 && running < 1) {
+      const lead = running < 0.5 ? walk : run;
+      const follow = running < 0.5 ? run : walk;
+      const span = lead.getClip().duration;
+      if (span > 0) {
+        follow.time = (((lead.time / span) % 1) + 1) % 1 * follow.getClip().duration;
+      }
+    }
     mixer.update(dt);
   };
   /* Settle into the rest of the idle immediately rather than showing one
