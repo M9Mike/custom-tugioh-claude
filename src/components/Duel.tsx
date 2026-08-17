@@ -106,6 +106,12 @@ interface Props {
   view: RoomView;
   act: (a: DuelAction) => Promise<string | null>;
   rematch: () => void;
+  /**
+   * Shown instead of the rematch and lobby buttons when the duel was entered
+   * from a conversation in Story Mode: the only sensible way out of it is back
+   * to the person who offered it.
+   */
+  onStoryReturn?: (won: boolean) => void;
   toLobby: () => void;
   connection: string;
   /** Present during a tournament: return to the bracket. */
@@ -203,7 +209,7 @@ function PlayerBar({
   );
 }
 
-export default function Duel({ view, act, rematch, toLobby, connection, onBracket, setAnimating, setWatching, paused, setPaused }: Props) {
+export default function Duel({ view, act, rematch, toLobby, connection, onBracket, onStoryReturn, setAnimating, setWatching, paused, setPaused }: Props) {
   const state = view.state!;
   const me = view.you;
   const foe = other(me);
@@ -2309,7 +2315,22 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               >
                 📜 What happened
               </button>
-              {onBracket ? (
+              {onStoryReturn ? (
+                /* A story duel has no rematch here and no lobby: Mai offers the
+                   next one herself, in the conversation this came out of, and
+                   what she says depends on the result — so the result travels
+                   back with the player rather than being asked for again. */
+                <button
+                  className="btn btn-primary rounded px-4 py-2 text-xs"
+                  data-story-return
+                  onClick={() => {
+                    sfx.click();
+                    onStoryReturn(state.winner === me);
+                  }}
+                >
+                  Continue
+                </button>
+              ) : onBracket ? (
                 /* A bracket match has no rematch: the result stands. */
                 <button className="btn btn-primary rounded px-4 py-2 text-xs" onClick={onBracket}>
                   {wonTheKingdom ? 'See the finished bracket' : 'To the bracket'}

@@ -70,9 +70,19 @@ interface Props {
    */
   onDelete: () => Promise<string | null>;
   onExit: () => void;
+  /**
+   * A character has been taken up on a duel. The caller opens the room and
+   * navigates; this screen is about to be unmounted either way.
+   */
+  onDuel?: (npc: WorldNpc) => void;
+  /**
+   * Somebody to walk straight back into a conversation with, and where to pick
+   * it up — set when returning from a duel they sent the player to.
+   */
+  resume?: { npcId: string; node: string } | null;
 }
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [askingDelete, setAskingDelete] = useState(false);
@@ -89,7 +99,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * somebody started a conversation at them.
    */
   const [nearNpc, setNearNpc] = useState<WorldNpc | null>(null);
-  const [talkingTo, setTalkingTo] = useState<WorldNpc | null>(null);
+  const [talkingTo, setTalkingTo] = useState<WorldNpc | null>(
+    () => (resume ? WORLD_NPCS.find((n) => n.id === resume.npcId) ?? null : null)
+  );
+  /* Cleared the moment the conversation closes, so re-opening it later starts
+     from the top rather than replaying the aftermath of a duel. */
+  const [resumeAt, setResumeAt] = useState<string | null>(resume?.node ?? null);
   /* What the loop last reported, so it only calls setState when it changes. */
   const nearRef = useRef<WorldNpc | null>(null);
   /* Read by the render loop, which must not re-run when a conversation opens:
@@ -957,8 +972,13 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       {talkingTo && (
         <Conversation
           npc={talkingTo}
+          openAt={resumeAt ?? undefined}
+          onDuel={() => onDuel?.(talkingTo)}
           playerName={character.name}
-          onClose={() => setTalkingTo(null)}
+          onClose={() => {
+            setTalkingTo(null);
+            setResumeAt(null);
+          }}
         />
       )}
     </main>

@@ -518,7 +518,26 @@ export function maxAttacks(state: DuelState, c: CardInstance, controller: Player
 /* Setup                                                               */
 /* ------------------------------------------------------------------ */
 
-function buildPlayer(state: DuelState, id: PlayerId, duelistId: string, name: string): PlayerState {
+/**
+ * Seats one duelist with a deck.
+ *
+ * `deck` overrides the duelist's own list, and exists for Story Mode: the
+ * player's twenty-five are the cards they chose and own, not a premade. The
+ * `duelistId` still matters when one is given — it carries the accent colours
+ * and the epithet the board is dressed with — so a story duelist is a premade's
+ * costume over their own cards.
+ *
+ * A story deck is a flat list of slugs with no counts, because Story Mode deals
+ * in single copies: choosing the deck *is* choosing the collection, and the
+ * collection holds one of each.
+ */
+function buildPlayer(
+  state: DuelState,
+  id: PlayerId,
+  duelistId: string,
+  name: string,
+  deck?: string[]
+): PlayerState {
   const duelist = DUELIST_BY_ID[duelistId];
   const p: PlayerState = {
     id,
@@ -536,8 +555,12 @@ function buildPlayer(state: DuelState, id: PlayerId, duelistId: string, name: st
     normalSummonUsed: false,
     ready: true,
   };
-  for (const [slug, count] of duelist.deck) {
-    for (let i = 0; i < count; i++) p.deck.push(newInstance(state, slug, id));
+  if (deck?.length) {
+    for (const slug of deck) p.deck.push(newInstance(state, slug, id));
+  } else {
+    for (const [slug, count] of duelist.deck) {
+      for (let i = 0; i < count; i++) p.deck.push(newInstance(state, slug, id));
+    }
   }
   for (const slug of duelist.extra) p.extra.push(newInstance(state, slug, id));
   shuffle(state, p.deck);
@@ -546,8 +569,8 @@ function buildPlayer(state: DuelState, id: PlayerId, duelistId: string, name: st
 
 export function createDuel(opts: {
   seed: number;
-  p1: { duelistId: string; name: string };
-  p2: { duelistId: string; name: string };
+  p1: { duelistId: string; name: string; deck?: string[] };
+  p2: { duelistId: string; name: string; deck?: string[] };
   firstPlayer?: PlayerId;
 }): DuelState {
   const state: DuelState = {
@@ -566,8 +589,8 @@ export function createDuel(opts: {
     uidSeq: 0,
     suspendedAttack: null,
   };
-  state.players.p1 = buildPlayer(state, 'p1', opts.p1.duelistId, opts.p1.name);
-  state.players.p2 = buildPlayer(state, 'p2', opts.p2.duelistId, opts.p2.name);
+  state.players.p1 = buildPlayer(state, 'p1', opts.p1.duelistId, opts.p1.name, opts.p1.deck);
+  state.players.p2 = buildPlayer(state, 'p2', opts.p2.duelistId, opts.p2.name, opts.p2.deck);
 
   for (const pid of ['p1', 'p2'] as PlayerId[]) {
     for (let i = 0; i < OPENING_HAND; i++) drawCard(state, pid, true);
