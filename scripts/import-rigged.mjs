@@ -75,7 +75,22 @@ const flag = (name, fallback) => {
 const IN = flag('in', '');
 const ID = flag('id', '');
 const DIR = flag('dir', 'cast');
-const TEX = Number(flag('tex', 2048));
+/**
+ * Texture size and quality, defaulting to whatever the bundle shipped.
+ *
+ * These were 2048 and 85, and that was a reflex rather than a decision: the
+ * sculpt pipeline halves textures because a raw Meshy sculpt is a hundred
+ * megabytes and something has to give. Nothing has to give here. A rigged
+ * bundle is four megabytes after the duplicate texture goes, the project is on
+ * Vercel Pro, and GitHub's only hard limit is 100 MB a file — so downscaling
+ * Mai's 4096² atlas to 2048 was throwing away three quarters of her face to
+ * save four hundred kilobytes nobody was short of.
+ *
+ * `--tex` still exists for a character that genuinely needs it. The default is
+ * now to keep what was authored.
+ */
+const TEX = Number(flag('tex', 4096));
+const QUALITY = Number(flag('quality', 95));
 const TRIS = flag('tris', '') ? Number(flag('tris')) : 0;
 const OUT_DIR = flag('outDir', `public/models/${DIR}`);
 
@@ -164,7 +179,7 @@ if (TRIS) {
 }
 steps.push(
   resample(),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [TEX, TEX], quality: 85 }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [TEX, TEX], quality: QUALITY }),
   dedup(),
   prune()
 );
