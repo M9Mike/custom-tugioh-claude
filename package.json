@@ -52,6 +52,7 @@
     "faces": "node scripts/npc-face-check.mjs",
     "gait": "node scripts/gait-check.mjs",
     "import-rip": "node scripts/import-rip.mjs",
+    "sculpt": "node --max-old-space-size=8192 scripts/import-sculpt.mjs",
     "glb": "node scripts/glb-info.mjs"
   },
   "dependencies": {
@@ -62,6 +63,9 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -69,6 +73,7 @@
     "@types/three": "^0.180.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "meshoptimizer": "^1.2.0",
     "mongodb-memory-server": "^11.2.0",
     "playwright": "^1.62.1",
     "sharp": "^0.35.3",

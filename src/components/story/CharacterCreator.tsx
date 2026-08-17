@@ -3,14 +3,26 @@
 /**
  * The creation booth.
  *
- * A live 3D duelist on one half of the screen and a short list of finished
- * choices on the other — but the finished things are no longer assembled from
- * preset parts. Each duelist is a whole vendored model (see
- * `src/story/premade.ts` for the catalog and `public/models/duelists/` for
- * where they came from): the player picks one, tints the garments its catalog
- * entry says can be tinted, sets a stature, and names the result. Nothing
- * here is previewed as an icon or a paper doll: the model on screen is the
- * model that walks into the world, built by the same loader from the same
+ * A live 3D duelist on one half of the screen and, on the other, the only two
+ * questions there are: which one, and called what.
+ *
+ * **There is no customisation here, and its absence is the design.** The booth
+ * used to offer tint swatches for three garments and a stature slider, because
+ * its roster was nine generic townspeople who each needed dressing before they
+ * were anybody. The roster is now eight sculpted characters
+ * (`public/models/players/`, catalog in `src/story/premade.ts`), authored as
+ * they are meant to look. The way to get more variety is another model, not
+ * another knob.
+ *
+ * It was tried the other way round first, and the textures settled it: these
+ * sculpts carry their look in one 1024px atlas where skin, leather and hair
+ * all land in a single warm hue a few degrees wide. Recolouring works by hue
+ * family, so on 77–88% of each texture there is no rule that repaints the
+ * clothing and leaves the arms alone. The old roster tinted cleanly because it
+ * was drawn in flat blocks of distinct hue; these are not.
+ *
+ * Nothing here is previewed as an icon or a paper doll: the model on screen is
+ * the model that walks into the world, built by the same loader from the same
  * record, so what you approve is literally what you get.
  *
  * The confirmation is deliberately heavy, because the decision is: a duelist
@@ -22,14 +34,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
-  AS_AUTHORED,
   BOOTH_MODELS,
-  slotsFor,
   MAX_PREMADE_NAME,
   defaultPremade,
   modelById,
-  paletteFor,
-  randomPremade,
   type PremadeCharacter,
 } from '@/story/premade';
 import { buildPremadeRig, preloadAllDuelists, type PremadeRig } from './premadeRig';
@@ -98,11 +106,9 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     [spec, name, username]
   );
 
-  const model = modelById(pick.model);
-
-  /* Picking a duelist is also framing: it pulls back to the whole body.
-     Tints, stature and the roll buttons keep whatever framing — and zoom —
-     the player has set; a camera that snaps mid-adjustment reads as broken. */
+  /* Picking a duelist is also framing: it pulls back to the whole body, so a
+     player who has zoomed into one face is not left staring at the next one's
+     collarbone. It is the only choice left that moves the camera. */
   const choose = (next: PremadeCharacter, framing?: Shot) => {
     sfx.click();
     setPick(next);
@@ -519,57 +525,15 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
             label="Duelist"
             options={BOOTH_MODELS.map((m) => ({ key: m.id, label: m.label, note: m.note }))}
             value={pick.model}
-            onPick={(k) => {
-              /* Tint slots belong to a model — a new duelist starts as the
-                 file was painted, not wearing the last one's choices. */
-              const next = modelById(k);
-              choose(
-                { ...pick, model: next.id, tints: slotsFor(next).map(() => AS_AUTHORED) },
-                'full'
-              );
-            }}
+            onPick={(k) => choose({ ...pick, model: modelById(k).id }, 'full')}
           />
 
-          {slotsFor(model).map((slot, i) => (
-            <TintRow
-              key={`${model.id}:${slot.label}`}
-              label={slot.label}
-              colors={paletteFor(slot)}
-              value={pick.tints[i] ?? AS_AUTHORED}
-              onPick={(v) => {
-                const tints = slotsFor(model).map((_, j) => (j === i ? v : pick.tints[j] ?? AS_AUTHORED));
-                choose({ ...pick, tints });
-              }}
-            />
-          ))}
-
-          <Slider
-            label="Stature"
-            hint="Short — tall"
-            value={pick.stature}
-            onChange={(v) => setPick((c) => ({ ...c, stature: v }))}
-          />
-
-          <div className="mt-4 flex gap-2">
-            <button
-              className="btn flex-1 rounded px-3 py-2 text-[10px]"
-              onClick={() => {
-                sfx.click();
-                setPick(randomPremade(username));
-              }}
-            >
-              Surprise me
-            </button>
-            <button
-              className="btn flex-1 rounded px-3 py-2 text-[10px]"
-              onClick={() => {
-                sfx.click();
-                setPick(defaultPremade(username));
-              }}
-            >
-              Reset
-            </button>
-          </div>
+          {/* Three rows of tint swatches, a stature slider, Surprise me and
+              Reset all used to be here. See the note at the top of this file
+              for why they are not: the roster they were built for was nine
+              generic bodies, and these eight are finished characters whose
+              textures cannot be recoloured without taking the skin with the
+              clothes. What is left is the whole question. */}
         </div>
 
         <div className="shrink-0 border-t border-stoneline p-3">
@@ -631,90 +595,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="mt-3">
       <p className="mb-1 font-display text-[10px] uppercase tracking-widest text-ptextdim">{label}</p>
       {children}
-    </div>
-  );
-}
-
-function Slider({
-  label,
-  hint,
-  value,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="mt-3">
-      <div className="mb-1 flex items-baseline justify-between">
-        <p className="font-display text-[10px] uppercase tracking-widest text-ptextdim">{label}</p>
-        <p className="text-[9px] text-ptextdim/70">{hint}</p>
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        aria-label={label}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-6 w-full accent-[#c2a15a]"
-      />
-    </div>
-  );
-}
-
-/**
- * One tint slot: the model's own paint first, then the palette.
- *
- * "As made" is a real choice with a chip of its own, not a swatch that
- * happens to match — the vendored look is exact or it is gone. `data-tint`
- * names every button `slot:index` (−1 for as-made) because the driving
- * scripts need a selector that survives a wording change, the same contract
- * `data-pick` makes below.
- */
-function TintRow({
-  label,
-  colors,
-  value,
-  onPick,
-}: {
-  label: string;
-  colors: readonly string[];
-  value: number;
-  onPick: (v: number) => void;
-}) {
-  const slug = label.toLowerCase().replace(/\s+/g, '-');
-  return (
-    <div className="mt-3">
-      <p className="mb-1 font-display text-[10px] uppercase tracking-widest text-ptextdim">{label}</p>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          data-tint={`${slug}:-1`}
-          aria-pressed={value === AS_AUTHORED}
-          onClick={() => onPick(AS_AUTHORED)}
-          className={`btn rounded px-2 py-1.5 text-[9px] ${value === AS_AUTHORED ? 'btn-primary' : ''}`}
-        >
-          As made
-        </button>
-        {colors.map((c, i) => (
-          <button
-            key={c + i}
-            data-tint={`${slug}:${i}`}
-            aria-label={`${label} colour ${i + 1}`}
-            aria-pressed={value === i}
-            /* No click sound here: the caller's `choose` already plays it, and
-               a picker that clicks twice per tap sounds broken. */
-            onClick={() => onPick(i)}
-            className={`h-7 w-7 rounded border transition-transform ${
-              value === i ? 'scale-110 border-brassbright ring-1 ring-brass' : 'border-stoneline'
-            }`}
-            style={{ background: c }}
-          />
-        ))}
-      </div>
     </div>
   );
 }

@@ -118,19 +118,28 @@ name — no password yet, and only `Mike` is admitted while it is being built �
 and you make a duelist, cut your first deck out of what you are offered, and
 walk into the world with them.
 
-**The duelist is made in 3D and is yours for good.** The creation booth is a
-live model with the whole of it on knobs: frame, build, height, skin, jaw, eye
-shape and colour, brow, nose, mouth, years, twelve hair styles and sixteen
-colours, six kinds of facial hair, five sets of attire with their own
-silhouettes, five colour slots, a gauntlet and a cloak. Nothing is a preview of
-a preview — the model in the booth is built by the same function from the same
-record as the one that walks around the field.
+**You pick a duelist, and they are yours for good.** The booth is eight
+sculpted characters on a plinth and two questions: which one, and called what.
+Nothing is a preview of a preview — the model in the booth is built by the same
+loader from the same record as the one that walks around the field, so what you
+approve is literally what you get.
+
+There is deliberately nothing to customise, and that is a change rather than an
+omission. The booth used to carry tint swatches for three garments and a
+stature slider, because its roster was nine generic townspeople who each needed
+dressing before they were anybody. These eight are finished characters. The
+recolouring machinery is still in the tree and still correct, and it does not
+work on them: it matches by hue family, and these sculpts keep skin, leather
+and hair inside a single warm hue a few degrees wide across 77–88% of one
+1024px atlas, so no rule repaints the clothing and leaves the arms alone. The
+old roster tinted cleanly because it was drawn in flat blocks of distinct hue.
+More variety here comes from another model, not another knob.
 
 Then it is bound. A duelist and a deck belong to the name that made them, and
 the *server* holds them: the same name on another phone, in another browser, or
 after clearing the site data brings back the same duelist. There is no way back
-from the confirmation, and it says so twice before you take it. Changing your
-appearance in-game comes later; making a second character does not.
+from the confirmation, and it says so twice before you take it. Delete
+Character is the one way out, and it takes the whole save with it.
 
 The first deck is exactly 25 from 34 offered cards, one copy of each. The
 offered pool is not the collection — **what you keep is what you sleeved.**
@@ -141,13 +150,55 @@ is the one everything attaches to. Ground, sky, wind, a third-person camera, a
 thumb stick (WASD on a keyboard), and a corner menu with your name, your level,
 Edit Deck, Save and the way back to the main menu.
 
-Everything 3D here is generated at runtime — no models, no textures, no
-downloads. The duelist is a chain of joints with primitives on it and a head
-built by displacing one sphere; the grass is sixteen thousand instances of four
-triangles swaying in a hand-injected vertex shader, over a texture painted into
-a canvas on load. The whole of it is [three.js](https://threejs.org) behind a
-`next/dynamic` boundary, so the renderer is downloaded when you enter Story
-Mode and never by the duel board.
+The field is generated and the people in it are not. The ground, the sky and the
+grass are made at runtime — sixteen thousand instances of four triangles swaying
+in a hand-injected vertex shader, over a texture painted into a canvas on load —
+and everybody standing on it comes out of a `.glb`. The whole of it is
+[three.js](https://threejs.org) behind a `next/dynamic` boundary, so the
+renderer is downloaded when you enter Story Mode and never by the duel board.
+
+### The cast
+
+Eighteen characters stand in the field, from three different places, and the
+differences between them are worth knowing because they are visible.
+
+**Rigged.** The vendored roster the booth offers, and Yugi, Yami, Kaiba and Joey
+— converted from the character rips of *Yu-Gi-Oh! Duel Monsters: Saikyo Card
+Battle* (3DS) by `npm run import-rip`, which turns a set of Valve SMD files into
+one `.glb` carrying Idle, Walk and Run. These are the ones that move.
+
+**The eight you can be.** Amazoni, Savage Valkyrie, Valkyrie Sentinel, Wave,
+Christy, Meg, Shea and Sandra Afrika, in `public/models/players/`. Sculpted,
+and static like everything else sculpted here.
+
+**Sculpted.** Fourteen modelled characters — Solomon, Mai, Pegasus, Bandit
+Keith, Bakura, Mako, Weevil, Rex, Marik, Odion, Ishizu, Priest Seto, a visiting
+Ash Ketchum, and a Blue-Eyes White Dragon closing the far end of the field.
+They look like the characters, and **they do not move**: each is a single static
+mesh with no skeleton, so there is no idle and no walk until somebody rigs them.
+Solomon and Mai replace assembled versions of themselves — a generic body,
+repainted, with a bandana and a beard generated in code — and the whole of that
+costume was deleted with the change.
+
+They arrive at 60–140 MB each, two to three million triangles under a 4K JPEG,
+which is three separate impossibilities: GitHub refuses a file over 100 MB, the
+deployment has to fit on Vercel, and the game is built for two phones on mobile
+data. `npm run sculpt` is the door they come through — mesh simplified to a
+budget, textures resized and re-encoded to WebP, the normal and
+metallic-roughness maps cut because the renderer never reads them, and
+positions quantized to integers via `KHR_mesh_quantization`, which three.js
+loads with no decoder to register. The fourteen go from 1.34 GB to 14 MB.
+
+```bash
+npm run sculpt -- --in ~/Downloads/NPC/SolomonMuto.glb --id solomon
+npm run sculpt -- --in ~/Downloads/NPC --all          # ids from the filenames
+```
+
+Adding somebody to the field is a row in `WORLD_NPCS` (`src/story/npcs.ts`) and
+an entry in the catalog (`src/story/premade.ts`). Nobody but Grandpa stands on
+the centre line: an NPC is a 1.1-metre cylinder you slide around, and a column
+of them up the +Z axis turns the one direction a new player walks into a
+corridor to squeeze past.
 
 ```bash
 npm run story -- http://localhost:3000               # the whole flow, tapped, at both iPhone sizes
@@ -260,6 +311,8 @@ npm run picker   # the layer the player touches: every card the rules allow, the
 npm run banner   # read every banner the board prints and insist a line naming a card shows it
 npm run nudge    # drop the computer's own requests on the floor; the duel must still finish
 npm run story -- http://localhost:3000   # Story Mode end to end, tapped, at both iPhone sizes
+npm run sculpt -- --in <file.glb> --id <id>   # bring a modelled character into public/models/cast
+npm run glb -- public/models/cast/*.glb       # what is actually inside one
 npm run e2e      # drive two HTTP clients through full duels against a running server
 npm run e2e-ai   # same, but one seat is the computer — exercises the whole vs-AI loop
 npm run e2e-tournament -- http://localhost:3000 10 yugi --skilled   # whole brackets
