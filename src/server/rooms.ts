@@ -28,6 +28,15 @@ export interface Seat {
   lastSeen: number;
   /** Set when nobody is sitting here — the computer plays this side. */
   ai?: boolean;
+  /**
+   * An explicit deck for this seat, overriding the duelist's premade list.
+   *
+   * Only Story Mode sets it: a story duelist brings the twenty-five cards they
+   * chose and own. Held on the seat rather than the room because the two sides
+   * are seated independently — Mai plays her own premade across the table from
+   * a deck somebody built.
+   */
+  deck?: string[];
 }
 
 export interface Room {
@@ -38,6 +47,8 @@ export interface Room {
   state: DuelState | null;
   /** Players who have asked for a rematch. */
   rematch: PlayerId[];
+  /** Entered from a conversation in Story Mode, so the way out is back to it. */
+  story?: boolean;
   /** Bumped on every change so pollers can tell whether they are behind. */
   revision: number;
   /**
@@ -169,6 +180,55 @@ export async function createSoloRoom(
     lastSeen: Date.now(),
     ai: true,
   };
+  await saveRoom(room);
+  return { room, token, pid };
+}
+
+/**
+ * A duel started from inside Story Mode.
+ *
+ * Unlike the menu's solo duel, nobody picks anything: both seats are decided
+ * here and the duel begins the moment the room exists. The player is seated as
+ * the character they made, holding the twenty-five cards they own; the far side
+ * is whichever duelist invited them, playing that duelist's own premade.
+ *
+ * The player's seat still carries a `duelistId`, because the board is dressed
+ * from one — accent colours and an epithet. It is a costume over their own
+ * cards, and `story` is what says so: the lobby, the rematch and "choose new
+ * duelists" all mean something different when the duel was entered from a
+ * conversation, and the flag is how the room says which kind it is.
+ */
+export async function createStoryRoom(
+  name: string,
+  deck: string[],
+  opponentId: string,
+  dress = 'yugi'
+): Promise<{ room: Room; token: string; pid: PlayerId }> {
+  const { room, token, pid } = await createRoom(name);
+  const foe = DUELIST_BY_ID[opponentId] ? opponentId : 'mai';
+  /*
+   * The player's costume must not be the opponent's.
+   *
+   * The board takes its accent colours from each side's duelist, so seating both
+   * in the same one makes the two halves of the table identical — which is a
+   * confusing duel and was the first thing this got wrong.
+   */
+  let costume = DUELIST_BY_ID[dress] ? dress : 'yugi';
+  if (costume === foe) costume = foe === 'yugi' ? 'kaiba' : 'yugi';
+  const seat = room.seats[pid];
+  if (seat) {
+    seat.duelistId = costume;
+    seat.deck = deck;
+  }
+  room.story = true;
+  room.seats.p2 = {
+    token: randomToken(),
+    name: DUELIST_BY_ID[foe]?.name ?? 'Opponent',
+    duelistId: foe,
+    lastSeen: Date.now(),
+    ai: true,
+  };
+  maybeStart(room);
   await saveRoom(room);
   return { room, token, pid };
 }
@@ -515,8 +575,8 @@ function maybeStart(room: Room) {
   if (!a?.duelistId || !b?.duelistId || room.state) return;
   room.state = createDuel({
     seed: (Math.random() * 0xffffffff) >>> 0,
-    p1: { duelistId: a.duelistId, name: a.name },
-    p2: { duelistId: b.duelistId, name: b.name },
+    p1: { duelistId: a.duelistId, name: a.name, deck: a.deck },
+    p2: { duelistId: b.duelistId, name: b.name, deck: b.deck },
     firstPlayer: Math.random() < 0.5 ? 'p1' : 'p2',
   });
   room.rematch = [];

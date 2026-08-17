@@ -28,10 +28,21 @@ interface Props {
   /** The player's own duelist name, for `{name}` in the script. */
   playerName: string;
   onClose: () => void;
+  /**
+   * Which node to open on, instead of the script's own start.
+   *
+   * Set when the conversation is being *resumed* — the player has just come
+   * back from a duel this character sent them to, and picks up on the node the
+   * result chose. The panel does not know or care that a duel happened; it is
+   * handed a node and carries on.
+   */
+  openAt?: string;
+  /** Leave the conversation and duel this character. */
+  onDuel?: () => void;
 }
 
-export default function Conversation({ npc, playerName, onClose }: Props) {
-  const [nodeId, setNodeId] = useState(npc.start);
+export default function Conversation({ npc, playerName, onClose, openAt, onDuel }: Props) {
+  const [nodeId, setNodeId] = useState(openAt ?? npc.start);
   const [page, setPage] = useState(0);
 
   /* A script that names a node it does not have is an authoring mistake, and
@@ -60,8 +71,15 @@ export default function Conversation({ npc, playerName, onClose }: Props) {
     if (node.choices.length === 0) onClose();
   };
 
-  const choose = (to: string | null) => {
+  const choose = (to: string | null, duel?: boolean) => {
     sfx.click();
+    /* A duel leaves the conversation rather than advancing it. The node named
+       by the choice is where it will resume, and the caller records that — the
+       panel is about to be unmounted and cannot remember anything. */
+    if (duel && onDuel) {
+      onDuel();
+      return;
+    }
     if (to === null) {
       onClose();
       return;
@@ -121,7 +139,7 @@ export default function Conversation({ npc, playerName, onClose }: Props) {
                 key={c.label}
                 data-reply={c.label}
                 className="btn rounded px-3 py-2 text-left text-[11px]"
-                onClick={() => choose(c.to)}
+                onClick={() => choose(c.to, c.duel)}
               >
                 {c.label}
               </button>

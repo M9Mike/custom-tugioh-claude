@@ -23,6 +23,8 @@ import DeckBuilder from '@/components/story/DeckBuilder';
 import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
 import { STARTER_POOL } from '@/story/roster';
 import type { PremadeCharacter } from '@/story/premade';
+import type { WorldNpc } from '@/story/npcs';
+import { saveIdentity } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
 const CharacterCreator = dynamic(() => import('@/components/story/CharacterCreator'), {
@@ -46,6 +48,20 @@ export default function StoryMode() {
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<StoryProfile | null>(null);
   const [screen, setScreen] = useState<Screen | null>(null);
+  /**
+   * A conversation to walk straight back into.
+   *
+   * Read once, on the way in, and cleared immediately: coming back from a duel
+   * should resume the conversation exactly once, and a note left in place would
+   * reopen Mai every time the world mounted for the rest of the session.
+   */
+  const [resume, setResume] = useState<{ npcId: string; node: string } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const pending = readPendingDuel();
+    if (!pending?.outcome) return null;
+    writePendingDuel(null);
+    return { npcId: pending.npcId, node: pending.outcome === 'won' ? pending.won : pending.lost };
+  });
   const nameRef = useRef<HTMLInputElement>(null);
 
   /* Same trick as the home page: both fields are controlled, so React's first
@@ -142,6 +158,44 @@ export default function StoryMode() {
     return null;
   };
 
+  /**
+   * Takes a character up on a duel.
+   *
+   * The room is opened here rather than in the world because this is the screen
+   * that owns the username, and the deck is never sent — the server reads it off
+   * the save, which is the only copy that knows which cards this player actually
+   * owns. The note is written *before* navigating, so the win screen can find it
+   * however the player gets there.
+   */
+  const startDuel = async (npc: WorldNpc) => {
+    if (!npc.duel || busy) return;
+    setBusy(true);
+    sfx.click();
+    try {
+      const res = await fetch('/api/room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyUser: name,
+          opponentId: npc.duel.opponentId,
+        }),
+        cache: 'no-store',
+      });
+      const data = (await res.json()) as { code?: string; token?: string; error?: string };
+      if (!data.code || !data.token) {
+        setError(data.error ?? 'Could not start that duel. Try again in a moment.');
+        setBusy(false);
+        return;
+      }
+      saveIdentity({ code: data.code, token: data.token });
+      writePendingDuel({ code: data.code, npcId: npc.id, won: npc.duel.won, lost: npc.duel.lost });
+      router.push(`/duel/${data.code}`);
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+      setBusy(false);
+    }
+  };
+
   const toMenu = () => router.push('/');
 
   /* ---------------- sign in ---------------- */
@@ -236,8 +290,52 @@ export default function StoryMode() {
       onSave={saveWorld}
       onDelete={deleteCharacter}
       onExit={toMenu}
+      onDuel={startDuel}
+      resume={resume}
     />
   );
+}
+
+/**
+ * Where a duel started from a conversation leaves its note.
+ *
+ * `sessionStorage`, not the save: this is one leg of one visit — who to walk
+ * back to and which node to resume on — and it is meaningless the moment the
+ * tab is closed. Putting it in the profile would mean a write to the database
+ * on the way into every duel and a second on the way out, to store something
+ * that is only true for the next ninety seconds.
+ */
+const PENDING = 'story:duel';
+
+export interface PendingDuel {
+  /** The room the duel is being played in, so a stale note can be told apart. */
+  code: string;
+  npcId: string;
+  /** Which node to resume on, per outcome. */
+  won: string;
+  lost: string;
+  /** Filled in by the win screen on the way back. */
+  outcome?: 'won' | 'lost';
+}
+
+export function readPendingDuel(): PendingDuel | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING);
+    return raw ? (JSON.parse(raw) as PendingDuel) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writePendingDuel(v: PendingDuel | null): void {
+  try {
+    if (v) sessionStorage.setItem(PENDING, JSON.stringify(v));
+    else sessionStorage.removeItem(PENDING);
+  } catch {
+    /* Private browsing with storage disabled. The duel still plays; it just
+       ends at the arena rather than back in the field, which is a worse
+       journey and not a broken one. */
+  }
 }
 
 /** What a dynamic import shows while the 3D chunk is still coming down. */

@@ -31,6 +31,15 @@ import type { AccessorySpec } from '@/components/story/accessories';
 export interface DialogueChoice {
   /** What the player says. */
   label: string;
+  /**
+   * Leaves the conversation and duels this character instead.
+   *
+   * The node named by `to` is not shown now — it is where the conversation
+   * resumes *after* the duel, and which one is used depends on how it went.
+   * That is the whole of the mechanism: a duel is a branch that takes a while
+   * and comes back with one bit of information.
+   */
+  duel?: boolean;
   /** The node it leads to, or `null` to end the conversation. */
   to: string | null;
 }
@@ -47,6 +56,16 @@ export interface DialogueNode {
    * conversation simply ends — the panel offers a single way out.
    */
   choices: DialogueChoice[];
+}
+
+/** How a duel this character offered turned out, and where it picks up. */
+export interface DuelOffer {
+  /** Which premade duelist plays their side — an id from `decklists.json`. */
+  opponentId: string;
+  /** The node to resume on when the player won. */
+  won: string;
+  /** The node to resume on when they did not. */
+  lost: string;
 }
 
 export interface WorldNpc {
@@ -88,6 +107,14 @@ export interface WorldNpc {
   range: number;
   /** Which node their script opens on. */
   start: string;
+  /**
+   * What happens if a choice in their script sets `duel`.
+   *
+   * Absent on anybody who does not duel yet, which is everybody else for now:
+   * the cast is being bound to decks one character at a time, and a duel that
+   * cannot be answered is worse than an NPC who only talks.
+   */
+  duel?: DuelOffer;
   script: Record<string, DialogueNode>;
 }
 
@@ -301,6 +328,92 @@ const greeting = (lines: string[]): Record<string, DialogueNode> => ({
   greet: { lines, choices: [] },
 });
 
+/**
+ * Mai, who is the first person out here you can actually play.
+ *
+ * She talks the way she is written: bored until you are worth her time, and
+ * unbothered either way. The invitation is hers rather than the player's — she
+ * is the one who decides you are interesting enough — which is both truer to her
+ * and the reason it can be refused without the refusal feeling like a menu.
+ *
+ * `beaten` and `won` are named from *her* side, matching `DuelOffer`, which is
+ * worth saying out loud because it reads backwards at a glance: `beaten` is the
+ * node for when she has been, so it is the player's victory.
+ */
+const MAI_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Well, hello. Mai Valentine.',
+      'Do try to be interesting, sweetheart. Most of them are not.',
+    ],
+    choices: [
+      { label: 'Who are you?', to: 'who' },
+      { label: 'I could be interesting.', to: 'offer' },
+      { label: 'Just passing through.', to: null },
+    ],
+  },
+
+  who: {
+    lines: [
+      'Mai Valentine. Professional, since you were going to ask badly.',
+      'I read people, sweetheart. What they want, what they are afraid of, and which of the two they are holding. The cards are the easy part.',
+    ],
+    choices: [
+      { label: 'Read me, then.', to: 'offer' },
+      { label: 'That sounds like a bluff.', to: 'offer' },
+      { label: 'Maybe later.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Mm. You have the look of someone who built a deck this morning and has not found out yet.',
+      'So let us find out. You and me — bring whatever you have sleeved, and I will show you what it is missing.',
+    ],
+    choices: [
+      { label: "You're on. Let's duel.", to: 'beaten', duel: true },
+      { label: 'Not yet — I want to fix my deck first.', to: 'later' },
+      { label: 'Some other time.', to: null },
+    ],
+  },
+
+  later: {
+    lines: [
+      'Sensible. Rare, but sensible.',
+      'Go and shuffle it until it stops embarrassing you. I will be here — I am not in a hurry, and neither is the field.',
+    ],
+    choices: [],
+  },
+
+  /* The player won. She is gracious in the way she is: by moving the
+     compliment somewhere it costs her less. */
+  beaten: {
+    lines: [
+      'Well. That is not how I saw that going.',
+      'You play like you mean it, {name}. Not clean, not clever — but you never stopped coming, and most of them stop.',
+      'Do not let it go to your head. I will want that one back.',
+    ],
+    choices: [
+      { label: 'Again, then?', to: 'beaten', duel: true },
+      { label: 'I will take the win.', to: null },
+    ],
+  },
+
+  /* The player lost. No gloating: she is not cruel, she is just right, and
+     the line that matters is the one that tells them what to fix. */
+  won: {
+    lines: [
+      'And that is the part nobody tells you.',
+      'You had the cards, sweetheart. You played them in the order you drew them, which is not the same as playing them.',
+      'Three monster zones and one back row. Decide what the board is going to look like *before* you swing, and come find me again.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'I need to think about that.', to: null },
+    ],
+  },
+};
+
 const CAST: WorldNpc[] = [
   {
     id: 'yugi',
@@ -380,10 +493,18 @@ const CAST: WorldNpc[] = [
     facing: -2.858,
     range: 3.2,
     start: 'greet',
-    script: greeting([
-      'Well, hello. Mai Valentine.',
-      'Do try to be interesting, sweetheart. Most of them are not.',
-    ]),
+    /*
+     * The first character bound to a deck.
+     *
+     * `mai` is a duelist in `decklists.json` already — the same premade the
+     * menu's solo duel has always been able to seat — so binding her is naming
+     * it and the two nodes the result comes back to. Everything that makes the
+     * duel a *story* duel is elsewhere: the player brings the twenty-five cards
+     * their save says they own rather than a premade, and the way out of the
+     * win screen is back to this conversation rather than to a lobby.
+     */
+    duel: { opponentId: 'mai', won: 'beaten', lost: 'won' },
+    script: MAI_SCRIPT,
   },
 ];
 
