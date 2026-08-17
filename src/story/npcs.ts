@@ -387,214 +387,6 @@ const CAST: WorldNpc[] = [
   },
 ];
 
-/* ------------------------------------------------------------------ */
-/* The sculpted cast                                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * Twelve more, modelled rather than ripped or repainted.
- *
- * These are the sculpts brought in by `npm run sculpt` — see the block in
- * `premade.ts` and the header of `scripts/import-sculpt.mjs` for what they are
- * and what it took to make them servable. Every record here is the same three
- * lines the rips get, and for the same reason: a model that looks like somebody
- * needs no dressing.
- *
- * **They stand still.** No skeleton, so no idle and no walk. They can be
- * placed, scaled, turned to look at you and talked to; they cannot breathe.
- * Nothing below papers over that, and the arrangement leans into it — they are
- * placed as a gathering rather than scattered mid-stride, which is a pose a
- * motionless figure can hold honestly.
- *
- * `facing` is `atan2(-x, -z)` for each: turned to look at the arrival point, so
- * a duelist walking up the +Z axis meets faces rather than backs. The rig turns
- * them toward you when you come close and releases them back to this.
- */
-const SCULPTED: WorldNpc[] = [
-  {
-    id: 'pegasus',
-    character: { name: 'Maximillion Pegasus', model: 'pegasus', tints: [], stature: 0.5 },
-    x: -21,
-    z: 13,
-    facing: 2.125,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Ahh — a new face. How perfectly delightful.',
-      'Maximillion Pegasus, creator of this little game we all take so very seriously. Do enjoy yourself, {name}-boy. I shall be watching.',
-    ]),
-  },
-  {
-    id: 'keith',
-    character: { name: 'Bandit Keith', model: 'keith', tints: [], stature: 0.5 },
-    x: 21,
-    z: 13,
-    facing: -2.125,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Name’s Keith. Bandit Keith. You American? Doesn’t matter.',
-      'I don’t lose, kid. When I do, it’s because somebody cheated. Remember that.',
-    ]),
-  },
-  {
-    id: 'bakura',
-    character: { name: 'Bakura Ryou', model: 'bakura', tints: [], stature: 0.5 },
-    x: -10.5,
-    z: 21,
-    facing: 2.678,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Oh — hello. Bakura Ryou. Sorry, I did not see you coming.',
-      'It is nice here, is it not? Quiet. I do rather like the quiet.',
-    ]),
-  },
-  {
-    id: 'marik',
-    character: { name: 'Yami Marik', model: 'marik', tints: [], stature: 0.5 },
-    x: 10.5,
-    z: 21,
-    facing: -2.678,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'So. Another one crawls into the light.',
-      'Enjoy the field while it is empty, {name}. It will not stay that way.',
-    ]),
-  },
-  {
-    id: 'mako',
-    character: { name: 'Mako Tsunami', model: 'mako', tints: [], stature: 0.5 },
-    x: -21.5,
-    z: 25,
-    facing: 2.431,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Ha! A visitor! Mako Tsunami — the sea is my deck and my dinner.',
-      'There is no ocean out here yet, {name}. When there is, I will be in it.',
-    ]),
-  },
-  {
-    id: 'rex',
-    character: { name: 'Rex Raptor', model: 'rex', tints: [], stature: 0.5 },
-    x: 21.5,
-    z: 25,
-    facing: -2.431,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Rex Raptor. Dinosaurs. That’s the whole pitch, and it’s enough.',
-      'You got somethin’ that beats a Two-Headed King Rex? Didn’t think so.',
-    ]),
-  },
-  {
-    id: 'weevil',
-    character: { name: 'Weevil Underwood', model: 'weevil', tints: [], stature: 0.5 },
-    x: -5.5,
-    z: 26,
-    facing: 2.933,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Heh heh heh. Weevil Underwood, Regional Champion.',
-      'Everyone underestimates insects, {name}. Everyone. Right up until the web is finished.',
-    ]),
-  },
-  {
-    id: 'odion',
-    character: { name: 'Odion Ishtar', model: 'odion', tints: [], stature: 0.5 },
-    x: -11,
-    z: 32,
-    facing: 2.81,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'I am Odion. I serve the Ishtar family, and I do not duel for sport.',
-      'You seem harmless enough. Walk on.',
-    ]),
-  },
-  {
-    id: 'ishizu',
-    character: { name: 'Ishizu Ishtar', model: 'ishizu', tints: [], stature: 0.5 },
-    x: 4.5,
-    z: 36,
-    facing: -3.017,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'I am Ishizu Ishtar, keeper of what the tombs remember.',
-      'I have seen a great deal of what is coming, {name}. Not all of it is yours to know yet.',
-    ]),
-  },
-  {
-    id: 'priest-seto',
-    character: { name: 'Priest Seto', model: 'priest-seto', tints: [], stature: 0.5 },
-    x: 11,
-    z: 32,
-    facing: -2.81,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'You look upon a priest of the Pharaoh’s court. Three thousand years is a long walk.',
-      'The face is familiar to you, I think. It usually is.',
-    ]),
-  },
-  {
-    /*
-     * Not from this story, and standing here anyway.
-     *
-     * Kept slightly out on the right rather than tucked away: a joke that is
-     * hidden is not a joke. He is the furthest of the humans from the arrival
-     * point, so nobody meets him before they have met anybody real.
-     */
-    id: 'ash',
-    character: { name: 'Ash Ketchum', model: 'ash', tints: [], stature: 0.5 },
-    x: 22,
-    z: 35,
-    facing: -2.58,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Hey! I think I might be in the wrong game.',
-      'Cards, right? I have got a deck somewhere. Probably. Good luck, {name}!',
-    ]),
-  },
-  {
-    /*
-     * The dragon, and the one entry here that is not a person.
-     *
-     * Placed at the far end of the axis every other character is arranged
-     * around, so it closes the view: walk straight on from Grandpa and you end
-     * up in front of it. Eleven metres past Ishizu, which is well clear of
-     * anybody's prompt.
-     *
-     * `range` is nearly double everyone else's because the model is about six
-     * and a half metres long — at 3.2 you would have to be standing inside its
-     * chest before it noticed you. The turn-to-look applies to it as it does to
-     * the rest, which on something this size is worth more than it is on a
-     * person.
-     */
-    id: 'blue-eyes',
-    character: { name: 'Blue-Eyes White Dragon', model: 'blue-eyes', tints: [], stature: 0.5 },
-    x: 0,
-    z: 46,
-    facing: -Math.PI,
-    range: 6,
-    start: 'greet',
-    script: {
-      greet: {
-        lines: [
-          'The dragon regards you without moving. Somewhere behind the eyes there is nothing that wants to talk.',
-          'You are, it decides, not worth standing up for.',
-        ],
-        choices: [],
-      },
-    },
-  },
-];
-
 /**
  * Everybody standing in the field.
  *
@@ -603,26 +395,22 @@ const SCULPTED: WorldNpc[] = [
  * he is unmistakably *there* without being in the way. New players walk into
  * him on purpose; anyone who would rather not can simply go around.
  *
- * The rest stand further out and turned inward, in widening arcs past him, so
- * that walking on from the first conversation finds a second. Eighteen of them
- * now, from six and a half metres out to forty-six, and the ordering is by how
- * much a new player needs them: the teacher first, then the four who move, then
- * the rest of the cast, then the dragon closing the far end.
+ * The other five stand further out and turned inward, in a rough arc past him,
+ * so that walking on from the first conversation finds a second.
+ *
+ * Six of them, where there were eighteen. The twelve that went were static
+ * sculpts with no skeleton — they could be placed, turned and talked to, but
+ * they could not breathe, and a motionless figure standing next to Yugi shifting
+ * his weight reads as unfinished rather than as still. They come back one at a
+ * time, rigged at source, through `npm run rigged`.
  *
  * They are spread far enough apart that no two prompts can be live at once —
- * the nearest pair are 6.6 metres apart against a talking range of 3.2, so two
- * ranges cannot even touch — and all of them sit well inside the world's
- * 120-metre edge.
+ * the nearest pair are seven metres apart against a talking range of 3.2 — and
+ * all of them sit well inside the world's 120-metre edge.
  *
- * **Nobody but Grandpa stands on the centre line**, and that is a rule rather
- * than an accident of arrangement. The first draft of the sculpted cast put
- * Mai, Weevil and Ishizu at x=0 with the dragon behind them, which reads well
- * in a plan view and is miserable to walk through: an NPC is a 1.1-metre
- * cylinder you slide around, so four of them stacked up the +Z axis turned the
- * one direction a new player walks into a corridor of people to squeeze past,
- * starting with Grandpa, who you cannot get around without noticing you are
- * stuck on him. They are offset a few metres now. The dragon keeps the axis
- * because it is forty-six metres out and closes the view.
+ * **Nobody but Grandpa stands on the centre line.** An NPC is a 1.1-metre
+ * cylinder you slide around, so anybody else up the +Z axis turns the one
+ * direction a new player walks into a queue to squeeze past.
  */
 export const WORLD_NPCS: WorldNpc[] = [
   {
@@ -638,7 +426,6 @@ export const WORLD_NPCS: WorldNpc[] = [
     script: GRANDPA_SCRIPT,
   },
   ...CAST,
-  ...SCULPTED,
 ];
 
 /** Fills the one token a line may carry. */
