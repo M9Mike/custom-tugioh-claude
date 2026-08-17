@@ -176,571 +176,70 @@ export interface DuelistModel {
  */
 export const DUELIST_MODELS: DuelistModel[] = [
   /* ---------------------------------------------------------------- *
-   * The duelists you can be.                                          *
+   * The whole cast, and it is six people.                             *
    *                                                                   *
-   * The only entries in this file without `npcOnly`, which is what     *
-   * makes them — and only them — the booth's roster. Sculpted, like    *
-   * the cast at the bottom of this file, and in through the same door  *
-   * (`npm run sculpt`).                                               *
+   * This file used to hold thirty-nine entries: twelve Quaternius      *
+   * bodies, fifteen townspeople converted from a 3DS rip, eight        *
+   * sculpts and four named duelists. They are gone, and what is left   *
+   * is the six characters that are actually finished.                  *
    *                                                                   *
-   * They replaced nine generic townspeople converted from the 3DS      *
-   * rip, and the replacement is the whole reason the booth no longer   *
-   * has any knobs on it. Those bodies needed dressing: each carried    *
-   * its look in one 256×256 atlas, so the booth offered hue-windowed   *
-   * repaints of "Outfit", "Hair" and "Trim" and a stature slider, and  *
-   * a player built somebody out of them. These are finished            *
-   * characters. There is nothing here to recolour that would not be    *
-   * vandalism, so the booth asks for a pick and a name and stops.      *
+   * The test each one passed is the same: it is rigged, it carries     *
+   * Idle, Walk and Run, and it has been looked at a frame at a time at *
+   * full resolution. Nothing here is a costume built out of a generic  *
+   * body, and nothing here is a static sculpt sliding across the       *
+   * ground in a fixed pose. Both of those were tried and both were     *
+   * worse than having fewer characters.                                *
    *                                                                   *
-   * **They do not move**, in exactly the way the sculpted cast does    *
-   * not, and on the player that is far more visible than it is on an   *
-   * NPC standing in a field: the duelist you drive crosses the ground  *
-   * in a fixed pose. `premadeRig` gives them a breath and a lean so    *
-   * they are not wholly inert (see `staticMotion` there), but that is  *
-   * a mitigation and not a walk cycle. Rigging these eight is the      *
-   * single biggest thing outstanding in Story Mode.                    *
-   *                                                                   *
-   * Heights are authored here for the same reason as the cast's: every *
-   * sculpt arrives normalised into the same ~1.9-unit box, so the file *
-   * says nothing about how tall anybody is.                            *
+   * Everybody else comes back one at a time, rigged at source, through *
+   * `npm run rigged`. That is the door now — see the header of         *
+   * `scripts/import-rigged.mjs` for why fitting one skeleton to many   *
+   * characters cannot work on models that are each posed individually. *
    * ---------------------------------------------------------------- */
-  {
-    id: 'amazoni',
-    label: 'Amazoni',
-    note: 'Amazon warrior',
-    file: '/models/players/amazoni.glb',
-    height: 1.78,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'savage-valkyrie',
-    label: 'Savage Valkyrie',
-    note: 'Winged, armoured',
-    file: '/models/players/savage-valkyrie.glb',
-    height: 1.8,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'valkyrie-sentinel',
-    label: 'Valkyrie Sentinel',
-    note: 'Heavy plate',
-    file: '/models/players/valkyrie-sentinel.glb',
-    height: 1.82,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'wave',
-    label: 'Wave',
-    note: 'Blue and current',
-    file: '/models/players/wave.glb',
-    height: 1.74,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'christy',
-    label: 'Christy',
-    note: 'Street duelist',
-    file: '/models/players/christy.glb',
-    height: 1.7,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'meg',
-    label: 'Meg',
-    note: 'Street duelist',
-    file: '/models/players/meg.glb',
-    height: 1.68,
-    tintSlots: [],
-    sculpt: true,
-  },
-  {
-    id: 'shea',
-    label: 'Shea',
-    note: 'Street duelist',
-    file: '/models/players/shea.glb',
-    height: 1.7,
-    tintSlots: [],
-    sculpt: true,
-  },
+
+  /* ---------------------------------------------------------------- *
+   * The duelist you can be.                                           *
+   *                                                                   *
+   * One entry, and the only one in this file without `npcOnly`, which  *
+   * is what makes her the booth's whole roster.                        *
+   *                                                                   *
+   * She is why the booth has no knobs on it. The nine townspeople she  *
+   * replaced each carried their look in one 256x256 atlas, so the      *
+   * booth offered hue-windowed repaints of "Outfit", "Hair" and "Trim" *
+   * and a stature slider, and a player assembled somebody out of them. *
+   * She is a finished character. There is nothing to recolour that     *
+   * would not be vandalism, so the booth asks for a name and stops.     *
+   * ---------------------------------------------------------------- */
   {
     id: 'sandra-afrika',
     label: 'Sandra Afrika',
-    note: 'Street duelist',
+    note: 'Red dress, street duelist',
     file: '/models/players/sandra-afrika.glb',
     height: 1.72,
+    /* Her own, measured by `scripts/blender/gait.py` at the height she is
+       rendered at. Never copied from another character: the bundles are
+       authored at whatever cadence they were authored at, and an inherited
+       number is exactly how feet start sliding. */
+    walkSpeed: 2.16,
+    runSpeed: 4.33,
     tintSlots: [],
-    sculpt: true,
   },
 
-  {
-    id: 'punk',
-    label: 'Punk',
-    note: 'Torn vest, mohawk, earrings',
-    file: '/models/duelists/m_punk.glb',
-    height: 1.85,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Vest', palette: 'cloth', materials: ['Black'] },
-      { label: 'Jeans', palette: 'cloth', materials: ['LightBlue'] },
-      { label: 'Hair', palette: 'hair', materials: ['Red', 'Red_Dark'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'suit',
-    label: 'Suit',
-    note: 'Two-piece suit and tie',
-    file: '/models/duelists/m_suit.glb',
-    height: 1.8,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Suit', palette: 'cloth', materials: ['Suit'] },
-      { label: 'Tie', palette: 'cloth', materials: ['Tie'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'hoodie',
-    label: 'Hoodie',
-    note: 'Hoodie over a tee',
-    file: '/models/duelists/m_hoodie.glb',
-    height: 1.8,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Hoodie', palette: 'cloth', materials: ['Purple'] },
-      { label: 'Shirt', palette: 'cloth', materials: ['White'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'adventurer',
-    label: 'Adventurer',
-    note: 'Field jacket and bedroll pack',
-    file: '/models/duelists/m_adventurer.glb',
-    height: 1.8,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Jacket', palette: 'cloth', materials: ['Green', 'LightGreen'] },
-      { label: 'Pack', palette: 'cloth', materials: ['Brown', 'Brown2'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'king',
-    label: 'King',
-    note: 'Crown, pauldrons and a robe',
-    file: '/models/duelists/m_king.glb',
-    height: 1.84,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Robe', palette: 'cloth', materials: ['Blue'] },
-      { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
-      { label: 'Crown', palette: 'trim', materials: ['Gold'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'astronaut',
-    label: 'Astronaut',
-    note: 'Sealed suit, tinted visor',
-    file: '/models/duelists/m_spacesuit.glb',
-    height: 1.82,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Suit', palette: 'cloth', materials: ['SciFi_Main', 'SciFi_MainDark'] },
-      { label: 'Panels', palette: 'cloth', materials: ['SciFi_Light', 'SciFi_Light_Accent'] },
-      { label: 'Visor', palette: 'trim', materials: ['Grey'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'wanderer',
-    label: 'Wanderer',
-    note: 'Hood, blade and road gear',
-    file: '/models/duelists/w_medieval.glb',
-    height: 1.8,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Hood', palette: 'cloth', materials: ['DarkBrown'] },
-      { label: 'Tunic', palette: 'cloth', materials: ['LightBrown', 'Brown'] },
-      { label: 'Armour', palette: 'trim', materials: ['Metal', 'Metal_Dark'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'witch',
-    label: 'Witch',
-    note: 'Wide hat, gold-trimmed robe',
-    file: '/models/duelists/w_witch.glb',
-    height: 1.95,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Robe', palette: 'cloth', materials: ['Purple'] },
-      { label: 'Trim', palette: 'trim', materials: ['Gold'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'rebel',
-    label: 'Rebel',
-    note: 'Crop top, torn trousers, mohawk',
-    file: '/models/duelists/w_punk.glb',
-    height: 1.84,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Outfit', palette: 'cloth', materials: ['Black'] },
-      { label: 'Boots', palette: 'cloth', materials: ['Brown'] },
-      { label: 'Hair', palette: 'hair', materials: ['Pink'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'executive',
-    label: 'Executive',
-    note: 'Sharp jacket over a blouse',
-    file: '/models/duelists/w_formal.glb',
-    height: 1.78,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Jacket', palette: 'cloth', materials: ['Red'] },
-      { label: 'Blouse', palette: 'cloth', materials: ['LimeGreen'] },
-      { label: 'Trim', palette: 'trim', materials: ['Gold'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'pilot',
-    label: 'Pilot',
-    note: 'Flight suit with hard plating',
-    file: '/models/duelists/w_scifi.glb',
-    height: 1.79,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Suit', palette: 'cloth', materials: ['Blue', 'LightBlue'] },
-      { label: 'Under-layer', palette: 'cloth', materials: ['Black'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair_Black'] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'casual',
-    label: 'Casual',
-    note: 'Tee and everyday trousers',
-    file: '/models/duelists/w_casual.glb',
-    height: 1.78,
-    walkSpeed: 1.6,
-    runSpeed: 3.6,
-    tintSlots: [
-      { label: 'Top', palette: 'cloth', materials: ['White'] },
-      { label: 'Trousers', palette: 'cloth', materials: ['Orange'] },
-      { label: 'Hair', palette: 'hair', materials: ['Hair_Blond', 'Hair_Brown'] },
-    ],
-    npcOnly: true,
-  },
-  /* ---------------------------------------------------------------- *
-   * The people a player *used* to be able to be.                      *
-   *                                                                   *
-   * Nine generic townspeople converted from the same 3DS rip as the   *
-   * named cast. They were the booth's whole roster, and everything    *
-   * the booth used to do was built on them: they carry their look in  *
-   * one 256×256 atlas, so `textureTints` offered hue-windowed         *
-   * repaints of the outfit, hair and trim, and the stature slider     *
-   * covered the rest of the distance to "somebody".                   *
-   *                                                                   *
-   * `npcOnly` on every one of them now, which takes them out of the   *
-   * booth — and **that alone already changed anybody bound to one.**  *
-   *                                                                   *
-   * Worth being exact, because the first version of this note claimed *
-   * the opposite. `normalisePremade` runs every stored character       *
-   * through `playerModelById` on load, and that searches              *
-   * `BOOTH_MODELS`, not this list, falling back to its first entry.    *
-   * So a save naming `woman1` now loads as `amazoni` whether these     *
-   * entries are here or not: keeping them buys the player nothing.     *
-   * Replacing the roster is what costs the old look, and there is no   *
-   * version of replacing it that does not.                            *
-   *                                                                   *
-   * What they are still good for is `modelById`, which does search     *
-   * this list — an NPC or a diagnostic naming one of these ids gets    *
-   * the right body. Nothing currently does. So they are dead weight    *
-   * with a shallow grave, kept only because deleting them is a         *
-   * separate change with its own `.glb` files to remove, and that      *
-   * change also takes `repaint.ts`, `accessories.ts` and the whole     *
-   * tint machinery with it.                                           *
-   * ---------------------------------------------------------------- */
-  {
-    id: 'rookie',
-    label: 'Rookie',
-    note: 'Red jacket, ready to duel',
-    file: '/models/duelists/rookie.glb',
-    height: 1.7,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
-    tintSlots: [],
-    skin: '#e69763',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#f60929', lightness: [0.43, 0.55] },
-      { label: 'Trim', palette: 'cloth', from: '#1a1a1b', lightness: [0.09, 0.16] },
-      { label: 'Detail', palette: 'trim', from: '#d1d1ec', lightness: [0.73, 0.99] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'student1',
-    label: 'Student',
-    note: 'Blazer and slacks',
-    file: '/models/duelists/student1.glb',
-    height: 1.68,
-    walkSpeed: 1.45,
-    runSpeed: 3.3,
-    tintSlots: [],
-    skin: '#fdd5a3',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#091f9f', lightness: [0.25, 0.45] },
-      { label: 'Hair', palette: 'hair', from: '#5d477d', lightness: [0.29, 0.48] },
-      { label: 'Detail', palette: 'trim', from: '#39294b', lightness: [0.19, 0.26] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'student2',
-    label: 'Student',
-    note: 'Uniform, tie',
-    file: '/models/duelists/student2.glb',
-    height: 1.7,
-    walkSpeed: 1.45,
-    runSpeed: 3.3,
-    tintSlots: [],
-    skin: '#fdae7d',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#091f9f', lightness: [0.23, 0.46] },
-      { label: 'Trim', palette: 'cloth', from: '#bc832a', lightness: [0.27, 0.82] },
-      { label: 'Detail', palette: 'trim', from: '#b9c4d8', lightness: [0.71, 0.91] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'student3',
-    label: 'Student',
-    note: 'Skirt and blazer',
-    file: '/models/duelists/student3.glb',
-    height: 1.63,
-    walkSpeed: 1.4,
-    runSpeed: 3.2,
-    tintSlots: [],
-    skin: '#ffd1b8',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#3f6abd', lightness: [0.39, 0.75] },
-      { label: 'Trim', palette: 'cloth', from: '#eb3767', lightness: [0.52, 0.61] },
-      { label: 'Detail', palette: 'trim', from: '#1a2262', lightness: [0.18, 0.36] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'student4',
-    label: 'Student',
-    note: 'Uniform, ribbon',
-    file: '/models/duelists/student4.glb',
-    height: 1.62,
-    walkSpeed: 1.4,
-    runSpeed: 3.2,
-    tintSlots: [],
-    skin: '#ffd1b8',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#732601', lightness: [0.16, 0.31] },
-      { label: 'Trim', palette: 'cloth', from: '#e02e5e', lightness: [0.48, 0.57] },
-      { label: 'Detail', palette: 'trim', from: '#f34b7c', lightness: [0.58, 0.66] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'man1',
-    label: 'Adult',
-    note: 'Casual jacket',
-    file: '/models/duelists/man1.glb',
-    height: 1.76,
-    walkSpeed: 1.55,
-    runSpeed: 3.5,
-    tintSlots: [],
-    skin: '#fbd4a2',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#41220f', lightness: [0.07, 0.25] },
-      { label: 'Trim', palette: 'cloth', from: '#6b903d', lightness: [0.28, 0.44] },
-      { label: 'Detail', palette: 'trim', from: '#874c38', lightness: [0.31, 0.75] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'man2',
-    label: 'Adult',
-    note: 'Shirt and slacks',
-    file: '/models/duelists/man2.glb',
-    height: 1.75,
-    walkSpeed: 1.55,
-    runSpeed: 3.5,
-    tintSlots: [],
-    skin: '#fca970',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#423d43', lightness: [0.18, 0.33] },
-      { label: 'Trim', palette: 'cloth', from: '#655666', lightness: [0.34, 0.41] },
-      { label: 'Detail', palette: 'trim', from: '#181718', lightness: [0.02, 0.16] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'woman1',
-    label: 'Adult',
-    note: 'Blouse and skirt',
-    file: '/models/duelists/woman1.glb',
-    height: 1.66,
-    walkSpeed: 1.45,
-    runSpeed: 3.3,
-    tintSlots: [],
-    skin: '#f5c3aa',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#f35e5e', lightness: [0.58, 0.71] },
-      { label: 'Trim', palette: 'cloth', from: '#5f4040', lightness: [0.14, 0.37] },
-      { label: 'Detail', palette: 'trim', from: '#3a62a3', lightness: [0.37, 0.48] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'woman2',
-    label: 'Adult',
-    note: 'Coat and trousers',
-    file: '/models/duelists/woman2.glb',
-    height: 1.67,
-    walkSpeed: 1.45,
-    runSpeed: 3.3,
-    tintSlots: [],
-    skin: '#f6a474',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#6555a5', lightness: [0.41, 0.53] },
-      { label: 'Hair', palette: 'hair', from: '#464e5e', lightness: [0.23, 0.45] },
-      { label: 'Detail', palette: 'trim', from: '#98aadf', lightness: [0.6, 0.82] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'boy1',
-    label: 'Child',
-    note: 'Young, out playing',
-    file: '/models/duelists/boy1.glb',
-    height: 1.3,
-    walkSpeed: 1.1,
-    runSpeed: 2.6,
-    tintSlots: [],
-    skin: '#f5ba8a',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#e36a09', lightness: [0.38, 0.55] },
-      { label: 'Trim', palette: 'cloth', from: '#0a203f', lightness: [0.1, 0.23] },
-      { label: 'Detail', palette: 'trim', from: '#3a2313', lightness: [0.11, 0.21] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'boy2',
-    label: 'Child',
-    note: 'Young, satchel',
-    file: '/models/duelists/boy2.glb',
-    height: 1.32,
-    walkSpeed: 1.1,
-    runSpeed: 2.6,
-    tintSlots: [],
-    skin: '#e5976f',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#b50832', lightness: [0.24, 0.58] },
-      { label: 'Hair', palette: 'hair', from: '#464638', lightness: [0.18, 0.47] },
-      { label: 'Detail', palette: 'trim', from: '#40467a', lightness: [0.26, 0.48] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'girl1',
-    label: 'Child',
-    note: 'Young, out playing',
-    file: '/models/duelists/girl1.glb',
-    height: 1.28,
-    walkSpeed: 1.1,
-    runSpeed: 2.6,
-    tintSlots: [],
-    skin: '#f2d0b7',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#ea3737', lightness: [0.5, 0.61] },
-      { label: 'Trim', palette: 'cloth', from: '#fc6666', lightness: [0.63, 0.87] },
-      { label: 'Detail', palette: 'trim', from: '#613e33', lightness: [0.13, 0.49] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'girl2',
-    label: 'Child',
-    note: 'Young, satchel',
-    file: '/models/duelists/girl2.glb',
-    height: 1.3,
-    walkSpeed: 1.1,
-    runSpeed: 2.6,
-    tintSlots: [],
-    skin: '#ffcebc',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#621ccb', lightness: [0.35, 0.53] },
-      { label: 'Trim', palette: 'cloth', from: '#0d0d19', lightness: [0.04, 0.44] },
-      { label: 'Detail', palette: 'trim', from: '#8f3af6', lightness: [0.55, 0.76] },
-    ],
-    npcOnly: true,
-  },
-  {
-    id: 'guide',
-    label: 'Guide',
-    note: 'Uniform and cap',
-    file: '/models/duelists/guide.glb',
-    height: 1.72,
-    walkSpeed: 1.5,
-    runSpeed: 3.4,
-    tintSlots: [],
-    skin: '#f0a07f',
-    textureTints: [
-      { label: 'Outfit', palette: 'cloth', from: '#badcf1', lightness: [0.53, 0.89] },
-      { label: 'Trim', palette: 'cloth', from: '#b30f09', lightness: [0.3, 0.65] },
-      { label: 'Detail', palette: 'trim', from: '#9caee2', lightness: [0.71, 0.8] },
-    ],
-    npcOnly: true,
-  },
   /* ---------------------------------------------------------------- *
    * The cast.                                                         *
    *                                                                   *
-   * Not options — people. These are converted from the character rips *
-   * of Yu-Gi-Oh! Duel Monsters: Saikyo Card Battle (3DS) by           *
-   * `npm run import-rip`, which turns the SMD set into one `.glb`     *
-   * carrying Idle, Walk and Run. They are textured rather than        *
-   * flat-shaded, so they have no tint slots and nothing about them is *
-   * for the player to change.                                         *
+   * Not options - people. Four of them are converted from the          *
+   * character rips of Yu-Gi-Oh! Duel Monsters: Saikyo Card Battle      *
+   * (3DS) by `npm run import-rip`, and carry that game's own Idle,     *
+   * Walk and Run. Only Yami was playable there, so only Yami has a     *
+   * gait of his own; the other three borrow his, rotation only, which  *
+   * keeps each of them their own build.                                *
    *                                                                   *
-   * Only Yami was playable in the source game, so only Yami has a     *
-   * walk and a run of his own; the other three borrow his, rotation   *
-   * only, which keeps each of them their own build. Heights are the   *
-   * characters' own — Yugi is famously the shortest person in the     *
-   * room and Kaiba the tallest, and at a shared height they lose most *
-   * of what makes them recognisable at a distance.                    *
+   * Mai is the first character rigged at source, and the template for  *
+   * every one that follows.                                            *
+   *                                                                   *
+   * Heights are the characters' own. Yugi is famously the shortest     *
+   * person in the room and Kaiba the tallest, and at a shared height   *
+   * they lose most of what makes them recognisable at a distance.      *
    * ---------------------------------------------------------------- */
   {
     id: 'yugi',
@@ -786,204 +285,41 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
-  /* ---------------------------------------------------------------- *
-   * The sculpted cast.                                                *
-   *                                                                   *
-   * Modelled rather than ripped or assembled, and brought in by       *
-   * `npm run sculpt` (`scripts/import-sculpt.mjs`), which is where    *
-   * the whole story of how they got this small is written down.       *
-   *                                                                   *
-   * **These do not move.** Each is one static mesh — no skeleton, no  *
-   * skin, no clips — so they stand exactly as modelled. That is the   *
-   * trade they were accepted on: the rips animate and look like       *
-   * nobody in particular at close range, these look like the          *
-   * characters and do not breathe. Rigging is the next piece of work  *
-   * on them, and until it happens `sculpt: true` says so on every     *
-   * entry.                                                            *
-   *                                                                   *
-   * No tint slots and no `skin`, for the same reason the rips have    *
-   * none: they already look like who they are, and there is nothing   *
-   * here for a player to recolour.                                    *
-   *                                                                   *
-   * Heights are the characters' own rather than the file's. Every     *
-   * sculpt arrives normalised into the same ~1.9-unit box, so the     *
-   * file says nothing whatsoever about how tall anybody is — without  *
-   * a number here Weevil would stand eye to eye with Odion. At        *
-   * stature 0.5 the rig scales to exactly these figures.              *
-   * ---------------------------------------------------------------- */
   {
     /*
-     * Replaces the built Mai — `woman2` with a mane cut into it by
-     * `scripts/blender/mai.py`, dressed by a runtime repaint. That one was a
-     * body wearing her colours; this one is her. The repaint rules and the
-     * ribcage `build` that went with it are gone from `npcs.ts` with it: they
-     * were instructions for a texture and a skeleton that are no longer there.
+     * Grandpa Muto, and the reason the booth's costume machinery is gone.
+     *
+     * He used to be an ordinary adult off the generic roster, repainted grey,
+     * with a bandana and a beard generated in `accessories.ts` and a
+     * barrel-chested `build` to make a slim young man read as a stout old one.
+     * All of that came off when he arrived modelled: it was a set of
+     * instructions for a texture and a skeleton he no longer has.
+     *
+     * 1.60 m, the shortest of the seven, because he should not tower over the
+     * person he is welcoming. His clips were measured at his modelled 1.70 and
+     * scaled down to it.
      */
+    id: 'solomon',
+    label: 'Solomon Muto',
+    note: 'Kame Game Shop, orange bandana',
+    file: '/models/cast/solomon.glb',
+    height: 1.6,
+    walkSpeed: 1.55,
+    runSpeed: 3.63,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
     id: 'mai',
     label: 'Mai Valentine',
     note: 'Purple jacket, blonde',
     file: '/models/cast/mai.glb',
     height: 1.72,
-    /* Measured off her own clips by `scripts/blender/gait.py`, not inherited
-       from a donor: 1.86 and 4.11 m/s at her modelled 1.70 m, scaled to the
-       1.72 she is rendered at. Every rigged character gets its own pair — the
-       bundles are authored at whatever cadence they were authored at, and a
-       number copied from another character is exactly how feet start sliding. */
+    /* Measured off her own clips, scaled to the height she is rendered at. */
     walkSpeed: 1.88,
     runSpeed: 4.16,
     tintSlots: [],
     npcOnly: true,
-  },
-  {
-    /*
-     * Replaces Grandpa-as-`man1`: an ordinary adult repainted grey, with a
-     * bandana and a beard generated in `accessories.ts` because no repaint can
-     * add a shape. He is modelled now, so the accessories and the barrel-chest
-     * `build` come off with the costume.
-     *
-     * Short, and deliberately the shortest adult here: he is the first person
-     * a new duelist meets and should not be looming over them.
-     */
-    id: 'solomon',
-    label: 'Solomon Muto',
-    note: 'The Kame Game Shop',
-    file: '/models/cast/solomon.glb',
-    height: 1.55,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'pegasus',
-    label: 'Maximillion Pegasus',
-    note: 'Red suit, silver hair',
-    file: '/models/cast/pegasus.glb',
-    height: 1.88,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'keith',
-    label: 'Bandit Keith',
-    note: 'Stars and stripes bandana',
-    file: '/models/cast/keith.glb',
-    height: 1.9,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'bakura',
-    label: 'Bakura Ryou',
-    note: 'Domino High, white hair',
-    file: '/models/cast/bakura.glb',
-    height: 1.76,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'mako',
-    label: 'Mako Tsunami',
-    note: 'The fisherman',
-    file: '/models/cast/mako.glb',
-    height: 1.8,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    /* The two shortest in the cast, and it is most of how the pair read
-       standing next to anybody else. */
-    id: 'weevil',
-    label: 'Weevil Underwood',
-    note: 'Insect duelist',
-    file: '/models/cast/weevil.glb',
-    height: 1.5,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'rex',
-    label: 'Rex Raptor',
-    note: 'Dinosaur duelist',
-    file: '/models/cast/rex.glb',
-    height: 1.64,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'marik',
-    label: 'Yami Marik',
-    note: 'The Rare Hunter',
-    file: '/models/cast/marik.glb',
-    height: 1.8,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    /* The largest human here by a clear margin, which is the point of him. */
-    id: 'odion',
-    label: 'Odion Ishtar',
-    note: 'Marik’s guardian',
-    file: '/models/cast/odion.glb',
-    height: 1.98,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'ishizu',
-    label: 'Ishizu Ishtar',
-    note: 'Keeper of the tombs',
-    file: '/models/cast/ishizu.glb',
-    height: 1.75,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    id: 'priest-seto',
-    label: 'Priest Seto',
-    note: 'Ancient Egypt',
-    file: '/models/cast/priest-seto.glb',
-    height: 1.86,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    /* Not from this story at all, and in on purpose. */
-    id: 'ash',
-    label: 'Ash Ketchum',
-    note: 'Visiting from another franchise',
-    file: '/models/cast/ash.glb',
-    height: 1.5,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
-  },
-  {
-    /*
-     * Not a person, and the one entry where `height` is not a stature.
-     *
-     * The sculpt is longest along Z — a body and a wingspan — and only 1.65 of
-     * its 1.9-unit box tall, so the number below scales the *shoulder*, and
-     * the length follows it to about six and a half metres. Three times the
-     * tallest man in the field is roughly the proportion the card art keeps.
-     */
-    id: 'blue-eyes',
-    label: 'Blue-Eyes White Dragon',
-    note: 'Kaiba’s dragon',
-    file: '/models/cast/blue-eyes.glb',
-    height: 5.5,
-    tintSlots: [],
-    npcOnly: true,
-    sculpt: true,
   },
 ];
 
