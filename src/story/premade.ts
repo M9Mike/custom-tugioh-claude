@@ -197,18 +197,37 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * ---------------------------------------------------------------- */
 
   /* ---------------------------------------------------------------- *
-   * The duelist you can be.                                           *
+   * The duelists you can be.                                          *
    *                                                                   *
-   * One entry, and the only one in this file without `npcOnly`, which  *
-   * is what makes her the booth's whole roster.                        *
+   * The entries without `npcOnly`, which is what makes them — and only *
+   * them — the booth's roster. Two, added one at a time, each checked  *
+   * a frame at a time before it landed.                                *
    *                                                                   *
-   * She is why the booth has no knobs on it. The nine townspeople she  *
+   * They are why the booth has no knobs on it. The nine townspeople she  *
    * replaced each carried their look in one 256x256 atlas, so the      *
    * booth offered hue-windowed repaints of "Outfit", "Hair" and "Trim" *
    * and a stature slider, and a player assembled somebody out of them. *
-   * She is a finished character. There is nothing to recolour that     *
+   * These are finished characters. There is nothing to recolour that   *
    * would not be vandalism, so the booth asks for a name and stops.     *
    * ---------------------------------------------------------------- */
+  {
+    /*
+     * A second duelist, and the reason the booth is a list rather than a label.
+     *
+     * 1.90 m, the tallest of the roster, because he is drawn as a slab of a man
+     * and a big character at everybody else's height stops being one. His clips
+     * were measured at his modelled 1.70 and scaled to it, which is why his walk
+     * is the fastest here — a long stride at a long leg.
+     */
+    id: 'robert',
+    label: 'Robert Barathion',
+    note: 'Black leather, longsword',
+    file: '/models/players/robert.glb',
+    height: 1.9,
+    walkSpeed: 2.34,
+    runSpeed: 5.4,
+    tintSlots: [],
+  },
   {
     id: 'sandra-afrika',
     label: 'Sandra Afrika',
