@@ -28,25 +28,20 @@
  * materials it owns (`src/story/premade.ts`). Skin and faces are materials no
  * slot may name, so a tint cannot touch them by construction.
  *
- * ## Two kinds of file come through here
+ * ## Everything that walks came in the same door
  *
- * The rigged ones — the vendored roster and the 3DS rips — are the case
- * everything above describes. The **sculpted cast** is not: single static
- * meshes with no skeleton, no skin and no clips (see
- * `scripts/import-sculpt.mjs`). They are supported rather than special-cased,
- * and it is worth being clear about what that costs and what it buys.
+ * There is no second code path. The vendored roster, the 3DS rips and the
+ * sculpted cast are all skinned meshes carrying Idle, Walk and Run, because
+ * `scripts/blender/autorig.py` puts one of the game's own skeletons inside a
+ * sculpt and brings its clips along. Twenty-one of the twenty-two went through
+ * it; the rest of this file cannot tell them apart and does not try.
  *
- * It buys one seam. `OpenWorld` builds an NPC the same way whichever kind it
- * is, so placement, the turn-to-look, the talk range and the conversation
- * camera are all written once. Three things bend to allow it: the floor is
- * measured from the bounding box rather than from the idle pose, frustum
- * culling stays on, and the three clip actions come back null.
- *
- * What it costs is that a sculpt **does not move**. It does not breathe, it
- * does not walk, and if one were ever driven by the stick it would slide
- * across the field in a fixed pose. That is a property of the files, not of
- * this code — nothing here can invent a skeleton — and it is the reason the
- * sculpts are NPCs who stand and talk rather than duelists who walk.
+ * The one that did not is the Blue-Eyes White Dragon, which is a quadruped
+ * with a six-metre wingspan and no biped rig will fit it. So the unrigged path
+ * below is still here, and still honest about what it is: the floor comes from
+ * the bounding box rather than an idle pose, frustum culling stays on, the
+ * three clip actions come back null, and `staticMotion` gives it a breath so
+ * that a thing standing at the end of the field is not perfectly inert.
  */
 
 import * as THREE from 'three';
@@ -467,19 +462,18 @@ export async function buildPremadeRig(
 
   /* ---- what a model with no skeleton does instead ----
    *
-   * **This is a mitigation, not an animation system, and it is worth being
-   * blunt about which.** A sculpt has no bones, so no limb on it can be made
-   * to move by any amount of code here. What it does have is a root, and the
-   * two things that read as *dead* rather than merely still are a body that
-   * holds one height exactly while crossing forty metres of ground, and one
-   * that holds plumb vertical while doing it. Both are fixable at the root.
+   * **Down to one user, and it is not a person.** This was written when the
+   * whole sculpted cast was static and it was a stopgap for all of them; they
+   * have skeletons now. What is left is the dragon, which cannot have one —
+   * and for a six-metre animal that stands at the end of the field and is
+   * looked at rather than followed, a breath is the whole requirement.
    *
-   * So: a breath while standing, and while moving a rise and fall at step
-   * frequency with a small lean into the direction of travel and a roll off
-   * the planted foot. It reads as somebody walking seen from across a field,
-   * and it does not survive close inspection, because the legs do not move.
-   * It buys time until these are rigged; it is not a substitute for rigging
-   * them.
+   * A sculpt has no bones, so no limb on it can be made to move by any amount
+   * of code here. What it does have is a root, and the two things that read as
+   * *dead* rather than merely still are a body that holds one height exactly
+   * while crossing ground, and one that holds plumb vertical while doing it.
+   * Both are fixable at the root: a breath while standing, and while moving a
+   * rise and fall at step frequency with a lean into the direction of travel.
    *
    * Amplitudes are in model heights rather than metres, so a 1.5 m Weevil and
    * a 5.5 m dragon breathe by the same proportion of themselves rather than

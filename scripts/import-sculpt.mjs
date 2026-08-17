@@ -61,6 +61,7 @@ import {
   dedup,
   prune,
   quantize,
+  resample,
   simplify,
   textureCompress,
   weld,
@@ -74,6 +75,22 @@ const flag = (name, fallback) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
 };
 const has = (name) => argv.includes(`--${name}`);
+/**
+ * Finish a file that has already been through here and then been rigged.
+ *
+ * `scripts/blender/autorig.py` writes a GLB straight out of Blender, which
+ * re-encodes the texture as PNG and drops the quantization — a 1.1 MB sculpt
+ * comes back 2.3 MB with a skeleton in it. This re-runs only the parts that are
+ * still true of a rigged file: the maps the renderer never reads, the texture
+ * format, and the integer positions.
+ *
+ * Simplification and welding are skipped, and that is the point of the flag
+ * rather than an optimisation. The mesh was already reduced on its first pass,
+ * and re-welding one that now carries skin weights merges vertices that agree
+ * on position and disagree on which bones move them — which is a seam that only
+ * shows once the character is animating.
+ */
+const FINISH = has('finish');
 
 const IN = flag('in', '');
 const ID = flag('id', '');
@@ -87,6 +104,17 @@ const OUT_DIR = flag('outDir', 'public/models/cast');
 const TRIS = Number(flag('tris', 30000));
 /** One side of the base-colour texture, in pixels. */
 const TEX = Number(flag('tex', 1024));
+/**
+ * How far a vertex may move, as a fraction of the model's own size.
+ *
+ * The ratio asks for a triangle budget and this decides whether it may have it:
+ * the simplifier stops at whichever binds first. At the default the three
+ * armoured player models never got near the budget — Valkyrie Sentinel came out
+ * at 86k against a 30k ask, and 4 MB — because their plate and feathers are
+ * exactly the fine, high-curvature detail this protects. Loosened per model
+ * where the silhouette can afford it.
+ */
+const ERROR = Number(flag('error', 0.0005));
 
 if (!IN || (!ID && !has('all'))) {
   console.error('import-sculpt: --in <file.glb|dir> --id <model id>   (or --in <dir> --all)');
@@ -175,6 +203,30 @@ async function convert(file, id) {
   const startTex = doc.getRoot().listTextures().length;
 
   const dropped = matte(doc);
+  if (FINISH) {
+    await doc.transform(
+      /* The rig writes a key on every bone on every frame, including the
+         scale channel that never leaves 1 and the translation that only the
+         hips actually use. Resampling drops any key its neighbours already
+         imply, which is most of them, and changes nothing about the motion. */
+      resample(),
+      prune(),
+      textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [TEX, TEX], quality: 82 }),
+      dedup()
+    );
+    const box = bounds(doc);
+    const tris = triangleCount(doc);
+    await fs.mkdir(OUT_DIR, { recursive: true });
+    const out = path.join(OUT_DIR, `${id}.glb`);
+    await doc.transform(quantize({ pattern: /^(POSITION|NORMAL|TEXCOORD_0)$/ }));
+    await io.write(out, doc);
+    const after = (await fs.stat(out)).size;
+    console.log(
+      `${id.padEnd(16)} ${(before / 1e6).toFixed(1).padStart(6)} MB → ${(after / 1e6).toFixed(2).padStart(5)} MB` +
+        `   ${String(tris).padStart(6)} tris (rigged, unchanged)   ${startTex}→${doc.getRoot().listTextures().length} tex${dropped ? ` (-${dropped} maps)` : ''}`
+    );
+    return { id, out, box };
+  }
   await doc.transform(
     dedup(),
     /* Simplify needs shared vertices to collapse; a sculpt exported per-corner
@@ -188,7 +240,7 @@ async function convert(file, id) {
          millimetre on a person — under the budget the ratio asks for, the
          error is what actually stops the collapse, and a loose one eats
          fingers and noses first. */
-      error: 0.0005,
+      error: ERROR,
       lockBorder: false,
     }),
     prune(),

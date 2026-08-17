@@ -139,16 +139,13 @@ export interface DuelistModel {
   /**
    * A single static mesh with no skeleton, no skin and no clips.
    *
-   * The rigged models are the assumption everywhere else in Story Mode; this
-   * flag is how a reader finds out that assumption does not hold here without
-   * having to open the `.glb`. A sculpt stands exactly as it was modelled — it
-   * can be placed, scaled, turned to face the player and talked to, and it
-   * cannot walk, run or breathe.
+   * One entry carries this now — the dragon — and it is the reason the flag
+   * still exists rather than a category. Every other sculpt has been rigged by
+   * `npm run rig`; a quadruped with a wingspan has no biped to fit.
    *
    * It is a fact about the file rather than a switch: `premadeRig` decides
    * what to do by looking for an `Idle` clip, so nothing breaks if this is
-   * wrong. It is here so that `walkSpeed` being missing reads as deliberate,
-   * and so the day somebody rigs these there is one word per entry to delete.
+   * wrong. It is here so that a missing `walkSpeed` reads as deliberate.
    */
   sculpt?: boolean;
   /**
@@ -192,13 +189,13 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * characters. There is nothing here to recolour that would not be    *
    * vandalism, so the booth asks for a pick and a name and stops.      *
    *                                                                   *
-   * **They do not move**, in exactly the way the sculpted cast does    *
-   * not, and on the player that is far more visible than it is on an   *
-   * NPC standing in a field: the duelist you drive crosses the ground  *
-   * in a fixed pose. `premadeRig` gives them a breath and a lean so    *
-   * they are not wholly inert (see `staticMotion` there), but that is  *
-   * a mitigation and not a walk cycle. Rigging these eight is the      *
-   * single biggest thing outstanding in Story Mode.                    *
+   * **They walk**, which on the player matters more than on anybody    *
+   * else in the game: this is the body you drive across the field, and *
+   * for a while it crossed it in a fixed pose. `npm run rig` fitted one *
+   * of the vendored bipeds into each of them, so they carry the same   *
+   * Idle, Walk and Run as everything else. Gait speeds below are the   *
+   * donor's scaled by height — 0.88 and 1.99 metres a second per metre *
+   * of duelist — which is the ground those clips actually cover.       *
    *                                                                   *
    * Heights are authored here for the same reason as the cast's: every *
    * sculpt arrives normalised into the same ~1.9-unit box, so the file *
@@ -210,8 +207,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Amazon warrior',
     file: '/models/players/amazoni.glb',
     height: 1.78,
+    walkSpeed: 1.57,
+    runSpeed: 3.54,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'savage-valkyrie',
@@ -219,8 +217,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Winged, armoured',
     file: '/models/players/savage-valkyrie.glb',
     height: 1.8,
+    walkSpeed: 1.58,
+    runSpeed: 3.58,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'valkyrie-sentinel',
@@ -228,8 +227,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Heavy plate',
     file: '/models/players/valkyrie-sentinel.glb',
     height: 1.82,
+    walkSpeed: 1.6,
+    runSpeed: 3.62,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'wave',
@@ -237,8 +237,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Blue and current',
     file: '/models/players/wave.glb',
     height: 1.74,
+    walkSpeed: 1.53,
+    runSpeed: 3.46,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'christy',
@@ -246,8 +247,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Street duelist',
     file: '/models/players/christy.glb',
     height: 1.7,
+    walkSpeed: 1.5,
+    runSpeed: 3.38,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'meg',
@@ -255,8 +257,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Street duelist',
     file: '/models/players/meg.glb',
     height: 1.68,
+    walkSpeed: 1.48,
+    runSpeed: 3.34,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'shea',
@@ -264,8 +267,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Street duelist',
     file: '/models/players/shea.glb',
     height: 1.7,
+    walkSpeed: 1.5,
+    runSpeed: 3.38,
     tintSlots: [],
-    sculpt: true,
   },
   {
     id: 'sandra-afrika',
@@ -273,8 +277,9 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Street duelist',
     file: '/models/players/sandra-afrika.glb',
     height: 1.72,
+    walkSpeed: 1.51,
+    runSpeed: 3.42,
     tintSlots: [],
-    sculpt: true,
   },
 
   {
@@ -793,13 +798,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * `npm run sculpt` (`scripts/import-sculpt.mjs`), which is where    *
    * the whole story of how they got this small is written down.       *
    *                                                                   *
-   * **These do not move.** Each is one static mesh — no skeleton, no  *
-   * skin, no clips — so they stand exactly as modelled. That is the   *
-   * trade they were accepted on: the rips animate and look like       *
-   * nobody in particular at close range, these look like the          *
-   * characters and do not breathe. Rigging is the next piece of work  *
-   * on them, and until it happens `sculpt: true` says so on every     *
-   * entry.                                                            *
+   * **These move.** Each arrived as one static mesh with no skeleton  *
+   * and no clips, and `npm run rig` fitted one of the vendored bipeds *
+   * into it, so they carry the same Idle, Walk and Run as the rips.   *
+   * The dragon is the exception and keeps `sculpt: true`: every step  *
+   * of that pipeline assumes a biped, and it is not one.              *
    *                                                                   *
    * No tint slots and no `skin`, for the same reason the rips have    *
    * none: they already look like who they are, and there is nothing   *
@@ -824,9 +827,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Purple jacket, blonde',
     file: '/models/cast/mai.glb',
     height: 1.72,
+    walkSpeed: 1.51,
+    runSpeed: 3.42,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /*
@@ -843,9 +847,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'The Kame Game Shop',
     file: '/models/cast/solomon.glb',
     height: 1.55,
+    walkSpeed: 1.36,
+    runSpeed: 3.08,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'pegasus',
@@ -853,9 +858,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Red suit, silver hair',
     file: '/models/cast/pegasus.glb',
     height: 1.88,
+    walkSpeed: 1.65,
+    runSpeed: 3.74,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'keith',
@@ -863,9 +869,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Stars and stripes bandana',
     file: '/models/cast/keith.glb',
     height: 1.9,
+    walkSpeed: 1.67,
+    runSpeed: 3.78,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'bakura',
@@ -873,9 +880,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Domino High, white hair',
     file: '/models/cast/bakura.glb',
     height: 1.76,
+    walkSpeed: 1.55,
+    runSpeed: 3.5,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'mako',
@@ -883,9 +891,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'The fisherman',
     file: '/models/cast/mako.glb',
     height: 1.8,
+    walkSpeed: 1.58,
+    runSpeed: 3.58,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /* The two shortest in the cast, and it is most of how the pair read
@@ -895,9 +904,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Insect duelist',
     file: '/models/cast/weevil.glb',
     height: 1.5,
+    walkSpeed: 1.32,
+    runSpeed: 2.98,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'rex',
@@ -905,9 +915,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Dinosaur duelist',
     file: '/models/cast/rex.glb',
     height: 1.64,
+    walkSpeed: 1.44,
+    runSpeed: 3.26,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'marik',
@@ -915,9 +926,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'The Rare Hunter',
     file: '/models/cast/marik.glb',
     height: 1.8,
+    walkSpeed: 1.58,
+    runSpeed: 3.58,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /* The largest human here by a clear margin, which is the point of him. */
@@ -926,9 +938,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Marik’s guardian',
     file: '/models/cast/odion.glb',
     height: 1.98,
+    walkSpeed: 1.74,
+    runSpeed: 3.94,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'ishizu',
@@ -936,9 +949,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Keeper of the tombs',
     file: '/models/cast/ishizu.glb',
     height: 1.75,
+    walkSpeed: 1.54,
+    runSpeed: 3.48,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     id: 'priest-seto',
@@ -946,9 +960,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Ancient Egypt',
     file: '/models/cast/priest-seto.glb',
     height: 1.86,
+    walkSpeed: 1.64,
+    runSpeed: 3.7,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /* Not from this story at all, and in on purpose. */
@@ -957,9 +972,10 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Visiting from another franchise',
     file: '/models/cast/ash.glb',
     height: 1.5,
+    walkSpeed: 1.32,
+    runSpeed: 2.98,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /*
