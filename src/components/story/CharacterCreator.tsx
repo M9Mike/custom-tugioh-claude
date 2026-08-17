@@ -9,17 +9,21 @@
  * **There is no customisation here, and its absence is the design.** The booth
  * used to offer tint swatches for three garments and a stature slider, because
  * its roster was nine generic townspeople who each needed dressing before they
- * were anybody. The roster is now eight sculpted characters
- * (`public/models/players/`, catalog in `src/story/premade.ts`), authored as
- * they are meant to look. The way to get more variety is another model, not
- * another knob.
+ * were anybody. The roster is authored characters now (catalog in
+ * `src/story/premade.ts`), and the way to get more variety is another model,
+ * not another knob.
  *
  * It was tried the other way round first, and the textures settled it: these
- * sculpts carry their look in one 1024px atlas where skin, leather and hair
- * all land in a single warm hue a few degrees wide. Recolouring works by hue
- * family, so on 77–88% of each texture there is no rule that repaints the
- * clothing and leaves the arms alone. The old roster tinted cleanly because it
- * was drawn in flat blocks of distinct hue; these are not.
+ * models carry their look in one 4096px atlas where skin, leather and hair all
+ * land in a single warm hue a few degrees wide. Recolouring works by hue family,
+ * so there is no rule that repaints the clothing and leaves the arms alone. The
+ * old roster tinted cleanly because it was drawn in flat blocks of distinct hue;
+ * these are not.
+ *
+ * What the booth does offer is a proper look at what you are picking. These are
+ * complete models, so the camera orbits a full 72° above and below the horizon,
+ * slides up and down the body, and zooms — because a view that could only spin
+ * a figure on a turntable was hiding most of what was made.
  *
  * Nothing here is previewed as an icon or a paper doll: the model on screen is
  * the model that walks into the world, built by the same loader from the same
@@ -55,6 +59,27 @@ import { sfx } from '@/lib/sfx';
  */
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 1.6;
+
+/**
+ * How far the orbit may tilt, and how far the view may slide up or down.
+ *
+ * The tilt used to run from -0.35 to 0.5 radians — twenty degrees below the
+ * horizon to twenty-nine above — which is a turntable, not a 360° view. These
+ * are whole characters modelled from every side, and a booth that cannot look
+ * down at a pair of shoes or up from below is hiding most of what was made.
+ *
+ * 1.25 rad is 72°, stopping short of the poles on purpose: at exactly 90° the
+ * camera's up vector and its view direction are parallel, `lookAt` has no way
+ * to choose a roll, and the picture flips. 72° is past the point where you are
+ * plainly looking down on somebody and still numerically calm.
+ *
+ * `LIFT_MAX` is in metres, and one and a quarter is a little more than a body:
+ * enough to put the camera level with the ground or above the top of the head,
+ * and not so much that the model can be lost off frame with no way back.
+ */
+const PITCH_MAX = 1.25;
+const LIFT_MAX = 1.25;
+const clampLift = (v: number) => Math.min(LIFT_MAX, Math.max(-LIFT_MAX, v));
 
 /** Where the camera sits for each framing, as (height, distance, pitch). */
 const SHOTS = {
@@ -271,7 +296,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         });
     };
 
-    /* ---- pointer control: drag to turn, pinch to zoom ---- */
+    /* ---- pointer control: drag orbits, pinch zooms, two fingers pan ---- */
     let yaw = 0.35;
     /* `pitchGoal` is what the drag writes; `pitch` chases it. The gap is five
        frames at 60Hz, which is under the threshold of feeling like lag, and it
@@ -281,9 +306,28 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     let pitch = 0;
     let zoom = 1;
     let idleUntil = 0;
+    /**
+     * How far up or down the camera has been slid, in metres of model height.
+     *
+     * The two framings put the camera at a fixed height and the drag orbited
+     * around it, which is the one axis of a 360° model the booth did not offer:
+     * you could turn a duelist all the way round and tilt a little, and still
+     * not get the camera level with a belt buckle or look down at a pair of
+     * shoes. `lift` raises and lowers both the eye and the point it is aimed at
+     * by the same amount, so the model slides through frame without the view
+     * skewing — which is what "move them up and down" means on a turntable.
+     *
+     * Eased like `pitch`, and reset by the framing buttons for the same reason
+     * `zoom` is: a preset that arrived at some inherited height is not a preset.
+     */
+    let liftGoal = 0;
+    let lift = 0;
     const pointers = new Map<number, { x: number; y: number }>();
     let pinchStart = 0;
     let zoomStart = 1;
+    /* Midpoint of a two-finger gesture, which pans while the spread zooms. */
+    let panStartY = 0;
+    let liftStart = 0;
     let lastShot = shotRef.current;
 
     const canvas = renderer.domElement;
@@ -294,6 +338,8 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         const [a, b] = [...pointers.values()];
         pinchStart = Math.hypot(a.x - b.x, a.y - b.y);
         zoomStart = zoom;
+        panStartY = (a.y + b.y) / 2;
+        liftStart = liftGoal;
       }
     };
     const onMove = (e: PointerEvent) => {
@@ -301,14 +347,28 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
       if (!prev) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       idleUntil = performance.now() + 3000;
+      /*
+       * Two fingers do both at once: the spread zooms, the midpoint pans. They
+       * are measured from where the gesture started rather than frame to frame,
+       * so a pinch that drifts up the screen does not silently accumulate lift.
+       */
       if (pointers.size >= 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         if (pinchStart > 0) zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomStart * (pinchStart / d)));
+        liftGoal = clampLift(liftStart + ((a.y + b.y) / 2 - panStartY) * 0.004);
+        return;
+      }
+      /*
+       * One finger orbits, unless Shift is held, which pans — the desktop
+       * equivalent of the two-finger slide, since a mouse has no midpoint.
+       */
+      if (e.shiftKey) {
+        liftGoal = clampLift(liftGoal + (e.clientY - prev.y) * 0.004);
         return;
       }
       yaw -= (e.clientX - prev.x) * 0.009;
-      pitchGoal = Math.min(0.5, Math.max(-0.35, pitchGoal + (e.clientY - prev.y) * 0.004));
+      pitchGoal = Math.min(PITCH_MAX, Math.max(-PITCH_MAX, pitchGoal + (e.clientY - prev.y) * 0.005));
     };
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
@@ -317,6 +377,11 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       idleUntil = performance.now() + 3000;
+      /* Shift-wheel pans, matching shift-drag, so a trackpad can do both. */
+      if (e.shiftKey) {
+        liftGoal = clampLift(liftGoal + e.deltaY * 0.0016);
+        return;
+      }
       zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * (1 + e.deltaY * 0.0012)));
     };
     canvas.addEventListener('pointerdown', onDown);
@@ -380,20 +445,25 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         lastShot = shotRef.current;
         zoom = 1;
         pitchGoal = 0;
+        liftGoal = 0;
       }
       const target = SHOTS[shotRef.current];
       const goalY = shotRef.current === 'face' ? faceY : target.y;
       camY += (goalY - camY) * 0.12;
       camDist += (target.dist * zoom - camDist) * 0.12;
       pitch += (pitchGoal - pitch) * 0.12;
+      lift += (liftGoal - lift) * 0.12;
 
+      /* `lift` moves the eye and the aim together, so sliding up looks along a
+         higher line rather than tilting down at the same one. */
+      const aimY = camY + lift;
       pivot.rotation.y = yaw;
       camera.position.set(
         0,
-        camY + Math.sin(pitch + target.pitch) * camDist,
+        aimY + Math.sin(pitch + target.pitch) * camDist,
         Math.cos(pitch + target.pitch) * camDist
       );
-      camera.lookAt(0, camY, 0);
+      camera.lookAt(0, aimY, 0);
 
       rig?.update(dt, 0, 0);
       renderer.render(scene, camera);
@@ -498,7 +568,7 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
           <div>
             <h1 className="font-display text-lg leading-none text-brassbright">Make your duelist</h1>
-            <p className="mt-1 text-[10px] uppercase tracking-widest text-ptextdim">Drag to turn · pinch to zoom</p>
+            <p className="mt-1 text-[10px] uppercase tracking-widest text-ptextdim">Drag to turn · pinch to zoom · two fingers to slide</p>
           </div>
           {/* The Body / Face framing toggle used to live here and is gone.
               It existed to inspect a face the booth could edit; these models
