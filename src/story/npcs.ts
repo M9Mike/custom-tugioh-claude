@@ -104,69 +104,28 @@ export interface WorldNpc {
  * that started all of it. A game that opens with somebody's grandfather
  * explaining the rules is opening the way this one actually did.
  *
- * **On the casting.** There is no model of Solomon Muto anywhere — not in the
- * game the rest of the cast came from, not on Sketchfab, not in the MMD
- * catalogues. He has never been a playable duelist in a 3D game, so there is
- * nothing to extract. He is assembled: a body, repainted, plus the two shapes
- * that make him recognisable.
+ * **On the casting.** He used to be assembled, and the note that stood here
+ * explained why at some length: no model of him existed, so he was an ordinary
+ * adult off the generic roster, repainted grey, with a bandana and a beard
+ * generated in `accessories.ts` because paint cannot add a shape.
  *
- * The body is one of that same game's ordinary adults, and that is the whole
- * point of the change. He was built on the vendored `punk` when the vendored
- * roster was what the player wore too; now the player is from this game, and a
- * near-realistic body standing next to a 3DS one reads as a visitor from
- * somewhere else. Consistency beats the better silhouette: this body already
- * wears green, which is most of the way to his overalls.
+ * He is modelled now. The whole costume came off with the change — the repaint
+ * table, the two accessories, and the barrel-chested `build` that made a slim
+ * young adult read as a stout old man — because every one of them was an
+ * instruction for a texture and a skeleton he no longer has. What is left is
+ * three lines, which is what a character who looks like themselves needs.
  *
- * Stature 0 is the short end of the range, because he should not tower over
- * the person he is welcoming.
+ * Stature stays at 0, the short end of the range, for the same reason as
+ * before: he should not tower over the person he is welcoming. On a model
+ * whose height is his own rather than a generic adult's, that is a nudge
+ * rather than the correction it used to be.
  */
 const GRANDPA_LOOK: PremadeCharacter = {
   name: 'Grandpa Muto',
-  model: 'man1',
-  /* Everything he wears is said in `repaint` below, which can name colours the
-     booth's three slots never reach. */
+  model: 'solomon',
   tints: [],
   stature: 0,
 };
-
-/**
- * What the adult has to stop wearing to become a shopkeeper.
- *
- * Colours, not materials: this model keeps its look in a texture. The brown is
- * both his hair and his trousers — one hue family, and no amount of window
- * narrowing separates them, because they are painted the same brown at the same
- * lightness. Grey is the right answer for both at once, which is luck, and the
- * kind of luck worth taking.
- */
-const GRANDPA_DRESS: Record<string, string> = {
-  /* Hair and trousers together, gone grey. */
-  '#5c321f': '#8f8a82',
-  '#5c312a': '#a8a29a',
-  /* The jacket, taken to the dark green of his overalls. */
-  '#6b903d': '#2c5c48',
-  '#5a7c3d': '#24503e',
-  /* Whatever the pink accent is, off to a cream that reads as his shirt. */
-  '#dd76b3': '#e6dcc4',
-};
-
-/**
- * The two things no repaint can supply.
- *
- * Everything else about his head is this model's own geometry in a different
- * colour. These two are shapes that are not in the file at all, and they are
- * the two he is recognised by: the bandana, and the moustache and beard under
- * it. They are built in `accessories.ts` against measurements of *this* body's
- * head — heads are not interchangeable across the pack, which is why moving him
- * from one body to another meant measuring again.
- */
-const GRANDPA_HEAD: AccessorySpec[] = [
-  /* Plain, and tied at the back. */
-  { kind: 'bandana', bone: 'Head', color: '#d4842a' },
-  /* Lighter than his hair, because it hangs under a chin and is lit from
-     above: at the hair's own grey it came out near-black in that shadow.
-     Still not white — white is a wizard, and he is a shopkeeper gone grey. */
-  { kind: 'beard', bone: 'Head', color: '#ded9d1' },
-];
 
 /**
  * What he actually teaches, and why it is him teaching it.
@@ -314,32 +273,27 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Five more, standing about the field.
+ * The rip-based four, standing about the field.
  *
  * They say hello and nothing else on purpose. The open world is going to be
- * rebuilt around a story, and writing five scripts against a world that does
- * not exist yet would be writing them twice; what is worth having *now* is the
+ * rebuilt around a story, and writing scripts against a world that does not
+ * exist yet would be writing them twice; what is worth having *now* is the
  * cast, so that when there is something for them to say, saying it is a matter
  * of adding nodes to a record that already exists.
  *
- * **Four of them are themselves.** Yugi, Yami, Kaiba and Joey are the real
- * models, converted from the character rips of *Yu-Gi-Oh! Duel Monsters:
- * Saikyo Card Battle* (3DS) by `npm run import-rip` — textured, rigged, and
- * carrying the game's own Idle. Their records are three lines each, because a
- * model that already looks like somebody needs no dressing and no accessories:
- * the star hair, the coat and the studded belts are in the file.
+ * Yugi, Yami, Kaiba and Joey are converted from the character rips of
+ * *Yu-Gi-Oh! Duel Monsters: Saikyo Card Battle* (3DS) by `npm run import-rip` —
+ * textured, rigged, and carrying the game's own Idle. Their records are three
+ * lines each, because a model that already looks like somebody needs no
+ * dressing and no accessories: the star hair, the coat and the studded belts
+ * are in the file.
  *
- * **Two of them are assembled**, and it is not for want of looking. Mai
- * Valentine and Solomon Muto have no 3D model in existence — not in that game,
- * not in any other that has been ripped, not on Sketchfab, not in the MMD
- * catalogues. Neither has ever been a playable duelist in a 3D game, so there
- * is nothing to extract, and the fan sculptors make Yugi and Kaiba. Those two
- * stay as they were: a body off the generic roster, repainted, plus geometry
- * for whatever the roster cannot supply.
- *
- * That split is worth keeping in view. Anybody the games shipped as a playable
- * body can be imported in about a minute; anybody they did not has to be built,
- * and building is where the hours go.
+ * **These four are the ones that still move.** Everything in `SCULPTED` below
+ * is a static mesh, so the field is currently half breathing and half frozen.
+ * That is a fact about where the models came from rather than a design, and it
+ * is the strongest argument for rigging the sculpts: standing beside Yugi, who
+ * shifts his weight, is what makes a motionless Pegasus read as unfinished
+ * rather than as still.
  */
 
 /** A whole character in the one thing each of them says for now. */
@@ -404,95 +358,240 @@ const CAST: WorldNpc[] = [
   {
     id: 'mai',
     /*
-     * Mai Valentine, and the same story as Grandpa: no model of her exists
-     * anywhere, so she is an ordinary adult repainted. This body was already
-     * wearing violet, which is the colour she is remembered in; what it needed
-     * was her hair.
+     * Mai, modelled.
      *
-     * The hair is the reason lightness windows exist. This body is painted with
-     * three blue-ish things within three degrees of each other — hair, a pale
-     * top and light trousers — so naming the hue alone bleaches the lot. What
-     * separates them is that the hair is drawn as a gradient from lightness
-     * 0.05 to 0.42 and the other two never come below 0.6, so the window covers
-     * the whole head and touches neither.
+     * What stood here was a page of repaint rules and a ribcage `build`,
+     * because she was `woman2` in her colours: two windowed hue rules to get
+     * blonde hair out of a blue-grey bob without bleaching the top or the
+     * trousers painted within three degrees of it, one for the jacket, one for
+     * the skirt, one for the corset — and a closing admission that no amount of
+     * paint supplies the silhouette, because that body has a bob and she is
+     * drawn with a mane.
      *
-     * The window has to cover all of it. A first attempt stopped at 0.17 to
-     * stay clear of the linework and left her with a blonde crown and black
-     * ends, because the dark half is not linework — it is the hair, shaded.
+     * All of it is deleted rather than adapted. Every rule named a colour in a
+     * 256×256 atlas that is not this model's, and the one problem it could
+     * never solve is the one being modelled fixed.
      */
-    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.7 },
-    repaint: {
-      /*
-       * The blonde.
-       *
-       * Her hair is drawn in two blue-greys — the bulk at hue 0.611 and
-       * highlight strands at 0.667 — which are 0.056 apart against a reach of
-       * 0.055, so a rule sitting on either one leaves the other behind as
-       * flecks. `#44495b` is pitched between them at 0.63, within reach of
-       * both; its lightness is the bulk's, so the shading comes out unchanged.
-       *
-       * It cannot simply be moved further: her coat is hue 0.699, and a rule
-       * that reached the strands from the coat's side would take the coat too.
-       * 0.63 is 0.069 away from it, which is clear.
-       */
-      '#44495b': { to: '#e3c25c', lightness: [0.03, 0.44] },
-      /*
-       * The same blonde again, for the strands between 0.44 and 0.60.
-       *
-       * That band belongs to neither of the other two and her brighter strands
-       * live in it, so they came out as speckles — first blue-grey, then pink
-       * once the corset rule was widened to reach them. It cannot simply be
-       * added to the rule above, because her jacket carries sub-tones at hue
-       * 0.68, which is 0.05 from that rule and inside its reach: widening it
-       * put gold flecks all over her sleeves instead. Hue 0.60 is 0.08 clear of
-       * the jacket and still reaches the hair.
-       */
-      '#737f91': { to: '#e8ca6a', lightness: [0.44, 0.6] },
-      /* The jacket, near enough the purple it is already painted. */
-      '#6555a5': '#6f4d99',
-      /*
-       * Below the waist, the skirt: this body's light blue capris in her
-       * purple. Windowed above the hair, which is only 0.05 away in hue.
-       *
-       * **This rule must come before the top's.** The two regions are 0.07
-       * apart at their centres, which is clear, but the legs carry sub-tones
-       * out at hue 0.578 that fall inside the top rule's reach — so with the
-       * top first she came out with one leg's worth of pink patches. First
-       * match wins, so the legs claim their own tails before the top looks.
-       */
-      '#b5c3cb': { to: '#6d4a91', lightness: [0.5, 1] },
-      /*
-       * The corset, which is pink and is the one part of her nobody misremembers.
-       *
-       * Its window starts at 0.60 rather than 0.50, and the blonde's runs up to
-       * 0.58 to meet it. The gap between them used to belong to neither, and
-       * her hair's brighter strands sit in it — so a scatter of pink speckles
-       * came out across her head. Two windows over one hue family have to
-       * touch, or whatever falls between goes to the wrong rule.
-       *
-       * What no repaint supplies is the silhouette. She is drawn with long,
-       * thick, spiked hair and this body has a bob; that is geometry, not
-       * paint, and it waits for a model of her that does not exist yet.
-       */
-      '#98aadf': { to: '#d15c96', lightness: [0.6, 0.95] },
-    },
-    /*
-     * `woman2` is drawn as a slight young adult and Mai is not — she is the
-     * grown woman of the cast, and her figure is part of how she is drawn.
-     * `Spine1` is the ribcage, so widening and deepening it fills out the
-     * chest; the shoulders and arms hanging off it keep their own size.
-     */
-    build: { Spine1: [1.16, 1, 1.3] },
-
-    x: 0,
-    z: 15.5,
-    facing: Math.PI,
+    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.5 },
+    /* Off the centre line — see the note on `WORLD_NPCS` about keeping the
+       lane past Grandpa walkable. */
+    x: 4.8,
+    z: 16.5,
+    facing: -2.858,
     range: 3.2,
     start: 'greet',
     script: greeting([
       'Well, hello. Mai Valentine.',
       'Do try to be interesting, sweetheart. Most of them are not.',
     ]),
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/* The sculpted cast                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Twelve more, modelled rather than ripped or repainted.
+ *
+ * These are the sculpts brought in by `npm run sculpt` — see the block in
+ * `premade.ts` and the header of `scripts/import-sculpt.mjs` for what they are
+ * and what it took to make them servable. Every record here is the same three
+ * lines the rips get, and for the same reason: a model that looks like somebody
+ * needs no dressing.
+ *
+ * **They stand still.** No skeleton, so no idle and no walk. They can be
+ * placed, scaled, turned to look at you and talked to; they cannot breathe.
+ * Nothing below papers over that, and the arrangement leans into it — they are
+ * placed as a gathering rather than scattered mid-stride, which is a pose a
+ * motionless figure can hold honestly.
+ *
+ * `facing` is `atan2(-x, -z)` for each: turned to look at the arrival point, so
+ * a duelist walking up the +Z axis meets faces rather than backs. The rig turns
+ * them toward you when you come close and releases them back to this.
+ */
+const SCULPTED: WorldNpc[] = [
+  {
+    id: 'pegasus',
+    character: { name: 'Maximillion Pegasus', model: 'pegasus', tints: [], stature: 0.5 },
+    x: -21,
+    z: 13,
+    facing: 2.125,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Ahh — a new face. How perfectly delightful.',
+      'Maximillion Pegasus, creator of this little game we all take so very seriously. Do enjoy yourself, {name}-boy. I shall be watching.',
+    ]),
+  },
+  {
+    id: 'keith',
+    character: { name: 'Bandit Keith', model: 'keith', tints: [], stature: 0.5 },
+    x: 21,
+    z: 13,
+    facing: -2.125,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Name’s Keith. Bandit Keith. You American? Doesn’t matter.',
+      'I don’t lose, kid. When I do, it’s because somebody cheated. Remember that.',
+    ]),
+  },
+  {
+    id: 'bakura',
+    character: { name: 'Bakura Ryou', model: 'bakura', tints: [], stature: 0.5 },
+    x: -10.5,
+    z: 21,
+    facing: 2.678,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Oh — hello. Bakura Ryou. Sorry, I did not see you coming.',
+      'It is nice here, is it not? Quiet. I do rather like the quiet.',
+    ]),
+  },
+  {
+    id: 'marik',
+    character: { name: 'Yami Marik', model: 'marik', tints: [], stature: 0.5 },
+    x: 10.5,
+    z: 21,
+    facing: -2.678,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'So. Another one crawls into the light.',
+      'Enjoy the field while it is empty, {name}. It will not stay that way.',
+    ]),
+  },
+  {
+    id: 'mako',
+    character: { name: 'Mako Tsunami', model: 'mako', tints: [], stature: 0.5 },
+    x: -21.5,
+    z: 25,
+    facing: 2.431,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Ha! A visitor! Mako Tsunami — the sea is my deck and my dinner.',
+      'There is no ocean out here yet, {name}. When there is, I will be in it.',
+    ]),
+  },
+  {
+    id: 'rex',
+    character: { name: 'Rex Raptor', model: 'rex', tints: [], stature: 0.5 },
+    x: 21.5,
+    z: 25,
+    facing: -2.431,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Rex Raptor. Dinosaurs. That’s the whole pitch, and it’s enough.',
+      'You got somethin’ that beats a Two-Headed King Rex? Didn’t think so.',
+    ]),
+  },
+  {
+    id: 'weevil',
+    character: { name: 'Weevil Underwood', model: 'weevil', tints: [], stature: 0.5 },
+    x: -5.5,
+    z: 26,
+    facing: 2.933,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Heh heh heh. Weevil Underwood, Regional Champion.',
+      'Everyone underestimates insects, {name}. Everyone. Right up until the web is finished.',
+    ]),
+  },
+  {
+    id: 'odion',
+    character: { name: 'Odion Ishtar', model: 'odion', tints: [], stature: 0.5 },
+    x: -11,
+    z: 32,
+    facing: 2.81,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'I am Odion. I serve the Ishtar family, and I do not duel for sport.',
+      'You seem harmless enough. Walk on.',
+    ]),
+  },
+  {
+    id: 'ishizu',
+    character: { name: 'Ishizu Ishtar', model: 'ishizu', tints: [], stature: 0.5 },
+    x: 4.5,
+    z: 36,
+    facing: -3.017,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'I am Ishizu Ishtar, keeper of what the tombs remember.',
+      'I have seen a great deal of what is coming, {name}. Not all of it is yours to know yet.',
+    ]),
+  },
+  {
+    id: 'priest-seto',
+    character: { name: 'Priest Seto', model: 'priest-seto', tints: [], stature: 0.5 },
+    x: 11,
+    z: 32,
+    facing: -2.81,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'You look upon a priest of the Pharaoh’s court. Three thousand years is a long walk.',
+      'The face is familiar to you, I think. It usually is.',
+    ]),
+  },
+  {
+    /*
+     * Not from this story, and standing here anyway.
+     *
+     * Kept slightly out on the right rather than tucked away: a joke that is
+     * hidden is not a joke. He is the furthest of the humans from the arrival
+     * point, so nobody meets him before they have met anybody real.
+     */
+    id: 'ash',
+    character: { name: 'Ash Ketchum', model: 'ash', tints: [], stature: 0.5 },
+    x: 22,
+    z: 35,
+    facing: -2.58,
+    range: 3.2,
+    start: 'greet',
+    script: greeting([
+      'Hey! I think I might be in the wrong game.',
+      'Cards, right? I have got a deck somewhere. Probably. Good luck, {name}!',
+    ]),
+  },
+  {
+    /*
+     * The dragon, and the one entry here that is not a person.
+     *
+     * Placed at the far end of the axis every other character is arranged
+     * around, so it closes the view: walk straight on from Grandpa and you end
+     * up in front of it. Eleven metres past Ishizu, which is well clear of
+     * anybody's prompt.
+     *
+     * `range` is nearly double everyone else's because the model is about six
+     * and a half metres long — at 3.2 you would have to be standing inside its
+     * chest before it noticed you. The turn-to-look applies to it as it does to
+     * the rest, which on something this size is worth more than it is on a
+     * person.
+     */
+    id: 'blue-eyes',
+    character: { name: 'Blue-Eyes White Dragon', model: 'blue-eyes', tints: [], stature: 0.5 },
+    x: 0,
+    z: 46,
+    facing: -Math.PI,
+    range: 6,
+    start: 'greet',
+    script: {
+      greet: {
+        lines: [
+          'The dragon regards you without moving. Somewhere behind the eyes there is nothing that wants to talk.',
+          'You are, it decides, not worth standing up for.',
+        ],
+        choices: [],
+      },
+    },
   },
 ];
 
@@ -504,29 +603,31 @@ const CAST: WorldNpc[] = [
  * he is unmistakably *there* without being in the way. New players walk into
  * him on purpose; anyone who would rather not can simply go around.
  *
- * The rest stand further out and turned inward, in a rough arc past him, so
- * that walking on from the first conversation finds a second. They are spread
- * far enough apart that no two prompts can be live at once — the nearest pair
- * are seven metres apart against a talking range of three — and all of them sit
- * well inside the world's 120-metre edge.
+ * The rest stand further out and turned inward, in widening arcs past him, so
+ * that walking on from the first conversation finds a second. Eighteen of them
+ * now, from six and a half metres out to forty-six, and the ordering is by how
+ * much a new player needs them: the teacher first, then the four who move, then
+ * the rest of the cast, then the dragon closing the far end.
+ *
+ * They are spread far enough apart that no two prompts can be live at once —
+ * the nearest pair are 6.6 metres apart against a talking range of 3.2, so two
+ * ranges cannot even touch — and all of them sit well inside the world's
+ * 120-metre edge.
+ *
+ * **Nobody but Grandpa stands on the centre line**, and that is a rule rather
+ * than an accident of arrangement. The first draft of the sculpted cast put
+ * Mai, Weevil and Ishizu at x=0 with the dragon behind them, which reads well
+ * in a plan view and is miserable to walk through: an NPC is a 1.1-metre
+ * cylinder you slide around, so four of them stacked up the +Z axis turned the
+ * one direction a new player walks into a corridor of people to squeeze past,
+ * starting with Grandpa, who you cannot get around without noticing you are
+ * stuck on him. They are offset a few metres now. The dragon keeps the axis
+ * because it is forty-six metres out and closes the view.
  */
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
     character: GRANDPA_LOOK,
-    repaint: GRANDPA_DRESS,
-    accessories: GRANDPA_HEAD,
-    /*
-     * Short and round, which is most of how he is recognised. `man1` is a slim
-     * young adult, so the barrel goes on here: a wide, deep torso above a
-     * pelvis widened to match, and a little taken off the height of both so it
-     * reads as stout rather than merely inflated.
-     */
-    build: {
-      Hips: [1.3, 0.94, 1.3],
-      Spine: [1.24, 0.95, 1.3],
-      Spine1: [1.2, 0.95, 1.26],
-    },
     x: 0,
     z: 6.5,
     facing: Math.PI,
@@ -537,6 +638,7 @@ export const WORLD_NPCS: WorldNpc[] = [
     script: GRANDPA_SCRIPT,
   },
   ...CAST,
+  ...SCULPTED,
 ];
 
 /** Fills the one token a line may carry. */

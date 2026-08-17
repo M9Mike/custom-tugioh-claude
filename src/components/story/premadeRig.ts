@@ -27,6 +27,26 @@
  * textures, every part is a named flat-colour material, and a slot names the
  * materials it owns (`src/story/premade.ts`). Skin and faces are materials no
  * slot may name, so a tint cannot touch them by construction.
+ *
+ * ## Two kinds of file come through here
+ *
+ * The rigged ones — the vendored roster and the 3DS rips — are the case
+ * everything above describes. The **sculpted cast** is not: single static
+ * meshes with no skeleton, no skin and no clips (see
+ * `scripts/import-sculpt.mjs`). They are supported rather than special-cased,
+ * and it is worth being clear about what that costs and what it buys.
+ *
+ * It buys one seam. `OpenWorld` builds an NPC the same way whichever kind it
+ * is, so placement, the turn-to-look, the talk range and the conversation
+ * camera are all written once. Three things bend to allow it: the floor is
+ * measured from the bounding box rather than from the idle pose, frustum
+ * culling stays on, and the three clip actions come back null.
+ *
+ * What it costs is that a sculpt **does not move**. It does not breathe, it
+ * does not walk, and if one were ever driven by the stick it would slide
+ * across the field in a fixed pose. That is a property of the files, not of
+ * this code — nothing here can invent a skeleton — and it is the reason the
+ * sculpts are NPCs who stand and talk rather than duelists who walk.
  */
 
 import * as THREE from 'three';
@@ -97,17 +117,26 @@ interface Template {
  * Sampled rather than exhaustive. A few hundred vertices across a handful of
  * moments through the clip finds the planted foot; the idle on these models is
  * a breath and a weight shift, so nothing is hiding between the samples.
+ *
+ * **A model with no Idle is measured where it stands.** The sculpted cast
+ * (`scripts/import-sculpt.mjs`) has no skeleton and no clips, so there is no
+ * pose to sample and nothing that will ever move it — its own bounding box is
+ * not an approximation of the answer, it *is* the answer. This used to return
+ * zero for that case, which assumed the origin sat between the feet; those
+ * models are normalised into a box centred on the origin instead, so the whole
+ * cast would have stood buried to the waist.
  */
-function idleFloor(gltf: GLTF): number {
+function restingFloor(gltf: GLTF): number {
   const idle = gltf.animations.find((a) => a.name === 'Idle');
-  if (!idle) return 0;
 
   const scene = cloneSkeleton(gltf.scene);
   const skinned: THREE.SkinnedMesh[] = [];
   scene.traverse((o) => {
     if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(o as THREE.SkinnedMesh);
   });
-  if (!skinned.length) return 0;
+  if (!idle || !skinned.length) {
+    return new THREE.Box3().setFromObject(gltf.scene).min.y;
+  }
 
   const mixer = new THREE.AnimationMixer(scene);
   mixer.clipAction(idle).play();
@@ -148,7 +177,7 @@ export function loadDuelistTemplate(modelId: string): Promise<Template> {
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const rawHeight = Math.max(0.01, box.max.y - box.min.y);
-    return { gltf, rawHeight, floor: idleFloor(gltf) };
+    return { gltf, rawHeight, floor: restingFloor(gltf) };
   });
   templates.set(model.id, promise);
   /* A failed fetch must not poison the cache for the retry. */
@@ -366,11 +395,14 @@ export async function buildPremadeRig(
       : materialFor(mesh.material);
     /* The rest pose's bounds are meaningless once the clips start moving the
        bones, and a skinned mesh culled by them vanishes at the edge of the
-       screen mid-stride. */
-    mesh.frustumCulled = false;
+       screen mid-stride. A sculpt has no bones and never leaves its box, so it
+       keeps its culling — which is most of what makes a field of fourteen of
+       them affordable, since you are only ever looking at a few. */
+    mesh.frustumCulled = !skinned.isSkinnedMesh;
   });
 
-  const scale = (model.height * statureScale(spec.stature)) / template.rawHeight;
+  const height = model.height * statureScale(spec.stature);
+  const scale = height / template.rawHeight;
   body.scale.setScalar(scale);
   /* Stand them on the ground rather than on their origin. Scaled with the
      model, because `floor` is in the file's own units. */
@@ -424,14 +456,69 @@ export async function buildPremadeRig(
     a.play();
     return a;
   };
-  /* Every model in the pack ships all three; `null` only if one is ever
-     swapped for a file that does not, in which case standing still beats
-     crashing the world. */
+  /* The rigged pack ships all three. The sculpted cast ships none — no
+     skeleton, so nothing to animate — and gets three nulls, which every line
+     below is written to survive: it stands, it can still be turned to face
+     you, and it can still be talked to. Standing still is the honest state
+     for a model nobody has rigged yet, and it is not a failure to be logged. */
   const idle = action('Idle');
   const walk = action('Walk');
   const run = action('Run');
 
+  /* ---- what a model with no skeleton does instead ----
+   *
+   * **This is a mitigation, not an animation system, and it is worth being
+   * blunt about which.** A sculpt has no bones, so no limb on it can be made
+   * to move by any amount of code here. What it does have is a root, and the
+   * two things that read as *dead* rather than merely still are a body that
+   * holds one height exactly while crossing forty metres of ground, and one
+   * that holds plumb vertical while doing it. Both are fixable at the root.
+   *
+   * So: a breath while standing, and while moving a rise and fall at step
+   * frequency with a small lean into the direction of travel and a roll off
+   * the planted foot. It reads as somebody walking seen from across a field,
+   * and it does not survive close inspection, because the legs do not move.
+   * It buys time until these are rigged; it is not a substitute for rigging
+   * them.
+   *
+   * Amplitudes are in model heights rather than metres, so a 1.5 m Weevil and
+   * a 5.5 m dragon breathe by the same proportion of themselves rather than
+   * the same absolute centimetre. Every number is deliberately under what
+   * looks "right" in isolation: the failure mode of this trick is a character
+   * who bounces, and a bounce is more obviously wrong than a glide.
+   */
+  const inert = !idle && !walk && !run;
+  /** The grounded height, which the bob is measured from rather than replacing. */
+  const groundY = body.position.y;
+  const rise = height * 0.012;
+  const breath = height * 0.004;
+  let clock = 0;
+
+  const staticMotion = (dt: number, stride: number, groundSpeed: number) => {
+    clock += dt;
+    const moving = smoothstep(0.03, 0.3, stride);
+    /* Steps a second, from real ground speed: about two a second at a walk.
+       Tied to the ground rather than to the clock for the same reason the
+       clip playback rate is — a cadence that does not match the speed is the
+       thing that makes feet look like they are sliding, and these feet have
+       no other way to be honest. */
+    const cadence = Math.max(0.9, groundSpeed * 1.35);
+    /* Two rises per stride: a body lifts on each foot, not each pair. */
+    const step = clock * cadence * Math.PI * 2;
+    body.position.y = groundY + Math.sin(step) * rise * moving + Math.sin(clock * 1.6) * breath * (1 - moving);
+    /* Lean into it. +X tips the head toward +Z, which is the way these models
+       face, so this is a lean forward rather than a stumble backward. */
+    body.rotation.x = 0.055 * moving;
+    /* And a roll off the planted foot, at half the rise's frequency because
+       the weight changes side once per stride rather than twice. */
+    body.rotation.z = Math.sin(step * 0.5) * 0.03 * moving;
+  };
+
   const update = (dt: number, stride: number, groundSpeed: number) => {
+    if (inert) {
+      staticMotion(dt, stride, groundSpeed);
+      return;
+    }
     /* Moving-ness and running-ness, each eased so the blend has no seams.
        The run blend starts where a brisk walk stops looking like walking. */
     const moving = smoothstep(0.03, 0.3, stride);
@@ -440,9 +527,13 @@ export async function buildPremadeRig(
     walk?.setEffectiveWeight(moving * (1 - running));
     run?.setEffectiveWeight(moving * running);
     /* Feet: playback rate is ground speed over the clip's own speed. Held at
-       1 when standing so the last steps of a stop do not freeze mid-air. */
-    walk?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / model.walkSpeed : 1);
-    run?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / model.runSpeed : 1);
+       1 when standing so the last steps of a stop do not freeze mid-air.
+       The fallbacks are unreachable — a model with no `walkSpeed` is a sculpt,
+       and a sculpt has no Walk action to scale — but they keep the arithmetic
+       honest rather than dividing by `undefined` if that ever stops being
+       true. */
+    walk?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / (model.walkSpeed ?? 1.5) : 1);
+    run?.setEffectiveTimeScale(groundSpeed > 0.01 ? groundSpeed / (model.runSpeed ?? 3.4) : 1);
 
     /*
      * While both leg cycles are playing, they have to be the *same* cycle.
@@ -480,7 +571,7 @@ export async function buildPremadeRig(
 
   return {
     root,
-    height: model.height * statureScale(spec.stature),
+    height,
     update,
     dispose() {
       mixer.stopAllAction();
