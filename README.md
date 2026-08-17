@@ -194,6 +194,46 @@ npm run sculpt -- --in ~/Downloads/NPC/SolomonMuto.glb --id solomon
 npm run sculpt -- --in ~/Downloads/NPC --all          # ids from the filenames
 ```
 
+### Characters that arrive rigged
+
+The way a character gets an animation now, one at a time. The bundles are rigged
+against their own body by the tool that made them, which is the whole point:
+these characters are each posed individually — Mai stands with her weight on one
+hip, Sandra Afrika with her ankles crossed — and a skeleton placed from average
+anatomy runs the left leg bone through the right calf. That was tried for all of
+them and reverted.
+
+```bash
+npm run rigged -- --in ~/Downloads/MaiValentine.glb --id mai --dir cast
+blender -b --factory-startup -P scripts/blender/make-idle.py -- \
+  --in staged.glb --out with-idle.glb      # bundles ship walk and run, no idle
+npm run rigged -- --in with-idle.glb --id mai --dir cast    # recompress
+blender -b --factory-startup -P scripts/blender/gait.py -- --in public/models/cast/mai.glb
+blender -b --factory-startup -P scripts/blender/pose-sheet.py -- \
+  --in public/models/cast/mai.glb --out /tmp/sheet --size 640
+```
+
+`import-rigged` barely touches the geometry — that is the part that was got
+right. It renames `Walking`/`Running` to the `Walk`/`Run` the rig plays by name,
+drops the duplicate texture the bundles ship (two identical 17 MB PNGs, 34 of
+Mai's 39 MB), drops the maps the renderer never reads, and quantizes. Including
+the skinning attributes: `WEIGHTS_0` at float32 is 16 bytes of every vertex for
+four numbers between zero and one.
+
+`make-idle` authors the clip the bundles do not include, and the idle is the one
+a player looks at most — it plays in the booth and for all the time nobody is
+holding the stick. A breath and a weight shift, four seconds, looping because
+every channel is a sine over the full period. **The arms come from the walk**: a
+bind pose is an A-pose, which is not a pose anybody stands in, but averaged over
+a gait cycle the arm swing cancels and leaves the neutral hang the character
+swings about.
+
+`gait` measures what the clips actually do, and every rigged character gets its
+own `walkSpeed`/`runSpeed` from it rather than a number copied from somebody
+else. Mai's clips run at 1.86 and 4.11 m/s. `pose-sheet` renders the result at
+full size, which is the only check that counts — a contact sheet is for deciding
+what to look at, not for concluding it works.
+
 Adding somebody to the field is a row in `WORLD_NPCS` (`src/story/npcs.ts`) and
 an entry in the catalog (`src/story/premade.ts`). Nobody but Grandpa stands on
 the centre line: an NPC is a 1.1-metre cylinder you slide around, and a column

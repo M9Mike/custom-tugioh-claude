@@ -824,9 +824,15 @@ export const DUELIST_MODELS: DuelistModel[] = [
     note: 'Purple jacket, blonde',
     file: '/models/cast/mai.glb',
     height: 1.72,
+    /* Measured off her own clips by `scripts/blender/gait.py`, not inherited
+       from a donor: 1.86 and 4.11 m/s at her modelled 1.70 m, scaled to the
+       1.72 she is rendered at. Every rigged character gets its own pair — the
+       bundles are authored at whatever cadence they were authored at, and a
+       number copied from another character is exactly how feet start sliding. */
+    walkSpeed: 1.88,
+    runSpeed: 4.16,
     tintSlots: [],
     npcOnly: true,
-    sculpt: true,
   },
   {
     /*
