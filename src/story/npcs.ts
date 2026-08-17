@@ -288,10 +288,12 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
  * dressing and no accessories: the star hair, the coat and the studded belts
  * are in the file.
  *
- * They were, for a while, the only four in the field that moved. They are not
- * any more — `npm run rig` fitted a skeleton to every sculpt below, so the
- * whole field breathes now and the only thing standing perfectly still is the
- * dragon.
+ * **These four are the ones that still move.** Everything in `SCULPTED` below
+ * is a static mesh, so the field is currently half breathing and half frozen.
+ * That is a fact about where the models came from rather than a design, and it
+ * is the strongest argument for rigging the sculpts: standing beside Yugi, who
+ * shifts his weight, is what makes a motionless Pegasus read as unfinished
+ * rather than as still.
  */
 
 /** A whole character in the one thing each of them says for now. */
@@ -398,11 +400,11 @@ const CAST: WorldNpc[] = [
  * lines the rips get, and for the same reason: a model that looks like somebody
  * needs no dressing.
  *
- * **They move.** Each was a single static mesh and had one of the game's own
- * skeletons fitted to it by `npm run rig`, so every one carries the same Idle,
- * Walk and Run as the rips do. They are still placed as a gathering rather
- * than scattered mid-stride, which is now a choice about the scene rather than
- * a limit of the models.
+ * **They stand still.** No skeleton, so no idle and no walk. They can be
+ * placed, scaled, turned to look at you and talked to; they cannot breathe.
+ * Nothing below papers over that, and the arrangement leans into it — they are
+ * placed as a gathering rather than scattered mid-stride, which is a pose a
+ * motionless figure can hold honestly.
  *
  * `facing` is `atan2(-x, -z)` for each: turned to look at the arrival point, so
  * a duelist walking up the +Z axis meets faces rather than backs. The rig turns
@@ -573,11 +575,6 @@ const SCULPTED: WorldNpc[] = [
      * chest before it noticed you. The turn-to-look applies to it as it does to
      * the rest, which on something this size is worth more than it is on a
      * person.
-     *
-     * The only character in the field with no skeleton, and the only one that
-     * will not get one: every step of `npm run rig` assumes a biped — human
-     * proportions, a human bone chain, a human walk — and none of that fits a
-     * quadruped with a wingspan. It breathes, and that is the whole of it.
      */
     id: 'blue-eyes',
     character: { name: 'Blue-Eyes White Dragon', model: 'blue-eyes', tints: [], stature: 0.5 },

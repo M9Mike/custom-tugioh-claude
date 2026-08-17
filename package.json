@@ -53,8 +53,7 @@
     "gait": "node scripts/gait-check.mjs",
     "import-rip": "node scripts/import-rip.mjs",
     "sculpt": "node --max-old-space-size=8192 scripts/import-sculpt.mjs",
-    "glb": "node scripts/glb-info.mjs",
-    "rig": "node scripts/rig-sculpts.mjs"
+    "glb": "node scripts/glb-info.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

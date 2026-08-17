@@ -168,11 +168,14 @@ Battle* (3DS) by `npm run import-rip`, which turns a set of Valve SMD files into
 one `.glb` carrying Idle, Walk and Run. These are the ones that move.
 
 **The eight you can be.** Amazoni, Savage Valkyrie, Valkyrie Sentinel, Wave,
-Christy, Meg, Shea and Sandra Afrika, in `public/models/players/`.
+Christy, Meg, Shea and Sandra Afrika, in `public/models/players/`. Sculpted,
+and static like everything else sculpted here.
 
 **Sculpted.** Fourteen modelled characters — Solomon, Mai, Pegasus, Bandit
 Keith, Bakura, Mako, Weevil, Rex, Marik, Odion, Ishizu, Priest Seto, a visiting
 Ash Ketchum, and a Blue-Eyes White Dragon closing the far end of the field.
+They look like the characters, and **they do not move**: each is a single static
+mesh with no skeleton, so there is no idle and no walk until somebody rigs them.
 Solomon and Mai replace assembled versions of themselves — a generic body,
 repainted, with a bandana and a beard generated in code — and the whole of that
 costume was deleted with the change.
@@ -189,45 +192,6 @@ loads with no decoder to register. The fourteen go from 1.34 GB to 14 MB.
 ```bash
 npm run sculpt -- --in ~/Downloads/NPC/SolomonMuto.glb --id solomon
 npm run sculpt -- --in ~/Downloads/NPC --all          # ids from the filenames
-```
-
-### Making them walk
-
-Every sculpt arrives as one static mesh with no skeleton and no clips, and
-`npm run rig` is what turns twenty-one of them into characters that stand,
-walk and run. It does not author any animation: `man1.glb` and `woman1.glb` in
-the vendored roster are clean FK bipeds already carrying Idle, Walk and Run, so
-the job is to get one of those skeletons *inside* the sculpt and the clips come
-free. Two things had to be got right, and both were visible as wreckage before
-they were:
-
-- **The donors are chibi.** Measured against their own meshes their shoulders
-  sit at 62% of height and the head bone at 69%, where a real figure keeps them
-  at 81% and 87% — nearly a third of a 3DS character is head. Scaled by total
-  height, the head bone landed in Christy's chest and her arms grew out of her
-  ribs. The skeleton is re-proportioned to human anatomy first, and the clips
-  retarget onto it by rotation alone, which is the same trade `import-rip`
-  makes when one rip borrows another's walk.
-- **The donors are T-posed and Mike models in A-pose.** Skinning binds against
-  the rest pose, so a T-rest under an A-pose mesh weights the ribcage to the
-  arm bones. The rest is swung down to meet the body, and every clip is
-  rewritten by `basis' = R_new⁻¹ · R_old · basis` so the motion is unchanged —
-  the same pose, on a skeleton that now sits inside somebody else.
-
-Skinning is hand-rolled rather than Blender's bone heat, which fails outright
-on these meshes: weights by distance to the bone segment, then smoothed across
-edge neighbours, which is most of the difference between a shoulder that bends
-and one that creases.
-
-The Blue-Eyes White Dragon is the one that stays static. Every step above
-assumes a biped and a six-metre quadruped is not one; it keeps the breathing
-idle `premadeRig` gives an unrigged model.
-
-```bash
-npm run rig                 # all twenty-one
-npm run rig -- pegasus mai  # just these
-blender -b --factory-startup -P scripts/blender/pose-sheet.py -- \
-  --in public/models/cast/pegasus.glb --out /tmp/sheet   # look at the result
 ```
 
 Adding somebody to the field is a row in `WORLD_NPCS` (`src/story/npcs.ts`) and
