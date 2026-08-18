@@ -510,20 +510,29 @@ export function maxAttacks(state: DuelState, c: CardInstance, controller: Player
   /* "Attacks every monster your opponent controls once each." Counting the
      *current* board shrank the allowance with every kill: three defenders
      became two attacks, because the second kill lowered the ceiling below the
-     attacks already spent and the third defender was suddenly unreachable.
-     The allowance is what has been spent plus the monsters not yet visited,
-     so destroying a target never revokes the next one.
+     attacks already spent and the third defender was suddenly unreachable. So
+     the allowance is the whole board it has ever faced — the monsters it has
+     already visited plus the ones it has not — and destroying a target never
+     revokes the next one.
 
-     Extra attacks ride on top of that sweep rather than being an alternative
-     floor beneath it. Serpent Night Dragon is "each of their monsters, and
-     then one more": two defenders is three swings, and an empty board across
-     the table is the one more on its own — which falls out of the sum without
+     *Visited*, not *attacks spent*. Those two were the same number for as long
+     as every swing landed on a fresh monster, and `attacksUsed` was standing in
+     for the count. A direct attack marks nothing visited, so once extra attacks
+     were added on top the number appeared on both sides of `attacksUsed <
+     maxAttacks`: every direct swing raised its own ceiling and Serpent Night
+     Dragon attacked until the other player was dead. Reported from a real duel
+     as "seems to have infinite attacks".
+
+     Extra attacks ride on top of the sweep rather than being an alternative
+     floor beneath it. Serpent Night Dragon is "each of their monsters, and then
+     one more": two defenders is three swings, and an empty board across the
+     table is the one more on its own — which falls out of the sum without
      needing a case of its own, because there is nothing to sweep. */
-  const visited = c.attacked ?? [];
+  const visited = new Set(c.attacked ?? []);
   const fresh = state.players[other(controller)].monsters.filter(
-    (m): m is CardInstance => !!m && !visited.includes(m.uid)
+    (m): m is CardInstance => !!m && !visited.has(m.uid)
   ).length;
-  return Math.min(Math.max(1, c.attacksUsed + fresh + extra), affordable);
+  return Math.min(Math.max(1, visited.size + fresh + extra), affordable);
 }
 
 /* ------------------------------------------------------------------ */

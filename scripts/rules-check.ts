@@ -1287,7 +1287,7 @@ console.log('\nRex Raptor: the herd, and what it costs to run it');
     s5.players[ME].monsters[0] = snd;
     const bare = effAtk(s5, snd, ME);
     s5.players[ME].grave.push(card(ME, 'uraby'), card(ME, 'trakodon'), card(ME, 'raigeki'));
-    ok(effAtk(s5, snd, ME) === bare + 300, 'Serpent Night Dragon is 150 a fossil, and nothing for a Spell', `${effAtk(s5, snd, ME)}`);
+    ok(effAtk(s5, snd, ME) === bare + 350, 'Serpent Night Dragon is 175 a fossil, and nothing for a Spell', `${effAtk(s5, snd, ME)}`);
 
     const counts: Array<[number, number]> = [
       [0, 1],
@@ -1301,6 +1301,31 @@ console.log('\nRex Raptor: the herd, and what it costs to run it');
       f2.players[ME].monsters[0] = d2;
       for (let z = 0; z < board; z++) f2.players[FOE].monsters[z] = card(FOE, 'kuriboh');
       ok(maxAttacks(f2, d2, ME) === want, `over ${board} of their monsters it gets ${want} attack${want === 1 ? '' : 's'}`, `${maxAttacks(f2, d2, ME)}`);
+
+      /* And it actually stops there. Asking `maxAttacks` at the start of the
+         Battle Phase proves nothing about the end of it: the allowance used to
+         be counted from *attacks spent*, which is the same number as monsters
+         visited only while every swing lands on a fresh one. A direct attack
+         marks nothing visited, so the count climbed with every swing, sat on
+         both sides of `attacksUsed < maxAttacks` and never closed — reported
+         from a real duel as "seems to have infinite attacks", against an empty
+         board, which is exactly the case a start-of-phase reading misses. */
+      /* Life Points high enough that the count is what stops it, not a win:
+         a 2350 piercing sweep kills a 4000 board before the third swing and
+         the loop would end for the wrong reason. */
+      f2.players[FOE].lp = 60000;
+      let cur = f2;
+      let swings = 0;
+      for (let guard = 0; guard < 12; guard++) {
+        const live = cur.players[ME].monsters.find((m) => m?.uid === d2.uid);
+        if (!live || !canAttackWith(cur, ME, live)) break;
+        const victim = cur.players[FOE].monsters.find((m) => !!m);
+        const r = applyAction(cur, ME, { type: 'attack', uid: live.uid, targetUid: victim?.uid ?? null });
+        if (r.error) break;
+        cur = r.state;
+        swings += 1;
+      }
+      ok(swings === want, `and it swings ${want} time${want === 1 ? '' : 's'} and stops`, `${swings}`);
     }
   }
 

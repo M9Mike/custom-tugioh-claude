@@ -2618,7 +2618,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        chump blockers buys exactly nothing. */
     text:
       'When this monster is summoned: destroy 1 monster your opponent controls. ' +
-      'This monster gains 150 ATK for each Dinosaur monster in your Graveyard, inflicts piercing battle damage, ' +
+      'This monster gains 175 ATK for each Dinosaur monster in your Graveyard, inflicts piercing battle damage, ' +
       'and can attack each monster your opponent controls once each, plus one attack more.',
     effects: [
       {
@@ -2632,7 +2632,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Dinosaur' }, atk: 150 } },
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Dinosaur' }, atk: 175 } },
       },
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['attackAll', 'doubleAttack'] } },
     ],
