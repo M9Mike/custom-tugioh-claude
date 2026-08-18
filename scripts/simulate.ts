@@ -12,6 +12,7 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  choiceResponses,
   createDuel,
   fusionOptions,
   legalAttackTargets,
@@ -35,6 +36,11 @@ function legalActions(state: DuelState, pid: PlayerId): DuelAction[] {
 
   if (state.pending) {
     if (state.pending.player !== pid) return acts;
+    /* A card stopping to ask its owner which card to take. One rule, in the
+       engine — this driver had its own copy of "what may I do while a window is
+       open", knew only about traps, and answered a question with `respondTrap`
+       until the duel wedged. */
+    if (state.pending.kind === 'choose') return choiceResponses(state, pid);
     acts.push({ type: 'respondTrap', uid: null });
     for (const uid of state.pending.options) {
       const oppMonsters = state.players[other(pid)].monsters.filter((m): m is CardInstance => !!m);

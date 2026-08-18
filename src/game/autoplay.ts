@@ -11,6 +11,7 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  choiceResponses,
   fusionOptions,
   legalAttackTargets,
   other,
@@ -27,6 +28,7 @@ export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number)
 
   if (state.pending) {
     if (state.pending.player !== pid) return acts;
+    if (state.pending.kind === 'choose') return choiceResponses(state, pid);
     acts.push({ type: 'respondTrap', uid: null });
     for (const uid of state.pending.options) {
       const c = p.hand.find((h) => h.uid === uid) ?? (p.spellTrap?.uid === uid ? p.spellTrap : null);

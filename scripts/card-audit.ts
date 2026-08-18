@@ -698,7 +698,19 @@ function audit(
 
 const run = (s: DuelState, pid: PlayerId, action: Parameters<typeof applyAction>[2]): DuelState | string => {
   const r = applyAction(s, pid, action);
-  return r.error ? `engine refused: ${r.error}` : r.state;
+  if (r.error) return `engine refused: ${r.error}`;
+  /* An effect that stops to ask its controller which card to take is not an
+     effect that did nothing — it is one waiting on an answer. The harness gives
+     it one, the way a player or the computer would, or every card that reaches
+     the new choice window reads as broken. */
+  let cur = r.state;
+  for (let guard = 0; guard < 4 && cur.pending?.kind === 'choose'; guard++) {
+    const ask = cur.pending;
+    const answered = applyAction(cur, ask.player, { type: 'chooseCard', uids: ask.options.slice(0, ask.want) });
+    if (answered.error) return `engine refused the answer: ${answered.error}`;
+    cur = answered.state;
+  }
+  return cur;
 };
 
 /** Best-effort target uids for an effect that asks the player to choose. */

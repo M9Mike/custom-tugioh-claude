@@ -4,7 +4,7 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
-import { matchesFilter, revivable } from './engine';
+import { matchesFilter, revivable } from './targeting';
 import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
 export interface TargetSpec {

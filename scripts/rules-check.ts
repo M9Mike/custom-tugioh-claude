@@ -341,11 +341,18 @@ console.log('\nA set monster destroyed by an attack still flips and fires');
   const spare = card(ME, 'hitotsu-me-giant');
   s.players[ME].monsters[1] = spare;
 
-  const after = act(s, ME, { type: 'attack', uid: big.uid, targetUid: bug.uid });
+  const after0 = act(s, ME, { type: 'attack', uid: big.uid, targetUid: bug.uid });
 
-  ok(on(after, FOE).length === 0, 'the attacked face-down monster is destroyed');
+  ok(on(after0, FOE).length === 0, 'the attacked face-down monster is destroyed');
+  /* And its bite is now the defender's to aim. Two of my monsters are standing,
+     so the bug has a real choice and the engine stops making it — the window
+     opens on the player whose bug it is, on a turn that is not theirs. */
+  ok(after0.pending?.kind === 'choose' && after0.pending.player === FOE,
+    'and it asks its owner which of mine to take, mid-attack, on my turn',
+    after0.pending ? `${after0.pending.kind} for ${after0.pending.player}` : '(nothing asked)');
+  const after = act(after0, FOE, { type: 'chooseCard', uids: [spare.uid] });
   ok(
-    on(after, ME).length < 2,
+    !on(after, ME).some((m) => m.uid === spare.uid),
     'and its flip effect still resolved — being destroyed by the attack does not cancel it',
     `attacker side went 2 -> ${on(after, ME).length}`
   );
@@ -382,9 +389,9 @@ console.log('\nThe Earl of Demise blows up a Spell or Trap whichever way it is f
       after.players[FOE].spellTrap ? 'it survived' : 'gone');
   }
 
-  /* And with nobody to ask — the computer summoning him — exactly one falls,
-     never both. "Destroy 1" is a number the card has to keep even when the
-     choice is made for it. */
+  /* And with nobody named, he asks rather than helping himself — then exactly
+     one falls, never both. "Destroy 1" is a number the card has to keep however
+     the choice is reached. */
   const auto = fresh();
   const earl2 = card(ME, 'the-earl-of-demise');
   auto.players[ME].hand = [earl2];
@@ -396,8 +403,11 @@ console.log('\nThe Earl of Demise blows up a Spell or Trap whichever way it is f
   const unasked = act(auto, ME, {
     type: 'normalSummon', uid: earl2.uid, zone: 2, position: 'atk', face: 'up', tributes: [t3.uid, t4.uid],
   });
-  const left = [unasked.players[FOE].spellTrap, unasked.players[FOE].field].filter(Boolean).length;
-  ok(left === 1, 'and with nobody asked, exactly one of the two falls', `${left} of 2 left standing`);
+  ok(unasked.pending?.kind === 'choose', 'the Earl asks which of the two to shatter', unasked.pending?.kind ?? '(nothing asked)');
+  const answered = act(unasked, ME, { type: 'chooseCard', uids: [unasked.players[FOE].field!.uid] });
+  const left = [answered.players[FOE].spellTrap, answered.players[FOE].field].filter(Boolean).length;
+  ok(left === 1, 'and exactly one of the two falls, never both', `${left} of 2 left standing`);
+  ok(!answered.players[FOE].field, 'the one you named');
 }
 
 /* ------------------------------------------------------------------ */
@@ -994,6 +1004,85 @@ console.log('\nInsect Barrier does both halves of its sentence');
   const swung = act(t, FOE, { type: 'attack', uid: raider.uid, targetUid: bug.uid });
   ok(!swung.players[FOE].monsters[0], 'a 1700 that swings at an Insect swings as a 700 and dies', swung.players[FOE].monsters[0]?.slug ?? 'gone');
   ok(!!swung.players[ME].monsters[0], 'and the Insect it charged at is still standing');
+}
+
+console.log("\nA card of yours may ask you a question on somebody else's turn");
+{
+  /* Every effect with a choice used to fall into two camps: activated by a
+     player who is standing right there, or fired mid-resolution where the
+     engine helped itself. Sangan, Newdoria, Flying Kamakiri #1 and a dozen
+     more were only ever in the second camp because their trigger happens to
+     land on the opponent's turn — which is not a reason the choice is any less
+     theirs. The duel stops and asks. */
+
+  /* Flying Kamakiri #1: sent to the Graveyard by their attack, on their turn,
+     and it is still your Deck and your pick. */
+  const s = fresh('battle');
+  s.active = FOE;
+  const kama = card(ME, 'flying-kamakiri-1');
+  kama.summonedOnTurn = 0;
+  s.players[ME].monsters[0] = kama;
+  s.players[ME].deck = [card(ME, 'petit-moth'), card(ME, 'killer-needle'), card(ME, 'kuriboh')];
+  const killer = card(FOE, 'blue-eyes-white-dragon');
+  killer.summonedOnTurn = 0;
+  s.players[FOE].monsters[0] = killer;
+  const struck = act(s, FOE, { type: 'attack', uid: killer.uid, targetUid: kama.uid });
+  ok(struck.pending?.kind === 'choose', 'a card sent to the Graveyard on their turn stops and asks', struck.pending?.kind ?? '(nothing asked)');
+  ok(struck.pending?.player === ME, "and it asks the card's owner, not the player taking the turn", struck.pending?.player);
+  const offered = struck.pending?.options.map((u) => struck.players[ME].deck.find((c) => c.uid === u)?.slug).filter(Boolean);
+  ok(
+    offered?.length === 2 && offered.includes('petit-moth') && offered.includes('killer-needle'),
+    'offering every Insect in the Deck and nothing else',
+    offered?.join(',') ?? '(none)'
+  );
+  const small = struck.pending!.options.find((u) => struck.players[ME].deck.find((c) => c.uid === u)?.slug === 'petit-moth')!;
+  const answered = act(struck, ME, { type: 'chooseCard', uids: [small] });
+  ok(answered.players[ME].hand.some((h) => h.slug === 'petit-moth'), 'and the one you named is the one you get', answered.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+  ok(!answered.pending, 'the duel carries on once you have answered');
+
+  /* No question where there is nothing to decide. One legal card goes straight
+     through, and none at all is not a prompt — both resolve exactly as they
+     always have. */
+  const only = fresh('battle');
+  only.active = FOE;
+  const k2 = card(ME, 'flying-kamakiri-1');
+  k2.summonedOnTurn = 0;
+  only.players[ME].monsters[0] = k2;
+  only.players[ME].deck = [card(ME, 'petit-moth'), card(ME, 'kuriboh')];
+  const b2 = card(FOE, 'blue-eyes-white-dragon');
+  b2.summonedOnTurn = 0;
+  only.players[FOE].monsters[0] = b2;
+  const straight = act(only, FOE, { type: 'attack', uid: b2.uid, targetUid: k2.uid });
+  ok(!straight.pending, 'one legal card is not a choice, and nothing is asked', straight.pending?.kind ?? 'nothing asked');
+  ok(straight.players[ME].hand.some((h) => h.slug === 'petit-moth'), 'it simply takes the only one there is');
+
+  /* Two questions in one breath. Dark Hole over two Man-Eater Bugs raises two,
+     and the second waits its turn rather than being answered by the engine. */
+  const twin = fresh();
+  const bugA = card(ME, 'man-eater-bug');
+  const bugB = card(ME, 'man-eater-bug');
+  twin.players[ME].monsters = [bugA, bugB, null];
+  twin.players[FOE].monsters = [card(FOE, 'summoned-skull'), card(FOE, 'battle-ox'), card(FOE, 'kuriboh')];
+  const hole = card(ME, 'dark-hole');
+  twin.players[ME].hand.push(hole);
+  const wiped = act(twin, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  void wiped;
+
+  /* Sangan on the way to the pile — the card the whole window was written for. */
+  const sg = fresh('battle');
+  sg.active = FOE;
+  const sangan = card(ME, 'sangan');
+  sangan.summonedOnTurn = 0;
+  sg.players[ME].monsters[0] = sangan;
+  const beak = card(FOE, 'blue-eyes-white-dragon');
+  beak.summonedOnTurn = 0;
+  sg.players[FOE].monsters[0] = beak;
+  const fell = act(sg, FOE, { type: 'attack', uid: beak.uid, targetUid: sangan.uid });
+  ok(
+    !fell.pending || fell.pending.player === ME,
+    'anything Sangan asks, it asks of its own controller',
+    fell.pending ? `${fell.pending.kind} for ${fell.pending.player}` : '(nothing to ask)'
+  );
 }
 
 console.log('\nRex Raptor: the herd, and what it costs to run it');
@@ -6923,16 +7012,23 @@ console.log('\nA flip you make yourself asks you who to bite');
     'and the bigger one it would have chosen for you is left standing',
     chose.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
 
+  /* Name nobody and it asks rather than helping itself. */
   const unasked = (() => {
     const { s, bug } = board();
     return act(s, ME, { type: 'changePosition', uid: bug.uid });
   })();
-  ok(!unasked.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
-    'CONTROL: name nobody and it still bites, taking the strongest',
-    unasked.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(unasked.pending?.kind === 'choose' && unasked.pending.player === ME,
+    'name nobody and the bug asks instead of choosing for you',
+    unasked.pending ? `${unasked.pending.kind} for ${unasked.pending.player}` : '(nothing asked)');
+  const bitOff = act(unasked, ME, { type: 'chooseCard', uids: [unasked.pending!.options.find((u) => unasked.players[FOE].monsters.some((m) => m?.uid === u && m.slug === 'summoned-skull'))!] });
+  ok(!bitOff.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+    'and takes whichever you then name',
+    bitOff.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
 
-  /* Flipped by an attack there is nobody to ask, and that path is untouched. */
-  const bitten = (() => {
+  /* Flipped by an attack on the *opponent's* turn — the case this whole window
+     exists for. The bug is mine, the turn is theirs, and the bite is still my
+     choice to aim. */
+  const revealed = (() => {
     const s = fresh('battle');
     s.active = FOE;
     const bug = { ...card(ME, 'man-eater-bug'), face: 'down' as const, position: 'def' as const };
@@ -6943,8 +7039,12 @@ console.log('\nA flip you make yourself asks you who to bite');
     s.players[FOE].monsters = [attacker, bystander, null];
     return act(s, FOE, { type: 'attack', uid: attacker.uid, targetUid: bug.uid });
   })();
+  ok(revealed.pending?.kind === 'choose' && revealed.pending.player === ME,
+    'flipped by their attack, it asks ME — on THEIR turn',
+    revealed.pending ? `${revealed.pending.kind} for ${revealed.pending.player}` : '(nothing asked)');
+  const bitten = act(revealed, ME, { type: 'chooseCard', uids: [revealed.pending!.options.find((u) => revealed.players[FOE].monsters.some((m) => m?.uid === u && m.slug === 'summoned-skull'))!] });
   ok(!bitten.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
-    'CONTROL: revealed by an attack it still answers for itself',
+    'and the monster I named is the one it takes',
     bitten.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
 
   /* And switching an already face-up monster carries no question at all. */

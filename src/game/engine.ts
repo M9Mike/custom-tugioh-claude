@@ -6,7 +6,15 @@
  * this as the single source of truth; the client runs the same code to predict
  * what its buttons should do.
  */
-import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToon, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
+import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
+import { faceUpOnSide, matchesFilter, revivable } from './targeting';
+/* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
+   targeting rules from `targeting.ts` now, not from here. */
+import { targetCandidates, targetSpecFor } from './ui';
+/* Re-exported because they lived here for the whole of this game's history and
+   dozens of callers — the board, the checks, the harnesses — import them from
+   the engine. Moving the file they live in should not move everyone's import. */
+export { matchesFilter, revivable } from './targeting';
 import {
   MONSTER_ZONES,
   OPENING_HAND,
@@ -22,6 +30,8 @@ import {
   type Duration,
   type EquipGrant,
   type Face,
+  type PendingChoice,
+  type PendingTrap,
   type Position,
   type Op,
   type OngoingEffect,
@@ -284,34 +294,6 @@ function findOnField(state: DuelState, uid: string): { c: CardInstance; controll
  * reported as the modal showing the whole deck. One rule, one place, and the
  * drift cannot happen again.
  */
-export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
-  if (!f) return true;
-  if (c.isToken) {
-    // Tokens only satisfy the loosest filters.
-    if (f.type || f.attribute || f.slugs || f.nameIncludes || f.minLevel) return false;
-    // A Token has no printed type, so it is never the excluded one.
-    if (f.kind && f.kind !== 'monster') return false;
-    if (f.position && c.position !== f.position) return false;
-    if (f.face && c.face !== f.face) return false;
-    return true;
-  }
-  const def = CARDS[c.slug];
-  if (!def) return false;
-  if (f.kind && def.kind !== f.kind) return false;
-  if (f.type && def.type !== f.type) return false;
-  if (f.excludeType && def.type === f.excludeType) return false;
-  if (f.attribute && def.attribute !== f.attribute) return false;
-  if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
-  if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
-  if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
-  if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
-  if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) return false;
-  if (f.toon && !isToon(c.slug)) return false;
-  if (f.slugs && !f.slugs.includes(c.slug)) return false;
-  if (f.position && c.position !== f.position) return false;
-  if (f.face && c.face !== f.face) return false;
-  return true;
-}
 
 /* ------------------------------------------------------------------ */
 /* Effective stats (base + modifiers + equips + auras)                 */
@@ -2331,6 +2313,13 @@ function fireTriggersInner(
       if (used.includes(key)) continue;
       used.push(key);
     }
+    /* Ask, if there is a question and nobody has answered it. On your own turn
+       the board asks before it ever sends the action, so `targets` arrives full
+       and this does nothing. It is the effects that fire on somebody else's
+       turn — Sangan on the way to the pile, Newdoria taking one with it — that
+       reach here with nothing, and those are the ones that used to have the
+       engine choose on their controller's behalf. */
+    if (raiseChoice(state, c, controller, trigger, eff, targets)) continue;
     const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
     if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
       /* `arrival` when the effect fired because the card turned up. The beat is
@@ -2343,6 +2332,140 @@ function fireTriggersInner(
     }
     runOps(ctx, eff.ops);
   }
+}
+
+/**
+ * Where a card is standing right now, so a parked effect can find it again.
+ *
+ * The effect resumes on a later action, and by then the source may have moved:
+ * Sangan asks its question *from the Graveyard*, having arrived there a moment
+ * before the window opened. Named rather than held, because the state is
+ * serialised between the question and the answer.
+ */
+function whereIs(state: DuelState, uid: string): 'field' | 'grave' | 'hand' | null {
+  if (findOnField(state, uid)) return 'field';
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    if (state.players[pid].grave.some((c) => c.uid === uid)) return 'grave';
+    if (state.players[pid].hand.some((c) => c.uid === uid)) return 'hand';
+  }
+  return null;
+}
+
+function findAnywhere(state: DuelState, uid: string): CardInstance | null {
+  const onField = findOnField(state, uid);
+  if (onField) return onField.c;
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const p = state.players[pid];
+    const hit = p.grave.find((c) => c.uid === uid) ?? p.hand.find((c) => c.uid === uid) ?? p.deck.find((c) => c.uid === uid);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Parks an effect and asks its controller to choose, returning true if it did.
+ *
+ * Only when there is a real question: the effect declares a pick, nobody has
+ * answered it, and more cards qualify than the effect will take. One legal
+ * card is not a choice, and none at all is not a prompt — both go straight
+ * through and resolve as they always have.
+ */
+function raiseChoice(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  trigger: Trigger,
+  eff: CardEffect,
+  targets: string[]
+): boolean {
+  if (targets.length || state.winner) return false;
+  if (!eff.targets) return false;
+  const spec = targetSpecFor(c.slug, trigger);
+  if (!spec) return false;
+  const options = targetCandidates(state, controller, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
+  const want = spec.count ?? 1;
+  if (options.length <= want) return false;
+
+  const from = whereIs(state, c.uid);
+  if (!from) return false;
+  const choice: PendingChoice = {
+    kind: 'choose',
+    player: controller,
+    options: options.map((o) => o.uid),
+    reason: `${displayName(state, c)}: ${spec.prompt}`,
+    context: {},
+    sourceUid: c.uid,
+    sourceSlug: c.slug,
+    trigger,
+    want,
+    picked: [],
+    from,
+  };
+  /* One slot, and a duel can raise two questions in a breath — a Dark Hole over
+     two Sangans. The second waits its turn rather than being answered by the
+     engine on its owner's behalf. */
+  if (state.pending) (state.pendingChoices ??= []).push(choice);
+  else state.pending = choice;
+  return true;
+}
+
+/**
+ * Every legal answer to an open choice window, for whoever has to give one.
+ *
+ * Three drivers ask "what may I do while a window is open" — the computer, the
+ * autoplayer, and the simulator — and each carried its own copy of the answer.
+ * They all knew about traps and none of them knew about this, so a card that
+ * stopped to ask a question was met with `respondTrap` and the duel wedged: 21
+ * of 400 simulated games died on "Waiting for you to choose." The trap half
+ * stays where it is, because each driver wants different things from it; the
+ * new half is written once.
+ *
+ * Ranked strongest first, so a caller that simply takes the head gets the same
+ * card the engine used to choose on the player's behalf.
+ */
+export function choiceResponses(state: DuelState, pid: PlayerId): DuelAction[] {
+  const pending = state.pending;
+  if (pending?.kind !== 'choose' || pending.player !== pid) return [];
+  const ranked = [...pending.options].sort(
+    (a, b) => baseAtk(findAnywhere(state, b)?.slug ?? '') - baseAtk(findAnywhere(state, a)?.slug ?? '')
+  );
+  const out: DuelAction[] = [];
+  const take = Math.min(3, Math.max(1, ranked.length - pending.want + 1));
+  for (let i = 0; i < take; i++) out.push({ type: 'chooseCard', uids: ranked.slice(i, i + pending.want) });
+  return out;
+}
+
+/** Opens the next parked question, if the slot is free and one is waiting. */
+function drainChoices(state: DuelState) {
+  if (state.pending || state.winner) return;
+  const next = state.pendingChoices?.shift();
+  if (!next) return;
+  /* The board has moved since it was parked. Re-ask rather than trusting the
+     list it was queued with: the card it was going to offer may be gone. */
+  const src = findAnywhere(state, next.sourceUid);
+  const spec = src ? targetSpecFor(next.sourceSlug, next.trigger) : null;
+  if (!src || !spec) {
+    drainChoices(state);
+    return;
+  }
+  const options = targetCandidates(state, next.player, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
+  if (options.length <= next.want) {
+    // No longer a choice. Resolve it the way it would have resolved anyway.
+    resumeChoice(state, { ...next, options: options.map((o) => o.uid) }, options.slice(0, next.want).map((o) => o.uid));
+    drainChoices(state);
+    return;
+  }
+  state.pending = { ...next, options: options.map((o) => o.uid) };
+}
+
+/** Runs a parked effect, now that its controller has answered. */
+function resumeChoice(state: DuelState, choice: PendingChoice, picked: string[]) {
+  const src = findAnywhere(state, choice.sourceUid);
+  if (!src) return;
+  /* No "this one is a resume" flag: `raiseChoice` refuses the moment an answer
+     exists, and the answer is exactly what is being handed in. A second way of
+     saying the same thing is a second thing to keep in step. */
+  fireTriggersInner(state, src, choice.player, choice.trigger, {}, picked, CARDS[choice.sourceSlug]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2840,12 +2963,6 @@ function endTurn(state: DuelState) {
 /* ------------------------------------------------------------------ */
 
 /** Is this card face-up on that player's side, in any zone? */
-function faceUpOnSide(state: DuelState, pid: PlayerId, slug: string): boolean {
-  const p = state.players[pid];
-  if (p.spellTrap?.slug === slug && p.spellTrap.face === 'up') return true;
-  if (p.field?.slug === slug && p.field.face === 'up') return true;
-  return p.monsters.some((m) => m?.slug === slug && m.face === 'up');
-}
 
 /**
  * Why this monster may not simply be Normal Summoned, or null if it may.
@@ -2919,32 +3036,6 @@ export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): st
   return null;
 }
 
-/**
- * Whether a Special Summon may bring this monster back to this player's side.
- *
- * The Graveyard holds everything and Monster Reborn takes anything out of it —
- * Ritual monsters and Fusions included, which is the printed card's whole
- * drama. The one bar is the book: a Toon Summoned Skull is not a Summoned
- * Skull, it is a card that cannot be on the field without Toon World, and
- * reviving one into an empty Field Zone put a monster on the board that could
- * never have been Summoned there.
- *
- * The four that are only drawings while the book is open are revivable without
- * it, because without it they are ordinary monsters — Dark Rabbit comes back as
- * a Dark Rabbit, and stays one until somebody opens the book over it.
- */
-export function revivable(state: DuelState, pid: PlayerId, slug: string, by?: string): boolean {
-  const need = CARDS[slug]?.summonRequires;
-  if (need && !faceUpOnSide(state, pid, need)) return false;
-  /* And the other bar: a card that only its own ladder may put on the field.
-     `by` is the slug of whatever effect is doing the summoning, so the two
-     rungs that are allowed to reach the Perfectly Ultimate Great Moth still
-     can, and nothing else does. A caller that does not say who is asking is
-     refused — an anonymous Special Summon is exactly the shortcut this bars. */
-  const only = CARDS[slug]?.summonOnlyBy;
-  if (only?.length && (!by || !only.includes(by))) return false;
-  return true;
-}
 
 export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId): number {
   const def = CARDS[slug];
@@ -3407,10 +3498,14 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
 
   if (state.winner) return { state: prev, error: 'The duel is already over.' };
 
-  // While a response window is open, only that player may act, and only to respond.
+  // While a window is open, only that player may act, and only to answer it.
   if (state.pending) {
-    if (action.type !== 'respondTrap') return { state: prev, error: 'Waiting for a response.' };
     if (state.pending.player !== pid) return { state: prev, error: 'Not your response.' };
+    if (state.pending.kind === 'choose') {
+      if (action.type !== 'chooseCard') return { state: prev, error: 'Waiting for you to choose.' };
+      return { state: handleChoice(state, pid, action.uids) };
+    }
+    if (action.type !== 'respondTrap') return { state: prev, error: 'Waiting for a response.' };
     return { state: handleTrapResponse(state, pid, action.uid, action.targets ?? []) };
   }
 
@@ -3970,8 +4065,27 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
   }
 }
 
+/**
+ * The answer to a parked effect. Runs it, then opens whatever else was queued
+ * behind it.
+ *
+ * A pick the board no longer offers is dropped rather than refused: the window
+ * may have been open across a reconnection, and an effect that cannot find what
+ * it was pointed at should resolve on what is left, not stall the duel.
+ */
+function handleChoice(state: DuelState, pid: PlayerId, uids: string[]): DuelState {
+  const pending = state.pending as PendingChoice;
+  state.pending = null;
+  const legal = uids.filter((u) => pending.options.includes(u)).slice(0, pending.want);
+  const picked = legal.length ? legal : pending.options.slice(0, pending.want);
+  resumeChoice(state, pending, picked);
+  drainChoices(state);
+  checkExodia(state);
+  return state;
+}
+
 function handleTrapResponse(state: DuelState, pid: PlayerId, uid: string | null, targets: string[]): DuelState {
-  const pending = state.pending!;
+  const pending = state.pending as PendingTrap;
   state.pending = null;
 
   let ctx: EffectCtx | null = null;
@@ -3998,6 +4112,8 @@ function handleTrapResponse(state: DuelState, pid: PlayerId, uid: string | null,
       endTurn(state);
     }
   }
+  /* Anything that queued up behind the trap window gets its turn now. */
+  drainChoices(state);
   checkExodia(state);
   return state;
 }

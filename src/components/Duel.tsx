@@ -424,7 +424,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      buttons, the hand's action sheets, and its trap windows as full-screen
      prompts the computer was already about to answer itself. */
   const myTurn = !spectator && state.active === me && !state.winner;
-  const respondingToTrap = !spectator && state.pending?.player === me;
+  const respondingToTrap = !spectator && state.pending?.kind === 'trap' && state.pending.player === me;
+  /* A card of mine stopping to ask me which card to take — on whichever turn it
+     happens to fire. The same overlay slot as a trap window, because from the
+     player's side it is the same thing: the duel is waiting on me. */
+  const choosing2 = !spectator && state.pending?.kind === 'choose' && state.pending.player === me
+    ? state.pending
+    : null;
   /**
    * Everything except the thing being asked for is out of bounds.
    *
@@ -451,7 +457,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
    * backstop, and for the same reason — silence is the failure, not slowness.
    */
   const narrating = !settled && !stalled;
-  const busy = (!!state.pending && !respondingToTrap) || choosing || narrating;
+  /* A window I owe an answer to is not "busy" — it is the one thing I may do.
+     Both kinds count: a trap to respond to, and a card of mine asking which
+     card to take. */
+  const busy = (!!state.pending && !respondingToTrap && !choosing2) || choosing || narrating;
 
   /* ---------------- the resolve queue ----------------
      Every animation the server reported used to be played in one burst, so a
@@ -1526,6 +1535,27 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      over the board with no way past it. Cancelling targeting drops `mode` back
      to idle and the window comes straight back. */
   const pendingPrompt = respondingToTrap && state.pending && mode.kind === 'idle';
+  /* Wherever the options happen to be lying — a Graveyard, a Deck, either
+     player's field. The engine settled the list when it opened the window, so
+     the board lays out exactly what it will accept. */
+  const chooseCards: CardInstance[] = choosing2
+    ? choosing2.options
+        .map((uid) => {
+          for (const pid of [me, foe] as PlayerId[]) {
+            const p = state.players[pid];
+            const hit =
+              p.monsters.find((m) => m?.uid === uid) ??
+              p.grave.find((c) => c.uid === uid) ??
+              p.hand.find((c) => c.uid === uid) ??
+              p.deck.find((c) => c.uid === uid) ??
+              (p.spellTrap?.uid === uid ? p.spellTrap : undefined) ??
+              (p.field?.uid === uid ? p.field : undefined);
+            if (hit) return hit;
+          }
+          return null;
+        })
+        .filter((c): c is CardInstance => !!c)
+    : [];
   const pendingCards = pendingPrompt
     ? state.pending!.options
         .map((uid) => mine.hand.find((h) => h.uid === uid) ?? (mine.spellTrap?.uid === uid ? mine.spellTrap : null))
@@ -2280,6 +2310,33 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <button className="btn mt-3 rounded px-3 py-1.5 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* A card of mine asking me which card it should take. */}
+      {choosing2 && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+             style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
+          <div className="panel grain thin-scroll max-h-[80dvh] w-full max-w-2xl overflow-y-auto rounded p-4">
+            <h3 className="font-display text-lg text-brassbright">Your choice</h3>
+            <p className="mt-1 text-xs text-ptext/85">{choosing2.reason}</p>
+            <div className="brass-rule my-3" />
+            <div className="flex flex-wrap justify-center gap-3">
+              {chooseCards.map((c) => (
+                <button
+                  key={c.uid}
+                  className="w-24 selectable rounded"
+                  onClick={() => {
+                    sfx.click();
+                    void run({ type: 'chooseCard', uids: [c.uid] });
+                  }}
+                >
+                  <GameCard card={c} displayName={shownName(c)} />
+                  <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

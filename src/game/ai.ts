@@ -18,6 +18,7 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  choiceResponses,
   effAtk,
   effDef,
   effFlags,
@@ -391,6 +392,10 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
 
   if (state.pending) {
     if (state.pending.player !== pid) return acts;
+    /* A parked effect asking which card to take — one rule, in the engine, so
+       the computer, the autoplayer and the simulator all answer it the same
+       way. The search then picks between the candidates it hands back. */
+    if (state.pending.kind === 'choose') return choiceResponses(state, pid);
     acts.push({ type: 'respondTrap', uid: null });
     for (const uid of state.pending.options) {
       const c = p.hand.find((h) => h.uid === uid) ?? (p.spellTrap?.uid === uid ? p.spellTrap : null);
@@ -903,6 +908,26 @@ function rollout(state: DuelState, me: PlayerId, turns: number, budgetMs: number
   return evaluate(cur, me, w);
 }
 
+
+/** Answer a parked effect's question by playing each option out one step. */
+export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion'): DuelAction {
+  const cfg = cfgOf(level);
+  const w = cfg.weights ?? WEIGHTS;
+  const options = candidates(state, pid, cfg.branch);
+  let best: DuelAction = options[0] ?? { type: 'chooseCard', uids: [] };
+  let bestScore = -Infinity;
+  for (const action of options) {
+    const res = applyAction(state, pid, action);
+    if (res.error) continue;
+    const score = evaluate(res.state, pid, w);
+    if (score > bestScore) {
+      bestScore = score;
+      best = action;
+    }
+  }
+  return best;
+}
+
 /** Decide a pending trap window by simulating both branches. */
 export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion'): DuelAction {
   const cfg = cfgOf(level);
@@ -952,7 +977,8 @@ export function aiNext(
   if (state.winner) return null;
   if (state.pending) {
     invalidatePlan(rt);
-    return state.pending.player === pid ? chooseTrapResponse(state, pid, level) : null;
+    if (state.pending.player !== pid) return null;
+    return state.pending.kind === 'choose' ? chooseCardResponse(state, pid, level) : chooseTrapResponse(state, pid, level);
   }
   if (state.active !== pid) {
     invalidatePlan(rt);

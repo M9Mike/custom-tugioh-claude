@@ -2507,9 +2507,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'flying-kamakiri-1': {
-    /* Any Insect in the Deck, not only the biggest. It leaves on somebody
-       else's turn as often as not, so where there is nobody to ask the search
-       takes the best legal card — the house answer everywhere else. */
+    /* Any Insect in the Deck, not only the biggest, and it is your pick. It
+       leaves on somebody else's turn as often as not — which used to mean the
+       engine chose for you, and is now exactly what the choice window is for:
+       the duel stops and asks the card's owner, whoever's turn it is. */
     text: 'When this monster is sent to the Graveyard: add 1 Insect monster from your Deck to your hand.',
     effects: [{ trigger: 'onSentToGrave', targets: 1, ops: [{ op: 'search', filter: { kind: 'monster', type: 'Insect' } }] }],
   },

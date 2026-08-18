@@ -7,7 +7,7 @@
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
 import { applyAction, createDuel, other, viewFor, viewForSpectator } from '@/game/engine';
-import { aiNext, chooseTrapResponse, createAiRuntime, planTurn } from '@/game/ai';
+import { aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, planTurn } from '@/game/ai';
 import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import {
@@ -404,7 +404,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // and drop whatever was left of the turn plan, since the board is about to
     // change underneath it.
     room.aiPlan = undefined;
-    action = chooseTrapResponse(s, pid, GAME_AI);
+    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI) : chooseTrapResponse(s, pid, GAME_AI);
   } else {
     const key = turnKey;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
@@ -427,7 +427,15 @@ export async function stepAI(room: Room): Promise<boolean> {
   }
   if (res.error) {
     // Still stuck — never let the computer wedge the duel; pass instead.
-    res = applyAction(s, pid, s.pending ? { type: 'respondTrap', uid: null } : { type: 'endTurn' });
+    /* Still stuck — never let the computer wedge the duel. A choice window has
+       no "decline": passing on it would leave the question open forever, so the
+       fallback answers it with the first legal option. */
+    const bail: DuelAction = !s.pending
+      ? { type: 'endTurn' }
+      : s.pending.kind === 'choose'
+        ? { type: 'chooseCard', uids: s.pending.options.slice(0, s.pending.want) }
+        : { type: 'respondTrap', uid: null };
+    res = applyAction(s, pid, bail);
     if (res.error) return false;
   }
   room.state = res.state;

@@ -928,7 +928,15 @@ export interface PlayerState {
 }
 
 /** A decision the engine is waiting on before it can continue. */
-export interface Pending {
+/**
+ * A decision the engine is waiting on. Both shapes carry `player`, `options`
+ * and `reason`, so everything that only needs "who is being asked, about what"
+ * — the board's overlay, the AI's turn loop, the room's stall detector — reads
+ * either without caring which it got.
+ */
+export type Pending = PendingTrap | PendingChoice;
+
+export interface PendingTrap {
   kind: 'trap';
   player: PlayerId;
   /** uids of cards that could be activated right now. */
@@ -936,6 +944,42 @@ export interface Pending {
   /** What caused this window, for the prompt text. */
   reason: string;
   context: TriggerContext;
+}
+
+/**
+ * A card asking its own controller which card it should take — on a turn that
+ * is not theirs.
+ *
+ * Every effect with a choice used to fall into two camps: activated by a player
+ * who is standing right there and can be asked, or fired mid-resolution where
+ * the engine picked for you. Sangan, Witch of the Black Forest, Newdoria and a
+ * dozen more sit in the second camp only because their trigger happens to land
+ * on the opponent's turn — not because the choice is any less theirs.
+ *
+ * The whole effect is parked, not half of it: the window opens before the first
+ * op runs, and the answer arrives as the effect's target list, which is exactly
+ * the shape an effect activated on your own turn already has. So resuming is
+ * running the effect, once, with the answer in hand — no continuation to
+ * reconstruct, and nothing that half-happened while we waited.
+ */
+export interface PendingChoice {
+  kind: 'choose';
+  /** Who must answer — the effect's controller, whoever's turn it is. */
+  player: PlayerId;
+  /** uids that may be chosen, settled when the window opened. */
+  options: string[];
+  reason: string;
+  context: TriggerContext;
+  /** The effect to run once the answer lands, named rather than captured. */
+  sourceUid: string;
+  sourceSlug: string;
+  trigger: Trigger;
+  /** How many cards the effect wants. */
+  want: number;
+  /** Answers collected so far. */
+  picked: string[];
+  /** Where the source was standing, so the resumed effect can find it. */
+  from: 'field' | 'grave' | 'hand';
 }
 
 export interface TriggerContext {
@@ -1063,6 +1107,13 @@ export interface DuelState {
   uidSeq: number;
   /** Set while a battle is paused waiting on a trap response. */
   suspendedAttack?: { attackerUid: string; targetUid: string | null } | null;
+  /**
+   * Choices raised while another was already open. One Dark Hole can destroy
+   * two Sangans; there is one `pending` slot and two questions, and the second
+   * used to be answered by the engine helping itself. They queue instead, and
+   * drain as each is answered.
+   */
+  pendingChoices?: PendingChoice[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1092,6 +1143,8 @@ export type DuelAction =
     }
   /** Pay a card out of hand to Special Summon another card in that hand. */
   | { type: 'handSummon'; uid: string; discardUid?: string; targets?: string[] }
+  /** The answer to a `PendingChoice` — which card the parked effect should take. */
+  | { type: 'chooseCard'; uids: string[] }
   | { type: 'respondTrap'; uid: string | null; targets?: string[] }
   | { type: 'toPhase'; phase: Phase }
   | { type: 'endTurn' }
