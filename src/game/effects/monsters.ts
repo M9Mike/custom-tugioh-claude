@@ -2773,10 +2773,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        one up. */
     text:
       'When this monster is summoned: destroy 1 Spell or Trap card your opponent controls. ' +
-      'When this monster is destroyed: Special Summon 1 Dinosaur from your Graveyard.',
+      'When this monster is destroyed: Special Summon 1 Dinosaur monster of your choice from your Graveyard.',
     effects: [
       { trigger: 'onSummon', targets: 1, ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }] },
-      { trigger: 'onDestroyed', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
+            /* `targets` is what opts an effect into being asked about. It dies on the
+         other player's turn as often as not, which used to mean the engine took
+         the biggest fossil in the pile; the choice window makes that yours. */
+      {
+        trigger: 'onDestroyed',
+        targets: 1,
+        ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }],
+      },
     ],
   },
 

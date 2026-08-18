@@ -2434,7 +2434,21 @@ function raiseChoice(
   if (!eff.targets) return false;
   const spec = targetSpecFor(c.slug, trigger);
   if (!spec) return false;
-  const options = targetCandidates(state, controller, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
+  const offered = targetCandidates(state, controller, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
+  /* Never the card doing the asking. A monster does not Special Summon itself
+     with its own "when this card is destroyed" effect — the summon op has
+     refused that for as long as it has existed — and Anthrosaurus, which is a
+     Dinosaur lying in the Graveyard by the time it asks, was being offered as
+     one of its own answers. Picking it would have been the picker and the
+     engine disagreeing about the rule, which is the shape of half the bugs in
+     this file.
+
+     Flatly, with no exception for the op's `includeSelf`. Revival Jam is the
+     only card that opts in and it never asks a question, so the exception was
+     a branch nothing could take and no test could prove — and an unfalsifiable
+     line is worth less than the rule it was guarding. The day a card both opts
+     in and asks, it will need a test, and this is where it goes. */
+  const options = offered.filter((o) => o.uid !== c.uid);
   const want = spec.count ?? 1;
   /* "Up to" always asks, so long as there is anything to point at: taking two
      of the two on the board is a decision, and so is taking neither. A
@@ -2491,6 +2505,7 @@ export function choiceResponses(state: DuelState, pid: PlayerId): DuelAction[] {
   for (let i = 0; i < take; i++) out.push({ type: 'chooseCard', uids: ranked.slice(i, i + pending.want) });
   return out;
 }
+
 
 /** Does this effect's pick say "up to"? Read off the card, once. */
 function optionalPick(slug: string, trigger: Trigger): boolean {

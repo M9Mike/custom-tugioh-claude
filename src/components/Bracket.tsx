@@ -135,12 +135,6 @@ export default function Bracket({ t, busy, onContinue }: Props) {
         </div>
       )}
 
-      {t.status === 'eliminated' && (
-        <p className="text-center text-sm leading-relaxed text-ptext/85">
-          Knocked out in the {nameAt(t.round).toLowerCase()}. The bracket does not offer a rematch — but it plays
-          itself out, so you can see how it ended.
-        </p>
-      )}
       {t.champion && t.champion !== t.humanDuelist && (
         <p className="text-center font-display text-sm text-brassbright">
           👑 {DUELIST_BY_ID[t.champion]?.name ?? t.champion} takes the Kingdom.

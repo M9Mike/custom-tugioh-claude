@@ -1519,6 +1519,29 @@ console.log('\nTwo smaller Rex numbers, and a revival that stopped caring how it
   e.players[ME].hand.push(hole);
   const wiped = act(e, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
   ok(on(wiped, ME).some((m) => m.slug === 'megazowler'), 'Anthrosaurus sends a fossil up when an effect kills it too', on(wiped, ME).map((m) => m.slug).join(',') || 'nothing');
+
+  /* And which fossil is yours to say, on whosever turn it falls. */
+  const b = fresh('battle');
+  b.active = FOE;
+  const anth = card(ME, 'anthrosaurus');
+  anth.summonedOnTurn = 0;
+  b.players[ME].monsters[0] = anth;
+  const killer = card(FOE, 'blue-eyes-white-dragon');
+  killer.summonedOnTurn = 0;
+  b.players[FOE].monsters[0] = killer;
+  b.players[ME].grave.push(card(ME, 'megazowler'), card(ME, 'uraby'), card(ME, 'raigeki'));
+  const asked = act(b, FOE, { type: 'attack', uid: killer.uid, targetUid: anth.uid });
+  ok(asked.pending?.kind === 'choose' && asked.pending.player === ME, 'Anthrosaurus asks you which fossil to send up', asked.pending ? `${asked.pending.kind} for ${asked.pending.player}` : '(nothing asked)');
+  const named = asked.pending!.options.map((u) => asked.players[ME].grave.find((g) => g.uid === u)?.slug);
+  ok(named.includes('megazowler') && named.includes('uraby'), 'offering the fossils in the pile', named.join(',') || '(none)');
+  ok(!named.includes('raigeki'), 'and nothing that is not one');
+  /* Never itself. It is a Dinosaur lying in the Graveyard by the time it asks,
+     and the summon op has always refused to revive its own source — a picker
+     offering it would be the board and the engine disagreeing about the rule. */
+  ok(!named.includes('anthrosaurus'), 'nor itself, which the summon would have refused anyway', named.join(','));
+  const small = asked.pending!.options.find((u) => asked.players[ME].grave.find((g) => g.uid === u)?.slug === 'uraby')!;
+  const up = act(asked, ME, { type: 'chooseCard', uids: [small] });
+  ok(on(up, ME).some((m) => m.slug === 'uraby'), 'and the one you named is the one that stands up', on(up, ME).map((m) => m.slug).join(',') || 'nothing');
 }
 
 console.log('\nA Spell costs the same whether it comes from your hand or off the field');
