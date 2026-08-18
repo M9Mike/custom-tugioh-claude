@@ -40,9 +40,20 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
           </div>
           {!hidden && !isToken && d && (
             <>
+              {/* The type belongs here as much as the attribute does — half the
+                  effects in the game read it ("1 Fiend monster from your
+                  Graveyard", "for each Dinosaur") and this row was the only
+                  place a player looks that never said it. Two lines rather than
+                  one long one, because at 9px on a phone the single row ran out
+                  of width and wrapped mid-number. */}
               <p className="text-[9px] uppercase tracking-wide text-brass">
-                {d.kind === 'monster' ? `Lv${d.level} · ${d.attribute} · ATK ${atk ?? d.atk} / DEF ${def ?? d.def}` : `${d.subKind ?? ''} ${d.kind}`}
+                {d.kind === 'monster' ? `Lv${d.level} · ${d.attribute} · ${d.type}` : `${d.subKind ?? ''} ${d.kind}`}
               </p>
+              {d.kind === 'monster' && (
+                <p className="text-[9px] uppercase tracking-wide text-brass">
+                  ATK {atk ?? d.atk} / DEF {def ?? d.def}
+                </p>
+              )}
               <p className="mt-0.5 max-h-[54px] overflow-y-auto thin-scroll pr-1 text-[10px] leading-snug text-ptext/90">
                 {d.text}
               </p>
