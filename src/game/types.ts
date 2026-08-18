@@ -351,6 +351,17 @@ export type Op =
   | { op: 'reflectBattleDamage'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
   | { op: 'preventBattleDamage'; who: Side; duration: Duration }
+  /**
+   * Nothing that side controls can be destroyed in battle, including monsters
+   * that arrive later.
+   *
+   * Its neighbour above stops the damage; this stops the dying. Tornado Wall
+   * raises both, and it has to reach a side rather than a card, because the
+   * waterspouts stand between the whole board and the attack — a grant written
+   * onto the monsters present when it went up would leave the next one to walk
+   * in unprotected.
+   */
+  | { op: 'preventBattleDestruction'; who: Side; duration: Duration }
   | { op: 'indestructibleByBattle'; duration: Duration }
   | { op: 'indestructibleByEffect'; duration: Duration }
   | { op: 'untargetable'; duration: Duration }
@@ -501,7 +512,7 @@ export interface CardEffect {
        * or the controller's hand — which is Slifer, whose ATK is "1000 for each
        * card in your hand" and therefore falls the moment you spend one.
        */
-      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'field' | 'ownHand';
+      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'oppField' | 'field' | 'ownHand';
       /** Only count cards matching this. Omit to count everything there. */
       filter?: CardFilter;
       /**
@@ -715,7 +726,7 @@ export interface CardInstance {
 export interface OngoingEffect {
   id: string;
   source: string; // card slug
-  kind: 'skipDraw' | 'skipBattlePhase' | 'freezeMonsters' | 'preventBattleDamage';
+  kind: 'skipDraw' | 'skipBattlePhase' | 'freezeMonsters' | 'preventBattleDamage' | 'preventBattleDestruction';
   /** Player the effect is applied to. */
   target: PlayerId;
   /** Turns remaining; decremented at the end of the affected player's turn. */

@@ -23,6 +23,7 @@ import {
   type EquipGrant,
   type Face,
   type Op,
+  type OngoingEffect,
   type PlayerId,
   type PlayerState,
   type Selector,
@@ -351,6 +352,7 @@ function auraCount(
   else if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
   else if (per.zone === 'eitherGrave') pools.push(state.players.p1.grave, state.players.p2.grave);
   else if (per.zone === 'ownField') pools.push(onField(controller));
+  else if (per.zone === 'oppField') pools.push(onField(other(controller)));
   else pools.push(onField('p1'), onField('p2'));
   let n = 0;
   for (const pool of pools) {
@@ -452,6 +454,12 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
   if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
+  /* A side-wide shield reads as a flag on every monster standing behind it, so
+     the battle code, the board and the AI all see it without any of them
+     needing to know an ongoing effect exists. Tornado Wall raises it. */
+  if (state.ongoing.some((o) => o.kind === 'preventBattleDestruction' && o.target === ctrl)) {
+    merged.indestructibleByBattle = true;
+  }
   return merged;
 }
 
@@ -1085,9 +1093,14 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
 
   if (s.pick === 'all') return pool.filter((c) => zone !== 'monster' || !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   if (s.pick === 'random') {
+    /* `count` random cards, not one — "return up to 10 random cards from your
+       Graveyard" is a real sentence and this only ever took the first. Drawn
+       without replacement, and short pools simply give what they have. */
     const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
-    if (!legal.length) return [];
-    return [legal[randInt(state, legal.length)]];
+    const want = Math.min(s.count ?? 1, legal.length);
+    const out: CardInstance[] = [];
+    for (let i = 0; i < want; i++) out.push(...legal.splice(randInt(state, legal.length), 1));
+    return out;
   }
   const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
   if (!legal.length) return [];
@@ -1146,7 +1159,7 @@ function applyFlag(c: CardInstance, key: keyof CardFlags, value: boolean | numbe
   (bag as any)[key] = value;
 }
 
-function addOngoing(state: DuelState, kind: 'skipDraw' | 'skipBattlePhase' | 'freezeMonsters' | 'preventBattleDamage', target: PlayerId, turns: number, source: string) {
+function addOngoing(state: DuelState, kind: OngoingEffect['kind'], target: PlayerId, turns: number, source: string) {
   const existing = state.ongoing.find((o) => o.kind === kind && o.target === target);
   if (existing) {
     existing.turns = Math.max(existing.turns, turns);
@@ -1744,6 +1757,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'pierce':
         applyFlag(ctx.source, 'pierce', true, op.duration);
+        break;
+      case 'preventBattleDestruction':
+        for (const pid of sideToPlayers(ctx, op.who)) {
+          addOngoing(state, 'preventBattleDestruction', pid, op.duration === 'permanent' ? 99 : 1, ctx.source.slug);
+        }
         break;
       case 'indestructibleByBattle':
         applyFlag(ctx.source, 'indestructibleByBattle', true, op.duration);

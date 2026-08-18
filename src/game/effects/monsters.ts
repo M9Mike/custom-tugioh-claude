@@ -1597,7 +1597,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'the-legendary-fisherman': {
-    text: 'While "Umi" is on the field, this monster cannot be targeted or destroyed by your opponent\'s effects and can attack directly.',
+    text:
+      'While "Umi" is on the field, this monster cannot be targeted or destroyed by your opponent\'s effects and can attack directly. ' +
+      'When this monster is summoned: shuffle up to 10 random cards from your Graveyard into your Deck. ' +
+      'When this monster is destroyed by battle: add "Fortress Whale\'s Oath" from your Deck or Graveyard to your hand.',
     cry: 'Ride the waves!',
     /* Written as a conditional aura rather than a conditional `onSummon`, like
        7 Colored Fish and Amphibian Beast beside him. It reads the same either
@@ -1612,19 +1615,40 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: { side: 'own', pick: 'self' }, grants: ['untargetable', 'directAttack'] },
       },
+      /* The tide turns and the drowned come back. Ten is most of a Graveyard by
+         the time he lands, so the deck the duel has been eating refills — and
+         a random ten rather than a chosen ten, because it is the sea deciding,
+         not the fisherman. */
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'shuffleIntoDeck', target: sel('own', 'random', { zone: 'grave', count: 10 }) }],
+      },
+      { trigger: 'onDestroyedByBattle', ops: [{ op: 'search', filter: { slugs: ['fortress-whale-s-oath'] }, orGrave: true }] },
     ],
   },
 
   'fortress-whale': {
-    text: 'When this monster is summoned: destroy every monster your opponent controls with 1800 or less ATK.',
+    text: 'When this monster is summoned: destroy every monster your opponent controls with 2900 or less ATK.',
     cry: 'Rise from the depths!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { maxAtk: 1800 } }) }] }],
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { maxAtk: 2900 } }) }] }],
   },
 
   'kairyu-shin': {
-    text: 'While face-up, all monsters your opponent controls lose 400 ATK. This monster inflicts piercing battle damage.',
+    /* Two auras rather than one with a number in it: the base drain is always
+       true and the sea doubles it, so the second is simply the first again,
+       gated on Umi. Written that way because a conditional aura is read live —
+       the drain follows the water in and out rather than being decided once. */
+    text:
+      'While face-up, all monsters your opponent controls lose 500 ATK, or 1000 while "Umi" is on the field. ' +
+      'This monster gains 300 ATK for each monster your opponent controls, and inflicts piercing battle damage.',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
+      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -500 } },
+      { trigger: 'continuous', condition: { requiresField: 'umi' }, ops: [], aura: { target: OPP_ALL, atk: -500 } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'oppField', atk: 300 } },
+      },
       { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
     ],
   },
@@ -1633,7 +1657,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* A shark in open water bites through the shield: pierce under Umi turns
        the deck's two 1600 vanillas into real tide payoffs (2000 piercing with
        the weather up). */
-    text: 'While "Umi" is on the field, this monster inflicts piercing battle damage. When this monster destroys a monster in battle: inflict 400 damage to your opponent.',
+    text:
+      'While "Umi" is on the field, this monster inflicts piercing battle damage. ' +
+      'When this monster destroys a monster in battle: inflict 400 damage to your opponent and this monster gains 400 ATK. ' +
+      'If "Umi" is destroyed, this monster is destroyed with it.',
     effects: [
       {
         trigger: 'continuous',
@@ -1641,7 +1668,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: SELF, grants: ['pierce'] },
       },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 400, to: 'opp' }] },
+      {
+        trigger: 'onBattleDestroy',
+        ops: [
+          { op: 'damage', amount: 400, to: 'opp' },
+          /* A modifier rather than an aura, so it stacks with every kill and
+             then washes off the moment the shark leaves the field — "while it
+             is on the field" is the owner's wording and `resetInstance` is
+             what makes it true. */
+          { op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' },
+        ],
+      },
+      /* The drowning clause is fired from Umi — see the note there. A monster
+         has no way to watch another card being destroyed, and Umi is the card
+         being destroyed. */
     ],
   },
 
@@ -1651,19 +1691,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   '7-colored-fish': {
-    text: 'While "Umi" is on the field, this monster gains 800 ATK and inflicts piercing battle damage.',
-    /* "While Umi is on the field" is a live condition, not a question asked
-       once. As a one-shot on summon the order of play decided everything:
-       Umi down first and the fish kept the 800 for good, even after Umi was
-       destroyed; summon first and it never got them at all, however long Umi
-       then sat there. A conditional aura is read from the field every time the
-       stat is calculated, so it simply follows Umi. */
+    /* It stopped being a body and became the school's way of finding the rest
+       of itself: 1850 reaches every WATER payoff the deck runs, so the fish
+       that arrives with the tide up brings the next one with it. */
+    text: 'While "Umi" is on the field, when this monster is summoned: add 1 WATER monster with 1850 or less ATK from your Deck to your hand.',
     effects: [
       {
-        trigger: 'continuous',
+        trigger: 'onSummon',
         condition: { requiresField: 'umi' },
-        ops: [],
-        aura: { target: { side: 'own', pick: 'self' }, atk: 800, grants: ['pierce'] },
+        ops: [{ op: 'search', filter: { kind: 'monster', attribute: 'WATER', maxAtk: 1850 } }],
       },
     ],
   },
@@ -1685,11 +1721,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        monster. The text also said "Spell or Trap effects" while the grant is
        `untargetable`, which in this engine no opposing effect gets past at
        all; it now says what it does rather than the narrower thing. */
-    text: "This monster cannot be targeted or destroyed by your opponent's card effects. While \"Umi\" is on the field, it gains 600 ATK.",
+    text:
+      "This monster cannot be targeted or destroyed by your opponent's card effects. When it is summoned: draw 1 card. " +
+      'While "Umi" is on the field, it gains 600 ATK and you draw 1 additional card at the start of your turn.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'untargetable', duration: 'permanent' }],
+        ops: [
+          { op: 'untargetable', duration: 'permanent' },
+          { op: 'draw', count: 1, who: 'own' },
+        ],
+      },
+      /* The ordinary draw has already happened by the time this fires, so one
+         more card is two for the turn — which is what the sea is worth to a
+         warrior who lives in it. */
+      {
+        trigger: 'onOwnTurnStart',
+        condition: { requiresField: 'umi' },
+        ops: [{ op: 'draw', count: 1, who: 'own' }],
       },
       /* A deep-sea creature in its own water: the tribute he costs finally
          buys a body (2200 under Umi) instead of only an immunity. */
@@ -1717,10 +1766,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The way in — the Toon Alligator pattern. Umi is the hinge of the whole
        deck and used to be a single copy nothing could find; the fish that
        leaps OUT of the sea is the one that goes and gets it. */
-    text: 'This monster can attack your opponent directly. When it is summoned: add "Umi" from your Deck to your hand.',
+    text:
+      'This monster can attack your opponent directly. When it is summoned: add "Umi" from your Deck to your hand. ' +
+      'When this monster is sent to the Graveyard: draw 1 card.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] },
       { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['umi'] } }] },
+      { trigger: 'onSentToGrave', ops: [{ op: 'draw', count: 1, who: 'own' }] },
     ],
   },
 
@@ -1738,9 +1790,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'crab-turtle': {
-    text: 'When this monster is summoned: return every monster your opponent controls to their hand.',
+    text: 'When this monster is summoned: return 1 monster your opponent controls to their hand.',
     cry: 'The tide takes everything!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'bounce', target: OPP_ALL }] }],
+    effects: [{ trigger: 'onSummon', targets: 1, ops: [{ op: 'bounce', target: OPP_PICK }] }],
   },
 
   'amphibian-beast': {

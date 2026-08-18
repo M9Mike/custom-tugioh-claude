@@ -693,25 +693,28 @@ console.log('\n"While Umi is on the field" follows Umi, whatever order things ha
      an `onSummon` op behind a condition, so the question was asked once and the
      answer kept for good — which also meant the bonus survived Umi being
      destroyed. A conditional aura is re-read every time the stat is wanted. */
+  /* Written around Amphibian Beast now: 7 Colored Fish carried this check
+     until the owner traded its 800 and its piercing for a search, and the rule
+     under test is the aura's, not that card's. The Beast says the same
+     sentence and still says it with numbers. */
   const s = fresh();
-  const fish = card(ME, '7-colored-fish');
   const beast = card(ME, 'amphibian-beast');
-  s.players[ME].monsters[0] = fish;
-  s.players[ME].monsters[1] = beast;
+  const warrior = card(ME, 'deepsea-warrior');
+  s.players[ME].monsters[0] = beast;
+  s.players[ME].monsters[1] = warrior;
 
-  const fishBare = effAtk(s, fish, ME);
-  ok(fishBare === 1800, '7 Colored Fish is 1800 with no Umi', `${fishBare}`);
+  const beastBare = effAtk(s, beast, ME);
+  ok(beastBare === 2400, 'Amphibian Beast is 2400 with no Umi', `${beastBare}`);
 
   s.players[ME].field = card(ME, 'umi');
-  // 1800 + 800 of its own + 400 from Umi's WATER aura.
-  ok(effAtk(s, fish, ME) === 3100, 'and 3100 once Umi is up, having been summoned first', `${effAtk(s, fish, ME)}`);
-  ok(effFlags(s, fish, ME).pierce === true, 'with the piercing its text promises');
-  ok(effAtk(s, beast, ME) === 2400 + 500 + 500, 'Amphibian Beast gains its 500 too', `${effAtk(s, beast, ME)}`);
+  // 2400 + 500 of its own + 500 from Umi's WATER aura.
+  ok(effAtk(s, beast, ME) === 3400, 'and 3400 once Umi is up, having been summoned first', `${effAtk(s, beast, ME)}`);
   ok((effFlags(s, beast, ME).extraAttacks ?? 0) === 1, 'and can attack twice');
+  ok(effAtk(s, warrior, ME) === 1600 + 600 + 500, 'Deepsea Warrior gains his 600 too', `${effAtk(s, warrior, ME)}`);
 
   s.players[ME].field = null;
-  ok(effAtk(s, fish, ME) === 1800, 'and it all lapses when Umi leaves', `${effAtk(s, fish, ME)}`);
-  ok(!effFlags(s, fish, ME).pierce, 'piercing included');
+  ok(effAtk(s, beast, ME) === 2400, 'and it all lapses when Umi leaves', `${effAtk(s, beast, ME)}`);
+  ok((effFlags(s, beast, ME).extraAttacks ?? 0) === 0, 'the second attack included');
 }
 
 console.log('\n"Attacks every monster once each" survives its own kills');
@@ -1359,9 +1362,11 @@ console.log('\nA Field Spell is the weather, not a personal buff');
   const plain = effAtk(s, theirs, FOE);
 
   s.players[ME].field = card(ME, 'umi');
-  // 7 Colored Fish also gains its own 800 from Umi, on both sides of the table.
-  ok(effAtk(s, mine, ME) === 1800 + 500 + 800, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
-  ok(effAtk(s, theirs, FOE) === plain + 500 + 800, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
+  /* Just Umi's 500 now: the fish's own 800 was traded for a search, which
+     makes this a cleaner test of the thing it is actually about — that the
+     weather falls on both sides of the table equally. */
+  ok(effAtk(s, mine, ME) === 1800 + 500, 'your own WATER monster gains from your Umi', String(effAtk(s, mine, ME)));
+  ok(effAtk(s, theirs, FOE) === plain + 500, 'and so does theirs — it is the same sea', String(effAtk(s, theirs, FOE)));
 
   // Dark Sanctuary is the counter-example: both its auras are one-sided on
   // purpose and must stay that way — the house feeds its own and bites theirs,
@@ -5765,6 +5770,285 @@ console.log('\nBakura counts the dead, and the dead do not stay put');
   ok(once.players[FOE].field === null && once.players[FOE].spellTrap !== null,
     'and only the one he was pointed at',
     `field ${once.players[FOE].field ? 'kept' : 'gone'} / backrow ${once.players[FOE].spellTrap ? 'kept' : 'gone'}`);
+}
+
+console.log('\nMako: the sea and everything that lives in it');
+{
+  const sea = (st: DuelState) => { st.players[ME].field = { ...card(ME, 'umi'), face: 'up' as const }; return st; };
+
+  /* Tornado Wall — the waterspouts stop the dying as well as the damage, and
+     they stand over the side rather than over the monsters that were there. */
+  const wall = (() => {
+    /* An `anyOpponentTurn` trap is sprung from the Set card itself rather than
+       answered in a window — the path `canActivateSetCard` opens for it. */
+    const st = sea(fresh());
+    const trap = { ...card(ME, 'tornado-wall'), face: 'down' as const };
+    trap.summonedOnTurn = 0;
+    st.players[ME].spellTrap = trap;
+    const guard = card(ME, 'aqua-madoor');
+    guard.summonedOnTurn = 0;
+    st.players[ME].monsters = [guard, null, null];
+    const raised = act(st, ME, { type: 'activateSetCard', uid: trap.uid, targets: [] });
+    const swing = structuredClone(raised);
+    swing.phase = 'battle';
+    swing.active = FOE;
+    const big = card(FOE, 'summoned-skull');
+    big.summonedOnTurn = 0;
+    swing.players[FOE].monsters = [big, null, null];
+    const target = swing.players[ME].monsters.find((m) => m?.slug === 'aqua-madoor')!;
+    return act(swing, FOE, { type: 'attack', uid: big.uid, targetUid: target.uid });
+  })();
+  ok(wall.players[ME].monsters.some((m) => m?.slug === 'aqua-madoor'), 'Tornado Wall keeps the monster it was raised over',
+    wall.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(wall.players[ME].lp === 4000, 'and the damage still does not land', `${wall.players[ME].lp}`);
+  const latecomer = (() => {
+    const st = structuredClone(wall);
+    const fresher = card(ME, 'flying-fish');
+    st.players[ME].monsters[1] = fresher;
+    return effFlags(st, fresher, ME).indestructibleByBattle === true;
+  })();
+  ok(latecomer, 'and a monster that walks in afterwards is behind it too');
+
+  /* Umi — the sea calls the Oath up, and takes the shark down with it. */
+  const opened = (() => {
+    const st = fresh();
+    const water = card(ME, 'umi');
+    st.players[ME].hand = [water];
+    st.players[ME].deck = [card(ME, 'fortress-whale-s-oath'), card(ME, 'kuriboh')];
+    return act(st, ME, { type: 'activateSpell', uid: water.uid, targets: [] });
+  })();
+  ok(opened.players[ME].hand.some((c) => c.slug === 'fortress-whale-s-oath'),
+    'Umi brings the Oath up with it', opened.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+
+  const drowned = (() => {
+    const st = sea(fresh());
+    const shark = card(ME, 'great-white');
+    const bystander = card(ME, 'aqua-madoor');
+    st.players[ME].monsters = [shark, bystander, null];
+    st.active = FOE;
+    const despell = card(FOE, 'de-spell');
+    st.players[FOE].hand = [despell];
+    return act(st, FOE, { type: 'activateSpell', uid: despell.uid, targets: [st.players[ME].field!.uid] });
+  })();
+  ok(!drowned.players[ME].monsters.some((m) => m?.slug === 'great-white'), 'and the shark drowns when the sea is destroyed',
+    drowned.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(drowned.players[ME].monsters.some((m) => m?.slug === 'aqua-madoor'), 'while everything else keeps swimming',
+    drowned.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  const dry = fresh();
+  const loneShark = card(ME, 'great-white');
+  dry.players[ME].monsters = [loneShark, null, null];
+  ok(effAtk(dry, loneShark, ME) === baseAtkOf('great-white'), 'CONTROL: a shark with no sea at all is simply a shark',
+    `${effAtk(dry, loneShark, ME)}`);
+
+  /* Great White feeds on what it kills. */
+  const fed = (() => {
+    const st = fresh('battle');
+    const shark = card(ME, 'great-white'); // 1600
+    shark.summonedOnTurn = 0;
+    st.players[ME].monsters = [shark, null, null];
+    const prey = card(FOE, 'kuriboh');
+    st.players[FOE].monsters = [prey, null, null];
+    return act(st, ME, { type: 'attack', uid: shark.uid, targetUid: prey.uid });
+  })();
+  const grown = fed.players[ME].monsters.find((m) => m?.slug === 'great-white')!;
+  ok(effAtk(fed, grown, ME) === baseAtkOf('great-white') + 400, 'Great White grows 400 with every kill',
+    `${effAtk(fed, grown, ME)}`);
+  ok(fed.players[FOE].lp === 4000 - 400 - (baseAtkOf('great-white') - 300), 'and the 400 to the face still lands',
+    `${fed.players[FOE].lp}`);
+
+  /* Crab Turtle takes one, and you say which. */
+  /* Crab Turtle is a Ritual monster: it comes out of the Oath, which pays a
+     Tribute for it — so the Tribute is named first and the monster's own
+     question travels behind it. */
+  const tide = fresh();
+  const oath = card(ME, 'fortress-whale-s-oath');
+  tide.players[ME].hand = [oath];
+  tide.players[ME].deck = [card(ME, 'crab-turtle')];
+  const fodder = card(ME, 'kuriboh');
+  tide.players[ME].monsters = [fodder, null, null];
+  const keep = card(FOE, 'summoned-skull');
+  const send = card(FOE, 'kuriboh');
+  tide.players[FOE].monsters = [keep, send, null];
+  const taken = act(tide, ME, { type: 'activateSpell', uid: oath.uid, targets: [fodder.uid, send.uid] });
+  ok(taken.players[ME].monsters.some((m) => m?.slug === 'crab-turtle'), 'the Oath calls Crab Turtle up',
+    taken.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!taken.players[FOE].monsters.some((m) => m?.slug === 'kuriboh'), 'Crab Turtle returns the monster you point at',
+    taken.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(taken.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'), 'and only that one',
+    taken.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* Fortress Whale reaches to 2900 now. */
+  const wave = fresh();
+  const oath2 = card(ME, 'fortress-whale-s-oath');
+  wave.players[ME].hand = [oath2];
+  wave.players[ME].deck = [card(ME, 'fortress-whale')];
+  const fodder2 = card(ME, 'kuriboh');
+  wave.players[ME].monsters = [fodder2, null, null];
+  const tall = card(FOE, 'summoned-skull'); // 2500
+  const taller = card(FOE, 'blue-eyes-white-dragon'); // 3000
+  wave.players[FOE].monsters = [tall, taller, null];
+  const swept = act(wave, ME, { type: 'activateSpell', uid: oath2.uid, targets: [fodder2.uid] });
+  ok(!swept.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'), 'Fortress Whale now drowns a 2500',
+    swept.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(swept.players[FOE].monsters.some((m) => m?.slug === 'blue-eyes-white-dragon'), 'and still not a 3000',
+    swept.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* Flying Fish leaves a card behind. */
+  const flew = (() => {
+    const st = fresh();
+    const fish = card(ME, 'flying-fish');
+    st.players[ME].monsters = [fish, null, null];
+    st.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+    st.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    st.players[FOE].hand = [dh];
+    return act(st, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+  })();
+  ok(flew.players[ME].hand.length === 1, 'Flying Fish draws a card on the way out', `${flew.players[ME].hand.length}`);
+
+  /* Aqua Madoor — the owner asked us to check this one rather than change it:
+     revealed by an attack, the drain has to land BEFORE the numbers are
+     compared, or the wall is broken by a monster it should have turned aside. */
+  const walled = (() => {
+    const st = fresh('battle');
+    st.active = FOE;
+    const madoor = { ...card(ME, 'aqua-madoor'), face: 'down' as const, position: 'def' as const }; // 2000 DEF
+    st.players[ME].monsters = [madoor, null, null];
+    const judge = card(FOE, 'judge-man'); // 2200 ATK — 1800 once drained
+    judge.summonedOnTurn = 0;
+    st.players[FOE].monsters = [judge, null, null];
+    return act(st, FOE, { type: 'attack', uid: judge.uid, targetUid: madoor.uid });
+  })();
+  ok(walled.players[ME].monsters.some((m) => m?.slug === 'aqua-madoor'),
+    'Aqua Madoor drains the attacker before the blow is measured, and survives it',
+    walled.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  const stillDrained = walled.players[FOE].monsters.find((m) => m?.slug === 'judge-man');
+  ok(!!stillDrained && effAtk(walled, stillDrained, FOE) === 2200 - 400, 'with the attacker left standing at 1800',
+    stillDrained ? `${effAtk(walled, stillDrained, FOE)}` : 'gone');
+
+  /* Deepsea Warrior: a card on arrival, two a turn in his own water. */
+  const diver = fresh();
+  const warrior = card(ME, 'deepsea-warrior');
+  diver.players[ME].hand = [warrior];
+  diver.players[ME].monsters = [card(ME, 'kuriboh'), null, null];
+  diver.players[ME].deck = [card(ME, 'battle-ox'), card(ME, 'kuriboh'), card(ME, 'mystical-elf')];
+  const arrived = act(diver, ME, {
+    type: 'normalSummon', uid: warrior.uid, zone: 1, position: 'atk', face: 'up',
+    tributes: [diver.players[ME].monsters[0]!.uid],
+  });
+  ok(arrived.players[ME].hand.length === 1, 'Deepsea Warrior draws a card as he lands', `${arrived.players[ME].hand.length}`);
+
+  const tideDraw = (withSea: boolean) => {
+    const st = withSea ? sea(fresh()) : fresh();
+    const w = card(ME, 'deepsea-warrior');
+    w.summonedOnTurn = 0;
+    st.players[ME].monsters = [w, null, null];
+    st.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'battle-ox'), card(ME, 'mystical-elf'), card(ME, 'kuriboh')];
+    st.active = FOE;
+    st.phase = 'main';
+    return act(st, FOE, { type: 'endTurn' }).players[ME].hand.length;
+  };
+  ok(tideDraw(true) === 2, 'and in his own water your turn starts with two cards', `${tideDraw(true)}`);
+  ok(tideDraw(false) === 1, 'CONTROL: with no sea it is the usual one', `${tideDraw(false)}`);
+
+  /* 7 Colored Fish fetches company instead of muscle. */
+  const school = sea(fresh());
+  const fish = card(ME, '7-colored-fish');
+  school.players[ME].hand = [fish];
+  school.players[ME].deck = [card(ME, 'great-white'), card(ME, 'blue-eyes-white-dragon'), card(ME, 'kuriboh')];
+  const called = act(school, ME, { type: 'normalSummon', uid: fish.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(called.players[ME].hand.some((c) => c.slug === 'great-white'), '7 Colored Fish calls a WATER monster up under the tide',
+    called.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+  const onField7 = called.players[ME].monsters.find((m) => m?.slug === '7-colored-fish')!;
+  ok(effAtk(called, onField7, ME) === baseAtkOf('7-colored-fish') + 500,
+    'and is worth its printed ATK plus the sea, with no 800 of its own any more',
+    `${effAtk(called, onField7, ME)}`);
+  const dryFish = fresh();
+  const fish2 = card(ME, '7-colored-fish');
+  dryFish.players[ME].hand = [fish2];
+  dryFish.players[ME].deck = [card(ME, 'great-white')];
+  const nothing = act(dryFish, ME, { type: 'normalSummon', uid: fish2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(!nothing.players[ME].hand.length, 'CONTROL: with no sea it calls nobody', nothing.players[ME].hand.map((c) => c.slug).join(','));
+
+  /* Kairyu-Shin presses harder the more there is to press. */
+  const shin = fresh();
+  const dragon = card(ME, 'kairyu-shin');
+  shin.players[ME].monsters = [dragon, null, null];
+  const a1 = card(FOE, 'battle-ox');
+  const a2 = card(FOE, 'battle-ox');
+  shin.players[FOE].monsters = [a1, a2, null];
+  ok(effAtk(shin, a1, FOE) === baseAtkOf('battle-ox') - 500, 'Kairyu-Shin drains 500 with no sea', `${effAtk(shin, a1, FOE)}`);
+  ok(effAtk(shin, dragon, ME) === baseAtkOf('kairyu-shin') + 2 * 300, 'and grows 300 for each monster facing it',
+    `${effAtk(shin, dragon, ME)}`);
+  const shinSea = sea(structuredClone(shin));
+  const a1b = shinSea.players[FOE].monsters[0]!;
+  ok(effAtk(shinSea, a1b, FOE) === baseAtkOf('battle-ox') - 1000, 'and 1000 once the sea is up', `${effAtk(shinSea, a1b, FOE)}`);
+
+  /* The Legendary Fisherman gives the deck back. */
+  const before = { grave: 0, deck: 0 };
+  const returned = (() => {
+    const st = fresh();
+    const fisherman = card(ME, 'the-legendary-fisherman'); // Level 5, so one Tribute
+    st.players[ME].hand = [fisherman];
+    const pay = card(ME, 'kuriboh');
+    st.players[ME].monsters = [pay, null, null];
+    st.players[ME].grave = Array.from({ length: 14 }, () => card(ME, 'battle-ox'));
+    before.grave = st.players[ME].grave.length + 1; // the Tribute joins them first
+    before.deck = st.players[ME].deck.length;
+    return act(st, ME, {
+      type: 'normalSummon', uid: fisherman.uid, zone: 1, position: 'atk', face: 'up', tributes: [pay.uid],
+    });
+  })();
+  ok(before.grave - returned.players[ME].grave.length === 10,
+    'The Legendary Fisherman shuffles ten of the drowned back into the Deck',
+    `${before.grave} → ${returned.players[ME].grave.length}`);
+  ok(returned.players[ME].deck.length - before.deck === 10, 'and the Deck has them',
+    `${before.deck} → ${returned.players[ME].deck.length}`);
+
+  /* A shallower Graveyard simply gives what it has. */
+  const shallow = (() => {
+    const st = fresh();
+    const fisherman = card(ME, 'the-legendary-fisherman');
+    st.players[ME].hand = [fisherman];
+    const pay = card(ME, 'kuriboh');
+    st.players[ME].monsters = [pay, null, null];
+    st.players[ME].grave = [card(ME, 'battle-ox'), card(ME, 'mystical-elf')];
+    return act(st, ME, { type: 'normalSummon', uid: fisherman.uid, zone: 1, position: 'atk', face: 'up', tributes: [pay.uid] });
+  })();
+  ok(shallow.players[ME].grave.length === 0, 'and "up to" means a shallow Graveyard is simply emptied',
+    `${shallow.players[ME].grave.length} left`);
+
+  const avenged = (() => {
+    const st = fresh('battle');
+    st.active = FOE;
+    const fisherman = card(ME, 'the-legendary-fisherman');
+    fisherman.summonedOnTurn = 0;
+    st.players[ME].monsters = [fisherman, null, null];
+    st.players[ME].deck = [card(ME, 'fortress-whale-s-oath'), card(ME, 'kuriboh')];
+    const big = card(FOE, 'blue-eyes-white-dragon');
+    big.summonedOnTurn = 0;
+    st.players[FOE].monsters = [big, null, null];
+    return act(st, FOE, { type: 'attack', uid: big.uid, targetUid: fisherman.uid });
+  })();
+  ok(avenged.players[ME].hand.some((c) => c.slug === 'fortress-whale-s-oath'),
+    'and hands you the Oath when the sea takes him', avenged.players[ME].hand.map((c) => c.slug).join(',') || 'empty');
+
+  /* Jellyfish asks the same question Man-Eater Bug does, for the same reason. */
+  const jelly = (() => {
+    const st = fresh();
+    const j = { ...card(ME, 'jellyfish'), face: 'down' as const, position: 'def' as const };
+    j.summonedOnTurn = 0;
+    st.players[ME].monsters = [j, null, null];
+    const keep2 = card(FOE, 'summoned-skull');
+    const send2 = card(FOE, 'kuriboh');
+    st.players[FOE].monsters = [keep2, send2, null];
+    return { after: act(st, ME, { type: 'changePosition', uid: j.uid, targets: [send2.uid] }), keep2, send2 };
+  })();
+  ok(!jelly.after.players[FOE].monsters.some((m) => m?.slug === 'kuriboh'), 'Jellyfish returns the monster you point at',
+    jelly.after.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(jelly.after.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'), 'and leaves the one you did not',
+    jelly.after.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!!targetSpecFor('jellyfish', 'onFlip'), 'and the board has a question to ask when you flip it');
 }
 
 console.log('\nA crossbow is not its own company');

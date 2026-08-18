@@ -804,7 +804,10 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   umi: {
-    text: 'Field Spell: all WATER monsters gain 500 ATK and 300 DEF.',
+    text:
+      'Field Spell: all WATER monsters gain 500 ATK and 300 DEF. ' +
+      'When this card is activated: add "Fortress Whale\'s Oath" from your Deck or Graveyard to your hand. ' +
+      'When this card is destroyed: destroy every "Great White" on the field.',
     cry: 'The sea answers my call!',
     /* A Field Spell is the weather, not a personal buff: "all WATER monsters"
        means both sides of the table, which is how the real card reads and how
@@ -818,6 +821,16 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: sel('both', 'all', { filter: { attribute: 'WATER' } }), atk: 500, def: 300 },
       },
+      /* The sea brings the Oath up with it — one lookup that reaches the Deck
+         first and the Graveyard second, so a second copy is never conjured. */
+      { trigger: 'activate', ops: [{ op: 'search', filter: { slugs: ['fortress-whale-s-oath'] }, orGrave: true }] },
+      /* The shark lives in the water and dies with it. The clause is written
+         on Great White too, because that is the card a player reads before
+         committing it — but it can only be *fired* from here: a monster has no
+         way to watch another card's destruction, and this is the card being
+         destroyed. Great White with no sea at all is untouched, which is the
+         owner's ruling: it may stand alone, it may not outlive the tide. */
+      { trigger: 'onDestroyed', ops: [{ op: 'destroy', target: sel('both', 'all', { filter: { slugs: ['great-white'] } }) }] },
     ],
   },
 
@@ -864,14 +877,21 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        is what the activation requires; the trap path already enforces
        `condition` at fire time. The protection itself stays for the duel,
        which is the over-anime register — the wall, once raised, holds. */
-    text: "Activate only while 'Umi' is on the field: you take no battle damage for the rest of the Duel.",
+    text:
+      "Activate only while 'Umi' is on the field: for the rest of the Duel you take no battle damage, " +
+      'and monsters you control cannot be destroyed by battle.',
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Tornado Wall',
         condition: { requiresField: 'umi' },
-        ops: [{ op: 'preventBattleDamage', who: 'own', duration: 'permanent' }],
+        ops: [
+          { op: 'preventBattleDamage', who: 'own', duration: 'permanent' },
+          /* Raised over the side rather than written onto the monsters standing
+             there, so the next one to walk in is behind it too. */
+          { op: 'preventBattleDestruction', who: 'own', duration: 'permanent' },
+        ],
       },
     ],
   },
