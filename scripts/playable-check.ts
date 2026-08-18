@@ -88,15 +88,24 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
 function summonRoute(slug: string): string | null {
   const def = CARDS[slug];
   if (def?.summonRequires) return def.summonRequires;
+  /* Down through the branches, not only across the top. A route can sit inside
+     a coin flip (Time Wizard's Thousand Dragon), a dice roll, or a counter tier
+     (the Cocoon giving up whichever moth it has grown into), and a flat scan of
+     `eff.ops` sees none of those — it would call a perfectly reachable card a
+     dead draw, or worse, miss that its only route had been removed. */
+  const reaches = (ops: Op[]): boolean =>
+    ops.some((op) => {
+      if (op.op === 'specialSummon' && op.filter?.slugs?.includes(slug)) return true;
+      // `search` counts too — Toon Alligator fetches the Toon World that the
+      // rest of the Toons need before they can be Summoned at all.
+      if (op.op === 'search' && op.filter?.slugs?.includes(slug)) return true;
+      if (op.op === 'coinFlip') return reaches(op.heads) || reaches(op.tails);
+      if (op.op === 'diceRoll') return reaches(op.perPip);
+      if (op.op === 'byCounters') return op.tiers.some((t) => reaches(t.ops));
+      return false;
+    });
   for (const other of Object.values(CARDS)) {
-    for (const eff of other.effects) {
-      for (const op of eff.ops) {
-        if (op.op === 'specialSummon' && op.filter?.slugs?.includes(slug)) return other.slug;
-        // `search` counts too — Toon Alligator fetches the Toon World that the
-        // rest of the Toons need before they can be Summoned at all.
-        if (op.op === 'search' && op.filter?.slugs?.includes(slug)) return other.slug;
-      }
-    }
+    for (const eff of other.effects) if (reaches(eff.ops)) return other.slug;
   }
   return null;
 }

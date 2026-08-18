@@ -66,6 +66,19 @@ export interface CardDef extends GeneratedCard {
    * their rules text either way; this is what makes the engine agree.
    */
   summonRequires?: string;
+  /**
+   * The only effects that may put this monster on the field. Set it and the
+   * card cannot be Normal Summoned or Set at all, and no Special Summon
+   * reaches it either — not Monster Reborn, not a revival, not another card's
+   * search-and-summon — except one of the named cards' own effects.
+   *
+   * The Perfectly Ultimate Great Moth is the reason: it is the top of a ladder
+   * you climb, and a Monster Reborn that skipped every rung made the whole
+   * climb pointless. Written as a list of slugs rather than a boolean because
+   * the ladder has two legal roads to the top — the Great Moth that hands it
+   * up, and the Cocoon of Evolution that has grown all the way.
+   */
+  summonOnlyBy?: string[];
   /** See `EffectDef.mayForgoTributes`. */
   mayForgoTributes?: boolean;
   /** Our version of the card sits in a different zone than the printed one. */

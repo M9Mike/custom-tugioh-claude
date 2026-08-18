@@ -1265,6 +1265,63 @@ console.log('\nThe ladder is a relay now, not a climb');
   }
 }
 
+console.log('\nThe Ultimate is only ever reached by climbing');
+{
+  /* It is the top of a ladder. A Monster Reborn that skipped every rung made
+     the climb pointless, so nothing puts it on the field except the two rungs
+     below it: the Great Moth that hands it up, and a Cocoon of Evolution that
+     has thickened all the way to four. */
+  const s = fresh();
+  const apex = card(ME, 'perfectly-ultimate-great-moth');
+  s.players[ME].hand = [apex];
+  s.players[ME].monsters[1] = card(ME, 'kuriboh');
+  s.players[ME].monsters[2] = card(ME, 'kuriboh');
+  ok(
+    summonBlocked(s, ME, 'perfectly-ultimate-great-moth') !== null,
+    'no Normal Summon reaches it, at any price',
+    summonBlocked(s, ME, 'perfectly-ultimate-great-moth') ?? '(allowed)'
+  );
+  const refused = applyAction(s, ME, {
+    type: 'normalSummon',
+    uid: apex.uid,
+    zone: 0,
+    position: 'atk',
+    face: 'up',
+    tributes: [s.players[ME].monsters[1]!.uid, s.players[ME].monsters[2]!.uid],
+  });
+  ok(!!refused.error, 'and the board says so rather than quietly allowing it', refused.error ?? '(summoned)');
+
+  /* Nor any Special Summon that is not its own. Monster Reborn is the one
+     everybody reaches for. */
+  const g = fresh();
+  g.players[ME].grave.push(card(ME, 'perfectly-ultimate-great-moth'));
+  const reborn = card(ME, 'monster-reborn');
+  g.players[ME].hand = [reborn];
+  const spec = targetSpecFor('monster-reborn', 'activate');
+  const offered = spec ? targetCandidates(g, ME, spec).map((c) => c.slug) : [];
+  ok(!offered.includes('perfectly-ultimate-great-moth'), 'Monster Reborn is not even offered it', offered.join(',') || '(nothing)');
+  const raised = act(g, ME, { type: 'activateSpell', uid: reborn.uid, targets: [g.players[ME].grave[0].uid] });
+  ok(!on(raised, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'and cannot raise it even when pointed straight at it');
+
+  /* The two roads that do work. */
+  const relay = fresh();
+  const great = card(ME, 'great-moth');
+  great.counters = 3;
+  relay.players[ME].monsters[0] = great;
+  relay.players[ME].deck = [card(ME, 'perfectly-ultimate-great-moth')];
+  let cur = act(relay, ME, { type: 'endTurn' });
+  cur = act(cur, FOE, { type: 'endTurn' });
+  ok(on(cur, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'Great Moth still hands it up', on(cur, ME).map((m) => m.slug).join(',') || 'nothing');
+
+  const shell = fresh();
+  const cocoon = card(ME, 'cocoon-of-evolution');
+  cocoon.counters = 4;
+  shell.players[ME].monsters[0] = cocoon;
+  shell.players[ME].deck = [card(ME, 'perfectly-ultimate-great-moth')];
+  const hatched = act(shell, ME, { type: 'ignition', uid: cocoon.uid, targets: [] });
+  ok(on(hatched, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'and a Cocoon grown all the way still gives it up', on(hatched, ME).map((m) => m.slug).join(',') || 'nothing');
+}
+
 console.log('\nThe Ultimate clears the table and then measures the wreckage');
 {
   /* Born the only way it can be: hatched out of a full Cocoon, so the summon

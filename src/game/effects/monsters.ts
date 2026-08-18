@@ -22,6 +22,8 @@ export interface EffectDef {
   defOverride?: number;
   /** Must be face-up on your side before this monster can be Summoned. */
   summonRequires?: string;
+  /** The only effects that may put this monster on the field — see `CardDef`. */
+  summonOnlyBy?: string[];
   /**
    * May be Normal Summoned with no Tributes at all, at half its printed ATK
    * and DEF — permanently, and only on the summon that skipped the price.
@@ -2346,7 +2348,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Nothing else is printed on it: the hive it banishes to keep itself alive
        is the whole of its defence, and once the Graveyard runs out of Insects
        it dies like anything else. */
+    /* And it cannot be reached around. It is the top of a ladder you climb, and
+       a Monster Reborn that skipped every rung made the climb pointless — so
+       the only two roads to it are the two rungs below: the Great Moth that
+       hands it up at the start of your turn, and a Cocoon of Evolution that has
+       thickened all the way to four. */
+    summonOnlyBy: ['great-moth', 'cocoon-of-evolution'],
     text:
+      'Cannot be Normal Summoned or Set. Can only be Special Summoned by the effect of "Great Moth" or "Cocoon of Evolution". ' +
       'When this monster is summoned: destroy every other card on the field, your opponent discards 5 cards, ' +
       'and then this monster gains 100 ATK and 100 DEF for each card in both Graveyards. ' +
       'Each time this monster would be destroyed by battle or by a card effect, banish 1 Insect monster from your Graveyard instead.',

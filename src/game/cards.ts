@@ -178,6 +178,7 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
         atkOverride: custom.atkOverride,
         defOverride: custom.defOverride,
         summonRequires: custom.summonRequires,
+        summonOnlyBy: custom.summonOnlyBy,
         mayForgoTributes: custom.mayForgoTributes,
         subKindOverride: custom.subKindOverride,
         statsFromTributes: custom.statsFromTributes,

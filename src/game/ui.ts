@@ -28,17 +28,25 @@ export interface TargetSpec {
    * State-dependent, so it cannot be a `CardFilter`.
    */
   revivableOnly?: boolean;
+  /**
+   * Who is asking, for `revivableOnly`. The Perfectly Ultimate Great Moth may
+   * only be put on the field by its own ladder, and a picker that did not say
+   * whose effect it belonged to would lay it out and then watch the engine
+   * refuse it — the picker and the engine disagreeing about the rule, one more
+   * time.
+   */
+  revivableBy?: string;
 }
 
-function scanOps(ops: Op[]): TargetSpec | null {
+function scanOps(ops: Op[], owner: string): TargetSpec | null {
   for (const op of ops) {
     if (op.op === 'coinFlip') {
-      const r = scanOps(op.heads) ?? scanOps(op.tails);
+      const r = scanOps(op.heads, owner) ?? scanOps(op.tails, owner);
       if (r) return r;
       continue;
     }
     if (op.op === 'diceRoll') {
-      const r = scanOps(op.perPip);
+      const r = scanOps(op.perPip, owner);
       if (r) return r;
       continue;
     }
@@ -61,6 +69,7 @@ function scanOps(ops: Op[]): TargetSpec | null {
            own rule and the zone stops guessing. */
         filter: { ...(op.filter ?? {}), kind: 'monster' },
         revivableOnly: true,
+        revivableBy: owner,
       };
     }
     if (op.op === 'search') {
@@ -100,8 +109,8 @@ function scanOps(ops: Op[]): TargetSpec | null {
   return null;
 }
 
-function specFromEffect(eff: CardEffect): TargetSpec | null {
-  const spec = scanOps(eff.ops);
+function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
+  const spec = scanOps(eff.ops, owner);
   if (spec) return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
   /* A cost is a choice too. Catapult Turtle says "Tribute 1 monster you
      control" and asked for nothing, so the engine paid with whatever happened
@@ -148,7 +157,7 @@ export function targetSpecFor(slug: string, trigger: Trigger): TargetSpec | null
   if (!def) return null;
   const eff = def.effects.find((e) => e.trigger === trigger);
   if (!eff) return null;
-  return specFromEffect(eff);
+  return specFromEffect(eff, slug);
 }
 
 /**
@@ -194,16 +203,16 @@ export function targetCandidates(
       /* Whatever the spec asks for. The monster restriction that used to live
          here is now carried by the specs that actually want it — see the
          `specialSummon` branch above. */
-      out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
+      out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
     } else if (spec.zone === 'handOrDeck' && pid === viewer) {
       /* Hand first: a copy already drawn is the one a player expects to be
          offered, and it is the one that costs nothing to reach. */
-      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
-      out.push(...p.deck.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
+      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
+      out.push(...p.deck.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     } else if (spec.zone === 'hand' && pid === viewer) {
-      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
+      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     }
   }
   return out;
@@ -279,6 +288,7 @@ export function summonChoiceSpec(slug: string, trigger: Trigger): TargetSpec | n
       prompt: 'Choose a monster to Special Summon',
       filter: { ...(op.filter ?? {}), kind: 'monster' },
       revivableOnly: true,
+      revivableBy: slug,
     };
   }
   return null;

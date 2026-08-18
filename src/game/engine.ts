@@ -1619,7 +1619,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               byChoice &&
               matchesFilter(byChoice, op.filter) &&
               CARDS[byChoice.slug]?.kind === 'monster' &&
-              revivable(state, ctx.controller, byChoice.slug)
+              revivable(state, ctx.controller, byChoice.slug, ctx.source.slug)
             ) {
               picked = byChoice;
               ctx.cursor += 1;
@@ -1631,7 +1631,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               const pool = from(pid).filter(
                 (c) =>
                   CARDS[c.slug]?.kind === 'monster' &&
-                  revivable(state, ctx.controller, c.slug) &&
+                  revivable(state, ctx.controller, c.slug, ctx.source.slug) &&
                   matchesFilter(c, op.filter) &&
                   // A card never Special Summons itself with its own "when this
                   // card is destroyed" effect — it is in the Graveyard by the
@@ -2675,6 +2675,11 @@ export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): st
       : `${def.name} can only be Special Summoned from the Extra Deck.`;
   }
   if (def.isRitual) return `${def.name} can only be Ritual Summoned.`;
+  if (def.summonOnlyBy?.length) {
+    const names = def.summonOnlyBy.map((sl) => CARDS[sl]?.name ?? sl);
+    const by = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+    return `${def.name} can only be Special Summoned by the effect of ${by}.`;
+  }
   if (def.summonRequires && !faceUpOnSide(state, pid, def.summonRequires)) {
     return `${def.name} needs ${CARDS[def.summonRequires]?.name ?? def.summonRequires} on your field.`;
   }
@@ -2695,9 +2700,17 @@ export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): st
  * it, because without it they are ordinary monsters — Dark Rabbit comes back as
  * a Dark Rabbit, and stays one until somebody opens the book over it.
  */
-export function revivable(state: DuelState, pid: PlayerId, slug: string): boolean {
+export function revivable(state: DuelState, pid: PlayerId, slug: string, by?: string): boolean {
   const need = CARDS[slug]?.summonRequires;
-  return !need || faceUpOnSide(state, pid, need);
+  if (need && !faceUpOnSide(state, pid, need)) return false;
+  /* And the other bar: a card that only its own ladder may put on the field.
+     `by` is the slug of whatever effect is doing the summoning, so the two
+     rungs that are allowed to reach the Perfectly Ultimate Great Moth still
+     can, and nothing else does. A caller that does not say who is asking is
+     refused — an anonymous Special Summon is exactly the shortcut this bars. */
+  const only = CARDS[slug]?.summonOnlyBy;
+  if (only?.length && (!by || !only.includes(by))) return false;
+  return true;
 }
 
 export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId): number {

@@ -447,6 +447,29 @@ function ritualSpellFor(slug: string): string | null {
   return null;
 }
 
+/**
+ * How a `summonOnlyBy` monster actually reaches the field: one of its named
+ * summoners, and the counter count that makes that summoner reach for *it*.
+ * Only the ignition route is modelled, because that is the only one a driver
+ * can fire in a single action — a rung that hands the next one up at the start
+ * of a turn is covered by that rung's own audit.
+ */
+function summonRoute(slug: string): { slug: string; counters: number } | null {
+  for (const by of CARDS[slug]?.summonOnlyBy ?? []) {
+    for (const eff of CARDS[by]?.effects ?? []) {
+      if (eff.trigger !== 'ignition') continue;
+      for (const op of eff.ops) {
+        if (op.op !== 'byCounters') continue;
+        const tier = op.tiers.find((t) =>
+          t.ops.some((o) => o.op === 'specialSummon' && o.filter?.slugs?.includes(slug))
+        );
+        if (tier) return { slug: by, counters: tier.at };
+      }
+    }
+  }
+  return null;
+}
+
 function stockDeckFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
     const filter = 'filter' in op ? op.filter : undefined;
@@ -835,6 +858,23 @@ for (const def of Object.values(CARDS)) {
       if (CARDS[def.slug].summonRequires) {
         s.players[ME].spellTrap = mint(s, ME, CARDS[def.slug].summonRequires!);
         s.players[ME].spellTrap!.face = 'up';
+      } else if (CARDS[def.slug].summonOnlyBy?.length) {
+        /* It can only be put on the field by its own ladder — the Perfectly
+           Ultimate Great Moth, which no Normal Summon and no ordinary Special
+           Summon reaches. Same answer as the Ritual case one branch down: drive
+           it the way a player does. The monster waits in the Deck and whichever
+           of its named summoners can reach for it does the reaching. */
+        const route = summonRoute(def.slug);
+        if (!route) {
+          skipped.push(`${def.slug} (nothing in the game can Summon it)`);
+          continue;
+        }
+        s.players[ME].hand = s.players[ME].hand.filter((h) => h.uid !== c.uid);
+        s.players[ME].deck.push(c);
+        const opener = place(s, ME, 0, route.slug);
+        opener.counters = route.counters;
+        audit(def, eff, s, (st) => run(st, ME, { type: 'ignition', uid: opener.uid, targets: [] }));
+        continue;
       } else if (def.isRitual) {
         const spell = ritualSpellFor(def.slug);
         if (!spell) {
