@@ -10,7 +10,7 @@
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, targetCandidates, targetSpecFor } from '../src/game/ui';
+import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
@@ -5857,6 +5857,37 @@ console.log('\nMako: the sea and everything that lives in it');
     `${fed.players[FOE].lp}`);
 
   /* Crab Turtle takes one, and you say which. */
+  /* The Oath names two monsters and used to take the bigger one on its own —
+     Crab Turtle 2550 over Fortress Whale 2350, every single time, which made
+     the card that fetches the whale unable to fetch the whale. */
+  const askOath = summonChoiceSpec('fortress-whale-s-oath', 'activate');
+  ok(!!askOath, 'the Oath has a question to ask about which monster arrives', askOath ? askOath.prompt : '(none)');
+  ok(askOath?.zone === 'handOrDeck', 'and looks in your hand as well as your Deck', askOath?.zone ?? '-');
+  const shelf = (() => {
+    const st = fresh();
+    /* One copy already drawn, one still buried — both are the same option to
+       a player, and the pool has to reach into both piles to say so. */
+    st.players[ME].hand = [card(ME, 'fortress-whale-s-oath'), card(ME, 'crab-turtle')];
+    st.players[ME].deck = [card(ME, 'fortress-whale'), card(ME, 'kuriboh')];
+    return targetCandidates(st, ME, askOath!).map((c) => c.slug).sort();
+  })();
+  ok(shelf.join(',') === 'crab-turtle,fortress-whale', 'and offers exactly the two it names, one from each pile',
+    shelf.join(',') || 'nothing');
+
+  const whaleFirst = (() => {
+    const st = fresh();
+    const oathCard = card(ME, 'fortress-whale-s-oath');
+    st.players[ME].hand = [oathCard];
+    const whaleInDeck = card(ME, 'fortress-whale');
+    st.players[ME].deck = [card(ME, 'crab-turtle'), whaleInDeck];
+    const pay = card(ME, 'kuriboh');
+    st.players[ME].monsters = [pay, null, null];
+    return act(st, ME, { type: 'activateSpell', uid: oathCard.uid, targets: [pay.uid, whaleInDeck.uid] });
+  })();
+  ok(whaleFirst.players[ME].monsters.some((m) => m?.slug === 'fortress-whale'),
+    'and the whale comes when you ask for the whale',
+    whaleFirst.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
   /* Crab Turtle is a Ritual monster: it comes out of the Oath, which pays a
      Tribute for it — so the Tribute is named first and the monster's own
      question travels behind it. */

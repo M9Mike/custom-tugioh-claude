@@ -838,12 +838,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
      Mako's Ritual monsters. Crab Turtle has no Oath card of its own, and a
      Ritual monster with nothing to Summon it is simply a dead draw. */
   'fortress-whale-s-oath': {
-    text: 'Tribute 1 monster you control: Special Summon "Fortress Whale" or "Crab Turtle" from your hand or Deck.',
+    text: 'Tribute 1 monster you control: Special Summon 1 "Fortress Whale" or "Crab Turtle" of your choice from your hand or Deck.',
     cry: 'Rise from the depths!',
     effects: [
       {
         trigger: 'activate',
         cost: { tribute: 1 },
+        /* Opts in to being asked which of the two arrives — without it the
+           engine takes the bigger, and Crab Turtle is bigger every time. */
+        targets: 1,
         ops: [
           {
             op: 'specialSummon',

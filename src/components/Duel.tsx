@@ -25,7 +25,7 @@ import {
   tributesRequired,
   wastedWithoutTarget,
 } from '@/game/engine';
-import { effectLabel, pickerSides, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { effectLabel, pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -1072,6 +1072,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     setMode({ kind: 'target', source, uid, spec, picked: [] });
   };
 
+  /* What the monster you just picked wants to know, if anything. Looked up
+     from the uid because the choice is only known at answer time. */
+  const chosenSummonRider = (chosenUid: string): TargetSpec | null => {
+    const found = [...mine.hand, ...mine.deck].find((c) => c.uid === chosenUid);
+    return found ? summonTargetSpec(found.slug) : null;
+  };
+
   const submitTargets = (picked: string[]) => {
     if (mode.kind !== 'target') return;
     const { source, uid, summon, carry } = mode;
@@ -1080,9 +1087,50 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       return;
     }
     const answers = [...(carry ?? []), ...picked];
-    /* A Spell that summons a named monster asks that monster's question too,
-       once its own is answered. Only asked when there is something to decide —
-       one candidate is named and sent, exactly as `finishSummon` does. */
+    /* A Spell that offers a choice of monsters asks which, once its cost is
+       paid — Fortress Whale's Oath names two and used to take the bigger one
+       on its own. And once that is answered, the monster chosen may have a
+       question of its own: Crab Turtle wants to know what to send back. */
+    if (source === 'spell') {
+      const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
+      const choice = !carry ? summonChoiceSpec(slug, 'activate') : null;
+      if (choice) {
+        const options = pickableUids(choice);
+        if (options.length > 1) {
+          setMode({ kind: 'target', source, uid, spec: choice, picked: [], carry: answers });
+          return;
+        }
+        if (options.length === 1) {
+          const chosen = [...answers, options[0]];
+          const solo = chosenSummonRider(options[0]);
+          if (solo) {
+            const riderOptions = pickableUids(solo);
+            if (riderOptions.length > (solo.count ?? 1)) {
+              setMode({ kind: 'target', source, uid, spec: solo, picked: [], carry: chosen });
+              return;
+            }
+            void run({ type: 'activateSpell', uid, targets: [...chosen, ...riderOptions.slice(0, solo.count ?? 1)] });
+            return;
+          }
+          void run({ type: 'activateSpell', uid, targets: chosen });
+          return;
+        }
+      }
+      /* The answer just given names the monster that is coming — so now ask
+         what *it* wants, if anything. */
+      if (carry) {
+        const rider2 = picked.length === 1 ? chosenSummonRider(picked[0]) : null;
+        if (rider2) {
+          const riderOptions = pickableUids(rider2);
+          if (riderOptions.length > (rider2.count ?? 1)) {
+            setMode({ kind: 'target', source, uid, spec: rider2, picked: [], carry: answers });
+            return;
+          }
+          void run({ type: 'activateSpell', uid, targets: [...answers, ...riderOptions.slice(0, rider2.count ?? 1)] });
+          return;
+        }
+      }
+    }
     if (source === 'spell' && !carry) {
       const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
       const rider = summonRiderSpec(slug, 'activate');
@@ -2056,7 +2104,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* Deck search (Toon World, Toon Alligator). Your own deck, so showing it
           gives nothing away — and picking beats being handed whatever the
           shuffle put nearest the top. */}
-      {mode.kind === 'target' && mode.spec.zone === 'deck' && (
+      {mode.kind === 'target' && (mode.spec.zone === 'deck' || mode.spec.zone === 'handOrDeck') && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
           style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}
@@ -2073,16 +2121,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             {/* Exactly what the picker counts as legal, so the modal can never
                 show a card the pick would then refuse. */}
             <div className="flex flex-wrap gap-2">
-              {mine.deck
+              {/* `handOrDeck` lays both piles out as one list, because "from
+                  your hand or Deck" is one choice — and the card says which
+                  pile each copy came from so the player is not guessing. */}
+              {(mode.spec.zone === 'handOrDeck' ? [...mine.hand, ...mine.deck] : mine.deck)
                 .filter((c) => targetableSet.has(c.uid))
                 .map((c) => (
                   <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
                     <GameCard card={c} displayName={shownName(c)} />
                     <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
+                    {mode.spec.zone === 'handOrDeck' && (
+                      <p className="truncate text-center text-[8px] uppercase tracking-wide text-brass">
+                        {mine.hand.some((h) => h.uid === c.uid) ? 'hand' : 'deck'}
+                      </p>
+                    )}
                   </button>
                 ))}
             </div>
-            {!mine.deck.some((c) => targetableSet.has(c.uid)) && (
+            {![...mine.hand, ...mine.deck].some((c) => targetableSet.has(c.uid)) && (
               <p className="py-4 text-center text-xs text-ptextdim">Nothing in your Deck matches.</p>
             )}
           </div>

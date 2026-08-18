@@ -10,7 +10,11 @@ import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, Play
 export interface TargetSpec {
   /** Whose cards may be picked. */
   side: 'own' | 'opp' | 'both';
-  zone: 'monster' | 'spellTrap' | 'backrow' | 'grave' | 'hand' | 'deck';
+  /* `handOrDeck` is one pool spanning both, because that is what a card like
+     Fortress Whale's Oath reaches into — "from your hand or Deck" is a single
+     choice, not two prompts, and the copy you hold and the copy you have not
+     drawn are the same option to the player. */
+  zone: 'monster' | 'spellTrap' | 'backrow' | 'grave' | 'hand' | 'deck' | 'handOrDeck';
   count: number;
   prompt: string;
   /** Narrows what may be picked — a Deck search is rarely "any card". */
@@ -193,6 +197,11 @@ export function targetCandidates(
       out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
+    } else if (spec.zone === 'handOrDeck' && pid === viewer) {
+      /* Hand first: a copy already drawn is the one a player expects to be
+         offered, and it is the one that costs nothing to reach. */
+      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
+      out.push(...p.deck.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
     } else if (spec.zone === 'hand' && pid === viewer) {
       out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug))));
     }
@@ -237,6 +246,40 @@ export function summonRiderSpec(slug: string, trigger: Trigger): TargetSpec | nu
     const named = op.filter?.slugs;
     if (named?.length !== 1) continue;
     return summonTargetSpec(named[0]);
+  }
+  return null;
+}
+
+/**
+ * "Special Summon A or B" — which one?
+ *
+ * Fortress Whale's Oath names two monsters and the engine, asked nothing, took
+ * the bigger one: Crab Turtle arrived every single time and Fortress Whale was
+ * unreachable from the card written to fetch it. Reported by the owner.
+ *
+ * Opt-in by the effect declaring `targets`, exactly as the Graveyard steal is,
+ * because most cards with this shape resolve where there is nobody to ask —
+ * Magical Hats fires inside an attack window, Chimera comes apart on its own
+ * destruction, Agido on the way to the Graveyard. Those keep choosing for
+ * themselves; a Spell a player is holding does not have to.
+ */
+export function summonChoiceSpec(slug: string, trigger: Trigger): TargetSpec | null {
+  const eff = CARDS[slug]?.effects.find((e) => e.trigger === trigger);
+  if (!eff?.targets) return null;
+  for (const op of eff.ops) {
+    if (op.op !== 'specialSummon') continue;
+    const named = op.filter?.slugs;
+    if (!named || named.length < 2) continue;
+    const zones = Array.isArray(op.from) ? op.from : [op.from];
+    if (!zones.every((z) => z === 'hand' || z === 'deck')) continue;
+    return {
+      side: 'own',
+      zone: zones.length > 1 ? 'handOrDeck' : (zones[0] as TargetSpec['zone']),
+      count: 1,
+      prompt: 'Choose a monster to Special Summon',
+      filter: { ...(op.filter ?? {}), kind: 'monster' },
+      revivableOnly: true,
+    };
   }
   return null;
 }
