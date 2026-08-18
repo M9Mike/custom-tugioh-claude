@@ -775,6 +775,15 @@ export interface EffectCondition {
   requiresField?: string;
   /** You control at least one *other* face-up monster of this type. */
   controlsOtherOfType?: string;
+  /**
+   * A face-up monster of this type is on the field — *either* side of it.
+   *
+   * Eradicating Aerosol needs a bug to spray, and does not care whose bug it
+   * is. Face-up deliberately: a card back is not known to be an Insect, and an
+   * activation the board allowed because of what was hiding under one would be
+   * telling you what it is.
+   */
+  typeOnField?: string;
   /** This card is the only monster you control. */
   controlsNoOtherMonster?: boolean;
   /** Turn number must be at least this. */

@@ -1420,6 +1420,44 @@ console.log('\nYour own Deck is yours to read, but not to read in order');
   ok(offered.length === 2, 'so Basic Insect offers both cannons from the board the player is actually looking at', offered.join(',') || '(none)');
 }
 
+console.log('\nThe aerosol needs a bug to spray');
+{
+  /* It does not care whose bug. The card sits in Weevil's own deck, so a
+     requirement scoped to the other side of the table would have made it a card
+     he could almost never play — and "on the field" is what it says. */
+  const bare = fresh();
+  const can = card(ME, 'eradicating-aerosol');
+  bare.players[ME].hand = [can];
+  bare.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  ok(!canActivateFromHand(bare, ME, can), 'with no Insect anywhere, the can will not open');
+  const refused = applyAction(bare, ME, { type: 'activateSpell', uid: can.uid, targets: [bare.players[FOE].monsters[0]!.uid] });
+  ok(!!refused.error, 'and the engine refuses it rather than spraying at nothing', refused.error ?? '(activated)');
+
+  for (const side of ['own', 'opp'] as const) {
+    const s = fresh();
+    const spray = card(ME, 'eradicating-aerosol');
+    s.players[ME].hand = [spray];
+    s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    const bug = side === 'own' ? card(ME, 'killer-needle') : card(FOE, 'killer-needle');
+    s.players[side === 'own' ? ME : FOE].monsters[1] = bug;
+    ok(canActivateFromHand(s, ME, spray), `one on ${side === 'own' ? 'your' : 'their'} side is enough`);
+    const out = act(s, ME, { type: 'activateSpell', uid: spray.uid, targets: [s.players[FOE].monsters[0]!.uid] });
+    ok(!out.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'), 'and it still destroys what you pointed at');
+  }
+
+  /* A card back is not known to be an Insect. Allowing it on account of one
+     would answer a question the player has not earned. */
+  const hidden = fresh();
+  const tin = card(ME, 'eradicating-aerosol');
+  hidden.players[ME].hand = [tin];
+  hidden.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  const asleep = card(FOE, 'killer-needle');
+  asleep.face = 'down';
+  asleep.position = 'def';
+  hidden.players[FOE].monsters[1] = asleep;
+  ok(!canActivateFromHand(hidden, ME, tin), 'and a face-down one does not count, whatever is under it');
+}
+
 console.log('\nWeevil: the hive, and the ladder that climbs out of it');
 {
   /* Both cannons went to 800. They are the only two cards Basic Insect can

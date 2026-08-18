@@ -612,6 +612,20 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
   if (cond.opponentHasBackrow && !s.players[FOE].spellTrap && !s.players[FOE].field) {
     s.players[FOE].spellTrap = mint(s, FOE, 'mirror-force');
   }
+  /* A face-up monster of this type somewhere on the field. Weevil's aerosol
+     needs a bug to spray at, and either side's counts — put one on the board
+     the card is being driven from, which is the cheapest arrangement that is
+     also a legal one. */
+  if (cond.typeOnField) {
+    const already = ([ME, FOE] as PlayerId[]).some((pid) =>
+      s.players[pid].monsters.some((m) => m && m.face === 'up' && CARDS[m.slug]?.type === cond.typeOnField)
+    );
+    if (!already) {
+      const bug = Object.values(CARDS).find((c) => c.kind === 'monster' && c.type === cond.typeOnField);
+      const z = s.players[ME].monsters.findIndex((m) => !m);
+      if (bug && z >= 0) place(s, ME, z, bug.slug);
+    }
+  }
   if (cond.controlsOtherOfType && self) {
     const mate = Object.values(CARDS).find((c) => c.type === cond.controlsOtherOfType && c.slug !== self.slug);
     const z = s.players[ME].monsters.findIndex((m) => !m || m.uid !== self.uid);

@@ -956,11 +956,18 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'eradicating-aerosol': {
-    text: 'Destroy 1 monster your opponent controls, then draw 1 card.',
+    /* A can of insecticide needs a bug to spray. It does not care whose bug —
+       Weevil's own swarm counts, which is the point: the card is in his deck,
+       and holding it back until something with six legs is standing is the
+       whole of its cost. Face-up only, because a card back is not known to be
+       an Insect and an activation allowed on account of one would be telling
+       you what it is. */
+    text: 'While a face-up Insect monster is on the field: destroy 1 monster your opponent controls, then draw 1 card.',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
+        condition: { typeOnField: 'Insect' },
         ops: [
           { op: 'destroy', target: OPP_PICK },
           { op: 'draw', count: 1, who: 'own' },

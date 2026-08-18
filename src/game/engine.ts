@@ -1570,11 +1570,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           buried.push(c);
         }
         if (buried.length) {
+          /* With the digger's own face beside it. A line with no card to attach
+             to gets a beat of its own and is printed over empty space — see
+             `speakRemainingLog`, and `npm run banner`, which caught this one. */
           log(
             state,
             `${p.name} digs ${buried.length} card${buried.length === 1 ? '' : 's'} deep into their Deck.`,
             'effect',
-            ctx.controller
+            ctx.controller,
+            logSlug(ctx.source)
           );
         }
         const zone = p.monsters.findIndex((m) => !m);
@@ -2250,6 +2254,12 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   if (cond.opponentHasBackrow) {
     const them = state.players[other(controller)];
     if (!them.spellTrap && !them.field) return false;
+  }
+  if (cond.typeOnField) {
+    const anywhere = (['p1', 'p2'] as PlayerId[]).some((pid) =>
+      state.players[pid].monsters.some((m) => m && m.face === 'up' && CARDS[m.slug]?.type === cond.typeOnField)
+    );
+    if (!anywhere) return false;
   }
   if (cond.controlsOtherOfType) {
     const has = p.monsters.some(
