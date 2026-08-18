@@ -2639,14 +2639,30 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   uraby: {
-    /* Small enough to be worth feeding, and it never stops growing once it
-       starts: 400 to begin with, 300 more with every kill, and the pierce means
-       a wall does not stop the count. */
+    /* A dead weight that goes off like a mine. It does not matter how it
+       reached the pile — killed in battle, wiped by a Spell, thrown away to
+       feed the King, buried by a dig — the moment it lands, up to two backrow
+       cards come apart with it.
+
+       "Up to", and it means it: two, one, or neither, and either side of the
+       table. Your own Spell/Trap Zone is on the menu because sometimes it
+       should be, and a fallback that helpfully picked "the best card on the
+       board" would have chosen yours.
+
+       Nothing gets to answer. A Spell or Trap destroyed this way is gone
+       before it can be turned face-up — the same shape as Harpie Lady
+       Sisters shattering a backrow as she arrives, except this one goes off
+       from the Graveyard and the player aims it. */
     atkOverride: 400,
-    text: 'This monster inflicts piercing battle damage. When it destroys a monster in battle: it gains 300 ATK permanently.',
+    text:
+      'When this monster is sent to the Graveyard, from anywhere: destroy up to 2 Spell or Trap cards on the field. ' +
+      "They are destroyed before they can be activated, and either player's may be chosen.",
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 300, target: SELF, duration: 'permanent' }] },
+      {
+        trigger: 'onAnyToGrave',
+        targets: 2,
+        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 2, optional: true }) }],
+      },
     ],
   },
 
@@ -2667,12 +2683,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'crawling-dragon-2': {
     /* A 300 body that is only ever worth what the duel has already buried. */
     atkOverride: 300,
-    text: 'This monster gains 200 ATK for each card in your Graveyard.',
+    text: 'This monster gains 275 ATK for each card in your Graveyard.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 200 } },
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownGrave', atk: 275 } },
       },
     ],
   },
@@ -2752,13 +2768,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   anthrosaurus: {
     /* Small, and it takes something with it either way: the backrow on arrival,
-       a fossil out of the pile on the way down. */
+       a fossil out of the pile on the way down. However it goes down — a wall
+       it ran into, a Dark Hole, a Ring of Destruction — the herd sends the next
+       one up. */
     text:
       'When this monster is summoned: destroy 1 Spell or Trap card your opponent controls. ' +
-      'When this monster is destroyed by battle: Special Summon 1 Dinosaur from your Graveyard.',
+      'When this monster is destroyed: Special Summon 1 Dinosaur from your Graveyard.',
     effects: [
       { trigger: 'onSummon', targets: 1, ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }] },
-      { trigger: 'onDestroyedByBattle', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
+      { trigger: 'onDestroyed', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
     ],
   },
 

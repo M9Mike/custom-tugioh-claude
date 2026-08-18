@@ -245,6 +245,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const wonTheKingdom = !!view.tournament && state.winner === me && isFinalRound(view.tournament);
 
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
+  /* Picks collected in an "up to N" window. Cleared whenever an answer is sent,
+     so a new window always opens empty — and anything stale that did survive is
+     dropped by the engine, which only accepts uids it offered. */
+  const [choicePicks, setChoicePicks] = useState<string[]>([]);
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /* Two refusals in quick succession used to race: the first one's timer fired
@@ -2323,20 +2327,58 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <p className="mt-1 text-xs text-ptext/85">{choosing2.reason}</p>
             <div className="brass-rule my-3" />
             <div className="flex flex-wrap justify-center gap-3">
-              {chooseCards.map((c) => (
+              {chooseCards
+                .filter((c) => !choicePicks.includes(c.uid))
+                .map((c) => {
+                const theirs = state.players[foe].spellTrap?.uid === c.uid
+                  || state.players[foe].field?.uid === c.uid
+                  || state.players[foe].monsters.some((m) => m?.uid === c.uid)
+                  || state.players[foe].grave.some((g) => g.uid === c.uid);
+                return (
+                  <button
+                    key={c.uid}
+                    className="w-24 selectable rounded"
+                    onClick={() => {
+                      sfx.click();
+                      const next = [...choicePicks, c.uid];
+                      /* Send as soon as the card has what it asked for; until
+                         then the pick is held so a "up to 2" can take two. */
+                      if (next.length >= choosing2.want) {
+                        setChoicePicks([]);
+                        void run({ type: 'chooseCard', uids: next });
+                      } else {
+                        setChoicePicks(next);
+                      }
+                    }}
+                  >
+                    <GameCard card={c} displayName={shownName(c)} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
+                    {/* Whose it is, because "up to 2 Spell or Trap cards on the
+                        field" reaches your own side too and the two piles look
+                        the same in a row. */}
+                    <p className="truncate text-center text-[8px] uppercase tracking-wide text-brass">{theirs ? 'theirs' : 'yours'}</p>
+                  </button>
+                );
+              })}
+            </div>
+            {/* "Up to" means declining is an answer, so there has to be a way to
+                give it. Without one the only way past the window was to destroy
+                something you did not want to. */}
+            {choosing2.optional && (
+              <div className="mt-3 flex justify-center">
                 <button
-                  key={c.uid}
-                  className="w-24 selectable rounded"
+                  className="btn rounded px-4 py-1.5 text-[11px]"
                   onClick={() => {
                     sfx.click();
-                    void run({ type: 'chooseCard', uids: [c.uid] });
+                    const picks = choicePicks;
+                    setChoicePicks([]);
+                    void run({ type: 'chooseCard', uids: picks });
                   }}
                 >
-                  <GameCard card={c} displayName={shownName(c)} />
-                  <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
+                  {choicePicks.length ? `Take ${choicePicks.length} and stop` : 'Take none'}
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

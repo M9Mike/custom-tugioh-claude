@@ -1420,6 +1420,107 @@ console.log('\nYour own Deck is yours to read, but not to read in order');
   ok(offered.length === 2, 'so Basic Insect offers both cannons from the board the player is actually looking at', offered.join(',') || '(none)');
 }
 
+console.log('\nUraby goes off wherever it lands');
+{
+  /* However it reached the pile — killed in battle, wiped by a Spell, thrown
+     away to feed the King — up to two backrow cards come apart with it. */
+  const board = (): { s: DuelState; u: CardInstance } => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const u = card(ME, 'uraby');
+    u.summonedOnTurn = 0;
+    s.players[ME].monsters[0] = u;
+    const killer = card(FOE, 'blue-eyes-white-dragon');
+    killer.summonedOnTurn = 0;
+    s.players[FOE].monsters[0] = killer;
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[ME].spellTrap = card(ME, 'umi');
+    return { s, u };
+  };
+  const slain = (): DuelState => {
+    const { s, u } = board();
+    return act(s, FOE, { type: 'attack', uid: s.players[FOE].monsters[0]!.uid, targetUid: u.uid });
+  };
+
+  const asked = slain();
+  ok(asked.pending?.kind === 'choose', 'dying on their turn, it stops and asks', asked.pending?.kind ?? '(nothing asked)');
+  ok(asked.pending?.player === ME, "and asks Uraby's owner, not the player taking the turn", asked.pending?.player);
+  ok(asked.pending?.options.length === 2, 'offering both sides of the field, not just theirs', `${asked.pending?.options.length}`);
+  ok((asked.pending as { optional?: boolean }).optional === true, 'and says the pick is optional');
+
+  /* Three answers, all of them real. */
+  const none = act(asked, ME, { type: 'chooseCard', uids: [] });
+  ok(!!none.players[FOE].spellTrap && !!none.players[ME].spellTrap, 'answer nothing and nothing is destroyed — "up to" includes none');
+  /* And the question closes. An empty answer is indistinguishable from an
+     unanswered one unless the resume says so, and without that the window
+     reopened on the same effect for ever — declining hung the duel. The pin
+     that missed it checked what the effect did and never checked that it had
+     finished asking. */
+  ok(!none.pending, 'and declining ends the question rather than asking it again', none.pending ? 'asked again' : 'closed');
+
+  const theirs = asked.pending!.options.find((uid) => asked.players[FOE].spellTrap?.uid === uid)!;
+  const one = act(asked, ME, { type: 'chooseCard', uids: [theirs] });
+  ok(!one.players[FOE].spellTrap, 'name one and that one goes');
+  ok(!!one.players[ME].spellTrap, 'and your own is left alone unless you say otherwise');
+
+  const both = act(asked, ME, { type: 'chooseCard', uids: asked.pending!.options });
+  ok(!both.players[FOE].spellTrap && !both.players[ME].spellTrap, 'name two and both go, either side of the table');
+
+  /* A Set trap does not get to answer on the way out. */
+  ok(!one.pending, 'and the Set card it shattered never got a window to fire from', one.pending ? 'a window opened' : 'none');
+
+  /* Not only from the field. Thrown away to pay for a swing, it still goes off
+     — which is the whole of "in any way". */
+  {
+    const s = fresh('battle');
+    const u = card(ME, 'uraby');
+    const rex = card(ME, 'two-headed-king-rex');
+    rex.summonedOnTurn = 0;
+    rex.flags.attackCostDiscard = true;
+    s.players[ME].monsters[0] = rex;
+    s.players[ME].hand = [u, card(ME, 'kuriboh')];
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    const fed = act(s, ME, { type: 'attack', uid: rex.uid, targetUid: null, discardUid: u.uid });
+    ok(fed.pending?.kind === 'choose', 'discarded as a cost, it still goes off', fed.pending?.kind ?? '(nothing asked)');
+    const gone = act(fed, ME, { type: 'chooseCard', uids: [fed.players[FOE].spellTrap!.uid] });
+    ok(!gone.players[FOE].spellTrap, 'and takes a backrow card with it from the Graveyard');
+  }
+
+  /* Nothing on the field to point at is not a prompt. */
+  {
+    const s = fresh('battle');
+    s.active = FOE;
+    const u = card(ME, 'uraby');
+    u.summonedOnTurn = 0;
+    s.players[ME].monsters[0] = u;
+    const killer = card(FOE, 'blue-eyes-white-dragon');
+    killer.summonedOnTurn = 0;
+    s.players[FOE].monsters[0] = killer;
+    const quiet = act(s, FOE, { type: 'attack', uid: killer.uid, targetUid: u.uid });
+    ok(!quiet.pending, 'with a bare backrow on both sides it asks nothing at all', quiet.pending?.kind ?? 'nothing asked');
+  }
+}
+
+console.log('\nTwo smaller Rex numbers, and a revival that stopped caring how it died');
+{
+  const s = fresh();
+  const drag = card(ME, 'crawling-dragon-2');
+  s.players[ME].monsters[0] = drag;
+  const bare = effAtk(s, drag, ME);
+  s.players[ME].grave.push(card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'raigeki'));
+  ok(effAtk(s, drag, ME) === bare + 825, 'Crawling Dragon #2 is 275 a card in your Graveyard', `${effAtk(s, drag, ME)}`);
+
+  /* Anthrosaurus used to need a battle. Any destruction now — a Dark Hole is a
+     destruction, and the herd sends the next one up either way. */
+  const e = fresh();
+  e.players[ME].monsters[0] = card(ME, 'anthrosaurus');
+  e.players[ME].grave.push(card(ME, 'megazowler'));
+  const hole = card(ME, 'dark-hole');
+  e.players[ME].hand.push(hole);
+  const wiped = act(e, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  ok(on(wiped, ME).some((m) => m.slug === 'megazowler'), 'Anthrosaurus sends a fossil up when an effect kills it too', on(wiped, ME).map((m) => m.slug).join(',') || 'nothing');
+}
+
 console.log('\nA Spell costs the same whether it comes from your hand or off the field');
 {
   /* Set face-down and flipped up, a Spell used to skip the whole gate: no

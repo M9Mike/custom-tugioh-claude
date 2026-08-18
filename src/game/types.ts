@@ -152,6 +152,17 @@ export type Trigger =
   | 'onDestroyed'
   /** This card was sent from the field to the Graveyard for any reason. */
   | 'onSentToGrave'
+  /**
+   * This card reached a Graveyard from *anywhere* — the field, a hand, the top
+   * of a Deck, spent as somebody's cost.
+   *
+   * `onSentToGrave` is the field-only version and stays that way: ten cards
+   * read it and every one of them says "when this card is sent to the
+   * Graveyard" about a card that was in play. Uraby is the first that means it
+   * about a card that was never on the board at all, and widening the old
+   * trigger to suit it would have handed a milled Sangan a free Special Summon.
+   */
+  | 'onAnyToGrave'
   /** This monster declared an attack (resolves before damage). */
   | 'onDeclareAttack'
   /** This monster was chosen as an attack target (resolves before damage). */
@@ -284,6 +295,17 @@ export interface Selector {
    * was shielding herself and could not be killed in battle at all.
    */
   excludeSelf?: boolean;
+  /**
+   * "Up to." An unanswered pick takes nothing rather than the best thing going.
+   *
+   * Every other `chosen` selector falls back to the strongest legal card when
+   * nobody named one, because the alternative is an effect that fizzles where
+   * there was nobody to ask. An optional one is the opposite: declining is a
+   * real answer, and Uraby lets you shatter two backrow cards, or one, or
+   * neither — including your own, which is exactly the choice a fallback would
+   * make for you and get wrong.
+   */
+  optional?: boolean;
   /**
    * Reaches a monster that no other effect may touch.
    *
@@ -985,6 +1007,8 @@ export interface PendingChoice {
   trigger: Trigger;
   /** How many cards the effect wants. */
   want: number;
+  /** "Up to": fewer is allowed, and so is none — the board offers a way out. */
+  optional?: boolean;
   /** Answers collected so far. */
   picked: string[];
   /** Where the source was standing, so the resumed effect can find it. */

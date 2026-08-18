@@ -768,6 +768,22 @@ interface PendingDeparture {
   counters: number;
 }
 
+/**
+ * A card arriving in a Graveyard, from wherever it was.
+ *
+ * Fifteen places pushed straight onto the pile — a discard, a mill, a cost paid
+ * out of hand, a Fusion's Polymerization, the card fed to Two-Headed King Rex.
+ * `onSentToGrave` never saw any of them, because it fires out of `toGrave`,
+ * which only runs for a card leaving the *field*. Uraby says "sent to the
+ * Graveyard in any way" and means it, so there is one door now and every route
+ * goes through it. `toGrave` calls this too, for the field route, alongside the
+ * field-only trigger it has always fired.
+ */
+function landInGrave(state: DuelState, c: CardInstance, owner: PlayerId) {
+  state.players[owner].grave.push(c);
+  fireTriggers(state, c, owner, 'onAnyToGrave', {});
+}
+
 function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
   for (const d of pending) {
     /* Hand the card back what it was worth for the length of its own farewell.
@@ -792,7 +808,7 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
      table often enough, and "the other side from whoever is holding me" sent a
      stolen monster to the thief's Graveyard. */
   for (const ab of c.absorbed) {
-    state.players[ab.owner].grave.push(newInstance(state, ab.slug, ab.owner));
+    landInGrave(state, newInstance(state, ab.slug, ab.owner), ab.owner);
   }
 
   if (c.isToken) {
@@ -817,6 +833,9 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
     if (defer) defer.push({ c, controller, destroyed, counters });
     else fireDepartures(state, [{ c, controller, destroyed, counters }]);
   }
+  /* And the arrival, which is a different sentence from the departure: this one
+     is true of a card that was never on the board. */
+  fireTriggers(state, c, c.owner, 'onAnyToGrave', {});
 }
 
 /**
@@ -1133,7 +1152,10 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
        untargetable, so both of mine reached for the 3000 they could not touch
        and neither destroyed anything. Lord of D. himself is a Spellcaster and
        was legal the whole time. */
-    if (picked.length === 0) {
+    /* Unless the card said "up to". Declining is a real answer there, and the
+       fallback below would make it for you — Uraby would shatter your own
+       backrow because it was the best thing on the board. */
+    if (picked.length === 0 && !s.optional) {
       const legal = pool.filter((c) => !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
       if (legal.length) {
         picked.push(
@@ -1252,7 +1274,7 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
     const shed = c.absorbed;
     c.absorbed = [];
     for (const ab of shed) {
-      state.players[ab.owner].grave.push(newInstance(state, ab.slug, ab.owner));
+      landInGrave(state, newInstance(state, ab.slug, ab.owner), ab.owner);
     }
     log(
       state,
@@ -1531,7 +1553,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           for (let i = 0; i < n; i++) {
             const idx = randInt(state, p.hand.length);
             const c = p.hand.splice(idx, 1)[0];
-            p.grave.push(c);
+            landInGrave(state, c, pid);
             /* Log, then animate — so the beat that shows the card carries the
                line about *that* card. Without a beat of its own the line was
                adopted by whatever was already on screen, which is why a
@@ -1547,7 +1569,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           for (let i = 0; i < op.count; i++) {
             const c = p.deck.shift();
             if (!c) break;
-            p.grave.push(c);
+            landInGrave(state, c, pid);
           }
           log(state, `${p.name} sends ${op.count} cards from the top of their Deck to the Graveyard.`, 'effect', pid);
         }
@@ -1566,7 +1588,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             found = c;
             break;
           }
-          p.grave.push(c);
+          landInGrave(state, c, ctx.controller);
           buried.push(c);
         }
         if (buried.length) {
@@ -1589,7 +1611,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         if (zone < 0) {
           /* Nothing to put it in. It is already out of the Deck, so it goes
              where everything else it dug past went rather than vanishing. */
-          p.grave.push(found);
+          landInGrave(state, found, ctx.controller);
           emptyHanded(state, ctx, `${displayName(state, found)} is dug up with no room to stand, and is buried with the rest.`);
           break;
         }
@@ -2315,7 +2337,18 @@ function fireTriggersInner(
   trigger: CardEffect['trigger'],
   trig: TriggerContext,
   targets: string[],
-  def: CardDef
+  def: CardDef,
+  /**
+   * True when this is a parked effect coming back with its answer.
+   *
+   * It looks redundant — `raiseChoice` refuses the moment an answer exists, so
+   * a resumed effect could not park again — and it was deleted once on exactly
+   * that reasoning. The reasoning holds for every pick except an optional one,
+   * whose answer is legitimately *empty*: "up to 2, or none" resumed with no
+   * targets, was indistinguishable from nobody having been asked, and asked
+   * again, and again. Declining Uraby's shatter hung the duel.
+   */
+  resumed = false
 ) {
   for (const eff of def.effects) {
     if (eff.trigger !== trigger) continue;
@@ -2338,7 +2371,7 @@ function fireTriggersInner(
        turn — Sangan on the way to the pile, Newdoria taking one with it — that
        reach here with nothing, and those are the ones that used to have the
        engine choose on their controller's behalf. */
-    if (raiseChoice(state, c, controller, trigger, eff, targets)) continue;
+    if (!resumed && raiseChoice(state, c, controller, trigger, eff, targets)) continue;
     const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
     if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
       /* `arrival` when the effect fired because the card turned up. The beat is
@@ -2403,7 +2436,11 @@ function raiseChoice(
   if (!spec) return false;
   const options = targetCandidates(state, controller, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
   const want = spec.count ?? 1;
-  if (options.length <= want) return false;
+  /* "Up to" always asks, so long as there is anything to point at: taking two
+     of the two on the board is a decision, and so is taking neither. A
+     compulsory pick with no room to choose is not, and goes straight through. */
+  const optional = optionalPick(c.slug, trigger);
+  if (optional ? options.length === 0 : options.length <= want) return false;
 
   const from = whereIs(state, c.uid);
   if (!from) return false;
@@ -2417,6 +2454,7 @@ function raiseChoice(
     sourceSlug: c.slug,
     trigger,
     want,
+    optional,
     picked: [],
     from,
   };
@@ -2454,6 +2492,12 @@ export function choiceResponses(state: DuelState, pid: PlayerId): DuelAction[] {
   return out;
 }
 
+/** Does this effect's pick say "up to"? Read off the card, once. */
+function optionalPick(slug: string, trigger: Trigger): boolean {
+  const eff = CARDS[slug]?.effects.find((e) => e.trigger === trigger);
+  return !!eff?.ops.some((op) => 'target' in op && op.target?.pick === 'chosen' && op.target.optional);
+}
+
 /** Opens the next parked question, if the slot is free and one is waiting. */
 function drainChoices(state: DuelState) {
   if (state.pending || state.winner) return;
@@ -2468,7 +2512,7 @@ function drainChoices(state: DuelState) {
     return;
   }
   const options = targetCandidates(state, next.player, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
-  if (options.length <= next.want) {
+  if (next.optional ? options.length === 0 : options.length <= next.want) {
     // No longer a choice. Resolve it the way it would have resolved anyway.
     resumeChoice(state, { ...next, options: options.map((o) => o.uid) }, options.slice(0, next.want).map((o) => o.uid));
     drainChoices(state);
@@ -2481,10 +2525,7 @@ function drainChoices(state: DuelState) {
 function resumeChoice(state: DuelState, choice: PendingChoice, picked: string[]) {
   const src = findAnywhere(state, choice.sourceUid);
   if (!src) return;
-  /* No "this one is a resume" flag: `raiseChoice` refuses the moment an answer
-     exists, and the answer is exactly what is being handed in. A second way of
-     saying the same thing is a second thing to keep in step. */
-  fireTriggersInner(state, src, choice.player, choice.trigger, {}, picked, CARDS[choice.sourceSlug]);
+  fireTriggersInner(state, src, choice.player, choice.trigger, {}, picked, CARDS[choice.sourceSlug], true);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3745,7 +3786,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
 
       if (!isContinuous && !isField) {
         // One-shot spells go straight to the Graveyard.
-        p.grave.push(c);
+        landInGrave(state, c, pid);
       }
       checkExodia(state);
       return { state };
@@ -3798,7 +3839,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       runOps(ctx, eff.ops);
       if (def.subKind !== 'Continuous') {
         p.spellTrap = null;
-        p.grave.push(c);
+        landInGrave(state, c, pid);
       } else {
         c.face = 'up';
       }
@@ -3820,7 +3861,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       p.hand.splice(hi, 1);
       log(state, `${p.name} discards ${displayName(state, c)}.`, 'effect', pid, logSlug(c));
       anim(state, { kind: 'discard', uid: c.uid, slug: c.slug, player: pid });
-      p.grave.push(c);
+      landInGrave(state, c, pid);
       runOps({ state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} }, eff.ops);
       checkExodia(state);
       return { state };
@@ -3849,7 +3890,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         const paying = [...named, ...payable.filter((h) => !named.includes(h))].slice(0, need);
         for (const fed of paying) {
           p.hand.splice(p.hand.indexOf(fed), 1);
-          p.grave.push(fed);
+          landInGrave(state, fed, pid);
           log(state, `${p.name} discards ${displayName(state, fed)}.`, 'effect', pid, logSlug(fed));
           anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
         }
@@ -4006,7 +4047,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         if (at < 0) return { state: prev, error: 'That card is not in your hand.' };
         if (!hand.length) return { state: prev, error: `${card(c.slug).name} must discard a card to attack.` };
         const fed = hand.splice(at, 1)[0];
-        p.grave.push(fed);
+        landInGrave(state, fed, pid);
         log(state, `${p.name} feeds ${displayName(state, fed)} to ${displayName(state, c)}.`, 'effect', pid, logSlug(fed));
         anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
       }
@@ -4060,7 +4101,11 @@ function handleChoice(state: DuelState, pid: PlayerId, uids: string[]): DuelStat
   const pending = state.pending as PendingChoice;
   state.pending = null;
   const legal = uids.filter((u) => pending.options.includes(u)).slice(0, pending.want);
-  const picked = legal.length ? legal : pending.options.slice(0, pending.want);
+  /* An empty answer to an "up to" is the answer, not a missing one. Everywhere
+     else it means the question went unanswered — a window open across a
+     reconnection — and the effect resolves on what is there rather than
+     stalling the duel. */
+  const picked = legal.length || pending.optional ? legal : pending.options.slice(0, pending.want);
   resumeChoice(state, pending, picked);
   drainChoices(state);
   checkExodia(state);
@@ -4110,7 +4155,7 @@ function payActivation(
     for (let i = 0; i < n; i++) {
       const idx = p.hand.findIndex((h) => h.uid !== c.uid);
       if (idx < 0) break;
-      p.grave.push(p.hand.splice(idx, 1)[0]);
+      landInGrave(state, p.hand.splice(idx, 1)[0], pid);
     }
   }
   /* Whichever ones the player pointed at, and only then whatever is left. This
