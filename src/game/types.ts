@@ -176,6 +176,25 @@ export type Trigger =
   | 'activate'
   /** Manual once-per-turn activation from the field during Main Phase. */
   | 'ignition'
+  /**
+   * Activated from the hand, paying the effect's cost, to put this very card
+   * on the field. Not `handDiscard`, which spends the card itself and never
+   * reaches the field — this is the opposite: something else is spent so that
+   * *this* arrives. Megazowler and Sword Arm of Dragon both buy their way down
+   * for a card off the top of your hand.
+   */
+  | 'handSummon'
+  /**
+   * *You* summoned a monster, and this card is watching from your hand or your
+   * Graveyard rather than from the field.
+   *
+   * Every other trigger in this list fires on a card that is already in play.
+   * Mad Sword Beast is the first one that answers from off the board: any
+   * Dinosaur arriving calls it out of wherever it is waiting. Gate it with
+   * `condition.summonedIs` — an unfiltered one would answer every summon in
+   * the duel, including its own arrival.
+   */
+  | 'onAllySummon'
   /** Trap activation, gated by `window`. */
   | 'trap';
 
@@ -294,7 +313,19 @@ export type Op =
   /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
    *  written on the card: Headless Knight counts 100 a corpse, the Magician of
    *  Black Chaos counts 200. `perMonsterOnField` still carries its own 300. */
-  | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perCardInEitherGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
+  | {
+      op: 'gainAtk';
+      amount?: number;
+      scale?: 'targetAtk' | 'perCardInGrave' | 'perCardInEitherGrave' | 'perMonsterOnField' | 'dicePips';
+      /**
+       * Narrows what the Graveyard scales count. Sword Arm of Dragon is worth
+       * 150 for each of *two named cards* in the pile, not for the pile — and
+       * without this the scale could only ever say "every card down there".
+       */
+      filter?: CardFilter;
+      target: Selector;
+      duration: Duration;
+    }
   /** `scale` multiplies `amount` the same way `gainAtk`'s does — the Perfectly
    *  Ultimate Great Moth counts every card in both Graveyards, in both stats. */
   | { op: 'gainDef'; amount: number; scale?: 'perCardInGrave' | 'perCardInEitherGrave'; target: Selector; duration: Duration }
@@ -325,8 +356,35 @@ export type Op =
   | { op: 'drawTo'; count: number; who: Side }
   /** `all` discards the whole hand and ignores `count` — Manga Ryu-Ran wipes
    *  both hands, and a number would have to be a lie big enough to cover any. */
-  | { op: 'discard'; count: number; who: Side; all?: boolean }
+  | {
+      op: 'discard';
+      count: number;
+      who: Side;
+      all?: boolean;
+      /**
+       * Multiplies `count` by something the board can count. Tribute to the
+       * Doomed takes a card for each monster the discarding player is hiding
+       * behind, so a wide board pays for its own width.
+       */
+      scale?: 'perTheirMonster';
+    }
   | { op: 'mill'; count: number; who: Side }
+  /**
+   * Dig down through your own Deck, burying everything, until you turn over a
+   * monster the filter accepts — then Special Summon that one instead of
+   * burying it. Trakodon's whole card: it pays for the summon in fossils, and
+   * a bad dig is a real cost rather than a rounding error.
+   *
+   * Nothing found means the Deck is empty and everything went to the
+   * Graveyard, which the log says out loud.
+   */
+  | { op: 'millUntilSummon'; filter?: CardFilter; position?: Position }
+  /**
+   * Keep drawing until a card the filter accepts arrives in hand. Sabersaurus
+   * refills off its own funeral: "draw until you draw a monster", which is one
+   * card on a healthy deck and a fistful on a deck full of Spells.
+   */
+  | { op: 'drawUntil'; filter?: CardFilter; who: Side }
   /**
    * Add a card from the Deck to the hand.
    *
@@ -372,7 +430,13 @@ export type Op =
    */
   | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def'; deathDamage?: number }
   | { op: 'transformInto'; slug: string }
-  | { op: 'addCounter'; amount: number }
+  | {
+      op: 'addCounter';
+      amount: number;
+      /** Ceiling. The Cocoon thickens to four and stops — past the top rung
+       *  there is nothing further to hatch into, so the clock stops with it. */
+      max?: number;
+    }
   | { op: 'negateAttack' }
   | { op: 'endBattlePhase' }
   | { op: 'extraAttacks'; count: number; duration?: Duration }
@@ -425,6 +489,23 @@ export type Op =
   | { op: 'revealHand'; who: Side }
   | { op: 'shuffleIntoDeck'; target: Selector }
   /**
+   * This card is owed back to the field at the start of its controller's next
+   * turn, bigger than it left. Crawling Dragon only pays out when *battle*
+   * kills it — a card effect puts it down for good — so the sentence is worth
+   * something to play around rather than an unconditional second life.
+   */
+  | { op: 'reviveSelfNextTurn'; atk?: number; def?: number }
+  /**
+   * Put the card whose effect this is onto the field, from wherever it is
+   * waiting — a hand or a Graveyard. The half of `handSummon` and
+   * `onAllySummon` that does the arriving; both triggers fire on a card that
+   * is nowhere near the board, so neither can use the ordinary `specialSummon`
+   * that reaches into a zone and picks something out.
+   */
+  | { op: 'summonSelf'; position?: Position; face?: Face }
+  /** Every swing this monster makes costs a card out of its controller's hand. */
+  | { op: 'attackCostDiscard'; duration: Duration }
+  /**
    * Takes a card out of a Graveyard and into the controller's hand.
    *
    * `from` because the two cards that do this mean different things by it.
@@ -462,6 +543,8 @@ export type Op =
   | { op: 'win' };
 
 export type EquipGrant =
+  /** Every swing costs a card out of hand — Two-Headed King Rex feeds itself. */
+  | 'attackCostDiscard'
   | 'pierce'
   | 'doubleAttack'
   | 'directAttack'
@@ -604,7 +687,22 @@ export interface CardEffect {
    * the one thing the printed card does that this engine had no way to say.
    * `tributeFilter` narrows what may be paid with.
    */
-  cost?: { discard?: number; tribute?: number; lp?: number; tributeSelf?: boolean; tributeFilter?: CardFilter };
+  cost?: {
+    discard?: number;
+    tribute?: number;
+    lp?: number;
+    /**
+     * Multiplies `lp` by something the board can count. Tribute to the Doomed
+     * is priced at what their hand is worth: a thousand a card, so it is cheap
+     * against a player in topdeck mode and unaffordable against a full grip —
+     * which is the whole card. Read as a cost rather than as damage so the
+     * engine refuses an activation nobody can pay, instead of letting a player
+     * (or the AI) spend their last Life Points on it.
+     */
+    lpScale?: 'perOppHandCard';
+    tributeSelf?: boolean;
+    tributeFilter?: CardFilter;
+  };
   /** How many targets the activating player must pick before sending the action. */
   targets?: number;
   /** Hand-trap: this effect may be activated straight from the hand, discarding the card. */
@@ -612,6 +710,11 @@ export interface CardEffect {
 }
 
 export interface EffectCondition {
+  /**
+   * For `onAllySummon`: what the monster that just arrived has to be. Without
+   * it the trigger answers every summon there is, its own included.
+   */
+  summonedIs?: CardFilter;
   /** Controller's LP must be at or below this. */
   ownLpBelow?: number;
   /** Requires at least this many cards in own Graveyard. */
@@ -709,6 +812,8 @@ export interface CardFlags {
   sapsAttacker?: boolean;
   /** See the `paysWithGraveInstead` op. */
   paysWithGraveInstead?: boolean;
+  /** Every swing costs a card out of hand — see the `attackCostDiscard` op. */
+  attackCostDiscard?: boolean;
 }
 
 export interface CardInstance {
@@ -787,11 +892,21 @@ export interface CardInstance {
 export interface OngoingEffect {
   id: string;
   source: string; // card slug
-  kind: 'skipDraw' | 'skipBattlePhase' | 'freezeMonsters' | 'preventBattleDamage' | 'preventBattleDestruction';
+  kind:
+    | 'skipDraw'
+    | 'skipBattlePhase'
+    | 'freezeMonsters'
+    | 'preventBattleDamage'
+    | 'preventBattleDestruction'
+    /** A monster owed back to the field at the start of its controller's turn. */
+    | 'pendingRevival';
   /** Player the effect is applied to. */
   target: PlayerId;
   /** Turns remaining; decremented at the end of the affected player's turn. */
   turns: number;
+  /** `pendingRevival`: what it comes back with on top of its printed stats. */
+  atkBonus?: number;
+  defBonus?: number;
 }
 
 export interface PlayerState {
@@ -824,6 +939,8 @@ export interface Pending {
 }
 
 export interface TriggerContext {
+  /** For `onAllySummon`: the monster that just arrived — see `summonedIs`. */
+  summonedUid?: string;
   attackerUid?: string;
   targetUid?: string;
   sourceUid?: string;
@@ -966,7 +1083,15 @@ export type DuelAction =
   /** Spend a card out of the hand for its `handDiscard` effect. */
   | { type: 'discardForEffect'; uid: string; targets?: string[] }
   | { type: 'fusionSummon'; extraUid: string; materials: string[]; zone: number; position: Position; targets?: string[] }
-  | { type: 'attack'; uid: string; targetUid: string | null }
+  | {
+      type: 'attack';
+      uid: string;
+      targetUid: string | null;
+      /** The card thrown away to make the swing — see `attackCostDiscard`. */
+      discardUid?: string;
+    }
+  /** Pay a card out of hand to Special Summon another card in that hand. */
+  | { type: 'handSummon'; uid: string; discardUid?: string; targets?: string[] }
   | { type: 'respondTrap'; uid: string | null; targets?: string[] }
   | { type: 'toPhase'; phase: Phase }
   | { type: 'endTurn' }

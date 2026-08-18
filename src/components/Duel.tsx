@@ -99,6 +99,20 @@ type Mode =
       carry?: string[];
     }
   | { kind: 'attack'; uid: string }
+  /**
+   * Which card out of your hand is being fed to something. Two cards buy their
+   * way onto the field with one, and Two-Headed King Rex eats one for every
+   * swing it makes — the same question either way, so it is one modal and the
+   * `purpose` says where the answer goes.
+   */
+  | {
+      kind: 'handCost';
+      purpose: 'summon' | 'attack';
+      uid: string;
+      /** `attack` only: what it is swinging at, `null` for a direct attack. */
+      targetUid?: string | null;
+      prompt: string;
+    }
   /** Action sheet for one of your own monsters on the field. */
   | { kind: 'monster'; uid: string };
 
@@ -1001,6 +1015,28 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     [state, me]
   );
 
+  /**
+   * Swing, or ask what to throw first. One function rather than a check at each
+   * of the three places an attack is declared — a monster in a zone, the sheet's
+   * own Attack button, and the Direct Attack button — because two of them would
+   * have gone straight past the cost and the engine would have paid it with
+   * whatever happened to be first in hand.
+   */
+  const swing = (uid: string, targetUid: string | null) => {
+    const attacker = mine.monsters.find((m) => m?.uid === uid) ?? undefined;
+    if (attacker && effFlags(state, attacker, me).attackCostDiscard && mine.hand.length > 0) {
+      setMode({
+        kind: 'handCost',
+        purpose: 'attack',
+        uid,
+        targetUid,
+        prompt: `Discard 1 card to attack with ${shownName(attacker) ?? CARDS[attacker.slug]?.name}`,
+      });
+      return;
+    }
+    void run({ type: 'attack', uid, targetUid });
+  };
+
   const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip', uid: string, targets: string[]) => {
     if (source === 'trap') void run({ type: 'respondTrap', uid, targets });
     else if (source === 'spell') void run({ type: 'activateSpell', uid, targets });
@@ -1232,7 +1268,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           if (!c) return;
           if (targetable) {
             if (mode.kind === 'target') onPickTarget(c.uid);
-            else if (mode.kind === 'attack') void run({ type: 'attack', uid: mode.uid, targetUid: c.uid });
+            else if (mode.kind === 'attack') swing(mode.uid, c.uid);
             else if (mode.kind === 'tributes') {
               const picked = [...mode.picked, c.uid];
               sfx.click();
@@ -1404,6 +1440,35 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       /* Spent from the hand rather than played onto the field. Offered on the
          monster itself, because that is where the player is looking when they
          are holding a card they cannot afford to summon. */
+      /* Bought down rather than summoned. Offered whether or not the Normal
+         Summon is still available, because that is the point of it: the herd
+         arrives faster than the turn count allows. */
+      if (handDef.effects.some((e) => e.trigger === 'handSummon')) {
+        const payable = mine.hand.filter((h) => h.uid !== handCard.uid).length;
+        const canBuy = myTurn && state.phase === 'main' && freeZone && payable > 0;
+        acts.push({
+          label: 'Special Summon (discard 1)',
+          disabled: !canBuy,
+          hint: !myTurn
+            ? 'Not your turn'
+            : state.phase !== 'main'
+              ? 'Main Phase only'
+              : !freeZone
+                ? 'No free Monster Zone'
+                : payable === 0
+                  ? 'Nothing left in hand to discard'
+                  : undefined,
+          run: () => {
+            sfx.click();
+            setMode({
+              kind: 'handCost',
+              purpose: 'summon',
+              uid: handCard.uid,
+              prompt: `Discard 1 card to Special Summon ${handDef.name}`,
+            });
+          },
+        });
+      }
       if (handDef.effects.some((e) => e.trigger === 'handDiscard')) {
         acts.push({
           label: 'Discard for its effect',
@@ -2009,7 +2074,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                        answer. */
                     const legal = legalAttackTargets(state, me, monsterCard);
                     if (!legal.uids.length && legal.direct) {
-                      void run({ type: 'attack', uid: monsterCard.uid, targetUid: null });
+                      swing(monsterCard.uid, null);
                       return;
                     }
                     setMode({ kind: 'attack', uid: monsterCard.uid });
@@ -2089,7 +2154,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             {mode.kind === 'attack' && canDirect && (
               <button
                 className="btn btn-danger rounded px-3 py-1 text-[10px]"
-                onClick={() => void run({ type: 'attack', uid: mode.uid, targetUid: null })}
+                onClick={() => swing(mode.uid, null)}
               >
                 Direct Attack
               </button>
@@ -2097,6 +2162,47 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <button className="btn rounded px-3 py-1 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* What to throw. The card being summoned is not on the menu — feeding it
+          to itself would leave nothing to arrive — and an attack may spend
+          anything, the King included, because a hand is a hand. */}
+      {mode.kind === 'handCost' && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
+          style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}
+          onClick={() => setMode({ kind: 'idle' })}
+        >
+          <div className="panel grain thin-scroll max-h-[76dvh] w-full max-w-2xl overflow-y-auto rounded p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-display text-sm text-parchment">{mode.prompt}</h3>
+              <button className="btn shrink-0 rounded px-2 py-1 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
+                ✕
+              </button>
+            </div>
+            <div className="brass-rule my-2" />
+            <div className="flex flex-wrap gap-2">
+              {mine.hand
+                .filter((c) => mode.purpose === 'attack' || c.uid !== mode.uid)
+                .map((c) => (
+                  <button
+                    key={c.uid}
+                    className="w-[76px] text-left selectable rounded"
+                    onClick={() => {
+                      const chosen = mode;
+                      sfx.click();
+                      setMode({ kind: 'idle' });
+                      if (chosen.purpose === 'summon') void run({ type: 'handSummon', uid: chosen.uid, discardUid: c.uid });
+                      else void run({ type: 'attack', uid: chosen.uid, targetUid: chosen.targetUid ?? null, discardUid: c.uid });
+                    }}
+                  >
+                    <GameCard card={c} displayName={shownName(c)} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
+                  </button>
+                ))}
+            </div>
           </div>
         </div>
       )}

@@ -145,13 +145,24 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'tribute-to-the-doomed': {
-    text: 'Discard 1 card, then destroy 1 monster your opponent controls.',
+    /* Priced off their hand and paid off their board. A player in topdeck mode
+       hands it over for almost nothing; a player sitting on a full grip behind
+       a wide field makes it unaffordable, and then pays for the width. Written
+       as a cost rather than as damage so the engine refuses an activation
+       nobody can survive instead of letting it be played as a suicide. */
+    text:
+      'Pay 1000 Life Points for each card in your opponent\'s hand. ' +
+      'Your opponent then discards 1 random card for each monster they control, ' +
+      'and you destroy 1 monster your opponent controls.',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        cost: { discard: 1 },
-        ops: [{ op: 'destroy', target: OPP_PICK }],
+        cost: { lp: 1000, lpScale: 'perOppHandCard' },
+        ops: [
+          { op: 'discard', count: 1, scale: 'perTheirMonster', who: 'opp' },
+          { op: 'destroy', target: OPP_PICK },
+        ],
       },
     ],
   },

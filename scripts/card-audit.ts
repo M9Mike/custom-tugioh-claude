@@ -15,7 +15,7 @@
  *   npx tsx scripts/card-audit.ts            # audit everything
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
-import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, tributesRequired } from '../src/game/engine';
+import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, lpCost, tributesRequired } from '../src/game/engine';
 import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,
@@ -488,6 +488,23 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
 /** Puts a legal revival target in the Graveyard for `specialSummon from grave`. */
 function stockGraveFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
+    /* Two more ways an effect reads the pile, neither of which is a summon.
+       A stat scale counts what is down there — Sword Arm of Dragon is worth
+       150 for each of two named cards, and against an empty Graveyard that is
+       a multiplication by nothing, which the harness then reported as a card
+       that does not raise ATK. And `shuffleIntoDeck` aimed at the Graveyard
+       needs something in it to shuffle. Same gap as `stealFromGrave`, twice
+       over: the harness has to stock whatever the card is going to read. */
+    if ((op.op === 'gainAtk' || op.op === 'gainDef') && (op.scale === 'perCardInGrave' || op.scale === 'perCardInEitherGrave')) {
+      const want = matchCard(op.op === 'gainAtk' ? op.filter : undefined, 'any');
+      if (want) s.players[ME].grave.push(mint(s, ME, want.slug));
+      continue;
+    }
+    if (op.op === 'shuffleIntoDeck' && op.target.zone === 'grave') {
+      const want = matchCard(op.target.filter, 'any');
+      if (want) s.players[ME].grave.push(mint(s, ME, want.slug));
+      continue;
+    }
     /* `stealFromGrave` reads the Graveyard too, and was not stocked for — the
        filler is five monsters and one Spell, so Mask of Darkness, which recurs
        a *Trap*, reached for something that was never there and the audit
@@ -541,6 +558,16 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
      spare — so `canIgnite` refused it for want of fodder and the God's whole
      button went unverified. The cost is the card working, not the card being
      unavailable, so the harness pays it. */
+  /* And a cost in Life Points. Tribute to the Doomed prices itself off the
+     opponent's hand, so the harness's default board could not afford its own
+     card and the engine refused the activation — which reads as the card being
+     broken rather than as the position being wrong. Same principle as the
+     Tributes below: the cost is the card working, not the card being
+     unavailable, so the harness pays it. */
+  if (eff.cost?.lp) {
+    const due = lpCost(s, ME, eff);
+    if (s.players[ME].lp <= due) s.players[ME].lp = due + 1000;
+  }
   const trib = eff.cost?.tribute ?? 0;
   if (trib > 0) {
     const usable = () =>

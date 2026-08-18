@@ -8,7 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, summonBlocked, tributesRequired, wastedWithoutTarget } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -996,6 +996,301 @@ console.log('\nInsect Barrier does both halves of its sentence');
   ok(!!swung.players[ME].monsters[0], 'and the Insect it charged at is still standing');
 }
 
+console.log('\nRex Raptor: the herd, and what it costs to run it');
+{
+  /* Tribute to the Doomed is priced off their hand and paid off their board. */
+  const s = fresh();
+  const spell = card(ME, 'tribute-to-the-doomed');
+  s.players[ME].hand = [spell];
+  s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  s.players[FOE].monsters[1] = card(FOE, 'petit-moth');
+  const after = act(s, ME, { type: 'activateSpell', uid: spell.uid, targets: [s.players[FOE].monsters[0]!.uid] });
+  ok(after.players[ME].lp === 4000 - 2000, 'it costs 1000 a card in their hand', `${after.players[ME].lp}`);
+  ok(after.players[FOE].hand.length === 0, 'and takes a card for each monster they are standing behind', `${after.players[FOE].hand.length} left`);
+  ok(!after.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'), 'then destroys the one you pointed at');
+
+  /* And it refuses rather than killing you. Six cards in hand is 6000, which a
+     player on 4000 cannot pay — the engine says so instead of letting it be
+     played as a suicide. */
+  const broke = fresh();
+  const doom = card(ME, 'tribute-to-the-doomed');
+  broke.players[ME].hand = [doom];
+  broke.players[FOE].hand = Array.from({ length: 6 }, () => card(FOE, 'kuriboh'));
+  broke.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  ok(!canActivateFromHand(broke, ME, doom), 'a hand it cannot afford is a card it will not let you play');
+  const refused = applyAction(broke, ME, { type: 'activateSpell', uid: doom.uid, targets: [broke.players[FOE].monsters[0]!.uid] });
+  ok(!!refused.error, 'and the board says why rather than taking your last Life Points', refused.error ?? '(activated)');
+
+  /* Anthrosaurus takes the backrow on the way in, and a fossil on the way down. */
+  const a = fresh();
+  const anth = card(ME, 'anthrosaurus');
+  a.players[ME].hand = [anth];
+  a.players[FOE].spellTrap = card(FOE, 'insect-barrier');
+  const landed = act(a, ME, { type: 'normalSummon', uid: anth.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [a.players[FOE].spellTrap!.uid] });
+  ok(landed.players[FOE].spellTrap === null, 'Anthrosaurus shatters a backrow card as it arrives');
+
+  /* Trakodon digs, burying as it goes, and stands the first fossil up. */
+  const t = fresh();
+  const trak = card(ME, 'trakodon');
+  t.players[ME].hand = [trak];
+  t.players[ME].deck = [card(ME, 'raigeki'), card(ME, 'dark-hole'), card(ME, 'uraby'), card(ME, 'kuriboh')];
+  const dug = act(t, ME, { type: 'normalSummon', uid: trak.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(on(dug, ME).some((m) => m.slug === 'uraby'), 'Trakodon digs until a Dinosaur and stands it up', on(dug, ME).map((m) => m.slug).join(','));
+  ok(dug.players[ME].grave.filter((g) => ['raigeki', 'dark-hole'].includes(g.slug)).length === 2, 'and everything it dug past is buried');
+  ok(dug.players[ME].deck.some((c) => c.slug === 'kuriboh'), 'and it stops digging the moment it finds one', dug.players[ME].deck.map((c) => c.slug).join(',') || '(empty)');
+
+  /* The two small ones. */
+  ok(baseAtkOf('crawling-dragon-2') === 300, 'Crawling Dragon #2 prints 300', `${baseAtkOf('crawling-dragon-2')}`);
+  ok(baseAtkOf('uraby') === 400, 'Uraby prints 400', `${baseAtkOf('uraby')}`);
+
+  /* Megazowler and Sword Arm buy their way down for a card, and dig each other
+     out of the Deck as they die. */
+  for (const [slug, partner, pos] of [
+    ['megazowler', 'sword-arm-of-dragon', 'def'],
+    ['sword-arm-of-dragon', 'megazowler', 'atk'],
+  ] as Array<[string, string, 'atk' | 'def']>) {
+    const h = fresh();
+    const beast = card(ME, slug);
+    const fodder = card(ME, 'kuriboh');
+    h.players[ME].hand = [beast, fodder];
+    const bought = act(h, ME, { type: 'handSummon', uid: beast.uid, discardUid: fodder.uid });
+    const down = on(bought, ME).find((m) => m.slug === slug);
+    ok(!!down, `${CARDS[slug].name} buys its way down for a card`, on(bought, ME).map((m) => m.slug).join(',') || 'nothing');
+    ok(down?.position === pos, `and lands in ${pos === 'def' ? 'Defence' : 'Attack'} Position`, down?.position);
+    ok(bought.players[ME].grave.some((g) => g.slug === 'kuriboh'), 'with the card it paid in the Graveyard');
+    ok(!bought.players[ME].normalSummonUsed, 'and your Normal Summon still in hand');
+
+    const d = fresh();
+    d.players[ME].monsters[0] = card(ME, slug);
+    d.players[ME].deck = [card(ME, partner), card(ME, 'kuriboh')];
+    const hole = card(ME, 'dark-hole');
+    d.players[ME].hand.push(hole);
+    const wiped = act(d, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(wiped.players[ME].hand.some((x) => x.slug === partner), `and digs ${CARDS[partner].name} out of the Deck as it dies`);
+  }
+
+  /* Sword Arm is heavier for every one of the pair already buried. */
+  {
+    const g = fresh();
+    const arm = card(ME, 'sword-arm-of-dragon');
+    g.players[ME].hand = [arm];
+    g.players[ME].grave.push(card(ME, 'megazowler'), card(ME, 'sword-arm-of-dragon'), card(ME, 'kuriboh'));
+    const need = tributesRequired('sword-arm-of-dragon', g, ME);
+    const tribs: string[] = [];
+    for (let z = 0; z < need; z++) {
+      const f3 = card(ME, 'kuriboh');
+      g.players[ME].monsters[z + 1] = f3;
+      tribs.push(f3.uid);
+    }
+    const down = act(g, ME, { type: 'normalSummon', uid: arm.uid, zone: 0, position: 'atk', face: 'up', tributes: tribs });
+    const it = on(down, ME).find((m) => m.slug === 'sword-arm-of-dragon')!;
+    ok(effAtk(down, it, ME) === baseAtkOf('sword-arm-of-dragon') + 300, 'Sword Arm is 150 heavier for each of the pair in the pile, and nothing for a Kuriboh', `${effAtk(down, it, ME)}`);
+  }
+
+  /* Mad Sword Beast answers from off the board. */
+  for (const zone of ['hand', 'grave'] as const) {
+    const s2 = fresh();
+    const beast = card(ME, 'mad-sword-beast');
+    if (zone === 'hand') s2.players[ME].hand.push(beast);
+    else s2.players[ME].grave.push(beast);
+    const fossil = card(ME, 'uraby');
+    s2.players[ME].hand.push(fossil);
+    const out = act(s2, ME, { type: 'normalSummon', uid: fossil.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(on(out, ME).some((m) => m.slug === 'mad-sword-beast'), `a Dinosaur arriving calls Mad Sword Beast out of your ${zone}`, on(out, ME).map((m) => m.slug).join(','));
+  }
+  {
+    /* And only for a Dinosaur. */
+    const s3 = fresh();
+    s3.players[ME].hand.push(card(ME, 'mad-sword-beast'));
+    const notFossil = card(ME, 'kuriboh');
+    s3.players[ME].hand.push(notFossil);
+    const out = act(s3, ME, { type: 'normalSummon', uid: notFossil.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(!on(out, ME).some((m) => m.slug === 'mad-sword-beast'), 'and stays where it is for anything else', on(out, ME).map((m) => m.slug).join(','));
+
+    /* Worth the whole field while it stands, theirs included. */
+    const f = fresh();
+    const b = card(ME, 'mad-sword-beast');
+    f.players[ME].monsters[0] = b;
+    const alone = effAtk(f, b, ME);
+    f.players[ME].monsters[1] = card(ME, 'uraby');
+    f.players[FOE].monsters[0] = card(FOE, 'trakodon');
+    ok(effAtk(f, b, ME) === alone + 200, 'and 100 heavier for each Dinosaur on the field, theirs counted', `${alone} → ${effAtk(f, b, ME)}`);
+  }
+
+  /* Sabersaurus refills off its own funeral. */
+  {
+    const s4 = fresh();
+    s4.players[ME].monsters[0] = card(ME, 'sabersaurus');
+    s4.players[ME].grave.push(card(ME, 'uraby'), card(ME, 'trakodon'), card(ME, 'raigeki'));
+    s4.players[ME].deck = [card(ME, 'dark-hole'), card(ME, 'swords-of-revealing-light'), card(ME, 'kuriboh')];
+    const hole = card(ME, 'dark-hole');
+    s4.players[ME].hand.push(hole);
+    const gone = act(s4, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(!gone.players[ME].grave.some((g) => CARDS[g.slug]?.type === 'Dinosaur'), 'Sabersaurus takes every fossil back out of the pile', gone.players[ME].grave.map((g) => g.slug).join(','));
+    ok(gone.players[ME].grave.some((g) => g.slug === 'raigeki'), 'and leaves what is not a fossil where it lies');
+    ok(gone.players[ME].hand.some((h) => CARDS[h.slug]?.kind === 'monster'), 'then digs until a body turns up', gone.players[ME].hand.map((h) => h.slug).join(','));
+  }
+
+  /* Crawling Dragon reaches the whole pile, and comes back bigger from battle. */
+  {
+    const c = fresh();
+    const drag = card(ME, 'crawling-dragon');
+    c.players[ME].hand = [drag];
+    /* Megazowler is 1800 — over the 1600 ceiling the old text carried, and a
+       Dinosaur, which Crawling Dragon itself is not. */
+    c.players[ME].grave.push(card(ME, 'megazowler'));
+    const pay = card(ME, 'kuriboh');
+    c.players[ME].monsters[1] = pay;
+    const down = act(c, ME, { type: 'normalSummon', uid: drag.uid, zone: 0, position: 'atk', face: 'up', tributes: [pay.uid], targets: [c.players[ME].grave[0].uid] });
+    ok(on(down, ME).some((m) => m.slug === 'megazowler'), 'Crawling Dragon reaches over the old 1600 ceiling', on(down, ME).map((m) => m.slug).join(','));
+
+    /* Killed in battle, it is owed back at the start of your next turn. */
+    const b2 = fresh('battle');
+    const dying = card(ME, 'crawling-dragon');
+    dying.summonedOnTurn = 0;
+    b2.players[ME].monsters[0] = dying;
+    const killer = card(FOE, 'blue-eyes-white-dragon');
+    killer.summonedOnTurn = 0;
+    b2.players[FOE].monsters[0] = killer;
+    b2.active = FOE;
+    let cur = act(b2, FOE, { type: 'attack', uid: killer.uid, targetUid: dying.uid });
+    ok(!on(cur, ME).some((m) => m.slug === 'crawling-dragon'), 'battle puts it down');
+    cur = act(cur, FOE, { type: 'endTurn' });
+    const back = on(cur, ME).find((m) => m.slug === 'crawling-dragon');
+    ok(!!back, 'and it claws its way back at the start of your turn', on(cur, ME).map((m) => m.slug).join(',') || 'nothing');
+    ok(
+      !!back && effAtk(cur, back, ME) === baseAtkOf('crawling-dragon') + 200 && effDef(cur, back, ME) === CARDS['crawling-dragon'].def! + 200,
+      'two hundred heavier at both ends',
+      back ? `${effAtk(cur, back, ME)}/${effDef(cur, back, ME)}` : '—'
+    );
+
+    /* A card effect puts it down for good. */
+    const e = fresh();
+    e.players[ME].monsters[0] = card(ME, 'crawling-dragon');
+    const hole2 = card(ME, 'dark-hole');
+    e.players[ME].hand.push(hole2);
+    let dead = act(e, ME, { type: 'activateSpell', uid: hole2.uid, targets: [] });
+    dead = act(dead, ME, { type: 'endTurn' });
+    dead = act(dead, FOE, { type: 'endTurn' });
+    ok(!on(dead, ME).some((m) => m.slug === 'crawling-dragon'), 'while an effect keeps it down', on(dead, ME).map((m) => m.slug).join(',') || 'gone');
+  }
+
+  /* Serpent Night Dragon: the pile, and their whole board plus one. */
+  {
+    const s5 = fresh();
+    const snd = card(ME, 'serpent-night-dragon');
+    s5.players[ME].monsters[0] = snd;
+    const bare = effAtk(s5, snd, ME);
+    s5.players[ME].grave.push(card(ME, 'uraby'), card(ME, 'trakodon'), card(ME, 'raigeki'));
+    ok(effAtk(s5, snd, ME) === bare + 300, 'Serpent Night Dragon is 150 a fossil, and nothing for a Spell', `${effAtk(s5, snd, ME)}`);
+
+    const counts: Array<[number, number]> = [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+    ];
+    for (const [board, want] of counts) {
+      const f2 = fresh('battle');
+      const d2 = card(ME, 'serpent-night-dragon');
+      d2.summonedOnTurn = 0;
+      f2.players[ME].monsters[0] = d2;
+      for (let z = 0; z < board; z++) f2.players[FOE].monsters[z] = card(FOE, 'kuriboh');
+      ok(maxAttacks(f2, d2, ME) === want, `over ${board} of their monsters it gets ${want} attack${want === 1 ? '' : 's'}`, `${maxAttacks(f2, d2, ME)}`);
+    }
+  }
+
+  /* Two-Headed King Rex eats to swing, and what it eats is already in the pile
+     when the blow lands. */
+  {
+    const r = fresh('battle');
+    const rex = card(ME, 'two-headed-king-rex');
+    rex.summonedOnTurn = 0;
+    rex.flags.attackCostDiscard = true;
+    rex.flags.extraAttacks = 1;
+    r.players[ME].monsters[0] = rex;
+    const fossil = card(ME, 'uraby');
+    r.players[ME].hand = [fossil];
+    const before2 = effAtk(r, rex, ME);
+    const swung = act(r, ME, { type: 'attack', uid: rex.uid, targetUid: null, discardUid: fossil.uid });
+    ok(swung.players[ME].hand.length === 0, 'the King eats a card to swing', `${swung.players[ME].hand.length} left`);
+    ok(swung.players[ME].grave.some((g) => g.slug === 'uraby'), 'and what it ate is in the pile');
+    ok(swung.players[FOE].lp === 4000 - (before2 + 300), 'so the blow lands 300 heavier for the fossil it just swallowed', `${4000 - swung.players[FOE].lp} vs ${before2 + 300}`);
+
+    /* With nothing to eat it does not swing at all — and the board says so
+       rather than offering an attack the engine would refuse. */
+    const starved = fresh('battle');
+    const king = card(ME, 'two-headed-king-rex');
+    king.summonedOnTurn = 0;
+    king.flags.attackCostDiscard = true;
+    starved.players[ME].monsters[0] = king;
+    starved.players[ME].hand = [];
+    ok(!canAttackWith(starved, ME, king), 'an empty hand is a King that cannot swing');
+    ok(maxAttacks(starved, king, ME) === 0, 'and the engine says nought attacks rather than two it cannot pay for', `${maxAttacks(starved, king, ME)}`);
+  }
+}
+
+console.log('\nThree things a duel reported, and the rules behind them');
+{
+  /* "Leghul attacked directly, the opponent discarded Kuriboh so no damage was
+     done, yet it still gained the ATK." The trigger says "when it inflicts
+     battle damage" and was firing on the declaration rather than on the blow —
+     so every card reading that trigger was paying out for hits that never
+     landed. Measured now, not assumed. */
+  const b = fresh('battle');
+  const crawler = card(ME, 'leghul');
+  crawler.summonedOnTurn = 0;
+  b.players[ME].monsters[0] = crawler;
+  b.ongoing.push({ id: 'shield', source: 'kuriboh', kind: 'preventBattleDamage', target: FOE, turns: 1 });
+  const before = effAtk(b, crawler, ME);
+  const swung = act(b, ME, { type: 'attack', uid: crawler.uid, targetUid: null });
+  ok(swung.players[FOE].lp === 4000, 'a blow the other player does not feel costs them nothing', `${swung.players[FOE].lp}`);
+  ok(
+    effAtk(swung, swung.players[ME].monsters[0]!, ME) === before,
+    'and Leghul grows nothing on it',
+    `${before} → ${effAtk(swung, swung.players[ME].monsters[0]!, ME)}`
+  );
+
+  /* Same rule over a monster, not only over an empty board. */
+  const m = fresh('battle');
+  const needle = card(ME, 'killer-needle');
+  needle.summonedOnTurn = 0;
+  m.players[ME].monsters[0] = needle;
+  m.players[FOE].monsters[0] = card(FOE, 'petit-moth');
+  m.ongoing.push({ id: 'shield2', source: 'kuriboh', kind: 'preventBattleDamage', target: FOE, turns: 1 });
+  const was = effAtk(m, needle, ME);
+  const hit = act(m, ME, { type: 'attack', uid: needle.uid, targetUid: m.players[FOE].monsters[0]!.uid });
+  const grown = hit.players[ME].monsters.find((x) => x?.uid === needle.uid);
+  ok(!!grown && effAtk(hit, grown, ME) === was, 'and a shielded battle pays Killer Needle nothing either', `${grown ? effAtk(hit, grown, ME) : 'gone'}`);
+}
+
+console.log('\nYour own Deck is yours to read, but not to read in order');
+{
+  /* "Basic Insect did not give the option to pick which equip spell to add
+     while both were in the deck." It was never about Basic Insect: the view
+     handed the player their own Deck with every slug masked to `facedown`, so
+     the board filtered the pool by name, nothing matched, and every Deck search
+     in the game picked for you in silence. What has to stay secret is the
+     order, not the contents. */
+  const s = fresh();
+  s.players[ME].deck = [card(ME, 'laser-cannon-armor'), card(ME, 'insect-armor-with-laser-cannon'), card(ME, 'kuriboh')];
+  const seen = viewFor(s, ME);
+  ok(!seen.players[ME].deck.some((c) => c.slug === 'facedown'), 'you can read the names in your own Deck', seen.players[ME].deck.map((c) => c.slug).join(','));
+  ok(seen.players[FOE].deck.every((c) => c.slug === 'facedown'), 'and none of theirs');
+
+  /* Order tells you nothing: the list comes back sorted, so the top card of the
+     real Deck is not the first card of the one you are shown. */
+  const ordered = [...s.players[ME].deck].map((c) => c.slug);
+  const shown = seen.players[ME].deck.map((c) => c.slug);
+  ok(shown.join(',') !== ordered.join(','), 'and the order it arrives in is not the order you will draw it', shown.join(','));
+  ok([...shown].sort().join(',') === [...ordered].sort().join(','), 'while every card is still accounted for');
+
+  /* Which is what the picker needs: both cannons offered, not one chosen for you. */
+  const spec = targetSpecFor('basic-insect', 'onSummon');
+  const offered = spec ? targetCandidates(seen, ME, spec).map((c) => c.slug) : [];
+  ok(offered.length === 2, 'so Basic Insect offers both cannons from the board the player is actually looking at', offered.join(',') || '(none)');
+}
+
 console.log('\nWeevil: the hive, and the ladder that climbs out of it');
 {
   /* Both cannons went to 800. They are the only two cards Basic Insect can
@@ -1178,8 +1473,17 @@ console.log('\nThe cocoon thickens, and hatches whatever it has grown into');
   let cur = act(s, ME, { type: 'endTurn' });
   ok(cur.players[ME].monsters[0]!.counters === 1, 'the Cocoon takes a counter at the end of your turn', `${cur.players[ME].monsters[0]!.counters}`);
   cur = act(cur, FOE, { type: 'endTurn' });
-  ok(cur.players[ME].monsters[0]!.counters === 2, 'and at the end of theirs — every turn, not only yours', `${cur.players[ME].monsters[0]!.counters}`);
-  ok(effDef(cur, cur.players[ME].monsters[0]!, ME) === base + 1000, 'and it is 500 DEF thicker for each one', `${effDef(cur, cur.players[ME].monsters[0]!, ME)}`);
+  ok(cur.players[ME].monsters[0]!.counters === 1, 'and not at the end of theirs — it thickens on its own clock', `${cur.players[ME].monsters[0]!.counters}`);
+  ok(effDef(cur, cur.players[ME].monsters[0]!, ME) === base + 500, 'and it is 500 DEF thicker for each one', `${effDef(cur, cur.players[ME].monsters[0]!, ME)}`);
+
+  /* And it stops at four. Past the top rung there is nothing left to grow
+     into, and a shell counting forever was a wall with no answer. */
+  let deep = cur;
+  for (let i = 0; i < 8; i++) {
+    deep = act(deep, ME, { type: 'endTurn' });
+    deep = act(deep, FOE, { type: 'endTurn' });
+  }
+  ok(deep.players[ME].monsters[0]!.counters === 4, 'and it stops at four however long it is left alone', `${deep.players[ME].monsters[0]!.counters}`);
 
   /* Cracked open on purpose it gives up the rung it has reached. */
   const rungs: Array<[number, string]> = [
@@ -2452,12 +2756,16 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   const bugDown = act(bi, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
   ok(bugDown.players[ME].hand.some((h) => h.slug === 'laser-cannon-armor'), 'Basic Insect arrives carrying a cannon');
 
-  // And the Cocoon holds the larva: battle cannot crack the shell around it.
+  /* The Cocoon used to armour itself and the moths beside it. It does not any
+     more: a shell that could not be broken while it counted up to its best rung
+     was a wall the other player had no answer to, and the counters are the
+     whole card. Battle reaches all three of them now. */
   const shell = fresh();
   const larva = card(ME, 'petit-moth');
   const cocoon = card(ME, 'cocoon-of-evolution');
   shell.players[ME].monsters = [larva, cocoon, null];
-  ok(!!effFlags(shell, larva, ME).indestructibleByBattle, 'the Cocoon shields the moth beside it');
+  ok(!effFlags(shell, larva, ME).indestructibleByBattle, 'the Cocoon no longer armours the moth beside it');
+  ok(!effFlags(shell, cocoon, ME).indestructibleByBattle, 'nor itself — the shell can be broken');
   const bare2 = fresh();
   const alone = card(ME, 'petit-moth');
   bare2.players[ME].monsters = [alone, null, null];

@@ -22,6 +22,7 @@ import {
   type Duration,
   type EquipGrant,
   type Face,
+  type Position,
   type Op,
   type OngoingEffect,
   type PlayerId,
@@ -455,6 +456,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('shedsAbsorbedInstead')) merged.shedsAbsorbedInstead = true;
   if (grants.has('sapsAttacker')) merged.sapsAttacker = true;
   if (grants.has('paysWithGraveInstead')) merged.paysWithGraveInstead = true;
+  if (grants.has('attackCostDiscard')) merged.attackCostDiscard = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
@@ -513,19 +515,33 @@ function battleDamageFrom(
 
 export function maxAttacks(state: DuelState, c: CardInstance, controller: PlayerId): number {
   const f = effFlags(state, c, controller);
-  const base = 1 + (f.extraAttacks ?? 0);
-  if (!f.attackAll) return base;
+  const extra = f.extraAttacks ?? 0;
+  /* An allowance it cannot pay for is not an allowance. `canAttackWith`
+     already refuses a swing with nothing left in hand, so a Two-Headed King
+     Rex answering "two" here was the engine disagreeing with itself — and the
+     AI believed this one: it read a monster it could not swing at all as a
+     two-attack threat, and priced a summon that stranded its own hand as if it
+     had bought a clock. What has already been spent plus what is still
+     affordable. */
+  const affordable = f.attackCostDiscard ? c.attacksUsed + state.players[controller].hand.length : Infinity;
+  if (!f.attackAll) return Math.min(1 + extra, affordable);
   /* "Attacks every monster your opponent controls once each." Counting the
      *current* board shrank the allowance with every kill: three defenders
      became two attacks, because the second kill lowered the ceiling below the
      attacks already spent and the third defender was suddenly unreachable.
      The allowance is what has been spent plus the monsters not yet visited,
-     so destroying a target never revokes the next one. */
+     so destroying a target never revokes the next one.
+
+     Extra attacks ride on top of that sweep rather than being an alternative
+     floor beneath it. Serpent Night Dragon is "each of their monsters, and
+     then one more": two defenders is three swings, and an empty board across
+     the table is the one more on its own — which falls out of the sum without
+     needing a case of its own, because there is nothing to sweep. */
   const visited = c.attacked ?? [];
   const fresh = state.players[other(controller)].monsters.filter(
     (m): m is CardInstance => !!m && !visited.includes(m.uid)
   ).length;
-  return Math.max(base, c.attacksUsed + fresh);
+  return Math.min(Math.max(1, c.attacksUsed + fresh + extra), affordable);
 }
 
 /* ------------------------------------------------------------------ */
@@ -810,6 +826,40 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
     if (defer) defer.push({ c, controller, destroyed, counters });
     else fireDepartures(state, [{ c, controller, destroyed, counters }]);
   }
+}
+
+/**
+ * The arrival ceremony every Special Summon performs, wherever the monster came
+ * from: out of its old zone, stats wiped clean, into the named zone face-up (or
+ * not), announced and animated.
+ *
+ * Lifted out of the `specialSummon` op the day three more roads to the field
+ * opened at once — a dig that stops on a Dinosaur, a card that calls itself out
+ * of a hand or a Graveyard, and a monster owed back at the start of a turn.
+ * Each of them re-copying eight lines is how the "log, then animate" rule and
+ * the `specialSummonedOnTurn` marker come to disagree across the file.
+ *
+ * Triggers are *not* fired here: what a summon wakes up depends on the road it
+ * took, and every caller is explicit about it.
+ */
+function landSpecialSummon(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  zone: number,
+  position: Position,
+  face: Face
+) {
+  removeFromAnywhere(state, c.uid);
+  resetInstance(c);
+  c.position = position;
+  c.face = face;
+  c.summonedOnTurn = state.turn;
+  // It arrived without paying for itself — see `returnBorrowedGods`.
+  c.specialSummonedOnTurn = state.turn;
+  state.players[controller].monsters[zone] = c;
+  log(state, `${state.players[controller].name} Special Summons ${displayName(state, c)}!`, 'summon', controller);
+  anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: controller });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1328,9 +1378,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'gainAtk': {
         let amount = op.amount ?? 0;
-        if (op.scale === 'perCardInGrave') amount = (op.amount ?? 0) * state.players[ctx.controller].grave.length;
+        /* A filter narrows what the pile counts. Sword Arm of Dragon is worth
+           150 for each of two named cards down there, not for the pile. */
+        const pile = (cards: CardInstance[]) => (op.filter ? cards.filter((c) => matchesFilter(c, op.filter)) : cards).length;
+        if (op.scale === 'perCardInGrave') amount = (op.amount ?? 0) * pile(state.players[ctx.controller].grave);
         else if (op.scale === 'perCardInEitherGrave') {
-          amount = (op.amount ?? 0) * (state.players.p1.grave.length + state.players.p2.grave.length);
+          amount = (op.amount ?? 0) * (pile(state.players.p1.grave) + pile(state.players.p2.grave));
         }
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
         /* Multiplies whatever the op already carries, so the card writes its
@@ -1479,7 +1532,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'discard':
         for (const pid of sideToPlayers(ctx, op.who)) {
           const p = state.players[pid];
-          const n = op.all ? p.hand.length : Math.min(op.count, p.hand.length);
+          /* A wide board pays for its own width — Tribute to the Doomed takes a
+             card for each monster the discarding player is standing behind. */
+          const want =
+            op.scale === 'perTheirMonster' ? op.count * p.monsters.filter((m) => !!m).length : op.count;
+          const n = op.all ? p.hand.length : Math.min(want, p.hand.length);
           for (let i = 0; i < n; i++) {
             const idx = randInt(state, p.hand.length);
             const c = p.hand.splice(idx, 1)[0];
@@ -1503,6 +1560,116 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           }
           log(state, `${p.name} sends ${op.count} cards from the top of their Deck to the Graveyard.`, 'effect', pid);
         }
+        break;
+      case 'millUntilSummon': {
+        /* Dig, burying as you go, and stop on the first monster the filter
+           accepts — that one lands instead of being buried. A dig that finds
+           nothing has emptied the Deck into the Graveyard, which is a real
+           cost and is said out loud rather than passed over in silence. */
+        const p = state.players[ctx.controller];
+        const buried: CardInstance[] = [];
+        let found: CardInstance | null = null;
+        while (p.deck.length) {
+          const c = p.deck.shift()!;
+          if (CARDS[c.slug]?.kind === 'monster' && matchesFilter(c, op.filter)) {
+            found = c;
+            break;
+          }
+          p.grave.push(c);
+          buried.push(c);
+        }
+        if (buried.length) {
+          log(
+            state,
+            `${p.name} digs ${buried.length} card${buried.length === 1 ? '' : 's'} deep into their Deck.`,
+            'effect',
+            ctx.controller
+          );
+        }
+        const zone = p.monsters.findIndex((m) => !m);
+        if (!found) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} digs to the bottom and finds nothing to Summon.`);
+          break;
+        }
+        if (zone < 0) {
+          /* Nothing to put it in. It is already out of the Deck, so it goes
+             where everything else it dug past went rather than vanishing. */
+          p.grave.push(found);
+          emptyHanded(state, ctx, `${displayName(state, found)} is dug up with no room to stand, and is buried with the rest.`);
+          break;
+        }
+        /* `found` came off the top with `shift`, so it is already out of the
+           Deck — splicing for it again found nothing and took the bottom card
+           instead, quietly eating one more than the dig was worth. */
+        landSpecialSummon(state, found, ctx.controller, zone, op.position ?? 'atk', 'up');
+        ctx.summoned = [...(ctx.summoned ?? []), found.uid];
+        fireTriggers(state, found, ctx.controller, 'onSummon', {});
+        if (!state.winner) {
+          fireOpponentSummon(state, ctx.controller, found.uid);
+          fireAllySummon(state, ctx.controller, found.uid);
+        }
+        break;
+      }
+      case 'drawUntil': {
+        /* "Draw until you draw a monster." One card off a healthy deck, a
+           fistful off one clogged with Spells — and the whole Deck if it holds
+           no monster at all, which the deck-out rules then settle. */
+        for (const pid of sideToPlayers(ctx, op.who)) {
+          const p = state.players[pid];
+          let drawn = 0;
+          while (p.deck.length) {
+            const c = p.deck.shift()!;
+            p.hand.push(c);
+            drawn += 1;
+            if (matchesFilter(c, op.filter)) break;
+          }
+          if (drawn) {
+            log(state, `${p.name} draws ${drawn} card${drawn === 1 ? '' : 's'}.`, 'effect', pid);
+            anim(state, { kind: 'draw', player: pid, amount: drawn });
+          }
+        }
+        break;
+      }
+      case 'reviveSelfNextTurn': {
+        /* Owed back at the start of its controller's next turn. Two turns on
+           the clock, not one: it is decremented at the end of every affected
+           player's turn, and this is written during the *opponent's* battle,
+           so one turn would expire before its owner ever came round. */
+        state.ongoing.push({
+          id: `revive-${ctx.source.uid}`,
+          source: ctx.source.slug,
+          kind: 'pendingRevival',
+          target: ctx.controller,
+          turns: 2,
+          atkBonus: op.atk ?? 0,
+          defBonus: op.def ?? 0,
+        });
+        log(state, `${displayName(state, ctx.source)} will claw its way back.`, 'effect', ctx.controller, logSlug(ctx.source));
+        break;
+      }
+      case 'summonSelf': {
+        /* The card calls itself out of wherever it is waiting. `handSummon` and
+           `onAllySummon` both fire on a card nowhere near the board, so neither
+           can use the ordinary summon that reaches into a zone and picks. */
+        const p = state.players[ctx.controller];
+        const zone = p.monsters.findIndex((m) => !m);
+        if (zone < 0) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} has no room to arrive.`);
+          break;
+        }
+        landSpecialSummon(state, ctx.source, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up');
+        ctx.summoned = [...(ctx.summoned ?? []), ctx.source.uid];
+        if (ctx.source.face === 'up') {
+          fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
+          if (!state.winner) {
+            fireOpponentSummon(state, ctx.controller, ctx.source.uid);
+            fireAllySummon(state, ctx.controller, ctx.source.uid);
+          }
+        }
+        break;
+      }
+      case 'attackCostDiscard':
+        applyFlag(ctx.source, 'attackCostDiscard', true, op.duration);
         break;
       case 'search': {
         const p = state.players[ctx.controller];
@@ -1652,18 +1819,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             blocked ??= 'pool';
             break;
           }
-          removeFromAnywhere(state, picked.uid);
-          resetInstance(picked);
-          picked.position = op.position ?? 'atk';
-          picked.face = op.face ?? 'up';
-          picked.summonedOnTurn = state.turn;
-          // It arrived without paying for itself — see `returnBorrowedGods`.
-          picked.specialSummonedOnTurn = state.turn;
-          state.players[ctx.controller].monsters[zone] = picked;
+          landSpecialSummon(state, picked, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up');
           arrived += 1;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
-          log(state, `${state.players[ctx.controller].name} Special Summons ${displayName(state, picked)}!`, 'summon', ctx.controller);
-          anim(state, { kind: 'summon', uid: picked.uid, slug: picked.slug, player: ctx.controller });
           /* The targets the activating player named and nothing has claimed
              yet. Black Illusion Ritual asks for a Tribute and then summons
              Relinquished, whose own arrival asks what to swallow — and that
@@ -1683,7 +1841,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              Only the *monster* trigger fires here, never a trap window: making
              Special Summons open `opponentSummon` would hand Torrential Tribute
              to the whole roster, which is a different change than this one. */
-          if (!state.winner && picked.face === 'up') fireOpponentSummon(state, ctx.controller, picked.uid);
+          if (!state.winner && picked.face === 'up') {
+            fireOpponentSummon(state, ctx.controller, picked.uid);
+            fireAllySummon(state, ctx.controller, picked.uid);
+          }
         }
         if (!arrived && blocked) {
           emptyHanded(
@@ -1720,7 +1881,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           // A Token is a monster being Summoned, so the second mouth sees it
           // too. Anything else would be a carve-out the card's text does not
           // have, and three 300 ATK bodies are exactly what a God is for.
-          if (!state.winner) fireOpponentSummon(state, ctx.controller, t.uid);
+          if (!state.winner) {
+            fireOpponentSummon(state, ctx.controller, t.uid);
+            fireAllySummon(state, ctx.controller, t.uid);
+          }
         }
         /* What actually landed, not what was asked for. The loop breaks when
            the board is full, and this line sat outside it reading `op.count` —
@@ -1757,10 +1921,19 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {});
         break;
       }
-      case 'addCounter':
-        ctx.source.counters += op.amount;
-        log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
+      case 'addCounter': {
+        /* A ceiling, where the card has one: the Cocoon thickens to four and
+           stops, because past the top rung there is nothing further to hatch
+           into. Nothing is announced once it is full — a line every turn
+           saying a counter was gained, on a card that gained none, is worse
+           than silence. */
+        const was = ctx.source.counters;
+        ctx.source.counters = op.max != null ? Math.min(op.max, was + op.amount) : was + op.amount;
+        if (ctx.source.counters !== was) {
+          log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
+        }
         break;
+      }
       case 'negateAttack': {
         /* A God's blow cannot be refused. "They can attack over swords over
            cage over everything — NO EFFECTS ON THE GODS": stopping the swing
@@ -2038,10 +2211,16 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
   }
 }
 
-function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, controller: PlayerId): boolean {
+function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, controller: PlayerId, trig?: TriggerContext): boolean {
   const cond = eff.condition;
   if (!cond) return true;
   const p = state.players[controller];
+  /* What just arrived, for `onAllySummon`. Unfiltered, the trigger answers
+     every summon in the duel — including the card's own. */
+  if (cond.summonedIs) {
+    const arrived = trig?.summonedUid ? findOnField(state, trig.summonedUid)?.c : null;
+    if (!arrived || !matchesFilter(arrived, cond.summonedIs)) return false;
+  }
   if (cond.ownLpBelow != null && p.lp > cond.ownLpBelow) return false;
   if (cond.graveAtLeast != null && p.grave.length < cond.graveAtLeast) return false;
   if (cond.countersAtLeast != null && c.counters < cond.countersAtLeast) return false;
@@ -2139,7 +2318,7 @@ function fireTriggersInner(
 ) {
   for (const eff of def.effects) {
     if (eff.trigger !== trigger) continue;
-    if (!conditionMet(state, eff, c, controller)) continue;
+    if (!conditionMet(state, eff, c, controller, trig)) continue;
     /* "Once per turn" used to mean it only for an ignition, where the count
        lives on the card instance — which is no use to a card that dies and
        comes back, because `resetInstance` clears the marker on the way in.
@@ -2235,6 +2414,27 @@ function fireOpponentSummon(state: DuelState, summoner: PlayerId, summonedUid: s
   }
 }
 
+/**
+ * Cards of *yours* that answer a summon from off the board.
+ *
+ * Every other watcher in this engine is on the field. Mad Sword Beast is not:
+ * it waits in a hand or a Graveyard and any Dinosaur arriving calls it out. The
+ * hand is read before the pile because a card you are holding is the one you
+ * expect to move first, and a copy is skipped the moment it is no longer where
+ * it was — one of them summoning itself is enough, and the arrival it answered
+ * may already have gone.
+ */
+function fireAllySummon(state: DuelState, summoner: PlayerId, summonedUid: string) {
+  const p = state.players[summoner];
+  const waiting = [...p.hand, ...p.grave].filter((c) => CARDS[c.slug]?.effects.some((e) => e.trigger === 'onAllySummon'));
+  for (const c of waiting) {
+    if (state.winner) return;
+    if (!p.hand.includes(c) && !p.grave.includes(c)) continue;
+    if (p.monsters.every((m) => !!m)) return;
+    fireTriggers(state, c, summoner, 'onAllySummon', { summonedUid });
+  }
+}
+
 function openTrapWindow(state: DuelState, responder: PlayerId, window: TrapWindow, reason: string, context: TriggerContext): boolean {
   if (state.winner || state.pending) return false;
   const opts = activatableTraps(state, responder, window);
@@ -2263,10 +2463,11 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
        trap priced in nothing. Announced like any other payment — the total
        must never move with nothing on screen saying why. */
     if (eff.cost?.lp) {
-      if (p.lp <= eff.cost.lp) continue;
-      p.lp -= eff.cost.lp;
-      log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
-      anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
+      const due = lpCost(state, pid, eff);
+      if (p.lp <= due) continue;
+      p.lp -= due;
+      log(state, `${p.name} pays ${due} Life Points.`, 'effect', pid);
+      anim(state, { kind: 'damage', player: pid, amount: due });
     }
     runOps(ctx, eff.ops);
   }
@@ -2336,8 +2537,15 @@ function resolveBattle(state: DuelState) {
        staying behind as a branch no card can reach. */
     const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
+    /* "When it inflicts battle damage" means damage that actually landed.
+       Measured rather than assumed: a Kuriboh thrown in front of the swing
+       stops the damage dead, and Leghul was still collecting its 500 for a hit
+       the other player never took. Reported from a real duel. */
+    const before = state.players[defender].lp;
     dealDamage(state, defender, dmg, true);
-    if (!state.winner) fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
+    if (!state.winner && state.players[defender].lp < before) {
+      fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
+    }
     return;
   }
 
@@ -2422,11 +2630,15 @@ function resolveBattle(state: DuelState) {
   if (target.position === 'atk') {
     const tAtk = effAtk(state, target, defender);
     if (atk > tAtk) {
+      // Same rule as the direct swing: the trigger is about damage that landed.
+      const before = state.players[defender].lp;
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) {
         fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
-        fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
+        if (state.players[defender].lp < before) {
+          fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
+        }
       }
     } else if (atk < tAtk) {
       battleHit(controller, tAtk - atk, attacker);
@@ -2526,6 +2738,27 @@ function startTurn(state: DuelState) {
   log(state, `Turn ${state.turn} — ${p.name}'s turn.`, 'system', pid);
   anim(state, { kind: 'phase', player: pid, text: `${p.name}'s Turn` });
 
+  /* Anything owed back. Before the standing monsters take their turn-start
+     triggers, because what claws its way out of the pile is part of the board
+     they are looking at — and before the draw, so it is on the field for the
+     whole turn it fought for. */
+  for (const owed of state.ongoing.filter((o) => o.kind === 'pendingRevival' && o.target === pid)) {
+    state.ongoing = state.ongoing.filter((o) => o !== owed);
+    const at = p.grave.findIndex((g) => g.slug === owed.source);
+    const zone = p.monsters.findIndex((m) => !m);
+    if (at < 0 || zone < 0) continue;
+    const back = p.grave[at];
+    landSpecialSummon(state, back, pid, zone, 'atk', 'up');
+    /* Bigger than it left. `resetInstance` has just wiped the modifiers, so
+       these are written after the landing rather than before it. */
+    back.atkMod += owed.atkBonus ?? 0;
+    back.defMod += owed.defBonus ?? 0;
+    fireTriggers(state, back, pid, 'onSummon', {});
+    if (!state.winner) {
+      fireOpponentSummon(state, pid, back.uid);
+      fireAllySummon(state, pid, back.uid);
+    }
+  }
   for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnStart', {});
   /* A face-up card in the Spell/Trap Zone ticks too. Only the Field Zone did,
      so a Continuous Trap could never carry a per-turn clause at all — which is
@@ -2768,6 +3001,23 @@ export function monstersFrozen(state: DuelState, pid: PlayerId): boolean {
   return state.ongoing.some((o) => o.kind === 'freezeMonsters' && o.target === pid);
 }
 
+/**
+ * What this effect's Life Point cost actually comes to, right now.
+ *
+ * Four places read `eff.cost.lp` directly — trap resolution, `canActivate`,
+ * `activateSpell` and `activateSetCard` — which is exactly the shape of
+ * duplicated rule this file keeps having to reunify. Tribute to the Doomed
+ * prices itself off the opponent's hand, and a scale honoured in three of
+ * those four places would have been a card that costs different amounts
+ * depending on which zone you played it from.
+ */
+export function lpCost(state: DuelState, pid: PlayerId, eff: CardEffect): number {
+  const base = eff.cost?.lp ?? 0;
+  if (!base) return 0;
+  if (eff.cost?.lpScale === 'perOppHandCard') return base * state.players[other(pid)].hand.length;
+  return base;
+}
+
 export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'battle' || state.active !== pid || state.winner || state.pending) return false;
   if (state.turn === 1) return false;
@@ -2787,6 +3037,11 @@ export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance):
   // an aura — a Toon summoned for free under Toon World waits out the turn
   // it arrived, which is the window the opponent is given to answer it.
   if (c.summonedOnTurn === state.turn && (c.isToken || flags.summonSick)) return false;
+  /* Two-Headed King Rex eating to swing is not checked here. It lives in
+     `maxAttacks`, which caps the allowance at what the hand can pay for — so
+     a starved King answers nought attacks and this last line refuses it on its
+     own. A second copy of the rule here passed every test and proved nothing,
+     which is how the two come to disagree later. */
   return c.attacksUsed < maxAttacks(state, c, pid);
 }
 
@@ -2834,7 +3089,7 @@ export function tributeFodder(state: DuelState, pid: PlayerId, eff: CardEffect, 
 /** True when the controller can pay an effect's activation cost right now. */
 function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: string): boolean {
   const p = state.players[pid];
-  if (eff.cost?.lp != null && p.lp <= eff.cost.lp) return false;
+  if (eff.cost?.lp != null && p.lp <= lpCost(state, pid, eff)) return false;
   if (eff.cost?.tributeSelf) {
     // The card pays with itself, so there is nothing beside it to check.
   } else if (eff.cost?.tribute != null) {
@@ -3288,6 +3543,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          what setting one is for. */
       if (!state.winner && c.face === 'up') {
         fireOpponentSummon(state, pid, c.uid);
+        fireAllySummon(state, pid, c.uid);
         openTrapWindow(state, other(pid), 'opponentNormalSummon', `${p.name} summoned ${def.name}.`, { attackerUid: c.uid });
       }
       return { state };
@@ -3354,9 +3610,10 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!isField && p.spellTrap) return { state: prev, error: 'Your Spell/Trap Zone is occupied.' };
 
       if (eff?.cost?.lp) {
-        if (p.lp <= eff.cost.lp) return { state: prev, error: 'Not enough Life Points.' };
-        p.lp -= eff.cost.lp;
-        log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
+        const due = lpCost(state, pid, eff);
+        if (p.lp <= due) return { state: prev, error: 'Not enough Life Points.' };
+        p.lp -= due;
+        log(state, `${p.name} pays ${due} Life Points.`, 'effect', pid);
         /* A cost is still Life Points leaving, so it is announced like any
            other. The total must never move with nothing on screen saying why —
            that is exactly what made damage look like it landed early. */
@@ -3490,6 +3747,39 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       checkExodia(state);
       return { state };
     }
+    case 'handSummon': {
+      /* The opposite of `discardForEffect`: something else in the hand is spent
+         so that *this* card arrives. The summon is an op rather than a step
+         written here, so the card decides which way up it lands and what else
+         happens on the way in. */
+      if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
+      const hi = p.hand.findIndex((h) => h.uid === action.uid);
+      if (hi < 0) return { state: prev, error: 'Card is not in your hand.' };
+      const c = p.hand[hi];
+      const eff = CARDS[c.slug]?.effects.find((e) => e.trigger === 'handSummon');
+      if (!eff) return { state: prev, error: 'That card cannot be Special Summoned from your hand.' };
+      if (eff.condition && !conditionMet(state, eff, c, pid)) return { state: prev, error: 'Its condition is not met.' };
+      if (p.monsters.every((m) => !!m)) return { state: prev, error: 'Your Monster Zones are full.' };
+      const need = eff.cost?.discard ?? 0;
+      if (need > 0) {
+        /* Paid out of the rest of the hand — never with the card that is
+           arriving, which would leave nothing to summon. */
+        const payable = p.hand.filter((h) => h.uid !== c.uid);
+        if (payable.length < need) return { state: prev, error: 'Not enough cards in hand to pay for it.' };
+        const named = (action.discardUid ? [payable.find((h) => h.uid === action.discardUid)] : [])
+          .filter((h): h is CardInstance => !!h);
+        const paying = [...named, ...payable.filter((h) => !named.includes(h))].slice(0, need);
+        for (const fed of paying) {
+          p.hand.splice(p.hand.indexOf(fed), 1);
+          p.grave.push(fed);
+          log(state, `${p.name} discards ${displayName(state, fed)}.`, 'effect', pid, logSlug(fed));
+          anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
+        }
+      }
+      runOps({ state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} }, eff.ops);
+      checkExodia(state);
+      return { state };
+    }
     case 'ignition': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const c = p.monsters.find((m) => m?.uid === action.uid) ?? (p.field?.uid === action.uid ? p.field : null);
@@ -3499,9 +3789,10 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const eff = def.effects.find((e) => e.trigger === 'ignition');
       if (!eff) return { state: prev, error: 'No activated effect.' };
       if (eff.cost?.lp) {
-        if (p.lp <= eff.cost.lp) return { state: prev, error: 'Not enough Life Points.' };
-        p.lp -= eff.cost.lp;
-        log(state, `${p.name} pays ${eff.cost.lp} Life Points.`, 'effect', pid);
+        const due = lpCost(state, pid, eff);
+        if (p.lp <= due) return { state: prev, error: 'Not enough Life Points.' };
+        p.lp -= due;
+        log(state, `${p.name} pays ${due} Life Points.`, 'effect', pid);
         /* A cost is still Life Points leaving, so it is announced like any
            other. The total must never move with nothing on screen saying why —
            that is exactly what made damage look like it landed early. */
@@ -3608,7 +3899,10 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         text: CARDS[ex.slug].cry ?? 'Fusion Summon!',
       });
       fireTriggers(state, ex, pid, 'onSummon', {}, action.targets ?? []);
-      if (!state.winner) fireOpponentSummon(state, pid, ex.uid);
+      if (!state.winner) {
+        fireOpponentSummon(state, pid, ex.uid);
+        fireAllySummon(state, pid, ex.uid);
+      }
       if (!state.winner) openTrapWindow(state, other(pid), 'opponentSummon', `${p.name} Fusion Summoned.`, { attackerUid: ex.uid });
       return { state };
     }
@@ -3623,6 +3917,20 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         if (!direct) return { state: prev, error: 'You must attack a monster.' };
       } else if (!uids.includes(action.targetUid)) {
         return { state: prev, error: 'Invalid attack target.' };
+      }
+      /* Fed before it moves. The discard is a cost, so it is spent whatever
+         the swing turns into — and it lands in the Graveyard *before* the
+         attack resolves, which is the point of the card: throw a Dinosaur and
+         the King is 300 heavier for that very attack. */
+      if (effFlags(state, c, pid).attackCostDiscard) {
+        const hand = p.hand;
+        const at = action.discardUid ? hand.findIndex((h) => h.uid === action.discardUid) : 0;
+        if (at < 0) return { state: prev, error: 'That card is not in your hand.' };
+        if (!hand.length) return { state: prev, error: `${card(c.slug).name} must discard a card to attack.` };
+        const fed = hand.splice(at, 1)[0];
+        p.grave.push(fed);
+        log(state, `${p.name} feeds ${displayName(state, fed)} to ${displayName(state, c)}.`, 'effect', pid, logSlug(fed));
+        anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
       }
       beginAttack(state, action.uid, action.targetUid);
       return { state };
@@ -3703,7 +4011,27 @@ export function viewFor(state: DuelState, viewer: PlayerId): DuelState {
   const opp = s.players[other(viewer)];
   opp.hand = opp.hand.map((c) => ({ ...c, slug: 'facedown', face: 'down' as Face }));
   opp.deck = opp.deck.map((c) => ({ ...c, slug: 'facedown' }));
-  s.players[viewer].deck = s.players[viewer].deck.map((c) => ({ ...c, slug: 'facedown' }));
+  /* Your own Deck, by name but not in order.
+   *
+   * It used to be masked exactly like theirs, which is the right instinct
+   * applied one step too far: what must stay secret is the *order* — the next
+   * card you will draw — not the contents, which you built yourself and can
+   * read on the deck screen any time. Masked outright, every card that asks
+   * you to choose from your Deck had nothing to offer: the board filters the
+   * pool by slug, every slug came back `facedown`, no card matched, and the
+   * choice was silently taken by the engine instead. Reported as "Basic Insect
+   * did not give the option to pick which equip spell to add while both were
+   * in the deck", and it was never about Basic Insect — Toon World, the
+   * Cocoon's hatch, Fortress Whale's Oath and every other Deck search were
+   * picking for you too.
+   *
+   * Sorted rather than shuffled so it is stable between polls: a list that
+   * reshuffled itself under the player's finger every second would be its own
+   * bug. The uid is what travels back, and the real Deck on the server never
+   * moved. */
+  s.players[viewer].deck = [...s.players[viewer].deck]
+    .map((c) => ({ ...c }))
+    .sort((a, b) => a.slug.localeCompare(b.slug) || a.uid.localeCompare(b.uid));
   // Face-down cards on the opponent's field stay hidden.
   opp.monsters = opp.monsters.map((m) => (m && m.face === 'down' ? { ...m, slug: 'facedown' } : m));
   if (opp.spellTrap && opp.spellTrap.face === 'down') opp.spellTrap = { ...opp.spellTrap, slug: 'facedown' };

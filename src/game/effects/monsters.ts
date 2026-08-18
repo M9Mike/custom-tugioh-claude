@@ -2379,36 +2379,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'cocoon-of-evolution': {
-    /* Granted permanently on summon, so a Cocoon that had been bounced back and
-       replayed, or revived, carried immunity it should have lost. It holds while
-       the card is on the field, which is what the text says.
-       And it finally does its job: the strategy blurb has said "cocoon your
-       larva" since the first commit, and the card never touched the larva —
-       the shell now shields the moths still climbing the ladder. */
-    /* The shell is the ladder's other half: it thickens every turn it is left
-       alone, and whatever it has grown into is what hatches out of it —
-       cracked open on purpose it gives up its best rung, broken by somebody
-       else it gives up one less, and the Ultimate is never born from a
-       breakage. */
+    /* The shell is the ladder's other half: it thickens on its owner's clock
+       and whatever it has grown into is what hatches out of it — cracked open
+       on purpose it gives up its best rung, broken by somebody else it gives
+       up one less, and the Ultimate is never born from a breakage.
+       It is not armoured any more, and it stops at four: past the top rung
+       there is nothing left to grow into, and a shell that could sit behind
+       battle-immunity counting forever was a wall the other player had no
+       answer to. */
     text:
-      'While this monster is face-up, it and your "Petit Moth" and "Larvae Moth" cannot be destroyed by battle. ' +
-      'It gains 500 DEF for each Evolution Counter on it, and gains 1 Evolution Counter at the end of each turn. ' +
+      'This monster gains 500 DEF for each Evolution Counter on it, and gains 1 Evolution Counter at the end of your turn, up to 4. ' +
       'You may Tribute this monster: Special Summon from your Deck or hand "Petit Moth" at 1 counter, "Larvae Moth" at 2, ' +
       '"Great Moth" at 3, or the "Perfectly Ultimate Great Moth" at 4. ' +
       'When this monster is sent to the Graveyard: Special Summon "Great Moth" at 3 counters, "Larvae Moth" at 2, or "Petit Moth" at 1.',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } },
-      {
-        trigger: 'continuous',
-        ops: [],
-        aura: {
-          target: sel('own', 'all', { filter: { slugs: ['petit-moth', 'larvae-moth'] } }),
-          grants: ['indestructibleByBattle'],
-        },
-      },
       { trigger: 'continuous', ops: [], aura: { target: SELF, perCounter: { def: 500 } } },
-      /* Every turn, not only yours — the shell does not care whose clock it is. */
-      { trigger: 'onAnyTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
+      { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1, max: 4 }] },
       {
         trigger: 'ignition',
         label: 'Hatch',
@@ -2591,12 +2577,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'two-headed-king-rex': {
-    text: 'This monster can attack twice each Battle Phase and gains 300 ATK for each Dinosaur in your Graveyard.',
+    /* It eats to swing. The 300 a fossil is read live, so the card you throw is
+       already in the pile when the blow lands — feed it a dinosaur and it is
+       300 heavier for that very attack, which is the whole trade: your hand for
+       its size, one swing at a time. */
+    text:
+      'This monster can attack twice each Battle Phase, but you must discard 1 card for each attack it makes. ' +
+      'It gains 300 ATK for each Dinosaur in your Graveyard.',
     cry: 'Tear them apart!',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'extraAttacks', count: 1 }],
+        ops: [
+          { op: 'extraAttacks', count: 1 },
+          { op: 'attackCostDiscard', duration: 'permanent' },
+        ],
       },
       /* "for each Dinosaur in your Graveyard" — the old scale counted every
          card there regardless of type, so Rex's signature monster was both
@@ -2617,7 +2612,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'serpent-night-dragon': {
-    text: 'When this monster is summoned: destroy 1 monster your opponent controls. This monster inflicts piercing battle damage.',
+    /* The herd's ceiling. It reads the pile like the King does, and it works
+       through their whole board and then swings once more — so a wall of
+       chump blockers buys exactly nothing. */
+    text:
+      'When this monster is summoned: destroy 1 monster your opponent controls. ' +
+      'This monster gains 150 ATK for each Dinosaur monster in your Graveyard, inflicts piercing battle damage, ' +
+      'and can attack each monster your opponent controls once each, plus one attack more.',
     effects: [
       {
         trigger: 'onSummon',
@@ -2627,10 +2628,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'destroy', target: OPP_PICK },
         ],
       },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Dinosaur' }, atk: 150 } },
+      },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['attackAll', 'doubleAttack'] } },
     ],
   },
 
   uraby: {
+    /* Small enough to be worth feeding, and it never stops growing once it
+       starts: 400 to begin with, 300 more with every kill, and the pierce means
+       a wall does not stop the count. */
+    atkOverride: 400,
     text: 'This monster inflicts piercing battle damage. When it destroys a monster in battle: it gains 300 ATK permanently.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
@@ -2639,16 +2650,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'crawling-dragon': {
-    /* 1600 reaches the herd the reviver exists for — Two-Headed King Rex and
-       Uraby are both 1500-1600 printed, and both were just out of reach. In
-       Attack Position, because a revived King Rex is there to swing. */
-    text: 'When this monster is summoned: Special Summon 1 Dinosaur with 1600 or less ATK from your Graveyard in Attack Position.',
+    /* It reaches the whole pile now rather than the small end of it, and it does
+       not stay down: battle kills it for one turn only, and what crawls back is
+       200 heavier at both ends. A card effect still puts it down for good, which
+       is the answer worth holding. */
+    text:
+      'When this monster is summoned: Special Summon 1 Dinosaur monster from your Graveyard in Attack Position. ' +
+      'When this monster is destroyed by battle: Special Summon it at the start of your next turn with 200 more ATK and DEF.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur', maxAtk: 1600 }, count: 1, position: 'atk' }] },
+      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
+      { trigger: 'onDestroyedByBattle', ops: [{ op: 'reviveSelfNextTurn', atk: 200, def: 200 }] },
     ],
   },
 
   'crawling-dragon-2': {
+    /* A 300 body that is only ever worth what the duel has already buried. */
+    atkOverride: 300,
     text: 'This monster gains 200 ATK for each card in your Graveyard.',
     effects: [
       {
@@ -2664,15 +2681,38 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        threshold the engine has no concept of, so what it actually did was make
        a 1750 ATK monster permanently unkillable in battle. A cut-off of 1800 on
        a body of 1750 says almost nothing anyway. It grows instead, which is
-       what a dinosaur with a sword for an arm ought to do. */
-    text: 'This monster inflicts piercing battle damage, and gains 400 ATK each time it destroys a monster in battle.',
+       what a dinosaur with a sword for an arm ought to do.
+       The two of them trade places: each buys its way down for a card, and each
+       digs the other out of the Deck as it dies, so the pair keeps coming back
+       for as long as the hand holds fodder — and every one of them that has
+       already fallen makes the next one heavier. */
+    text:
+      'You may discard 1 card to Special Summon this monster from your hand in face-up Attack Position. ' +
+      'When this monster is summoned: it gains 150 ATK for each "Megazowler" and "Sword Arm of Dragon" in your Graveyard. ' +
+      'It inflicts piercing battle damage, and gains 400 ATK each time it destroys a monster in battle. ' +
+      'When this monster is destroyed: add "Megazowler" from your Deck to your hand.',
     cry: 'Cut them down!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      { trigger: 'handSummon', cost: { discard: 1 }, ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }] },
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'pierce', duration: 'permanent' },
+          {
+            op: 'gainAtk',
+            amount: 150,
+            scale: 'perCardInGrave',
+            filter: { slugs: ['megazowler', 'sword-arm-of-dragon'] },
+            target: SELF,
+            duration: 'permanent',
+          },
+        ],
+      },
       {
         trigger: 'onBattleDestroy',
         ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' }],
       },
+      { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['megazowler'] } }] },
     ],
   },
 
@@ -2680,50 +2720,90 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The stampede tramples what hides on the ground — face-down monsters.
        It used to take the Spell/Trap Zone too, which was a one-tribute
        Feather Duster stapled to a body: removal that won duels the fossil
-       theme never took part in. The backrow is the traps' business now. */
-    text: 'When this monster is summoned: destroy every face-down monster your opponent controls.',
+       theme never took part in. The backrow is the traps' business now.
+       And it need not wait for a Normal Summon: a card off the top of your
+       hand puts it down on its shield, effect and all, which is the herd
+       arriving faster than the turn count allows. */
+    text:
+      'You may discard 1 card to Special Summon this monster from your hand in face-up Defence Position. ' +
+      'When this monster is summoned: destroy every face-down monster your opponent controls. ' +
+      'When this monster is destroyed: add "Sword Arm of Dragon" from your Deck to your hand.',
     effects: [
+      { trigger: 'handSummon', cost: { discard: 1 }, ops: [{ op: 'summonSelf', position: 'def', face: 'up' }] },
       {
         trigger: 'onSummon',
         ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { face: 'down' } }) }],
       },
+      { trigger: 'onDestroyed', ops: [{ op: 'search', filter: { slugs: ['sword-arm-of-dragon'] } }] },
     ],
   },
 
   trakodon: {
-    /* The fossil pile is the deck's mana, and nothing was filling it on
-       purpose. Trakodon buries three of its own on arrival — every Dinosaur
-       among them is +300 on a standing King Rex immediately, read live. */
-    text: 'When this monster is summoned: send the top 3 cards of your Deck to the Graveyard and inflict 400 damage to your opponent.',
+    /* It digs rather than counts. Everything it turns over on the way down is
+       fuel for the herd — the King reads the pile, Hercules reads the pile —
+       and the first fossil that is still alive climbs out and stands up. A bad
+       dig is a real cost, which is what makes it worth playing early. */
+    text: 'When this monster is summoned: send cards from the top of your Deck to the Graveyard until you reveal a Dinosaur monster, then Special Summon it.',
     effects: [
-      {
-        trigger: 'onSummon',
-        ops: [
-          { op: 'mill', count: 3, who: 'own' },
-          { op: 'damage', amount: 400, to: 'opp' },
-        ],
-      },
+      { trigger: 'onSummon', ops: [{ op: 'millUntilSummon', filter: { type: 'Dinosaur' }, position: 'atk' }] },
     ],
   },
 
   anthrosaurus: {
-    text: 'When this monster is destroyed by battle: Special Summon 1 Dinosaur from your Graveyard.',
+    /* Small, and it takes something with it either way: the backrow on arrival,
+       a fossil out of the pile on the way down. */
+    text:
+      'When this monster is summoned: destroy 1 Spell or Trap card your opponent controls. ' +
+      'When this monster is destroyed by battle: Special Summon 1 Dinosaur from your Graveyard.',
     effects: [
+      { trigger: 'onSummon', targets: 1, ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }] },
       { trigger: 'onDestroyedByBattle', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
     ],
   },
 
   'mad-sword-beast': {
-    text: 'This monster inflicts piercing battle damage. When it attacks, it gains 500 ATK until the end of the turn.',
+    /* It does not wait to be played. Any fossil arriving on your side drags it
+       out of your hand or your Graveyard, so the herd calls its own — and it is
+       worth the whole field while it stands there, theirs included, because a
+       charging rhinoceros does not check whose dinosaurs it is running with. */
+    text:
+      'When a Dinosaur monster is Summoned to your field: Special Summon this monster from your hand or Graveyard in Attack Position. ' +
+      'This monster gains 100 ATK for each Dinosaur monster on the field, and inflicts piercing battle damage. ' +
+      'When it attacks, it gains 500 ATK until the end of the turn.',
     effects: [
+      {
+        trigger: 'onAllySummon',
+        condition: { summonedIs: { kind: 'monster', type: 'Dinosaur' } },
+        ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }],
+      },
       { trigger: 'onSummon', ops: [{ op: 'pierce', duration: 'permanent' }] },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'field', filter: { kind: 'monster', type: 'Dinosaur' }, atk: 100 } },
+      },
       { trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'turn' }] },
     ],
   },
 
   sabersaurus: {
-    text: 'When this monster is summoned: it can attack directly this turn.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'turn' }] }],
+    /* Its funeral is the deck's. Every fossil in the pile goes back where it
+       came from and you dig until something with a pulse turns up — so a herd
+       that has been ground down gets to run again, and the hand it leaves you
+       is never empty of a body to play. */
+    text:
+      'When this monster is summoned: it can attack directly this turn. ' +
+      'When this monster is destroyed: shuffle every Dinosaur monster in your Graveyard into your Deck, then draw until you draw a monster.',
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'turn' }] },
+      {
+        trigger: 'onDestroyed',
+        ops: [
+          { op: 'shuffleIntoDeck', target: sel('own', 'all', { zone: 'grave', filter: { kind: 'monster', type: 'Dinosaur' } }) },
+          { op: 'drawUntil', filter: { kind: 'monster' }, who: 'own' },
+        ],
+      },
+    ],
   },
 
   /* ================================================================ */
