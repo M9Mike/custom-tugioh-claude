@@ -303,6 +303,10 @@ interface AuraBonus {
   atk: number;
   def: number;
   grants: Set<EquipGrant>;
+  /** Extra ATK that only counts against a Defence Position monster — Pendulum
+   *  Machine's 1250, which is a swing modifier rather than a stat and so has
+   *  to travel as a number instead of as one of the boolean grants. */
+  bonusVsDefense: number;
 }
 
 /** The `equipTo` op on a card, if it is an Equip Spell. */
@@ -348,7 +352,7 @@ function auraCount(
 }
 
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
-  const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set() };
+  const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set(), bonusVsDefense: 0 };
   /* An aura is weather over the field, and a card in your hand is indoors.
      Nothing here asked where the target was, only whether it matched the
      filter — so with Dark Sanctuary open every monster in Bakura's hand was
@@ -370,6 +374,7 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (eq) {
         bonus.atk += eq.atk;
         bonus.def += eq.def;
+        bonus.bonusVsDefense += eq.bonusVsDefense ?? 0;
         for (const g of eq.grants ?? []) bonus.grants.add(g);
       }
     }
@@ -424,9 +429,14 @@ export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId)
 
 export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerId): CardFlags {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
-  const grants = aurasFor(state, c, ctrl).grants;
+  const auras = aurasFor(state, c, ctrl);
+  const grants = auras.grants;
   const merged: CardFlags = { ...c.flags, ...c.turnFlags };
   merged.extraAttacks = (c.flags.extraAttacks ?? 0) + (c.turnFlags.extraAttacks ?? 0);
+  /* Printed on the monster and bolted on by an equip both count, and they add:
+     a Pendulum Machine wearing an equip that also punishes turtles swings with
+     the sum of the two, not with whichever the merge happened to read last. */
+  merged.bonusVsDefense = (merged.bonusVsDefense ?? 0) + auras.bonusVsDefense || undefined;
   if (grants.has('pierce')) merged.pierce = true;
   if (grants.has('directAttack')) merged.directAttack = true;
   if (grants.has('untargetable')) merged.untargetable = true;
@@ -439,6 +449,8 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('sapsAttacker')) merged.sapsAttacker = true;
   if (grants.has('paysWithGraveInstead')) merged.paysWithGraveInstead = true;
   if (grants.has('attackCostDiscard')) merged.attackCostDiscard = true;
+  if (grants.has('doublesWhenAttacking')) merged.doublesWhenAttacking = true;
+  if (grants.has('halvesAttacker')) merged.halvesAttacker = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
@@ -732,12 +744,20 @@ function resetInstance(c: CardInstance) {
  *
  * Called from the four places a card can leave the field.
  */
-function releaseEquips(state: DuelState, c: CardInstance) {
+function releaseEquips(state: DuelState, c: CardInstance, hostDestroyed = false) {
   // Anything equipped TO this card goes to the Graveyard with it. These are
   // real cards in a Spell/Trap Zone, so `toGrave` is what takes them off.
   for (const pid of ['p1', 'p2'] as PlayerId[]) {
     const st = state.players[pid].spellTrap;
-    if (st?.equippedTo === c.uid) toGrave(state, st.uid, true);
+    if (st?.equippedTo !== c.uid) continue;
+    toGrave(state, st.uid, true);
+    /* Fired after it has landed, and only when the host was *destroyed*.
+       Metalmorph answers a wrecked host by calling Zoa back, and the three
+       things that are not a destruction — a bounce, a banish, a Tribute — must
+       not pay out. `onSentToGrave` on the equip could not tell them apart, and
+       would also have gone off when the equip itself was the thing shattered
+       by a backrow wipe, which is the opposite of the sentence. */
+    if (hostDestroyed) fireTriggers(state, st, pid, 'onHostDestroyed', {});
   }
   // And if this card IS an equip, the host stops listing it.
   if (c.equippedTo) {
@@ -766,6 +786,26 @@ interface PendingDeparture {
   destroyed: boolean;
   /** What it was carrying on the way out — see `toGrave`. */
   counters: number;
+}
+
+/**
+ * Can these dice be made to total seven?
+ *
+ * Any two added, all of them added, or all of them with exactly one subtracted
+ * — which is Slot Machine's sentence, and on three dice it comes to 132 of the
+ * 216 ways they can fall. Written as a search over the actual arrangements
+ * rather than as a table, so the odds are a consequence of the rule instead of
+ * a number somebody has to keep in step with it.
+ */
+export function makesSeven(dice: number[]): boolean {
+  const total = dice.reduce((n, d) => n + d, 0);
+  if (total === 7) return true;
+  for (let i = 0; i < dice.length; i++) {
+    // All of them, with this one subtracted rather than added.
+    if (total - 2 * dice[i] === 7) return true;
+    for (let j = i + 1; j < dice.length; j++) if (dice[i] + dice[j] === 7) return true;
+  }
+  return false;
 }
 
 /**
@@ -802,7 +842,7 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
   const c = removeFromAnywhere(state, uid);
   if (!c) return;
 
-  releaseEquips(state, c);
+  releaseEquips(state, c, destroyed);
   /* Absorbed monsters go home. Each one carries the seat it came from, because
      the holder's owner is not it: Monster Reborn hands Relinquished across the
      table often enough, and "the other side from whoever is holding me" sent a
@@ -994,6 +1034,8 @@ interface EffectCtx {
    * card, or a second target the player never picked, must not be billed for.
    */
   destroyedCount?: number;
+  /** What this effect's own destructions were worth, read while they stood. */
+  destroyedAtk?: number;
 }
 
 function sideToPlayers(ctx: EffectCtx, side: Side): PlayerId[] {
@@ -1101,10 +1143,15 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
      never shields a card from its own controller, and a Divine-Beast source
      pierces it, so Call of the Haunted's own buff and Slifer's second mouth
      both still land. */
+  /* The three picks that name a card out of the context rather than search a
+     zone all skipped `s.filter` entirely — a filter written on one of them was
+     a sentence the engine could not read, which is how Time Machine's "if it is
+     a Machine" would have paid out on a revived Spellcaster. They honour it
+     now; no card was relying on the silence. */
   if (s.pick === 'attacker' || s.pick === 'attackTarget') {
     const uid = s.pick === 'attacker' ? ctx.trig.attackerUid : ctx.trig.targetUid;
     const c = uid ? findOnField(state, uid)?.c : null;
-    if (!c) return [];
+    if (!c || !matchesFilter(c, s.filter)) return [];
     if (isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection)) {
       const ctrl = controllerOf(state, c.uid);
       if (ctrl) log(state, `${displayName(state, c)} stands beyond that effect's reach.`, 'effect', ctrl, logSlug(c));
@@ -1115,7 +1162,10 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
   if (s.pick === 'summoned') {
     return (ctx.summoned ?? [])
       .map((uid) => findOnField(state, uid)?.c)
-      .filter((c): c is CardInstance => !!c && !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection));
+      .filter(
+        (c): c is CardInstance =>
+          !!c && matchesFilter(c, s.filter) && !isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection)
+      );
   }
 
   const pool = targetPool(ctx, s);
@@ -1303,6 +1353,22 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
       return;
     }
   }
+  /* The reels again, and this time they are the card's life. Placed with the
+     other prices rather than with the immunities: it can fail, and when it
+     fails the monster dies like anything else. */
+  if (flags.rollsToSurvive) {
+    const dice = [1 + randInt(state, 6), 1 + randInt(state, 6), 1 + randInt(state, 6)];
+    const made = makesSeven(dice);
+    log(
+      state,
+      `${displayName(state, c)} spins to save itself: ${dice.join(' · ')} — ${made ? 'seven, and it holds!' : 'no seven.'}`,
+      'effect',
+      found.controller,
+      logSlug(c)
+    );
+    anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: found.controller, text: `${dice.join(' ')} ${made ? '= 7' : '✗'}` });
+    if (made) return;
+  }
   if (byBattle && flags.indestructibleByBattle && !divine) {
     log(state, `${displayName(state, c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
     return;
@@ -1379,6 +1445,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           amount = effAtk(state, ctx.source, ctx.controller);
         } else if (op.scale === 'tributedAtk') {
           amount = (ctx.tributedAtk ?? []).reduce((a, b) => a + b, 0);
+        } else if (op.scale === 'destroyedAtk') {
+          /* What this same effect actually killed, read off the board while it
+             was still standing. Cannon Soldier fires the monster it destroyed
+             for exactly its ATK — and a monster that survived the attempt was
+             never fired, so it bills nothing. */
+          amount = ctx.destroyedAtk ?? 0;
         } else if (op.scale === 'perOppMonster') {
           const n = state.players[other(ctx.controller)].monsters.filter(Boolean).length;
           amount = (op.amount ?? 0) * n;
@@ -1399,6 +1471,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           amount = (op.amount ?? 0) * (pile(state.players.p1.grave) + pile(state.players.p2.grave));
         }
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
+        else if (op.scale === 'perCardInEitherHand') {
+          amount = (op.amount ?? 0) * (state.players.p1.hand.length + state.players.p2.hand.length);
+        }
         /* Multiplies whatever the op already carries, so the card writes its
            own rate: Garoozis says 100 per pip and a 4 is 400, in one beat. No
            roll in this effect means no gain rather than a silent full amount. */
@@ -1452,8 +1527,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              God and anything else standing beyond reach, and a card that
              survived must not be charged for by a `perDestroyed` damage. */
           const before = findOnField(state, t.uid);
+          /* And what it was worth, read while it is still standing — Cannon
+             Soldier fires its own monster at them for exactly its ATK, and a
+             card in the Graveyard has no effective stats left to read. */
+          const worth = before ? effAtk(state, t, before.controller) : 0;
           destroyCard(state, t, false, ctx);
-          if (before && !findOnField(state, t.uid)) ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
+          if (before && !findOnField(state, t.uid)) {
+            ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
+            ctx.destroyedAtk = (ctx.destroyedAtk ?? 0) + worth;
+          }
         }
         break;
       case 'sendToGrave':
@@ -1549,10 +1631,17 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              card for each monster the discarding player is standing behind. */
           const want =
             op.scale === 'perTheirMonster' ? op.count * p.monsters.filter((m) => !!m).length : op.count;
-          const n = op.all ? p.hand.length : Math.min(want, p.hand.length);
+          /* A filter narrows what may be taken. Blast Sphere reaches into the
+             hand for Spells and Traps alone — removal that happens to land
+             somewhere private, rather than a random discard. */
+          const eligible = () => p.hand.map((h, i) => [h, i] as const).filter(([h]) => matchesFilter(h, op.filter));
+          const pool = eligible();
+          const n = op.all ? pool.length : Math.min(want, pool.length);
           for (let i = 0; i < n; i++) {
-            const idx = randInt(state, p.hand.length);
-            const c = p.hand.splice(idx, 1)[0];
+            const live = eligible();
+            if (!live.length) break;
+            const pickAt = live[randInt(state, live.length)][1];
+            const c = p.hand.splice(pickAt, 1)[0];
             landInGrave(state, c, pid);
             /* Log, then animate — so the beat that shows the card carries the
                line about *that* card. Without a beat of its own the line was
@@ -2004,6 +2093,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'pierce':
         applyFlag(ctx.source, 'pierce', true, op.duration);
         break;
+      case 'doublesWhenAttacking':
+        applyFlag(ctx.source, 'doublesWhenAttacking', true, op.duration);
+        break;
+      case 'bonusVsDefense':
+        applyFlag(ctx.source, 'bonusVsDefense', op.amount, op.duration);
+        break;
+      case 'halvesAttacker':
+        applyFlag(ctx.source, 'halvesAttacker', true, op.duration);
+        break;
       case 'preventBattleDestruction':
         for (const pid of sideToPlayers(ctx, op.who)) {
           addOngoing(state, 'preventBattleDestruction', pid, op.duration === 'permanent' ? 99 : 1, ctx.source.slug);
@@ -2059,6 +2157,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           : (targets[0] ?? state.players[ctx.controller].monsters.find((m): m is CardInstance => !!m));
         if (!t) {
           log(state, 'There is no monster to equip.', 'effect', ctx.controller);
+          break;
+        }
+        /* What it fits. 7 Completed bolts onto a Machine and nothing else, so
+           an equip pointed at a Spellcaster says so rather than attaching
+           anyway. Asked of the host once it is resolved — asking beforehand
+           would have called `resolveTargets` twice and walked the answer
+           cursor past the card the player actually named. */
+        if (op.filter && !matchesFilter(t, op.filter)) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} does not fit ${displayName(state, t)}.`);
           break;
         }
         // Only the attachment is recorded; the stat bonus and the granted flags
@@ -2163,12 +2270,61 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       }
       case 'coinFlip': {
-        const heads = nextRandom(state) < 0.5;
-        log(state, `Coin flip: ${heads ? 'HEADS' : 'TAILS'}!`, 'effect', ctx.controller);
-        anim(state, { kind: 'activate', text: heads ? 'HEADS' : 'TAILS', player: ctx.controller });
-        runOps(ctx, heads ? op.heads : op.tails);
+        const coins = op.count ?? 1;
+        if (coins === 1) {
+          const heads = nextRandom(state) < 0.5;
+          log(state, `Coin flip: ${heads ? 'HEADS' : 'TAILS'}!`, 'effect', ctx.controller);
+          anim(state, { kind: 'activate', text: heads ? 'HEADS' : 'TAILS', player: ctx.controller });
+          runOps(ctx, heads ? op.heads : op.tails);
+          break;
+        }
+        /* Three barrels, one announcement. Narrating each flip in turn buries
+           the number that matters — how many landed — under three lines that
+           each look like the whole result. */
+        let landed = 0;
+        for (let i = 0; i < coins; i++) if (nextRandom(state) < 0.5) landed += 1;
+        log(state, `${coins} coins: ${landed} HEADS, ${coins - landed} TAILS!`, 'effect', ctx.controller, logSlug(ctx.source));
+        anim(state, { kind: 'activate', uid: ctx.source.uid, slug: ctx.source.slug, text: `${landed}/${coins} HEADS`, player: ctx.controller });
+        for (let i = 0; i < landed; i++) runOps(ctx, op.heads);
+        for (let i = 0; i < coins - landed; i++) runOps(ctx, op.tails);
         break;
       }
+      case 'diceMakeSeven': {
+        const dice = Array.from({ length: op.count }, () => 1 + randInt(state, 6));
+        const made = makesSeven(dice);
+        log(
+          state,
+          `${dice.join(' · ')} — ${made ? 'seven!' : 'no seven.'}`,
+          'effect',
+          ctx.controller,
+          logSlug(ctx.source)
+        );
+        /* The beat carries the card, because the beat carries the line. Without
+           the uid and the slug the dice roll printed over empty space — caught
+           by `npm run banner`, which is exactly the shape it watches for. */
+        anim(state, {
+          kind: 'activate',
+          uid: ctx.source.uid,
+          slug: ctx.source.slug,
+          text: `${dice.join(' ')} ${made ? '= 7' : '✗'}`,
+          player: ctx.controller,
+        });
+        runOps(ctx, made ? op.onSuccess : (op.onFail ?? []));
+        break;
+      }
+      case 'cascade': {
+        for (const branch of op.branches) {
+          if (branch.condition && !conditionMet(state, { trigger: 'continuous', ops: [], condition: branch.condition }, ctx.source, ctx.controller)) {
+            continue;
+          }
+          runOps(ctx, branch.ops);
+          break;
+        }
+        break;
+      }
+      case 'rollsToSurvive':
+        applyFlag(ctx.source, 'rollsToSurvive', true, op.duration);
+        break;
       case 'diceRoll': {
         const roll = 1 + randInt(state, 6);
         log(state, `Dice roll: ${roll}!`, 'effect', ctx.controller);
@@ -2804,8 +2960,27 @@ function resolveBattle(state: DuelState) {
     log(state, `${displayName(state, target)}'s barrier saps ${displayName(state, attacker)} of ${toll} ATK.`,
       'effect', defender, logSlug(target));
   }
-  const atk = Math.max(0, effAtk(state, attacker, controller) - toll);
   const flags = effFlags(state, attacker, controller);
+  const guard = effFlags(state, target, defender);
+  /* What this monster swings with, which is not always what it stands at.
+     Three things bend it and all three belong to the battle rather than to the
+     card: Metalzoa hits at twice its ATK and is hit at half, and Pendulum
+     Machine is heavier against something lying down. None of them touch a stat
+     anybody can read off the board between turns. */
+  let swing = Math.max(0, effAtk(state, attacker, controller) - toll);
+  if (flags.doublesWhenAttacking) {
+    swing *= 2;
+    log(state, `${displayName(state, attacker)} strikes at double strength.`, 'effect', controller, logSlug(attacker));
+  }
+  if (flags.bonusVsDefense && target.position === 'def') {
+    swing += flags.bonusVsDefense;
+    log(state, `${displayName(state, attacker)} bears down on a defending monster.`, 'effect', controller, logSlug(attacker));
+  }
+  if (guard.halvesAttacker) {
+    swing = Math.floor(swing / 2);
+    log(state, `${displayName(state, target)} turns half of that blow aside.`, 'effect', defender, logSlug(target));
+  }
+  const atk = swing;
 
   /**
    * Battle damage, mirrored back if the hurt player's own monster in this
@@ -3262,7 +3437,62 @@ function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: 
     if (tributeFodder(state, pid, eff, exclude).length < eff.cost.tribute) return false;
   }
   if (eff.cost?.discard != null && p.hand.length - 1 < eff.cost.discard) return false;
+  /* "at least 1 card" is the whole of Cannon Soldier's new price: an empty hand
+     cannot load the cannon, so the button must be dark rather than firing for
+     free. The hand this asks about excludes the card asking, for the same
+     reason `cost.discard` does — a Spell in hand cannot pay with itself. */
+  if (eff.cost?.discardHand && p.hand.filter((h) => h.uid !== exclude).length < 1) return false;
+  if (eff.cost?.banishFromGrave && !p.grave.some((g) => g.slug === eff.cost!.banishFromGrave)) return false;
   return true;
+}
+
+/**
+ * The costs that are neither Life Points nor bodies: your whole hand, and a
+ * named card out of your own Graveyard.
+ *
+ * One function because both routes into an activated effect want them —
+ * `payActivation` for Spells and Traps, the `ignition` action for monsters —
+ * and those two paths have already drifted apart once over `cost.lp`. Returns
+ * the reason it could not be paid, or null once it has been.
+ */
+function spendExtraCosts(
+  state: DuelState,
+  pid: PlayerId,
+  c: CardInstance,
+  eff: CardEffect | undefined
+): string | null {
+  const p = state.players[pid];
+  /* The whole grip, and there has to be one — Cannon Soldier's cannon is loaded
+     with everything you were holding, so an empty hand cannot fire it. Refused
+     before anything is spent: a cost that half-pays and then gives up is how a
+     player loses a hand for nothing. */
+  if (eff?.cost?.discardHand) {
+    const grip = p.hand.filter((h) => h.uid !== c.uid);
+    if (!grip.length) return 'Your hand is empty.';
+    for (const h of grip) {
+      p.hand.splice(
+        p.hand.findIndex((x) => x.uid === h.uid),
+        1
+      );
+      landInGrave(state, h, pid);
+      log(state, `${p.name} discards ${displayName(state, h)}.`, 'effect', pid, logSlug(h));
+      anim(state, { kind: 'discard', uid: h.uid, slug: h.slug, player: pid });
+    }
+  }
+  /* A named corpse, removed from the game. Pendulum Machine is assembled out of
+     a Steel Ogre Grotto #1 that has already died once, and banishing rather
+     than leaving it down there is what stops one body building every machine
+     in the deck. */
+  if (eff?.cost?.banishFromGrave) {
+    const want = eff.cost.banishFromGrave;
+    const idx = p.grave.findIndex((g) => g.slug === want);
+    if (idx < 0) return `There is no ${card(want).name} in your Graveyard.`;
+    const spent = p.grave.splice(idx, 1)[0];
+    p.banished.push(spent);
+    log(state, `${card(want).name} is banished from the Graveyard.`, 'effect', pid, logSlug(spent));
+    anim(state, { kind: 'activate', uid: spent.uid, slug: spent.slug, player: pid, text: 'BANISHED' });
+  }
+  return null;
 }
 
 /** Cards in hand this player may activate right now. */
@@ -3426,6 +3656,34 @@ export function canChangePosition(state: DuelState, pid: PlayerId, c: CardInstan
   if (monstersFrozen(state, pid)) return false;
   if (c.positionChangedOnTurn === state.turn) return false;
   return c.summonedOnTurn !== state.turn;
+}
+
+/**
+ * Whether a card sitting in a hand may call itself onto the field right now,
+ * and what it would cost.
+ *
+ * One function because three callers ask: the button in the hand, the AI, and
+ * the `handSummon` action that actually does it. The button used to work the
+ * price out for itself and priced every such card at "discard 1" — true of the
+ * batch that introduced the trigger and of nothing since.
+ */
+export function handSummonOffer(
+  state: DuelState,
+  pid: PlayerId,
+  c: CardInstance
+): { discard: number; banish?: string; ok: boolean; why?: string } | null {
+  const eff = CARDS[c.slug]?.effects.find((e) => e.trigger === 'handSummon');
+  if (!eff) return null;
+  const p = state.players[pid];
+  const discard = eff.cost?.discard ?? 0;
+  const banish = eff.cost?.banishFromGrave;
+  const deny = (why: string) => ({ discard, banish, ok: false, why });
+  if (state.phase !== 'main' || state.active !== pid) return deny('Only during your Main Phase.');
+  if (p.monsters.every((m) => !!m)) return deny('No free Monster Zone.');
+  if (eff.condition && !conditionMet(state, eff, c, pid)) return deny('Its condition is not met.');
+  if (p.hand.filter((h) => h.uid !== c.uid).length < discard) return deny('Nothing left in hand to discard.');
+  if (banish && !p.grave.some((g) => g.slug === banish)) return deny(`No ${card(banish).name} in your Graveyard.`);
+  return { discard, banish, ok: true };
 }
 
 export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
@@ -3894,6 +4152,12 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!eff) return { state: prev, error: 'That card cannot be Special Summoned from your hand.' };
       if (eff.condition && !conditionMet(state, eff, c, pid)) return { state: prev, error: 'Its condition is not met.' };
       if (p.monsters.every((m) => !!m)) return { state: prev, error: 'Your Monster Zones are full.' };
+      /* Banishing a named body is a price like any other, so it is refused
+         before the discard is taken rather than after — otherwise a Pendulum
+         Machine with no Steel Ogre Grotto down there eats a card and stays in
+         the hand. */
+      const banishCost = spendExtraCosts(state, pid, c, eff);
+      if (banishCost) return { state: prev, error: banishCost };
       const need = eff.cost?.discard ?? 0;
       if (need > 0) {
         /* Paid out of the rest of the hand — never with the card that is
@@ -3932,6 +4196,8 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
            that is exactly what made damage look like it landed early. */
         anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
       }
+      const extraCost = spendExtraCosts(state, pid, c, eff);
+      if (extraCost) return { state: prev, error: extraCost };
       /* What the cost ate, kept so an op can be worth what it cost — Catapult
          Turtle throws a monster and it lands for that monster's ATK. Read
          *before* the tribute, because a card in the Graveyard has no
@@ -4173,6 +4439,8 @@ function payActivation(
       landInGrave(state, p.hand.splice(idx, 1)[0], pid);
     }
   }
+  const extra = spendExtraCosts(state, pid, c, eff);
+  if (extra) return { error: extra };
   /* Whichever ones the player pointed at, and only then whatever is left. This
      took the first monsters in the row regardless — the board asks "Choose a
      monster to Tribute", collected an answer, and the engine threw it away. */

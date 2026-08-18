@@ -17,6 +17,7 @@ import {
   effDef,
   effFlags,
   fusionOptions,
+  handSummonOffer,
   legalAttackTargets,
   maxAttacks,
   monstersFrozen,
@@ -1456,28 +1457,34 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       /* Bought down rather than summoned. Offered whether or not the Normal
          Summon is still available, because that is the point of it: the herd
          arrives faster than the turn count allows. */
-      if (handDef.effects.some((e) => e.trigger === 'handSummon')) {
-        const payable = mine.hand.filter((h) => h.uid !== handCard.uid).length;
-        const canBuy = myTurn && state.phase === 'main' && freeZone && payable > 0;
+      /* The price, the label and the reason the button is dark all come out of
+         the engine together. Working it out here priced every self-summon at
+         "discard 1" — true of the batch that introduced the trigger and of
+         nothing since, so a card whose route is a Graveyard banish or simply
+         standing beside a Machine was offered a discard prompt it has no use
+         for and refused for want of a card it never needed. */
+      const offer = handSummonOffer(state, me, handCard);
+      if (offer) {
+        const price = offer.discard
+          ? ` (discard ${offer.discard})`
+          : offer.banish
+            ? ` (banish ${CARDS[offer.banish].name})`
+            : '';
         acts.push({
-          label: 'Special Summon (discard 1)',
-          disabled: !canBuy,
-          hint: !myTurn
-            ? 'Not your turn'
-            : state.phase !== 'main'
-              ? 'Main Phase only'
-              : !freeZone
-                ? 'No free Monster Zone'
-                : payable === 0
-                  ? 'Nothing left in hand to discard'
-                  : undefined,
+          label: `Special Summon${price}`,
+          disabled: !offer.ok,
+          hint: offer.why,
           run: () => {
             sfx.click();
+            if (!offer.discard) {
+              void run({ type: 'handSummon', uid: handCard.uid });
+              return;
+            }
             setMode({
               kind: 'handCost',
               purpose: 'summon',
               uid: handCard.uid,
-              prompt: `Discard 1 card to Special Summon ${handDef.name}`,
+              prompt: `Discard ${offer.discard} card to Special Summon ${handDef.name}`,
             });
           },
         });

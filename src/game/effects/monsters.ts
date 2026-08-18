@@ -2839,22 +2839,44 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'barrel-dragon': {
-    text: 'Once per turn: flip a coin. Heads — destroy 1 monster your opponent controls and inflict 500 damage. Tails — inflict 300 damage to yourself.',
+    /* Three barrels, three coins, and every head fires down the same funnel:
+       a monster if they have one, else a card off the backrow, else a card out
+       of the hand. That is the `cascade` — it does not skip to the hand while a
+       monster is still standing, so the dragon strips a board from the front.
+       The 100 ATK it keeps for each head is what makes a bad spin still worth
+       something, and it is permanent, so the barrels warm up over a duel.
+
+       Random, not targeted, on purpose: this is a machine gun, not a sniper.
+       Aimed removal three times a turn on a 2600 body is Bandit Keith winning
+       the game from a card the opponent cannot answer. */
+    text:
+      'Once per turn: flip 3 coins. For each Heads: this monster gains 100 ATK, then destroy 1 random monster your opponent controls — ' +
+      'or, if they control none, 1 random Spell or Trap they control — or, if they control none of those, they discard 1 random card.',
     cry: 'Blowback!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Blowback',
         oncePerTurn: true,
-        targets: 1,
         ops: [
           {
             op: 'coinFlip',
+            count: 3,
             heads: [
-              { op: 'destroy', target: OPP_PICK },
-              { op: 'damage', amount: 500, to: 'opp' },
+              { op: 'gainAtk', amount: 100, target: SELF, duration: 'permanent' },
+              {
+                op: 'cascade',
+                branches: [
+                  { condition: { opponentHasMonster: true }, ops: [{ op: 'destroy', target: sel('opp', 'random') }] },
+                  {
+                    condition: { opponentHasBackrow: true },
+                    ops: [{ op: 'destroy', target: sel('opp', 'random', { zone: 'backrow' }) }],
+                  },
+                  { condition: { opponentHasHand: true }, ops: [{ op: 'discard', count: 1, who: 'opp' }] },
+                ],
+              },
             ],
-            tails: [{ op: 'damage', amount: 300, to: 'own' }],
+            tails: [],
           },
         ],
       },
@@ -2862,7 +2884,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'machine-king': {
-    text: 'Gains 200 ATK for each Machine monster on the field. When summoned: all Machines you control gain 400 ATK.',
+    text:
+      'This monster gains 200 ATK for each Machine monster on the field and 100 ATK for each Machine in your Graveyard. ' +
+      'All Machine monsters you control gain 400 ATK.',
     cry: 'All machines answer to me.',
     effects: [
       /* "Gains 200 ATK for each Machine monster on the field" — *he* gains it,
@@ -2879,22 +2903,52 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           per: { zone: 'field', filter: { type: 'Machine' }, atk: 200 },
         },
       },
+      /* The scrapyard counts too, and only *his* scrapyard: the King is worth
+         more the longer the duel has been going, which is the opposite of the
+         field count and the reason both exist. */
       {
-        trigger: 'onSummon',
-        ops: [{ op: 'gainAtk', amount: 400, target: sel('own', 'all', { filter: { type: 'Machine' } }), duration: 'permanent' }],
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: { side: 'own', pick: 'self' },
+          per: { zone: 'ownGrave', filter: { type: 'Machine' }, atk: 100 },
+        },
+      },
+      /* An aura, not a summon trigger. As a one-shot the 400 only reached the
+         Machines that happened to be standing when he arrived — every machine
+         built afterwards missed it, and a King who has to be re-summoned to
+         command the army he built is not the card. Live now: it lands on
+         whatever is on the field, the moment it is on the field. */
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Machine' } }), atk: 400 },
       },
     ],
   },
 
   metalzoa: {
-    text: 'When this monster is summoned: destroy every Spell and Trap your opponent controls. This monster inflicts piercing battle damage and cannot be destroyed by battle.',
+    /* What Zoa becomes, and it arrives swinging. The backrow goes on summon,
+       the *hand* goes with it — there is no Spell or Trap answer left anywhere
+       — and then the metal fights on its own terms: twice its ATK going out,
+       half of theirs coming in. A 3000 body attacking at 6000 and defending
+       against 900 from a Blue-Eyes is the ceiling of this whole deck, and it
+       costs a Zoa that had to die first to get here. */
+    text:
+      'When this monster is summoned: destroy every Spell and Trap your opponent controls, and they discard every Spell and Trap in their hand. ' +
+      'When this monster attacks, its ATK is doubled; when it is attacked, the attacking monster\'s ATK is halved. ' +
+      'This monster inflicts piercing battle damage and cannot be destroyed by battle.',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'discard', count: 0, all: true, who: 'opp', filter: { kind: 'spell' } },
+          { op: 'discard', count: 0, all: true, who: 'opp', filter: { kind: 'trap' } },
           { op: 'pierce', duration: 'permanent' },
           { op: 'indestructibleByBattle', duration: 'permanent' },
+          { op: 'doublesWhenAttacking', duration: 'permanent' },
+          { op: 'halvesAttacker', duration: 'permanent' },
         ],
       },
     ],
@@ -2902,16 +2956,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   zoa: {
     /* The anime beat, finally in the game: Keith seals Zoa in Metalmorph and
-       it rises as Metalzoa. The old effect was a text/op mismatch — "gains
-       that monster's ATK" over a flat 400 — on a card whose whole identity
-       was always the transformation. Tribute the beast, call the metal. */
-    text: 'Once per turn: tribute this monster — Special Summon "Metalzoa" from your hand or Deck.',
+       it rises as Metalzoa. It no longer has to be tributed to do it — dying
+       *is* the transformation now, whichever way it dies, so an opponent who
+       answers Zoa has answered it into something worse. With Metalmorph the
+       loop closes both ways: the metal falls and Zoa gets back up. */
+    text: 'When this monster is destroyed by battle or by a card effect: Special Summon 1 "Metalzoa" from your hand or Deck.',
     cry: 'Witness the metal rebirth!',
     effects: [
       {
-        trigger: 'ignition',
-        label: 'Metalmorph — become Metalzoa',
-        cost: { tributeSelf: true },
+        trigger: 'onDestroyed',
         ops: [
           {
             op: 'specialSummon',
@@ -2926,36 +2979,66 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'slot-machine': {
-    /* The reels keep what they pay. The old +300/pip lasted "until the end of
-       the turn" — rolled in your own Main Phase, it evaporated before the
-       opponent ever swung back, a stat that only existed while nobody could
-       touch it. (`duration: 'opponentTurn'` is declared in the DSL and
-       implemented by nothing — endOfTurnCleanup zeroes every turn mod for
-       both players — so the honest choices were new expiry machinery or a
-       smaller number that stays.) Permanent at 200 a pip, each spin ratchets:
-       a two-tribute body that grows every turn it stands is a machine worth
-       feeding. */
-    text: 'Once per turn: roll a die. This monster permanently gains 200 ATK for each pip.',
+    /* Three reels and one number to hit. Seven out of three dice comes up 132
+       times in 216 — a shade over 61% — and the engine derives that from the
+       rule rather than from a table, so the odds are whatever the sentence
+       actually says. The dice and the verdict are both printed: a card that
+       turns on arithmetic has to show its working, or it reads as the engine
+       deciding.
+
+       The same spin is the save. Every destruction — battle or effect — is
+       re-rolled against, so the machine is never safe and never dead: a
+       2000/2300 body that pays out 700 a turn and shrugs off three swings in
+       five is exactly the gamble Keith's whole deck is. */
+    text:
+      'Once per turn: roll 3 dice. If any two of them, or all three, or all three with one subtracted, total 7 — ' +
+      'this monster permanently gains 700 ATK and DEF. Each time this monster would be destroyed by battle or by a card effect: ' +
+      'roll 3 dice, and if they total 7 the same way, it is not destroyed.',
     cry: 'Jackpot!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Spin the reels',
         oncePerTurn: true,
-        ops: [{ op: 'diceRoll', perPip: [{ op: 'gainAtk', amount: 200, target: SELF, duration: 'permanent' }] }],
+        ops: [
+          {
+            op: 'diceMakeSeven',
+            count: 3,
+            onSuccess: [
+              { op: 'gainAtk', amount: 700, target: SELF, duration: 'permanent' },
+              { op: 'gainDef', amount: 700, target: SELF, duration: 'permanent' },
+            ],
+          },
+        ],
       },
+      /* Granted the moment it lands, so a Slot Machine that never gets an
+         ignition off still rolls for its life. `permanent` because the reels
+         are the card, not a turn's worth of luck. */
+      { trigger: 'onSummon', ops: [{ op: 'rollsToSurvive', duration: 'permanent' }] },
     ],
   },
 
   'blast-sphere': {
-    text: 'When this monster is destroyed by battle: destroy the monster that destroyed it and inflict damage equal to that monster\'s ATK.',
+    /* A bomb, and a bomb takes the room. It kills whatever set it off and then
+       clears the opponent's entire backrow — Set traps included, so the blast
+       goes off underneath the answers rather than around them — and reaches
+       into the hand for the Spells and Traps that had not been played yet.
+
+       No damage, by the owner's word, and the trade is worth reading: a 1400
+       body they were happy to run over costs them every Spell and Trap they
+       owned. It is the strongest thing in this batch and it is entirely under
+       the opponent's control — nothing happens if nobody attacks it. */
+    text:
+      'When this monster is destroyed by battle: destroy the monster that destroyed it, and destroy every Spell and Trap your opponent controls and holds in their hand.',
     cry: 'Self destruct!',
     effects: [
       {
         trigger: 'onDestroyedByBattle',
         ops: [
-          { op: 'damage', scale: 'targetAtk', to: 'opp' },
           { op: 'destroy', target: sel('opp', 'attacker') },
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'discard', count: 0, all: true, who: 'opp', filter: { kind: 'spell' } },
+          { op: 'discard', count: 0, all: true, who: 'opp', filter: { kind: 'trap' } },
         ],
       },
     ],
@@ -2967,27 +3050,66 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'pendulum-machine': {
-    text: 'This monster cannot be destroyed by battle and inflicts piercing battle damage.',
+    /* Level 6 with no tribute to pay, on one condition: a Steel Ogre Grotto #1
+       has to have died first, and it is removed from the game rather than left
+       in the pile, so one wrecked ogre builds one machine. That is the pair —
+       the ogre searches the machine out when it dies, and its corpse is the
+       fare.
+
+       The blade is aimed at turtles. 1750 that becomes 3000 into Defence and
+       cuts straight through it means setting a wall in front of this is worse
+       than leaving the zone empty, which is exactly what a wrecking machine
+       should mean to a board that is hiding. */
+    text:
+      'Special Summon this monster from your hand by banishing 1 "Steel Ogre Grotto #1" from your Graveyard. ' +
+      'When this monster is summoned: destroy 1 Spell or Trap your opponent controls. ' +
+      'When it attacks a Defense Position monster it gains 1250 ATK, and it inflicts piercing battle damage.',
+    cry: 'Wrecking ball!',
     effects: [
       {
+        trigger: 'handSummon',
+        cost: { banishFromGrave: 'steel-ogre-grotto-1' },
+        ops: [{ op: 'summonSelf', position: 'atk' }],
+      },
+      {
         trigger: 'onSummon',
+        targets: 1,
         ops: [
-          { op: 'indestructibleByBattle', duration: 'permanent' },
+          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) },
           { op: 'pierce', duration: 'permanent' },
+          { op: 'bonusVsDefense', amount: 1250, duration: 'permanent' },
         ],
       },
     ],
   },
 
   'cannon-soldier': {
-    text: 'Once per turn, tribute 1 other monster you control: inflict 800 damage to your opponent.',
+    /* A flat 800 for one body was a rate; this is a decision. The cannon costs
+       everything you are holding and a monster off your own field, and pays out
+       whatever that monster was worth — so the play is to empty a hand you were
+       never going to use into the biggest thing you control and end the duel
+       with it, and there is no version of that you can do twice.
+
+       The hand goes first, and it must not be empty: "at least 1 card" is the
+       whole price. Firing on an empty grip would make this a free 3000 every
+       turn in topdeck mode, which is the opposite of what it costs. */
+    text:
+      'Once per turn, discard your entire hand (you must hold at least 1 card): destroy 1 monster you control and inflict damage equal to its ATK to your opponent.',
+    cry: 'Load the cannon!',
     effects: [
       {
         trigger: 'ignition',
-        label: 'Tribute 1: 800 damage',
+        label: 'Discard your hand: fire a monster',
         oncePerTurn: true,
-        cost: { tribute: 1 },
-        ops: [{ op: 'damage', amount: 800, to: 'opp' }],
+        targets: 1,
+        cost: { discardHand: true },
+        ops: [
+          /* Destroy first and bill for it after — `destroyedAtk` is read off the
+             monster while it is still standing, so a card the destruction
+             itself shrinks or grows cannot change the invoice. */
+          { op: 'destroy', target: sel('own', 'chosen') },
+          { op: 'damage', scale: 'destroyedAtk', to: 'opp' },
+        ],
       },
     ],
   },
@@ -2998,7 +3120,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        Machines cannot be destroyed by card effects — one immunity axis, so
        battle still breaks them and the house rule holds; and "other", so the
        knight himself is always the answerable head of the formation. */
-    text: 'All Machine monsters you control gain 300 ATK, and your other Machines cannot be destroyed by card effects.',
+    text:
+      'When this monster is summoned: it gains 100 ATK for each Machine monster in your Graveyard. ' +
+      'All Machine monsters you control gain 300 ATK, and your other Machines cannot be destroyed by card effects.',
     cry: 'Metal does not break.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Machine' } }), atk: 300 } },
@@ -3007,12 +3131,43 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: { target: sel('own', 'all', { filter: { type: 'Machine' }, excludeSelf: true }), grants: ['indestructibleByEffect'] },
       },
+      /* Measured once, on the way in, and kept — unlike Machine King's live
+         count. The knight is worth what the scrapyard was worth the day he
+         marched out of it, so summoning him late is the reward for having lost
+         machines, and summoning him first is the reward for nothing. */
+      {
+        trigger: 'onSummon',
+        ops: [
+          {
+            op: 'gainAtk',
+            amount: 100,
+            scale: 'perCardInGrave',
+            filter: { type: 'Machine' },
+            target: SELF,
+            duration: 'permanent',
+          },
+        ],
+      },
     ],
   },
 
   mechanicalchaser: {
-    text: 'This monster can attack twice each Battle Phase.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'extraAttacks', count: 1 }] }],
+    /* The hunter is worth whatever is being held back — both grips, so a
+       stalling opponent arms it as surely as you do. Read once on the way in
+       and kept, which makes the timing the whole play: summon it into a full
+       board of cards and it stays that big after both hands have emptied. */
+    text:
+      'When this monster is summoned: it gains 50 ATK for each card in your hand and in your opponent\'s hand. ' +
+      'This monster can attack twice each Battle Phase.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'extraAttacks', count: 1 },
+          { op: 'gainAtk', amount: 50, scale: 'perCardInEitherHand', target: SELF, duration: 'permanent' },
+        ],
+      },
+    ],
   },
 
   'giant-rat': {
@@ -3021,22 +3176,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'steel-ogre-grotto-1': {
-    /* Two lies in one text, both retired: "gains 400 DEF each time it
-       survives" had no effect behind it, and the battle immunity it really
-       had was permanent from summon — held even standing alone. The armour
-       is the assembly line's now: a live conditional aura, so the wall holds
-       exactly while another Machine stands beside it. */
-    text: 'While you control another Machine, this monster cannot be destroyed by battle. When summoned: gain 600 Life Points.',
+    /* Half of a pair now. It walks on free as long as the line is already
+       running — one Machine already standing is the whole condition — and when
+       it dies it hands you the machine its corpse then pays for. Ogre out of
+       the hand, Pendulum Machine out of the Deck, ogre out of the Graveyard:
+       three cards' worth of board from one, and every step of it is somebody
+       else having answered the last one. */
+    text:
+      'While you control another Machine monster, you can Special Summon this monster from your hand. ' +
+      'When this monster is sent to the Graveyard: add 1 "Pendulum Machine" from your Deck to your hand.',
+    cry: 'The line keeps running.',
     effects: [
       {
-        trigger: 'onSummon',
-        ops: [{ op: 'heal', amount: 600, to: 'own' }],
+        trigger: 'handSummon',
+        condition: { controlsOtherOfType: 'Machine' },
+        ops: [{ op: 'summonSelf', position: 'atk' }],
       },
       {
-        trigger: 'continuous',
-        condition: { controlsOtherOfType: 'Machine' },
-        ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle'] },
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['pendulum-machine'] } }],
       },
     ],
   },
@@ -3045,9 +3203,26 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The old text promised a conditional direct attack that nothing
        implemented — "if they control no monsters" is when EVERY monster
        attacks directly, so the clause was vacuous twice over. It says what
-       it does now. */
-    text: 'When this monster attacks: it gains 400 ATK until the end of the turn.',
-    effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' }] }],
+       it does now.
+
+       And it restocks on the way out: trading the Bugroth away hands you the
+       next Level 4 off the line, so the small machines are never the thing you
+       run out of. `onSentToGrave` rather than `onDestroyed` — tributed for a
+       Barrel Dragon counts, which is exactly the turn you want the refill. */
+    text:
+      'When this monster attacks: it gains 400 ATK until the end of the turn. ' +
+      'When this monster is sent to the Graveyard: add 1 Level 4 or lower Machine monster from your Deck to your hand.',
+    effects: [
+      { trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'turn' }] },
+      /* `targets: 1`, so the Deck is offered rather than picked from for you —
+         "the player picks" was the whole of the request, and a search that
+         quietly takes the strongest match is the Basic Insect report again. */
+      {
+        trigger: 'onSentToGrave',
+        targets: 1,
+        ops: [{ op: 'search', filter: { kind: 'monster', type: 'Machine', maxLevel: 4 } }],
+      },
+    ],
   },
 
   /* ---------------------------------------------------------------- */

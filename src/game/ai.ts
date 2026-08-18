@@ -18,6 +18,7 @@ import {
   canAttackWith,
   canChangePosition,
   canIgnite,
+  handSummonOffer,
   choiceResponses,
   effAtk,
   effDef,
@@ -445,6 +446,26 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
             }
           }
         }
+      }
+    }
+
+    /* A monster that calls itself onto the field. Nothing here knew the route
+       existed, so four cards across two decks could only ever arrive the slow
+       way — Steel Ogre Grotto #1 never walked on beside a Machine, and Pendulum
+       Machine never spent the ogre's corpse, which is the whole assembly line.
+       `handSummonOffer` is the same gate the hand button reads, so the price
+       and the refusal cannot drift apart between the two. */
+    for (const h of p.hand) {
+      const offer = handSummonOffer(state, pid, h);
+      if (!offer?.ok) continue;
+      /* Cheapest card in hand pays a discard cost, and never the card that
+         would rather be summoned itself. */
+      const spare = p.hand
+        .filter((x) => x.uid !== h.uid)
+        .sort((a, b) => (CARDS[a.slug]?.atk ?? 0) - (CARDS[b.slug]?.atk ?? 0))[0];
+      if (offer.discard && !spare) continue;
+      for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
+        acts.push({ type: 'handSummon', uid: h.uid, discardUid: offer.discard ? spare!.uid : undefined, targets: t });
       }
     }
 

@@ -987,25 +987,59 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        monsters cost tributes — so the factory now fixes exactly that: it
        ships the small machines out onto the line, and the line is what the
        tributes are paid from. */
-    text: 'Special Summon up to 2 Machine monsters with 1600 or less ATK from your hand.',
+    text: 'Special Summon up to 2 Level 5 or lower Machine monsters from your hand, and they gain 200 ATK.',
     cry: 'Production line, roll out!',
     effects: [
       {
         trigger: 'activate',
-        ops: [{ op: 'specialSummon', from: 'hand', filter: { kind: 'monster', type: 'Machine', maxAtk: 1600 }, count: 2, position: 'atk' }],
+        ops: [
+          { op: 'specialSummon', from: 'hand', filter: { kind: 'monster', type: 'Machine', maxLevel: 5 }, count: 2, position: 'atk' },
+          /* `summoned`, not `all` — the 200 belongs to what came off the line,
+             not to whatever was already standing. The same mistake Time Machine
+             below used to make with `strongest`. */
+          { op: 'gainAtk', amount: 200, target: sel('own', 'summoned'), duration: 'permanent' },
+        ],
       },
     ],
   },
 
   '7-completed': {
-    text: 'Equip to a monster you control: it gains 700 ATK and cannot be destroyed by battle.',
+    /* Keith's card, bolted to Keith's machines and nothing else — the slot
+       symbol on a Spellcaster was always a picture, not a sentence. In exchange
+       the plating covers both axes: what it is strapped to cannot be destroyed
+       by battle *or* by a card effect, so it answers a Raigeki as well as a
+       Blue-Eyes. The equip itself is still a card on the field, and destroying
+       *that* takes the whole thing off — which is where the answer lives. */
+    text: 'Equip only to a Machine monster you control: it gains 700 ATK and cannot be destroyed by battle or by card effects.',
     effects: [
-      { trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 700, def: 0, grants: ['indestructibleByBattle'] }] },
+      {
+        trigger: 'activate',
+        targets: 1,
+        ops: [
+          {
+            op: 'equipTo',
+            atk: 700,
+            def: 0,
+            filter: { type: 'Machine' },
+            grants: ['indestructibleByBattle', 'indestructibleByEffect'],
+          },
+        ],
+      },
     ],
   },
 
   metalmorph: {
-    text: 'Equip to a monster you control: it gains 800 ATK, cannot be destroyed by battle, and inflicts piercing battle damage.',
+    /* The plating is no longer armour — it is a weapon. A modest +300 standing
+       still, doubled the moment it swings, and it goes through a wall: the host
+       is safe to attack into and terrible to be attacked by, which is the exact
+       opposite of the battle immunity it used to hand out for free.
+
+       And it closes Zoa's loop from the other end. Zoa dying calls Metalzoa;
+       Metalmorph's host dying calls Zoa. Set the trap under a Zoa and the pair
+       cost the opponent two removals to answer once. */
+    text:
+      'Equip to a monster you control: it gains 300 ATK, its ATK is doubled when it attacks, and it inflicts piercing battle damage. ' +
+      'When the equipped monster is destroyed by battle or by a card effect: Special Summon 1 "Zoa" from your hand or Deck.',
     cry: 'Metalmorph!',
     effects: [
       {
@@ -1013,13 +1047,21 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         window: 'anyOpponentTurn',
         label: 'Metalmorph',
         targets: 1,
-        ops: [{ op: 'equipTo', atk: 800, def: 0, grants: ['indestructibleByBattle', 'pierce'] }],
+        ops: [{ op: 'equipTo', atk: 300, def: 0, grants: ['doublesWhenAttacking', 'pierce'] }],
+      },
+      {
+        trigger: 'onHostDestroyed',
+        ops: [{ op: 'specialSummon', from: ['hand', 'deck'], filter: { slugs: ['zoa'] }, count: 1, position: 'atk' }],
       },
     ],
   },
 
   'time-machine': {
-    text: 'Special Summon 1 monster from your Graveyard in Attack Position, and it gains 300 ATK.',
+    /* Anything may come back; only a Machine comes back better. 700 is a real
+       reason to point Keith's trap at Keith's own scrapyard rather than at
+       whatever happens to be the biggest corpse, and the condition is read off
+       what was actually revived rather than promised in advance. */
+    text: 'Special Summon 1 monster from your Graveyard in Attack Position. If it is a Machine, it gains 700 ATK.',
     effects: [
       {
         trigger: 'trap',
@@ -1027,10 +1069,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         label: 'Time Machine',
         ops: [
           { op: 'specialSummon', from: 'grave', count: 1, position: 'atk' },
-          /* 'summoned', not 'strongest' — the 300 belongs to what the machine
+          /* 'summoned', not 'strongest' — the buff belongs to what the machine
              just brought back, the same Call of the Haunted-class mistake as
-             "it gains 400 ATK" once buffing whatever was already biggest. */
-          { op: 'gainAtk', amount: 300, target: sel('own', 'summoned'), duration: 'permanent' },
+             "it gains 400 ATK" once buffing whatever was already biggest. The
+             filter is on the *selector*, so a revived Spellcaster is simply not
+             among the cards the bonus reaches; the revival still happened.
+             (`gainAtk`'s own `filter` means something else — what a Graveyard
+             scale counts — and writing it there would have been silent.) */
+          {
+            op: 'gainAtk',
+            amount: 700,
+            target: sel('own', 'summoned', { filter: { type: 'Machine' } }),
+            duration: 'permanent',
+          },
         ],
       },
     ],

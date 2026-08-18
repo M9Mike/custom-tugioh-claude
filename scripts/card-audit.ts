@@ -15,7 +15,7 @@
  *   npx tsx scripts/card-audit.ts            # audit everything
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
-import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, lpCost, tributesRequired } from '../src/game/engine';
+import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, lpCost, matchesFilter, tributesRequired } from '../src/game/engine';
 import { CARDS, isToon } from '../src/game/cards';
 import type {
   CardDef,
@@ -494,6 +494,26 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
   }
 }
 
+/**
+ * Puts a monster the equip actually fits onto the field.
+ *
+ * 7 Completed bolts onto a Machine and nothing else, and the stocked board is
+ * one Baby Dragon — so the equip correctly refused, nothing attached, and the
+ * harness reported the card as broken for a reason that was entirely about the
+ * position it was tested in. Same shape as `stockDeckFor`: give the effect the
+ * thing it is written to read.
+ */
+function stockHostFor(s: DuelState, eff: CardEffect) {
+  for (const op of eff.ops) {
+    if (op.op !== 'equipTo' || !op.filter) continue;
+    if (s.players[ME].monsters.some((m) => m && matchesFilter(m, op.filter))) continue;
+    const want = matchCard(op.filter, 'monster');
+    if (!want) continue;
+    const free = s.players[ME].monsters.findIndex((m) => !m);
+    if (free >= 0) place(s, ME, free, want.slug);
+  }
+}
+
 /** Puts a legal revival target in the Graveyard for `specialSummon from grave`. */
 function stockGraveFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
@@ -668,6 +688,22 @@ interface Result {
 const results: Result[] = [];
 const skipped: string[] = [];
 
+/** Ops a branch can hold, flattened — a branch may itself branch. */
+const FLATTEN = (ops: Op[]): Op[] =>
+  ops.flatMap((o) =>
+    o.op === 'cascade'
+      ? [o, ...FLATTEN(o.branches.flatMap((b) => b.ops))]
+      : o.op === 'coinFlip'
+        ? [o, ...FLATTEN([...o.heads, ...o.tails])]
+        : o.op === 'diceMakeSeven'
+          ? [o, ...FLATTEN([...o.onSuccess, ...(o.onFail ?? [])])]
+          : [o]
+  );
+
+/** Whether anything in here can legitimately come up empty on a bad roll. */
+const GAMBLES = (ops: Op[]): boolean =>
+  FLATTEN(ops).some((o) => o.op === 'coinFlip' || o.op === 'diceMakeSeven' || o.op === 'diceRoll');
+
 /** Runs `fire`, comparing snapshots around it and scoring the effect's ops. */
 function audit(
   def: CardDef,
@@ -680,43 +716,85 @@ function audit(
 ) {
   const before = snap(s, self);
   const fb = allFlags(s);
-  const out = fire(s);
+  let out = fire(s);
   if (typeof out === 'string') {
     results.push({ slug: def.slug, trigger: eff.trigger, checks: [{ what: out, ok: false }], unverified: 0 });
     return;
   }
-  const after = snap(out, self);
-  // A monster arriving on the board raises my total ATK all by itself; that is
-  // not the effect doing anything, so take its printed body back off.
-  after.me.totalAtk -= ownAtkOffset;
-  const fa = allFlags(out);
-
-  const checks: Check[] = [];
-  let unverified = 0;
-  const walk = (ops: Op[]) => {
-    for (const op of ops) {
-      if (op.op === 'coinFlip') {
-        // Only one branch runs; treat the pair as verified if either shows.
-        const heads = op.heads.map((o) => checkOp(o, before, after, fb, fa)).filter(Boolean) as Check[];
-        const tails = op.tails.map((o) => checkOp(o, before, after, fb, fa)).filter(Boolean) as Check[];
-        const any = [...heads, ...tails];
-        if (any.length) checks.push({ what: 'coin flip resolves one branch', ok: any.some((c) => c.ok) });
-        else unverified += 1;
-        continue;
-      }
-      if (op.op === 'diceRoll') {
-        const pips = op.perPip.map((o) => checkOp(o, before, after, fb, fa)).filter(Boolean) as Check[];
-        if (pips.length) checks.push({ what: 'dice roll resolves', ok: pips.some((c) => c.ok) });
-        else unverified += 1;
-        continue;
-      }
-      const c = checkOp(op, before, after, fb, fa);
-      if (c) checks.push(c);
-      else unverified += 1;
+  /* A card whose text is a gamble needs the gamble to come in before there is
+     anything to observe: Barrel Dragon's three coins can land no heads, and
+     Slot Machine's three dice can miss seven, both of which are the card
+     working correctly. Excusing that would leave a check that cannot fail — so
+     the harness re-rolls instead, and only reports the card broken if it never
+     manages to do anything at all across a run of seeds. */
+  if (GAMBLES(eff.ops)) {
+    for (let seed = 1; seed <= 40 && !score(out).checks.every((c) => c.ok); seed += 1) {
+      const reseeded = structuredClone(s);
+      reseeded.seed = seed;
+      const again = fire(reseeded);
+      if (typeof again !== 'string') out = again;
     }
-  };
-  walk(eff.ops);
+  }
+  const { checks, unverified } = score(out);
   results.push({ slug: def.slug, trigger: eff.trigger, checks, unverified });
+
+  /** Scores the effect's ops against one outcome. */
+  function score(result: DuelState): { checks: Check[]; unverified: number } {
+    const after = snap(result, self);
+    // A monster arriving on the board raises my total ATK all by itself; that
+    // is not the effect doing anything, so take its printed body back off.
+    after.me.totalAtk -= ownAtkOffset;
+    const fa = allFlags(result);
+    const checks: Check[] = [];
+    let unverified = 0;
+    /* Scores the branch as a whole, then walks into it so anything that
+       branches again gets a verdict of its own.
+       Without the second half, one observable op vouched for everything
+       beside it: Barrel Dragon's heads are "+100 ATK, then the cascade", the
+       ATK always lands, and emptying every cascade branch left the card doing
+       nothing at all while this reported it working. */
+    const branchCheck = (what: string, ops: Op[]) => {
+      const all = FLATTEN(ops);
+      const inner = all.map((o) => checkOp(o, before, after, fb, fa)).filter(Boolean) as Check[];
+      /* A branch with no ops in it at all is not an unobservable op — it is a
+         branch that does nothing, which is the whole card missing. Counting it
+         as "not observable in this harness" is how emptying every one of
+         Barrel Dragon's cascade branches left the suite green. */
+      if (!all.length) checks.push({ what: `${what} — but every branch is empty`, ok: false });
+      else if (!inner.length) unverified += 1;
+      else checks.push({ what, ok: inner.some((c) => c.ok) });
+      walk(ops.filter((o) => o.op === 'cascade' || o.op === 'coinFlip' || o.op === 'diceMakeSeven'));
+    };
+    const walk = (ops: Op[]) => {
+      for (const op of ops) {
+        if (op.op === 'coinFlip') {
+          // Only one branch runs; treat the pair as verified if either shows.
+          branchCheck('coin flip resolves one branch', [...op.heads, ...op.tails]);
+          continue;
+        }
+        if (op.op === 'diceMakeSeven') {
+          branchCheck('the dice make seven', [...op.onSuccess, ...(op.onFail ?? [])]);
+          continue;
+        }
+        if (op.op === 'cascade') {
+          // The first branch whose condition holds, and only that one.
+          branchCheck('the cascade finds a branch', op.branches.flatMap((b) => b.ops));
+          continue;
+        }
+        if (op.op === 'diceRoll') {
+          const pips = op.perPip.map((o) => checkOp(o, before, after, fb, fa)).filter(Boolean) as Check[];
+          if (pips.length) checks.push({ what: 'dice roll resolves', ok: pips.some((c) => c.ok) });
+          else unverified += 1;
+          continue;
+        }
+        const c = checkOp(op, before, after, fb, fa);
+        if (c) checks.push(c);
+        else unverified += 1;
+      }
+    };
+    walk(eff.ops);
+    return { checks, unverified };
+  }
 }
 
 const run = (s: DuelState, pid: PlayerId, action: Parameters<typeof applyAction>[2]): DuelState | string => {
@@ -751,7 +829,13 @@ function targetsFor(s: DuelState, def: CardDef): string[] {
       const h = s.players[ME].hand.find((c) => CARDS[c.slug]?.kind === 'monster');
       if (h) out.push(h.uid);
     } else if (op.op === 'equipTo') {
-      if (myMons[0]) out.push(myMons[0].uid);
+      /* The host has to be something the equip actually fits. 7 Completed
+         bolts onto Machines alone, and pointing it at whatever happened to be
+         standing in zone 0 made the card look inert — the equip correctly
+         refused a host it does not fit, and the audit read that as a broken
+         card rather than as its own bad setup. */
+      const fits = myMons.find((m) => matchesFilter(m, op.filter));
+      if (fits) out.push(fits.uid);
     } else if ('target' in op && op.target?.pick === 'chosen') {
       const side = op.target.side === 'own' ? myMons : foeMons;
       const zone = op.target.zone;
@@ -781,6 +865,7 @@ for (const def of Object.values(CARDS)) {
       const c = mint(s, ME, def.slug);
       s.players[ME].hand.push(c);
       if (eff.cost?.tribute) place(s, ME, 1, 'baby-dragon');
+      stockHostFor(s, eff);
       satisfy(s, eff, c);
       audit(def, eff, s, (st) => run(st, ME, { type: 'activateSpell', uid: c.uid, targets: targetsFor(st, def) }));
       continue;

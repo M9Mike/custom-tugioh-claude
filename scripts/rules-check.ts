@@ -8,9 +8,10 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, legalAttackTargets, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
+import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
+import { candidates as aiCandidates } from '../src/game/ai';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
@@ -3064,15 +3065,25 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   ok(!zap.players[FOE].spellTrap, 'his ignition destroys the chosen backrow card');
   ok(!!zap.players[FOE].field, 'and only that — the Field Spell survives the ignition');
 
-  /* Zoa gives its body for the metal one — the anime beat. */
+  /* Zoa gives its body for the metal one — the anime beat. Dying *is* the
+     transformation now, so the opponent answering Zoa is what summons it. */
   const kz = fresh();
   const beast = card(ME, 'zoa');
   beast.summonedOnTurn = 0;
   kz.players[ME].monsters = [beast, null, null];
   kz.players[ME].deck = [card(ME, 'metalzoa')];
-  const reborn = act(kz, ME, { type: 'ignition', uid: beast.uid, targets: [] });
-  ok(reborn.players[ME].monsters.some((m) => m?.slug === 'metalzoa'), 'Zoa transforms into Metalzoa');
-  ok(reborn.players[ME].grave.some((c) => c.slug === 'zoa'), 'and the beast itself was the price');
+  kz.active = FOE;
+  kz.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+  ok(
+    !!applyAction(kz, ME, { type: 'ignition', uid: beast.uid, targets: [] }).error,
+    'Zoa has no button to press — it does not tribute itself any more'
+  );
+  const bolt = card(FOE, 'tribute-to-the-doomed');
+  kz.players[FOE].hand.push(bolt);
+  const zapped = act(kz, FOE, { type: 'activateSpell', uid: bolt.uid, targets: [beast.uid] });
+  ok(zapped.players[ME].monsters.some((m) => m?.slug === 'metalzoa'), 'Zoa destroyed by an effect rises as Metalzoa');
+  ok(zapped.players[ME].grave.some((c) => c.slug === 'zoa'), 'and the beast itself was the price');
+  ok(!zapped.players[FOE].field, "and Metalzoa's arrival shattered their backrow — a Field Spell is one");
 
   /* The Dark Door admits only the small. */
   const dd = fresh('battle');
@@ -3208,19 +3219,25 @@ console.log('\nThe balance pass, second turn of the wheel');
   const declared2 = applyAction(broke, FOE, { type: 'attack', uid: broke.players[FOE].monsters[0]!.uid, targetUid: null }).state;
   ok(declared2.pending?.kind !== 'trap', 'CONTROL: below the price, the wall is not even offered');
 
-  /* The factory ships the line out of the hand. */
+  /* The factory ships the line out of the hand — by Level now, not by ATK, so
+     an 1850 Level 4 rolls out and a 1400 Level 6 does not. */
   const kf = fresh();
   const factory = card(ME, 'machine-conversion-factory');
-  const small1 = card(ME, 'cannon-soldier'); // 1400 Machine
-  const small2 = card(ME, 'robotic-knight'); // 1600 Machine
-  const tooBig = card(ME, 'mechanicalchaser'); // 1850 — over the line
+  const small1 = card(ME, 'cannon-soldier'); // L4 Machine
+  const small2 = card(ME, 'mechanicalchaser'); // L4 Machine, 1850 — over the OLD line
+  const tooBig = card(ME, 'machine-king'); // L6 — over the line that matters
   kf.players[ME].hand = [factory, small1, small2, tooBig];
   const rolled = act(kf, ME, { type: 'activateSpell', uid: factory.uid, targets: [] });
   const out = rolled.players[ME].monsters.filter(Boolean).map((m) => m!.slug);
-  ok(out.includes('cannon-soldier') && out.includes('robotic-knight'),
-    'Machine Conversion Factory ships two small Machines from the hand', out.join(','));
-  ok(rolled.players[ME].hand.some((h) => h.slug === 'mechanicalchaser'),
-    'CONTROL: an 1850 Machine is over the factory line and stays in hand');
+  ok(out.includes('cannon-soldier') && out.includes('mechanicalchaser'),
+    'Machine Conversion Factory ships two Level 5-or-lower Machines from the hand', out.join(','));
+  ok(rolled.players[ME].hand.some((h) => h.slug === 'machine-king'),
+    'CONTROL: a Level 6 Machine is over the factory line and stays in hand');
+  const shipped = rolled.players[ME].monsters.find((m) => m?.slug === 'cannon-soldier')!;
+  /* +200 each, and only to what came off the line. Cannon Soldier is 1400
+     printed and stands alone, so nothing else can be paying for this. */
+  ok(effAtk(rolled, shipped, ME) === 1400 + 200, 'and each one comes off the line 200 stronger',
+    String(effAtk(rolled, shipped, ME)));
 }
 
 console.log('\nGOD CARDS ARE ABOVE EVERYTHING');
@@ -7481,6 +7498,548 @@ console.log('\nA card that comes up empty says so');
     'and the blow is reported before the duel is declared over',
     beats.map((b) => b.kind).join(',')
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bandit Keith: the machines, and what they cost to run                 */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nBandit Keith: the line, the reels and the wrecking ball');
+
+  /* --- Barrel Dragon: three coins, and every head finds something --- */
+  {
+    /* Swept over seeds rather than pinned to one, because the coins are the
+       card. Each run sets the same board — one monster, one backrow, one card
+       in hand — so a dragon that fired everything strips exactly one of each,
+       in that order, and a dragon that skipped ahead would leave the Kuriboh
+       standing while the hand emptied.
+
+       The sweep is what makes the pin bite. A single run tolerates zero heads
+       and would go green on a dragon that flips no coins at all — which is
+       exactly what a broken one does. */
+    const printed = baseAtkOf('barrel-dragon');
+    const seen = new Set<number>();
+    let orderKept = 0;
+    let tallied = 0;
+    let billed = 0;
+    const RUNS = 40;
+    for (let seed = 0; seed < RUNS; seed++) {
+      const bd = fresh();
+      bd.seed = seed;
+      const dragon = card(ME, 'barrel-dragon');
+      bd.players[ME].monsters = [dragon, null, null];
+      bd.players[FOE].monsters = [card(FOE, 'kuriboh'), null, null];
+      bd.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+      bd.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+
+      const fired = act(bd, ME, { type: 'ignition', uid: dragon.uid, targets: [] });
+      const heads = (effAtk(fired, fired.players[ME].monsters[0]!, ME) - printed) / 100;
+      seen.add(heads);
+      const f = fired.players[FOE];
+      const gone = (1 - f.monsters.filter(Boolean).length) + (f.spellTrap ? 0 : 1) + (1 - f.hand.length);
+      if (gone === heads) billed += 1;
+      /* Monsters first, then the backrow, then the hand: a head that reached
+         further than the Kuriboh while the Kuriboh still stood is out of
+         order, and so is one that took the hand before the backrow. */
+      const ordered =
+        (heads < 1 || f.monsters.filter(Boolean).length === 0) &&
+        (heads < 2 || !f.spellTrap) &&
+        (heads < 3 || f.hand.length === 0) &&
+        (heads >= 1 || (f.monsters.filter(Boolean).length === 1 && !!f.spellTrap && f.hand.length === 1));
+      if (ordered) orderKept += 1;
+      if (fired.log.some((l) => /HEADS/.test(l.text))) tallied += 1;
+    }
+    ok(billed === RUNS, 'every head Barrel Dragon lands takes exactly one card off them', `${billed}/${RUNS}`);
+    ok(orderKept === RUNS, 'and always in order — monsters, then backrow, then hand', `${orderKept}/${RUNS}`);
+    ok(tallied === RUNS, 'and the flip is announced once with the tally', `${tallied}/${RUNS}`);
+    ok([...seen].every((h) => h >= 0 && h <= 3), 'three coins is never more than three heads', [...seen].join(','));
+    /* The sweep must actually see the barrels fire, or all four checks above
+       are satisfied by a dragon that does nothing at all. */
+    ok([...seen].some((h) => h >= 1), 'and over forty spins the barrels do fire', [...seen].sort().join(','));
+    ok(seen.has(3), 'including a spin where all three land', [...seen].sort().join(','));
+
+    /* An empty opponent is not a crash and not a free 300 ATK reversal. */
+    const bare = fresh();
+    const lone = card(ME, 'barrel-dragon');
+    bare.players[ME].monsters = [lone, null, null];
+    const nothing = act(bare, ME, { type: 'ignition', uid: lone.uid, targets: [] });
+    ok(nothing.players[FOE].lp === 4000 && nothing.players[ME].lp === 4000,
+      'CONTROL: against an empty board the barrels cost nobody Life Points');
+  }
+
+  /* --- Slot Machine: 61.11% of three dice, twice over --- */
+  {
+    /* The odds are derived, not tabulated — so the rule is what is checked.
+       132 of 216 is the owner's number, and it has to come out of the same
+       function the card calls. */
+    let made = 0;
+    for (let a = 1; a <= 6; a++)
+      for (let b = 1; b <= 6; b++)
+        for (let c = 1; c <= 6; c++) if (makesSeven([a, b, c])) made += 1;
+    ok(made === 132, 'three dice make seven 132 ways out of 216', `${made}/216`);
+    ok(makesSeven([3, 4, 1]), 'any two of them: 3 + 4');
+    ok(makesSeven([1, 2, 4]), 'or all three: 1 + 2 + 4');
+    ok(makesSeven([6, 3, 2]), 'or all three with one subtracted: 6 + 3 − 2');
+    ok(!makesSeven([1, 1, 1]), 'CONTROL: 1 · 1 · 1 makes nothing');
+    ok(!makesSeven([6, 6, 6]), 'CONTROL: nor 6 · 6 · 6');
+
+    /* The reels pay in both stats, and the spin is shown. */
+    const sm = fresh();
+    const reels = card(ME, 'slot-machine');
+    sm.players[ME].monsters = [reels, null, null];
+    const spun = act(sm, ME, { type: 'ignition', uid: reels.uid, targets: [] });
+    const paid = effAtk(spun, spun.players[ME].monsters[0]!, ME) - baseAtkOf('slot-machine');
+    ok(paid === 0 || paid === 700, 'a spin pays 700 ATK or nothing at all', String(paid));
+    ok(
+      effDef(spun, spun.players[ME].monsters[0]!, ME) - CARDS['slot-machine'].def! === paid,
+      'and the DEF moves with it'
+    );
+    ok(spun.log.some((l) => /·.*(seven!|no seven\.)/.test(l.text)), 'and the dice and the verdict are both printed',
+      spun.log.slice(-4).map((l) => l.text).join(' | '));
+
+    /* The save. Summoned for real rather than hand-flagged — writing
+       `rollsToSurvive` onto the instance proves the engine can roll, only
+       summoning the card proves *Slot Machine* does, and the first version of
+       this pin stayed green with the whole grant deleted off the card.
+       Rolled fresh each time, so a machine that survives once is not thereby
+       safe, and it rolls whether or not the ignition ever fired. */
+    const facedWith = (killer: string, seed: number, real: boolean) => {
+      const s = fresh();
+      s.seed = seed;
+      const box = card(ME, 'slot-machine');
+      const t1 = card(ME, 'kuriboh');
+      const t2 = card(ME, 'kuriboh');
+      s.players[ME].monsters = [t1, t2, null];
+      s.players[ME].hand = [box];
+      let up = s;
+      if (real) {
+        up = act(s, ME, {
+          type: 'normalSummon', uid: box.uid, zone: 2, position: 'atk', face: 'up',
+          tributes: [t1.uid, t2.uid],
+        });
+      } else {
+        /* The same body on the same board, never summoned — so it never picks
+           up the grant. This is the control the survivals are measured against. */
+        up = structuredClone(s);
+        up.players[ME].hand = [];
+        up.players[ME].monsters = [null, null, { ...box, summonedOnTurn: 0 }];
+      }
+      up.active = FOE;
+      up.phase = 'main';
+      const spell = card(FOE, killer);
+      up.players[FOE].hand = [spell];
+      const wiped = act(up, FOE, { type: 'activateSpell', uid: spell.uid, targets: [] });
+      return wiped.players[ME].monsters.some((m) => m?.slug === 'slot-machine');
+    };
+
+    let survivals = 0;
+    for (let seed = 0; seed < 24; seed++) if (facedWith('dark-hole', seed, true)) survivals += 1;
+    ok(survivals > 0 && survivals < 24, 'Slot Machine sometimes rolls its way out of a Dark Hole, and sometimes not',
+      `${survivals}/24 survived`);
+
+    let plain = 0;
+    for (let seed = 0; seed < 24; seed++) if (facedWith('dark-hole', seed, false)) plain += 1;
+    ok(plain === 0, 'CONTROL: the same body that was never summoned never rolls, and dies every time', `${plain}/24`);
+  }
+
+  /* --- Machine King: the field, the scrapyard and the standing order --- */
+  {
+    const mk = fresh();
+    const king = card(ME, 'machine-king');
+    mk.players[ME].monsters = [king, card(ME, 'cannon-soldier'), null];
+    mk.players[FOE].monsters = [card(FOE, 'blast-sphere'), null, null];
+    mk.players[ME].grave = [card(ME, 'robotic-knight'), card(ME, 'mechanicalchaser'), card(ME, 'kuriboh')];
+    /* Three Machines on the field counting both sides (200 each), two in his
+       own pile (100 each), and the standing 400 he hands every Machine
+       including himself. Kuriboh is in the pile to prove the filter bites. */
+    const want = baseAtkOf('machine-king') + 3 * 200 + 2 * 100 + 400;
+    ok(effAtk(mk, king, ME) === want, 'Machine King counts the field, the scrapyard and his own standing order',
+      `${effAtk(mk, king, ME)} vs ${want}`);
+    const soldier = mk.players[ME].monsters[1]!;
+    ok(effAtk(mk, soldier, ME) === baseAtkOf('cannon-soldier') + 400,
+      'and every Machine under him carries the 400 whether it was there when he arrived or not',
+      String(effAtk(mk, soldier, ME)));
+    /* The 400 is an aura now, so a Machine that walks in later gets it too —
+       which is the whole of the change from a summon trigger. */
+    const later = structuredClone(mk);
+    const walkedIn = card(ME, 'robotic-knight');
+    later.players[ME].monsters[2] = walkedIn;
+    ok(
+      effAtk(later, later.players[ME].monsters[2]!, ME) ===
+        baseAtkOf('robotic-knight') + 400 + 300 /* the knight's own aura reaches itself */,
+      'a Machine summoned after the King still answers to him',
+      String(effAtk(later, later.players[ME].monsters[2]!, ME))
+    );
+    /* CONTROL: the King is not commanding the other side of the table. */
+    const theirs = mk.players[FOE].monsters[0]!;
+    ok(effAtk(mk, theirs, FOE) === baseAtkOf('blast-sphere'),
+      'CONTROL: their Machines are not his to command', String(effAtk(mk, theirs, FOE)));
+  }
+
+  /* --- Blast Sphere: the bomb takes the room --- */
+  {
+    const bs = fresh('battle');
+    bs.active = FOE;
+    const bomb = card(ME, 'blast-sphere');
+    bomb.position = 'def';
+    bomb.summonedOnTurn = 0;
+    bs.players[ME].monsters = [bomb, null, null];
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    bs.players[FOE].monsters = [beater, null, null];
+    bs.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+    bs.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+    bs.players[FOE].hand = [card(FOE, 'pot-of-greed'), card(FOE, 'mirror-force'), card(FOE, 'battle-ox')];
+    const lp = bs.players[FOE].lp;
+
+    const blown = act(bs, FOE, { type: 'attack', uid: beater.uid, targetUid: bomb.uid });
+    ok(!blown.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+      'Blast Sphere kills whatever set it off');
+    ok(!blown.players[FOE].spellTrap && !blown.players[FOE].field,
+      'and clears their whole backrow, Field Spell included');
+    const left = blown.players[FOE].hand.map((h) => h.slug);
+    ok(!left.includes('pot-of-greed') && !left.includes('mirror-force'),
+      'and takes the Spells and Traps out of their hand', left.join(',') || '(empty)');
+    ok(left.includes('battle-ox'), 'CONTROL: the monsters in their hand are none of its business', left.join(','));
+    ok(blown.players[FOE].lp === lp, 'and none of it is damage', `LP ${blown.players[FOE].lp}`);
+  }
+
+  /* --- Metalzoa: twice going out, half coming in --- */
+  {
+    /* Summoned for real, never hand-flagged. Writing `flags` onto the instance
+       proves the engine can double a swing; only summoning the card proves
+       *Metalzoa* does — and the first version of this pin stayed green with
+       both grants deleted off the card. Level 8, so it costs two bodies. */
+    const bring = (phase: 'main' | 'battle') => {
+      const s = fresh(); // summoned in the Main Phase, then walked into the one asked for
+      const metal = card(ME, 'metalzoa');
+      const fodder1 = card(ME, 'kuriboh');
+      const fodder2 = card(ME, 'kuriboh');
+      s.players[ME].monsters = [fodder1, fodder2, null];
+      s.players[ME].hand = [metal];
+      const up = act(s, ME, {
+        type: 'normalSummon', uid: metal.uid, zone: 2, position: 'atk', face: 'up',
+        tributes: [fodder1.uid, fodder2.uid],
+      });
+      const landed = up.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
+      landed.summonedOnTurn = 0;
+      up.phase = phase;
+      return { state: up, metal: landed };
+    };
+
+    const { state: mz, metal } = bring('battle');
+    const wall = card(FOE, 'kuriboh'); // 300/200
+    wall.summonedOnTurn = 0;
+    mz.players[FOE].monsters = [wall, null, null];
+    /* Deep enough to survive it: Life Points floor at zero, and a pin that
+       reads a capped total is measuring the floor rather than the swing. */
+    mz.players[FOE].lp = 20000;
+    const before = mz.players[FOE].lp;
+    const swung = act(mz, ME, { type: 'attack', uid: metal.uid, targetUid: wall.uid });
+    /* 3000 doubled is 6000, through a 200 DEF Kuriboh in Attack Position:
+       6000 − 300 = 5700, which is the duel. The pin reads the damage rather
+       than the winner so a later LP change cannot quietly retire it. */
+    ok(before - swung.players[FOE].lp === 6000 - 300, 'Metalzoa swings at twice its ATK',
+      String(before - swung.players[FOE].lp));
+    ok(swung.log.some((l) => /doubl/i.test(l.text)), 'and says so',
+      swung.log.slice(-5).map((l) => l.text).join(' | '));
+
+    /* And halves whatever comes at it. */
+    const { state: inbound, metal: guard } = bring('battle');
+    inbound.active = FOE;
+    const charger = card(FOE, 'summoned-skull'); // 2500 → 1250
+    charger.summonedOnTurn = 0;
+    inbound.players[FOE].monsters = [charger, null, null];
+    const met = act(inbound, FOE, { type: 'attack', uid: charger.uid, targetUid: guard.uid });
+    /* 1250 into 3000 is 1750 of recoil, and the metal is untouched. */
+    ok(4000 - met.players[FOE].lp === 3000 - 1250, 'and halves whatever attacks it',
+      String(4000 - met.players[FOE].lp));
+    ok(met.players[ME].monsters.some((m) => m?.slug === 'metalzoa'), 'and stands');
+
+    /* Arriving strips their hand of Spells and Traps as well as the field. */
+    const clean = fresh();
+    const zoa2 = card(ME, 'metalzoa');
+    const f1 = card(ME, 'kuriboh');
+    const f2 = card(ME, 'kuriboh');
+    clean.players[ME].monsters = [f1, f2, null];
+    clean.players[ME].hand = [zoa2];
+    clean.players[FOE].hand = [card(FOE, 'pot-of-greed'), card(FOE, 'mirror-force'), card(FOE, 'battle-ox')];
+    clean.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+    const arrived = act(clean, ME, {
+      type: 'normalSummon', uid: zoa2.uid, zone: 2, position: 'atk', face: 'up',
+      tributes: [f1.uid, f2.uid],
+    });
+    ok(!arrived.players[FOE].spellTrap, "Metalzoa's arrival clears their backrow");
+    const kept = arrived.players[FOE].hand.map((h) => h.slug);
+    ok(!kept.includes('pot-of-greed') && !kept.includes('mirror-force'),
+      'and empties their hand of Spells and Traps', kept.join(',') || '(empty)');
+    ok(kept.includes('battle-ox'), 'CONTROL: their monsters stay where they are', kept.join(','));
+  }
+
+  /* --- Zoa and Metalmorph: the loop closes both ways --- */
+  {
+    /* Metalmorph's host dying calls Zoa back; Zoa dying calls Metalzoa. The
+       pair costs two removals to answer once, which is the whole point. */
+    const mm = fresh('battle');
+    mm.active = FOE;
+    const host = card(ME, 'cannon-soldier');
+    host.summonedOnTurn = 0;
+    mm.players[ME].monsters = [host, null, null];
+    const morph = { ...card(ME, 'metalmorph'), face: 'up' as const, equippedTo: host.uid };
+    host.equips = ['metalmorph'];
+    mm.players[ME].spellTrap = morph;
+    mm.players[ME].deck = [card(ME, 'zoa')];
+    const killer = card(FOE, 'summoned-skull');
+    killer.summonedOnTurn = 0;
+    mm.players[FOE].monsters = [killer, null, null];
+
+    const crushed = act(mm, FOE, { type: 'attack', uid: killer.uid, targetUid: host.uid });
+    ok(crushed.players[ME].monsters.some((m) => m?.slug === 'zoa'),
+      'Metalmorph answers a wrecked host by calling Zoa out of the Deck',
+      crushed.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(crushed.players[ME].grave.some((c) => c.slug === 'metalmorph'),
+      'and the plating goes down with the monster it was bolted to');
+
+    /* CONTROL: the equip being shattered on its own is not the host dying. */
+    const duster = fresh();
+    duster.active = FOE;
+    const alive = card(ME, 'cannon-soldier');
+    alive.summonedOnTurn = 0;
+    alive.equips = ['metalmorph'];
+    duster.players[ME].monsters = [alive, null, null];
+    duster.players[ME].spellTrap = { ...card(ME, 'metalmorph'), face: 'up' as const, equippedTo: alive.uid };
+    duster.players[ME].deck = [card(ME, 'zoa')];
+    const fd = card(FOE, 'harpie-s-feather-duster');
+    duster.players[FOE].hand = [fd];
+    const swept = act(duster, FOE, { type: 'activateSpell', uid: fd.uid, targets: [] });
+    ok(!swept.players[ME].monsters.some((m) => m?.slug === 'zoa'),
+      'CONTROL: shattering the plating while the monster lives summons nothing',
+      swept.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* The equip's numbers: +300 standing, doubled swinging, and it pierces. */
+    const armedUp = fresh('battle');
+    const bearer = card(ME, 'cannon-soldier'); // 1400
+    bearer.summonedOnTurn = 0;
+    bearer.equips = ['metalmorph'];
+    armedUp.players[ME].monsters = [bearer, null, null];
+    armedUp.players[ME].spellTrap = { ...card(ME, 'metalmorph'), face: 'up' as const, equippedTo: bearer.uid };
+    ok(effAtk(armedUp, bearer, ME) === 1400 + 300, 'Metalmorph is +300 standing still',
+      String(effAtk(armedUp, bearer, ME)));
+    const turtle = card(FOE, 'kuriboh'); // 200 DEF
+    turtle.position = 'def';
+    turtle.summonedOnTurn = 0;
+    armedUp.players[FOE].monsters = [turtle, null, null];
+    const through = act(armedUp, ME, { type: 'attack', uid: bearer.uid, targetUid: turtle.uid });
+    /* (1400 + 300) × 2 = 3400, piercing a 200 DEF for 3200. */
+    ok(4000 - through.players[FOE].lp === 3400 - 200, 'and doubles when it swings, and goes through',
+      String(4000 - through.players[FOE].lp));
+  }
+
+  /* --- Cannon Soldier: your whole hand, fired at them --- */
+  {
+    const cs = fresh();
+    const cannon = card(ME, 'cannon-soldier');
+    const ammo = card(ME, 'summoned-skull'); // 2500 ATK, the shell
+    cs.players[ME].monsters = [cannon, ammo, null];
+    cs.players[ME].hand = [card(ME, 'kuriboh'), card(ME, 'pot-of-greed')];
+    const fired = act(cs, ME, { type: 'ignition', uid: cannon.uid, targets: [ammo.uid] });
+    ok(fired.players[ME].hand.length === 0, 'the cannon is loaded with your whole hand',
+      fired.players[ME].hand.map((h) => h.slug).join(','));
+    ok(!fired.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'),
+      'and it fires the monster you named, not the first one in the row');
+    ok(4000 - fired.players[FOE].lp === 2500, 'for exactly what that monster was worth',
+      String(4000 - fired.players[FOE].lp));
+
+    /* Empty hand, dark button — "at least 1 card" is the whole price. */
+    const dry = fresh();
+    const idle = card(ME, 'cannon-soldier');
+    dry.players[ME].monsters = [idle, card(ME, 'kuriboh'), null];
+    ok(!canIgnite(dry, ME, idle), 'CONTROL: an empty hand cannot load the cannon');
+    ok(!!applyAction(dry, ME, { type: 'ignition', uid: idle.uid, targets: [] }).error,
+      'and the engine refuses it even if the button is pressed anyway');
+  }
+
+  /* --- Robotic Knight and Mechanicalchaser: measured on the way in --- */
+  {
+    const rk = fresh();
+    const knight = card(ME, 'robotic-knight');
+    rk.players[ME].hand = [knight];
+    rk.players[ME].grave = [card(ME, 'cannon-soldier'), card(ME, 'blast-sphere'), card(ME, 'kuriboh')];
+    const marched = act(rk, ME, { type: 'normalSummon', uid: knight.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const stood = marched.players[ME].monsters[0]!;
+    /* Two Machines in the pile at 100, plus his own standing 300 aura, which
+       reaches himself. Kuriboh proves the filter bites. */
+    ok(effAtk(marched, stood, ME) === baseAtkOf('robotic-knight') + 200 + 300,
+      'Robotic Knight is worth what the scrapyard was worth when he marched out of it',
+      String(effAtk(marched, stood, ME)));
+
+    const mc = fresh();
+    const hunter = card(ME, 'mechanicalchaser');
+    mc.players[ME].hand = [hunter, card(ME, 'kuriboh'), card(ME, 'pot-of-greed')];
+    mc.players[FOE].hand = [card(FOE, 'battle-ox')];
+    const hunting = act(mc, ME, { type: 'normalSummon', uid: hunter.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const out = hunting.players[ME].monsters[0]!;
+    /* Two left in mine after it leaves the hand, one in theirs — 3 × 50. */
+    ok(effAtk(hunting, out, ME) === baseAtkOf('mechanicalchaser') + 150,
+      'Mechanicalchaser counts both grips on the way in',
+      String(effAtk(hunting, out, ME)));
+    ok(maxAttacks(hunting, out, ME) === 2, 'and still swings twice', String(maxAttacks(hunting, out, ME)));
+  }
+
+  /* --- Steel Ogre Grotto #1 and Pendulum Machine: the assembly line --- */
+  {
+    /* Ogre out of the hand beside a Machine, ogre into the pile fetching the
+       wrecking ball, ogre's corpse paying for it. Three cards of board out of
+       one, and every step is somebody having answered the last. */
+    const sg = fresh();
+    const ogre = card(ME, 'steel-ogre-grotto-1');
+    sg.players[ME].hand = [ogre];
+    ok(!handSummonOffer(sg, ME, ogre)?.ok, 'CONTROL: the ogre needs company before it walks on');
+    sg.players[ME].monsters = [card(ME, 'cannon-soldier'), null, null];
+    const offer = handSummonOffer(sg, ME, ogre);
+    ok(!!offer?.ok && offer.discard === 0 && !offer.banish,
+      'beside a Machine it walks on free — no discard, nothing banished',
+      JSON.stringify(offer));
+    const walked = act(sg, ME, { type: 'handSummon', uid: ogre.uid });
+    ok(walked.players[ME].monsters.some((m) => m?.slug === 'steel-ogre-grotto-1'),
+      'and it arrives', walked.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Dying hands you the machine its corpse then pays for. */
+    const dies = structuredClone(walked);
+    dies.players[ME].deck = [card(ME, 'pendulum-machine'), card(ME, 'kuriboh')];
+    dies.active = FOE;
+    const dh = card(FOE, 'dark-hole');
+    dies.players[FOE].hand = [dh];
+    const razed = act(dies, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+    ok(razed.players[ME].hand.some((h) => h.slug === 'pendulum-machine'),
+      'and a wrecked ogre hands you the Pendulum Machine',
+      razed.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+    /* The corpse is the fare, and it is removed from the game so one ogre
+       builds one machine. */
+    const pm = fresh();
+    const ball = card(ME, 'pendulum-machine');
+    pm.players[ME].hand = [ball];
+    ok(!handSummonOffer(pm, ME, ball)?.ok, 'CONTROL: with no ogre in the pile the wrecking ball stays in hand');
+    pm.players[ME].grave = [card(ME, 'steel-ogre-grotto-1')];
+    pm.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+    const priced = handSummonOffer(pm, ME, ball);
+    ok(priced?.ok === true && priced.banish === 'steel-ogre-grotto-1', 'the ogre in the pile is the fare',
+      JSON.stringify(priced));
+    /* And the computer takes the route too. Nothing in the AI knew a monster
+       could call itself onto the field, so four cards across two decks could
+       only ever arrive the slow way — Keith's assembly line simply never ran
+       when Keith was the one playing it. */
+    ok(aiCandidates(pm, ME, 40).some((a) => a.type === 'handSummon'),
+      'and the computer opponent knows the route exists');
+    const built = act(pm, ME, { type: 'handSummon', uid: ball.uid, targets: [pm.players[FOE].spellTrap!.uid] });
+    ok(built.players[ME].monsters.some((m) => m?.slug === 'pendulum-machine'), 'and the machine is assembled');
+    ok(built.players[ME].banished.some((c) => c.slug === 'steel-ogre-grotto-1'),
+      'with the ogre removed from the game rather than left to build a second one');
+    ok(!built.players[ME].grave.some((c) => c.slug === 'steel-ogre-grotto-1'), 'and it is not in the pile any more');
+    ok(!built.players[FOE].spellTrap, 'and its arrival shatters a backrow card you named');
+
+    /* 1750 that becomes 3000 into Defence, and pierces. */
+    const swing = structuredClone(built);
+    swing.phase = 'battle';
+    const machine = swing.players[ME].monsters.find((m) => m?.slug === 'pendulum-machine')!;
+    machine.summonedOnTurn = 0;
+    const turtle = card(FOE, 'kuriboh'); // 200 DEF
+    turtle.position = 'def';
+    turtle.summonedOnTurn = 0;
+    swing.players[FOE].monsters = [turtle, null, null];
+    const wrecked = act(swing, ME, { type: 'attack', uid: machine.uid, targetUid: turtle.uid });
+    ok(4000 - wrecked.players[FOE].lp === 1750 + 1250 - 200, 'and it hits a turtle for 3000, piercing',
+      String(4000 - wrecked.players[FOE].lp));
+
+    /* CONTROL: the 1250 is only ever paid against Defence Position. */
+    const upright = structuredClone(built);
+    upright.phase = 'battle';
+    const ball2 = upright.players[ME].monsters.find((m) => m?.slug === 'pendulum-machine')!;
+    ball2.summonedOnTurn = 0;
+    const standing = card(FOE, 'kuriboh'); // 300 ATK
+    standing.summonedOnTurn = 0;
+    upright.players[FOE].monsters = [standing, null, null];
+    const plain = act(upright, ME, { type: 'attack', uid: ball2.uid, targetUid: standing.uid });
+    ok(4000 - plain.players[FOE].lp === 1750 - 300, 'CONTROL: against a monster standing up it is only 1750',
+      String(4000 - plain.players[FOE].lp));
+  }
+
+  /* --- Ground Attacker Bugroth: the line restocks itself --- */
+  {
+    const gb = fresh();
+    gb.active = FOE;
+    const bug = card(ME, 'ground-attacker-bugroth');
+    bug.summonedOnTurn = 0;
+    gb.players[ME].monsters = [bug, null, null];
+    gb.players[ME].deck = [card(ME, 'cannon-soldier'), card(ME, 'machine-king'), card(ME, 'kuriboh')];
+    const dh = card(FOE, 'dark-hole');
+    gb.players[FOE].hand = [dh];
+    const razed = act(gb, FOE, { type: 'activateSpell', uid: dh.uid, targets: [] });
+    const got = razed.players[ME].hand.map((h) => h.slug);
+    ok(got.includes('cannon-soldier'), 'a wrecked Bugroth hands you the next small Machine off the line',
+      got.join(',') || '(empty)');
+    ok(!got.includes('machine-king') && !got.includes('kuriboh'),
+      'CONTROL: not a Level 6 Machine, and not something that is no Machine at all', got.join(','));
+  }
+
+  /* --- 7 Completed: Keith's plating on Keith's machines --- */
+  {
+    const sc = fresh();
+    const mage = card(ME, 'dark-magician'); // Spellcaster
+    sc.players[ME].monsters = [mage, null, null];
+    const plate = card(ME, '7-completed');
+    sc.players[ME].hand = [plate];
+    const refused = act(sc, ME, { type: 'activateSpell', uid: plate.uid, targets: [mage.uid] });
+    ok(effAtk(refused, refused.players[ME].monsters[0]!, ME) === baseAtkOf('dark-magician'),
+      'CONTROL: 7 Completed does not bolt onto a Spellcaster',
+      String(effAtk(refused, refused.players[ME].monsters[0]!, ME)));
+
+    const fits = fresh();
+    const machine = card(ME, 'cannon-soldier');
+    fits.players[ME].monsters = [machine, null, null];
+    const plate2 = card(ME, '7-completed');
+    fits.players[ME].hand = [plate2];
+    const bolted = act(fits, ME, { type: 'activateSpell', uid: plate2.uid, targets: [machine.uid] });
+    const wearing = bolted.players[ME].monsters[0]!;
+    ok(effAtk(bolted, wearing, ME) === baseAtkOf('cannon-soldier') + 700, 'on a Machine it is +700',
+      String(effAtk(bolted, wearing, ME)));
+    const flags = effFlags(bolted, wearing, ME);
+    ok(flags.indestructibleByBattle === true && flags.indestructibleByEffect === true,
+      'and covers both axes — battle and card effects');
+    /* The answer is the equip itself, which is still a card on the field. */
+    const stripped = structuredClone(bolted);
+    stripped.active = FOE;
+    const desp = card(FOE, 'de-spell');
+    stripped.players[FOE].hand = [desp];
+    const bare = act(stripped, FOE, { type: 'activateSpell', uid: desp.uid, targets: [stripped.players[ME].spellTrap!.uid] });
+    const naked = bare.players[ME].monsters[0]!;
+    ok(effFlags(bare, naked, ME).indestructibleByEffect !== true,
+      'CONTROL: take the plating off and the machine is answerable again');
+  }
+
+  /* --- Time Machine: anything comes back, only a Machine comes back better --- */
+  {
+    const tm = (buried: string) => {
+      const s = fresh();
+      s.players[ME].grave = [card(ME, buried)];
+      const trap = { ...card(ME, 'time-machine'), face: 'down' as const };
+      trap.summonedOnTurn = 0;
+      s.players[ME].spellTrap = trap;
+      return act(s, ME, { type: 'activateSetCard', uid: trap.uid, targets: [s.players[ME].grave[0].uid] });
+    };
+
+    const metal = tm('cannon-soldier');
+    const back = metal.players[ME].monsters.find((m) => m?.slug === 'cannon-soldier')!;
+    ok(effAtk(metal, back, ME) === baseAtkOf('cannon-soldier') + 700, 'a Machine comes back 700 stronger',
+      String(effAtk(metal, back, ME)));
+
+    const flesh = tm('battle-ox');
+    const ox = flesh.players[ME].monsters.find((m) => m?.slug === 'battle-ox')!;
+    ok(!!ox, 'CONTROL: something that is no Machine still comes back');
+    ok(effAtk(flesh, ox, ME) === baseAtkOf('battle-ox'), 'but it comes back at exactly what it was',
+      String(effAtk(flesh, ox, ME)));
+  }
 }
 
 /* The summary goes LAST, and there is nothing after it.

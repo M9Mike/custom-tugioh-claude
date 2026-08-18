@@ -206,6 +206,15 @@ export type Trigger =
    * the duel, including its own arrival.
    */
   | 'onAllySummon'
+  /**
+   * This Equip card's host was destroyed, and the equip has just followed it
+   * into the Graveyard.
+   *
+   * Not `onSentToGrave` on the equip, which cannot tell a destruction from a
+   * bounce, a banish or a Tribute, and which also fires when the equip itself
+   * is the card that was shattered. Metalmorph means the monster.
+   */
+  | 'onHostDestroyed'
   /** Trap activation, gated by `window`. */
   | 'trap';
 
@@ -330,7 +339,7 @@ export type Op =
    * so a card that was protected, or a second target that was never chosen,
    * does not get billed for.
    */
-  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed'; to: Side }
+  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk'; to: Side }
   | { op: 'heal'; amount: number; to: Side }
   /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
    *  written on the card: Headless Knight counts 100 a corpse, the Magician of
@@ -338,7 +347,13 @@ export type Op =
   | {
       op: 'gainAtk';
       amount?: number;
-      scale?: 'targetAtk' | 'perCardInGrave' | 'perCardInEitherGrave' | 'perMonsterOnField' | 'dicePips';
+      scale?:
+        | 'targetAtk'
+        | 'perCardInGrave'
+        | 'perCardInEitherGrave'
+        | 'perMonsterOnField'
+        | 'perCardInEitherHand'
+        | 'dicePips';
       /**
        * Narrows what the Graveyard scales count. Sword Arm of Dragon is worth
        * 150 for each of *two named cards* in the pile, not for the pile — and
@@ -389,7 +404,30 @@ export type Op =
        * behind, so a wide board pays for its own width.
        */
       scale?: 'perTheirMonster';
+      /**
+       * Only cards like this. Blast Sphere reaches into the hand for Spells and
+       * Traps alone, which is a different thing from a random discard: it is
+       * removal that happens to land somewhere private.
+       */
+      filter?: CardFilter;
     }
+  /**
+   * Roll `count` dice and ask whether any of them can be made to total seven —
+   * two of them added, all three added, or all three with one subtracted. Slot
+   * Machine's whole card, and 132 of the 216 ways three dice can fall.
+   *
+   * The dice and the verdict are both announced: a card that turns on a
+   * calculation has to show its working, or it reads as the engine deciding.
+   */
+  | { op: 'diceMakeSeven'; count: number; onSuccess: Op[]; onFail?: Op[] }
+  /**
+   * The first branch whose condition holds, and only that one. Barrel Dragon
+   * takes a monster if there is one, else a Spell or Trap, else a card out of
+   * their hand — one shot that falls through until it finds something.
+   */
+  | { op: 'cascade'; branches: Array<{ condition?: EffectCondition; ops: Op[] }> }
+  /** This monster rolls to shrug off destruction — see `CardFlags`. */
+  | { op: 'rollsToSurvive'; duration: Duration }
   | { op: 'mill'; count: number; who: Side }
   /**
    * Dig down through your own Deck, burying everything, until you turn over a
@@ -467,6 +505,12 @@ export type Op =
   | { op: 'halvedBattleDamage'; duration: Duration }
   | { op: 'halvedDirectDamage'; duration: Duration }
   | { op: 'reflectBattleDamage'; duration: Duration }
+  /** Swings at twice its ATK — Metalzoa going out, Metalmorph's host with it. */
+  | { op: 'doublesWhenAttacking'; duration: Duration }
+  /** Extra ATK that only counts against a Defence Position monster. */
+  | { op: 'bonusVsDefense'; amount: number; duration: Duration }
+  /** Whatever attacks this monster swings at half — Metalzoa coming in. */
+  | { op: 'halvesAttacker'; duration: Duration }
   | { op: 'pierce'; duration: Duration }
   | { op: 'preventBattleDamage'; who: Side; duration: Duration }
   /**
@@ -507,7 +551,17 @@ export type Op =
    * than from a prompt: Spellbinding Circle equips itself to the monster that
    * just declared the attack.
    */
-  | { op: 'equipTo'; atk: number; def: number; grants?: EquipGrant[]; target?: Selector }
+  | {
+      op: 'equipTo';
+      atk: number;
+      def: number;
+      grants?: EquipGrant[];
+      target?: Selector;
+      /** What it may be strapped to. 7 Completed bolts onto Machines alone. */
+      filter?: CardFilter;
+      /** Extra ATK that only counts against a monster in Defence Position. */
+      bonusVsDefense?: number;
+    }
   | { op: 'revealHand'; who: Side }
   | { op: 'shuffleIntoDeck'; target: Selector }
   /**
@@ -541,7 +595,17 @@ export type Op =
    *  default is the strongest; Lady of Faith's séance reaches in blind, so she
    *  says `random` and takes whichever Fiend answers. */
   | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' | 'own'; pick?: 'strongest' | 'random' }
-  | { op: 'coinFlip'; heads: Op[]; tails: Op[] }
+  | {
+      op: 'coinFlip';
+      heads: Op[];
+      tails: Op[];
+      /**
+       * Flip this many, and run the branch once for each coin that came up
+       * that way. Barrel Dragon's three barrels: three heads is three shots,
+       * and the log says how many landed rather than narrating each flip.
+       */
+      count?: number;
+    }
   /**
    * Runs one branch chosen by how many counters the source is carrying —
    * the highest tier it has reached, like `coinFlip` but decided by the board
@@ -567,6 +631,10 @@ export type Op =
 export type EquipGrant =
   /** Every swing costs a card out of hand — Two-Headed King Rex feeds itself. */
   | 'attackCostDiscard'
+  /** Attacks at twice its ATK. Metalmorph and Metalzoa both hit like this. */
+  | 'doublesWhenAttacking'
+  /** Anything that attacks it does so at half strength. */
+  | 'halvesAttacker'
   | 'pierce'
   | 'doubleAttack'
   | 'directAttack'
@@ -722,6 +790,10 @@ export interface CardEffect {
      * (or the AI) spend their last Life Points on it.
      */
     lpScale?: 'perOppHandCard';
+    /** Your whole hand, and there has to be one — Cannon Soldier's new price. */
+    discardHand?: boolean;
+    /** Removes a named card from your Graveyard from the game to pay for this. */
+    banishFromGrave?: string;
     tributeSelf?: boolean;
     tributeFilter?: CardFilter;
   };
@@ -749,6 +821,8 @@ export interface EffectCondition {
    * part of the condition rather than left to the ops to discover.
    */
   graveHasSlug?: string;
+  /** The opponent is holding at least one card. */
+  opponentHasHand?: boolean;
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
   /**
@@ -845,6 +919,14 @@ export interface CardFlags {
   paysWithGraveInstead?: boolean;
   /** Every swing costs a card out of hand — see the `attackCostDiscard` op. */
   attackCostDiscard?: boolean;
+  /** Swings at twice its ATK — see the `doublesWhenAttacking` grant. */
+  doublesWhenAttacking?: boolean;
+  /** Whatever attacks it swings at half — see the `halvesAttacker` grant. */
+  halvesAttacker?: boolean;
+  /** Extra ATK, but only against a monster lying in Defence Position. */
+  bonusVsDefense?: number;
+  /** Rolls to shrug off a destruction — see the `rollsToSurvive` op. */
+  rollsToSurvive?: boolean;
 }
 
 export interface CardInstance {

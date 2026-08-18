@@ -24,15 +24,41 @@
 import { CARDS } from '../src/game/cards';
 import type { CardDef, CardEffect, CardFilter, Op, Trigger } from '../src/game/types';
 
+/**
+ * Ops and grants the *battle code* reads at the moment a swing is declared.
+ *
+ * "When it attacks, its ATK is doubled" is a real sentence with no trigger
+ * behind it: the doubling happens inside the damage calculation, off a flag,
+ * because a trigger that fired and modified the monster would leave the bonus
+ * on it afterwards. So the clause is honoured by the flag existing, and the
+ * rule below accepts either route rather than reporting three correct cards as
+ * promising something they never do.
+ */
+const ATTACK_TIME = new Set(['doublesWhenAttacking', 'bonusVsDefense']);
+function swingsDifferently(def: CardDef): boolean {
+  return def.effects.some(
+    (e) =>
+      e.ops.some((o) => ATTACK_TIME.has(o.op) || (o.op === 'equipTo' && o.bonusVsDefense != null)) ||
+      (e.aura?.grants ?? []).some((g) => ATTACK_TIME.has(g)) ||
+      e.ops.some((o) => o.op === 'equipTo' && (o.grants ?? []).some((g) => ATTACK_TIME.has(g)))
+  );
+}
+
 /** A phrase in the rules text, and the triggers that would satisfy it. */
-const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string }[] = [
+const TRIGGERS: { phrase: RegExp; needs: Trigger[]; label: string; orElse?: (def: CardDef) => boolean }[] = [
   { phrase: /\bFLIP:/i, needs: ['onFlip'], label: 'FLIP:' },
   { phrase: /when (this card|this monster|it) attacks|each time (this card|this monster|it) attacks|when it declares an attack/i,
-    needs: ['onDeclareAttack'], label: 'when it attacks' },
+    needs: ['onDeclareAttack'], label: 'when it attacks', orElse: swingsDifferently },
   { phrase: /when (this card|this monster|it) destroys (a|1) monster (by|in) battle/i,
     needs: ['onBattleDestroy'], label: 'when it destroys a monster in battle' },
+  /* `onDestroyed` belongs here too. It fires on *every* destruction, battle
+     included — the departure is marked destroyed whether the blow came from a
+     monster or a card — so a card that says "destroyed by battle or by a card
+     effect" and writes the wider trigger is doing exactly what it says. Zoa is
+     the first to say both halves in one sentence, and leaving the wider
+     trigger out of this list reported it as broken while it was right. */
   { phrase: /when (this card|this monster|it) is destroyed by battle/i,
-    needs: ['onDestroyedByBattle', 'onSentToGrave'], label: 'when destroyed by battle' },
+    needs: ['onDestroyedByBattle', 'onDestroyed', 'onSentToGrave'], label: 'when destroyed by battle' },
   /* "Destroyed" with no qualifier. The lookahead keeps the stricter
      by-battle clause above owning its own case rather than both matching.
      Nothing checked this before, which is how Chimera's "when this card is
@@ -317,9 +343,10 @@ for (const def of Object.values(CARDS)) {
   problems.push(...checkBackrowReach(def));
   problems.push(...checkSelfCondition(def));
 
-  for (const { phrase, needs, label } of TRIGGERS) {
+  for (const { phrase, needs, label, orElse } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;
     if (hasTrigger(def, needs)) continue;
+    if (orElse?.(def)) continue;
     problems.push(
       `${def.name} (${def.slug}) — text says "${label}" but the card has no ${needs.join(' or ')} effect`
     );
