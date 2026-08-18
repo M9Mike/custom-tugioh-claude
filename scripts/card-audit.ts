@@ -330,8 +330,17 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
           fell(a.foe.monsters, b.foe.monsters) ||
           fell(a.me.monsters, b.me.monsters),
       };
+    /* The Deck growing is the obvious signal and not a reliable one: a card
+       that shuffles the Graveyard back and then *draws* takes out of the Deck
+       what it just put in, and Sabersaurus does exactly that — the totals come
+       out level and the card reads as doing nothing. Same net-zero trap as
+       `search`, `discard` and `stealFromGrave`. Ask the pile by name instead:
+       something that was down there is not any more. */
     case 'shuffleIntoDeck':
-      return { what: 'shuffles a card into the Deck', ok: grew(a.me.deck, b.me.deck) || grew(a.foe.deck, b.foe.deck) };
+      return {
+        what: 'shuffles a card into the Deck',
+        ok: grew(a.me.deck, b.me.deck) || grew(a.foe.deck, b.foe.deck) || leftGrave(a.me, b.me) || leftGrave(a.foe, b.foe),
+      };
     case 'gainAtk': {
       const amount = op.amount ?? 0;
       return {

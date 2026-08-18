@@ -2788,19 +2788,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   sabersaurus: {
-    /* Its funeral is the deck's. Every fossil in the pile goes back where it
-       came from and you dig until something with a pulse turns up — so a herd
-       that has been ground down gets to run again, and the hand it leaves you
-       is never empty of a body to play. */
+    /* Its funeral is the deck's, and it pays for the funeral. Every *other*
+       fossil in the pile goes back where it came from and you dig until
+       something with a pulse turns up — so a herd that has been ground down
+       gets to run again, and the hand it leaves you is never empty of a body to
+       play. Sabersaurus itself stays down: it is the one that does not get up,
+       which is what the herd is bought with. */
     text:
       'When this monster is summoned: it can attack directly this turn. ' +
-      'When this monster is destroyed: shuffle every Dinosaur monster in your Graveyard into your Deck, then draw until you draw a monster.',
+      'When this monster is destroyed: shuffle every other Dinosaur monster in your Graveyard into your Deck, then draw until you draw a monster.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'turn' }] },
       {
         trigger: 'onDestroyed',
         ops: [
-          { op: 'shuffleIntoDeck', target: sel('own', 'all', { zone: 'grave', filter: { kind: 'monster', type: 'Dinosaur' } }) },
+          { op: 'shuffleIntoDeck', target: sel('own', 'all', { zone: 'grave', excludeSelf: true, filter: { kind: 'monster', type: 'Dinosaur' } }) },
           { op: 'drawUntil', filter: { kind: 'monster' }, who: 'own' },
         ],
       },

@@ -1216,7 +1216,22 @@ console.log('\nRex Raptor: the herd, and what it costs to run it');
     const hole = card(ME, 'dark-hole');
     s4.players[ME].hand.push(hole);
     const gone = act(s4, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
-    ok(!gone.players[ME].grave.some((g) => CARDS[g.slug]?.type === 'Dinosaur'), 'Sabersaurus takes every fossil back out of the pile', gone.players[ME].grave.map((g) => g.slug).join(','));
+    ok(
+      !gone.players[ME].grave.some((g) => CARDS[g.slug]?.type === 'Dinosaur' && g.slug !== 'sabersaurus'),
+      'Sabersaurus takes every other fossil back out of the pile',
+      gone.players[ME].grave.map((g) => g.slug).join(',')
+    );
+    /* And stays down itself. Its own body is what the herd is bought with —
+       every other fossil gets up, the one that paid does not. */
+    ok(gone.players[ME].grave.some((g) => g.slug === 'sabersaurus'), 'while it stays in the Graveyard itself', gone.players[ME].grave.map((g) => g.slug).join(','));
+    /* Nowhere but the pile. "Not in the Deck" alone is not enough — the draw
+       that follows can pull it straight back out again and hide the fact that
+       it was ever shuffled in. */
+    ok(
+      !gone.players[ME].deck.some((c) => c.slug === 'sabersaurus') && !gone.players[ME].hand.some((c) => c.slug === 'sabersaurus'),
+      'and is nowhere else — not the Deck it shuffled, not the hand it drew',
+      `deck ${gone.players[ME].deck.filter((c) => c.slug === 'sabersaurus').length}, hand ${gone.players[ME].hand.filter((c) => c.slug === 'sabersaurus').length}`
+    );
     ok(gone.players[ME].grave.some((g) => g.slug === 'raigeki'), 'and leaves what is not a fossil where it lies');
     ok(gone.players[ME].hand.some((h) => CARDS[h.slug]?.kind === 'monster'), 'then digs until a body turns up', gone.players[ME].hand.map((h) => h.slug).join(','));
   }
