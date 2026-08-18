@@ -2263,69 +2263,108 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* Weevil                                                            */
   /* ================================================================ */
 
+  /* The ladder, rewritten to the owner's design: each rung lives exactly one
+     of your turns. At the start of your turn the moth is *sent to the
+     Graveyard* — not destroyed, so nothing that answers destruction answers
+     this — and the next one arrives from your Deck or your hand carrying its
+     own counters. Every rung is worth what it has grown, read live. */
   'petit-moth': {
-    /* It fetches its own shell. A 300/200 body asked to survive two End
-       Phases naked never reached rung two in real play; summoning it now
-       puts the Cocoon in hand, and the Cocoon shields it while it climbs. */
-    text: 'When this monster is summoned: add "Cocoon of Evolution" from your Deck to your hand. Gains 1 Evolution Counter during each of your End Phases. At 2 counters it becomes Larvae Moth, at 3 Great Moth, and at 4 the Perfectly Ultimate Great Moth.',
+    text:
+      'Gains 500 ATK and 500 DEF for each Evolution Counter on it. ' +
+      'When this monster is summoned: place 1 Evolution Counter on it. ' +
+      'At the start of your turn: send this monster to the Graveyard and Special Summon 1 "Larvae Moth" from your Deck or hand.',
     cry: 'My insect will evolve!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['cocoon-of-evolution'] } }] },
-      { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, perCounter: { atk: 500, def: 500 } } },
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'addCounter', amount: 1 }],
+      },
+      {
+        trigger: 'onOwnTurnStart',
+        ops: [
+          { op: 'sendToGrave', target: SELF },
+          { op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['larvae-moth'] }, count: 1, position: 'atk', face: 'up' },
+        ],
+      },
     ],
   },
 
   'larvae-moth': {
-    text: 'Continues to evolve during each of your End Phases. When this monster is summoned: inflict 300 damage to your opponent.',
+    text:
+      'Gains 500 ATK and 1000 DEF for each Evolution Counter on it. When this monster is summoned: ' +
+      'place 2 Evolution Counters on it. ' +
+      'At the start of your turn: send this monster to the Graveyard and Special Summon 1 "Great Moth" from your Deck or hand.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'damage', amount: 300, to: 'opp' }] },
-      { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, perCounter: { atk: 500, def: 1000 } } },
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'addCounter', amount: 2 }],
+      },
+      {
+        trigger: 'onOwnTurnStart',
+        ops: [
+          { op: 'sendToGrave', target: SELF },
+          { op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['great-moth'] }, count: 1, position: 'atk', face: 'up' },
+        ],
+      },
     ],
   },
 
   'great-moth': {
-    text: 'Inflicts piercing battle damage and cannot be destroyed by battle. Gains 1 Evolution Counter during each of your End Phases; at 4 it becomes the Perfectly Ultimate Great Moth.',
+    text:
+      'Gains 1000 ATK and 1000 DEF for each Evolution Counter on it. ' +
+      'When this monster is summoned: place 3 Evolution Counters on it. ' +
+      'At the start of your turn: send this monster to the Graveyard and Special Summon 1 "Perfectly Ultimate Great Moth" from your Deck or hand.',
     cry: 'The cocoon opens!',
     effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, perCounter: { atk: 1000, def: 1000 } } },
       {
         trigger: 'onSummon',
+        ops: [{ op: 'addCounter', amount: 3 }],
+      },
+      {
+        trigger: 'onOwnTurnStart',
         ops: [
-          { op: 'pierce', duration: 'permanent' },
-          // The old text promised immunity to anything under 2000 ATK and the
-          // card did not have it at all. Straight battle immunity is what a
-          // four-turn evolution deserves, and now the text is true.
-          { op: 'indestructibleByBattle', duration: 'permanent' },
+          { op: 'sendToGrave', target: SELF },
+          {
+            op: 'specialSummon',
+            from: ['deck', 'hand'],
+            filter: { slugs: ['perfectly-ultimate-great-moth'] },
+            count: 1,
+            position: 'atk',
+            face: 'up',
+          },
         ],
       },
-      { trigger: 'onOwnTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
     ],
   },
 
   'perfectly-ultimate-great-moth': {
-    /* Two trims that keep it the apex without keeping it unanswerable.
-       `untargetable` in this engine skips EVERY opposing effect — Dark Hole,
-       Mirror Force, Ring — so four End Phases of patience bought a monster
-       with no answers at all; effect-indestructibility still shrugs off
-       removal while leaving it targetable (a Shadow Spell can bind it, a
-       Brain Control can borrow it — which is comedy worth having). And the
-       second attack belongs to the swarm: alone it strikes once, over its
-       hive it strikes twice. */
-    text: 'Cannot be destroyed by card effects. Inflicts piercing battle damage, and while you control another Insect it can attack twice each Battle Phase. When summoned: destroy every Spell and Trap on the field.',
+    /* It clears the board, empties their hand, and then reads the wreckage for
+       its own size — so the number it settles on is the number it just made.
+       Nothing else is printed on it: the hive it banishes to keep itself alive
+       is the whole of its defence, and once the Graveyard runs out of Insects
+       it dies like anything else. */
+    text:
+      'When this monster is summoned: destroy every other card on the field, your opponent discards 5 cards, ' +
+      'and then this monster gains 100 ATK and 100 DEF for each card in both Graveyards. ' +
+      'Each time this monster would be destroyed by battle or by a card effect, banish 1 Insect monster from your Graveyard instead.',
     cry: 'Behold, the ultimate insect!',
     effects: [
       {
         trigger: 'onSummon',
         ops: [
-          { op: 'indestructibleByEffect', duration: 'permanent' },
-          { op: 'pierce', duration: 'permanent' },
+          /* The board goes first, the hand second, and only then does it read
+             the pile — the count is taken after everything it just buried has
+             landed there, which is the owner's ordering and most of its ATK. */
+          { op: 'destroy', target: sel('both', 'all', { excludeSelf: true }) },
           { op: 'destroy', target: sel('both', 'all', { zone: 'backrow' }) },
+          { op: 'discard', count: 5, who: 'opp' },
+          { op: 'gainAtk', amount: 100, scale: 'perCardInEitherGrave', target: SELF, duration: 'permanent' },
+          { op: 'gainDef', amount: 100, scale: 'perCardInEitherGrave', target: SELF, duration: 'permanent' },
+          { op: 'paysWithGraveInstead', duration: 'permanent' },
         ],
-      },
-      {
-        trigger: 'continuous',
-        condition: { controlsOtherOfType: 'Insect' },
-        ops: [],
-        aura: { target: SELF, grants: ['doubleAttack'] },
       },
     ],
   },
@@ -2337,7 +2376,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        And it finally does its job: the strategy blurb has said "cocoon your
        larva" since the first commit, and the card never touched the larva —
        the shell now shields the moths still climbing the ladder. */
-    text: 'While this monster is face-up, it and your Petit Moth and Larvae Moth cannot be destroyed by battle.',
+    /* The shell is the ladder's other half: it thickens every turn it is left
+       alone, and whatever it has grown into is what hatches out of it —
+       cracked open on purpose it gives up its best rung, broken by somebody
+       else it gives up one less, and the Ultimate is never born from a
+       breakage. */
+    text:
+      'While this monster is face-up, it and your "Petit Moth" and "Larvae Moth" cannot be destroyed by battle. ' +
+      'It gains 500 DEF for each Evolution Counter on it, and gains 1 Evolution Counter at the end of each turn. ' +
+      'You may Tribute this monster: Special Summon from your Deck or hand "Petit Moth" at 1 counter, "Larvae Moth" at 2, ' +
+      '"Great Moth" at 3, or the "Perfectly Ultimate Great Moth" at 4. ' +
+      'When this monster is sent to the Graveyard: Special Summon "Great Moth" at 3 counters, "Larvae Moth" at 2, or "Petit Moth" at 1.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } },
       {
@@ -2348,26 +2397,99 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           grants: ['indestructibleByBattle'],
         },
       },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, perCounter: { def: 500 } } },
+      /* Every turn, not only yours — the shell does not care whose clock it is. */
+      { trigger: 'onAnyTurnEnd', ops: [{ op: 'addCounter', amount: 1 }] },
+      {
+        trigger: 'ignition',
+        label: 'Hatch',
+        cost: { tributeSelf: true },
+        ops: [
+          {
+            op: 'byCounters',
+            tiers: [
+              { at: 4, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['perfectly-ultimate-great-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+              { at: 3, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['great-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+              { at: 2, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['larvae-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+              { at: 1, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['petit-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+            ],
+          },
+        ],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          {
+            op: 'byCounters',
+            tiers: [
+              { at: 3, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['great-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+              { at: 2, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['larvae-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+              { at: 1, ops: [{ op: 'specialSummon', from: ['deck', 'hand'], filter: { slugs: ['petit-moth'] }, count: 1, position: 'atk', face: 'up' }] },
+            ],
+          },
+        ],
+      },
     ],
   },
 
   'hercules-beetle': {
-    text: 'While face-up, all monsters your opponent controls lose 500 ATK.',
-    effects: [{ trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -500 } }],
+    text: 'While face-up, all monsters your opponent controls lose 500 ATK. This monster gains 500 DEF for each Insect monster in your Graveyard.',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -500 } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Insect' }, def: 500 } },
+      },
+    ],
   },
 
   'killer-needle': {
-    text: 'When this monster inflicts battle damage: inflict an additional 500 damage to your opponent.',
-    effects: [{ trigger: 'onDealBattleDamage', ops: [{ op: 'damage', amount: 500, to: 'opp' }] }],
+    /* There is always another one. `onSentToGrave` rather than destruction, so
+       tributing it or spending it calls the next needle out just the same. */
+    text:
+      'When this monster inflicts battle damage: inflict an additional 500 damage to your opponent and this monster gains 500 ATK. ' +
+      'When this monster is sent to the Graveyard: Special Summon 1 "Killer Needle" from your Deck in face-up Attack Position.',
+    effects: [
+      {
+        trigger: 'onDealBattleDamage',
+        ops: [
+          { op: 'damage', amount: 500, to: 'opp' },
+          { op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' },
+        ],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['killer-needle'] }, count: 1, position: 'atk', face: 'up' }],
+      },
+    ],
   },
 
   'basic-insect': {
-    text: 'All Insect monsters you control gain 200 ATK.',
-    effects: [{ trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Insect' } }), atk: 200 } }],
+    /* A 500 body whose whole worth is what it hands you: the cannon on the way
+       in, the barrier back on the way out. */
+    atkOverride: 500,
+    text:
+      'All Insect monsters you control gain 200 ATK. ' +
+      'When this monster is summoned: add "Laser Cannon Armor" or "Insect Armor with Laser Cannon" from your Deck to your hand. ' +
+      'When this monster is destroyed: add "Insect Barrier" from your Graveyard to your hand.',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: sel('own', 'all', { filter: { type: 'Insect' } }), atk: 200 } },
+      {
+        trigger: 'onSummon',
+        targets: 1,
+        ops: [{ op: 'search', filter: { slugs: ['laser-cannon-armor', 'insect-armor-with-laser-cannon'] } }],
+      },
+      { trigger: 'onDestroyed', ops: [{ op: 'stealFromGrave', from: 'own', filter: { slugs: ['insect-barrier'] } }] },
+    ],
   },
 
   kuwagata: {
-    text: 'When this monster is summoned: draw 1 card. This monster inflicts piercing battle damage.',
+    /* It is worth the swarm, living and dead — read live, so a beetle summoned
+       beside it or one that just fell both move the number the same turn. */
+    text:
+      'When this monster is summoned: draw 1 card. This monster inflicts piercing battle damage. ' +
+      'It gains 400 ATK for each Insect monster on the field and 200 ATK for each Insect monster in your Graveyard.',
     effects: [
       {
         trigger: 'onSummon',
@@ -2376,16 +2498,31 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'pierce', duration: 'permanent' },
         ],
       },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'field', filter: { kind: 'monster', type: 'Insect' }, atk: 400 } },
+      },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster', type: 'Insect' }, atk: 200 } },
+      },
     ],
   },
 
   'flying-kamakiri-1': {
-    text: 'When this monster is sent to the Graveyard: add the strongest Insect monster from your Deck to your hand.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { type: 'Insect' } }] }],
+    /* Any Insect in the Deck, not only the biggest. It leaves on somebody
+       else's turn as often as not, so where there is nobody to ask the search
+       takes the best legal card — the house answer everywhere else. */
+    text: 'When this monster is sent to the Graveyard: add 1 Insect monster from your Deck to your hand.',
+    effects: [{ trigger: 'onSentToGrave', targets: 1, ops: [{ op: 'search', filter: { kind: 'monster', type: 'Insect' } }] }],
   },
 
   'parasite-paracide': {
-    text: 'When this monster is summoned: your opponent sends the top 3 cards of their Deck to the Graveyard and discards 1 random card.',
+    text:
+      'When this monster is summoned: your opponent sends the top 3 cards of their Deck to the Graveyard and discards 1 random card. ' +
+      'When this monster is destroyed by battle: your opponent discards 1 random card.',
     cry: 'My parasite is inside your deck!',
     effects: [
       {
@@ -2395,6 +2532,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'discard', count: 1, who: 'opp' },
         ],
       },
+      /* Killing it in battle costs them a card; killing it with an effect does
+         not. The parasite bites back only when something touches it. */
+      { trigger: 'onDestroyedByBattle', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
     ],
   },
 
@@ -2403,21 +2543,33 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        from the printed card that this engine cannot express per-battle. It
        flies with the swarm instead: a real, live wording the aura system
        backs. */
-    text: 'While you control another Insect, this monster gains 300 ATK. When summoned: draw 1 card.',
+    text: 'While you control another Insect, this monster gains 1000 ATK. When summoned: draw 1 card.',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
       {
         trigger: 'continuous',
         condition: { controlsOtherOfType: 'Insect' },
         ops: [],
-        aura: { target: SELF, atk: 300 },
+        aura: { target: SELF, atk: 1000 },
       },
     ],
   },
 
   leghul: {
-    text: 'This monster can attack your opponent directly.',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'directAttack', duration: 'permanent' }] }],
+    /* The one that gets under the wall and then goes and fetches the wall. */
+    text:
+      'This monster can attack your opponent directly. When it is summoned: add "Insect Barrier" from your Deck or Graveyard to your hand. ' +
+      'When it inflicts battle damage to your opponent: it gains 500 ATK.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'directAttack', duration: 'permanent' },
+          { op: 'search', filter: { slugs: ['insect-barrier'] }, orGrave: true },
+        ],
+      },
+      { trigger: 'onDealBattleDamage', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }] },
+    ],
   },
 
   'man-eating-treasure-chest': {

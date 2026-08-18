@@ -904,13 +904,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   'laser-cannon-armor': {
-    text: 'Equip to a monster you control: it gains 400 ATK and inflicts piercing battle damage.',
-    effects: [{ trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 400, def: 0, grants: ['pierce'] }] }],
+    text: 'Equip to a monster you control: it gains 800 ATK and inflicts piercing battle damage.',
+    effects: [{ trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 800, def: 0, grants: ['pierce'] }] }],
   },
 
   'insect-armor-with-laser-cannon': {
-    text: 'Equip to a monster you control: it gains 700 ATK and can attack twice each Battle Phase.',
-    effects: [{ trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 700, def: 0, grants: ['doubleAttack'] }] }],
+    text: 'Equip to a monster you control: it gains 800 ATK and can attack twice each Battle Phase.',
+    effects: [{ trigger: 'activate', targets: 1, ops: [{ op: 'equipTo', atk: 800, def: 0, grants: ['doubleAttack'] }] }],
   },
 
   'gift-of-the-mystical-elf': {
@@ -926,10 +926,21 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'insect-barrier': {
-    text: "Continuous Spell: your opponent's monsters lose 400 ATK and cannot attack during their next turn.",
+    /* A wall stretched over the hive rather than a debuff on the far side: the
+       toll is charged to whatever swings at an Insect, once, for that battle —
+       so a monster that stays home keeps every point it has, and the same
+       attacker pays again the next time it comes. */
+    text:
+      'Continuous Spell: when a monster your opponent controls attacks an Insect monster you control, ' +
+      'the attacking monster loses 1000 ATK for that battle. ' +
+      "When this card is activated: your opponent's monsters cannot attack during their next turn.",
     effects: [
       { trigger: 'activate', ops: [{ op: 'freezeMonsters', who: 'opp', turns: 1 }] },
-      { trigger: 'continuous', ops: [], aura: { target: OPP_ALL, atk: -400 } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { type: 'Insect' } }), grants: ['sapsAttacker'] },
+      },
     ],
   },
 

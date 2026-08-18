@@ -88,10 +88,10 @@ function newInstance(state: DuelState, slug: string, owner: PlayerId): CardInsta
     defMod: 0,
     turnAtkMod: 0,
     turnDefMod: 0,
-    // A moth knows which rung of its own ladder it is on. Done here rather than
-    // at each summon site so every route is covered by construction — drawn,
-    // Normal Summoned, revived by Monster Reborn or made by an effect.
-    counters: MOTH_STAGE[slug] ?? 0,
+    /* Every card starts empty. The moths used to be seeded here, back when the
+       ladder was climbed in place; now each rung places its own counters as it
+       is summoned, and a seed on top of that would count the same rung twice. */
+    counters: 0,
     equips: [],
     flags: {},
     turnFlags: {},
@@ -410,6 +410,10 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
+      if (eff.aura.perCounter) {
+        bonus.atk += (eff.aura.perCounter.atk ?? 0) * target.counters;
+        bonus.def += (eff.aura.perCounter.def ?? 0) * target.counters;
+      }
       if (eff.aura.per) {
         const n = auraCount(state, controller, eff.aura.per, source.uid);
         bonus.atk += n * (eff.aura.per.atk ?? 0);
@@ -449,6 +453,8 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotAttack')) merged.cannotAttack = true;
   if (grants.has('mustBeAttacked')) merged.mustBeAttacked = true;
   if (grants.has('shedsAbsorbedInstead')) merged.shedsAbsorbedInstead = true;
+  if (grants.has('sapsAttacker')) merged.sapsAttacker = true;
+  if (grants.has('paysWithGraveInstead')) merged.paysWithGraveInstead = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
@@ -669,12 +675,9 @@ function resetInstance(c: CardInstance) {
   c.defMod = 0;
   c.turnAtkMod = 0;
   c.turnDefMod = 0;
-  /* A moth knows which rung it is on — on revival too. `newInstance` seeds
-     the Evolution Counters by construction, and a hard 0 here silently
-     un-evolved a revived Great Moth: it came back needing to climb to the
-     rung it was already standing on. Everything that is not a moth still
-     resets to 0. */
-  c.counters = MOTH_STAGE[c.slug] ?? 0;
+  /* Counters reset with everything else, and a moth revived from the pile
+     places its own again on the way in — the summon does the seeding now. */
+  c.counters = 0;
   c.equips = [];
   c.flags = {};
   c.turnFlags = {};
@@ -754,12 +757,19 @@ interface PendingDeparture {
   c: CardInstance;
   controller: PlayerId;
   destroyed: boolean;
+  /** What it was carrying on the way out — see `toGrave`. */
+  counters: number;
 }
 
 function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
   for (const d of pending) {
+    /* Hand the card back what it was worth for the length of its own farewell.
+       A Cocoon of Evolution hatches whatever rung it had grown to, and it was
+       being asked that question after the pile had already blanked it. */
+    d.c.counters = d.counters;
     if (d.destroyed) fireTriggers(state, d.c, d.controller, 'onDestroyed', {});
     fireTriggers(state, d.c, d.controller, 'onSentToGrave', {});
+    d.c.counters = 0;
   }
 }
 
@@ -792,12 +802,13 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
   }
 
   const wasOnField = fromField && controller != null;
+  const counters = c.counters;
   resetInstance(c);
   state.players[c.owner].grave.push(c);
 
   if (wasOnField) {
-    if (defer) defer.push({ c, controller, destroyed });
-    else fireDepartures(state, [{ c, controller, destroyed }]);
+    if (defer) defer.push({ c, controller, destroyed, counters });
+    else fireDepartures(state, [{ c, controller, destroyed, counters }]);
   }
 }
 
@@ -899,6 +910,9 @@ interface EffectCtx {
   summoned?: string[];
   /** ATK of whatever this effect's own cost tributed, read before it left. */
   tributedAtk?: number[];
+  /** Counters the source was carrying when the effect was activated, read
+      before a `tributeSelf` cost sent it to the pile and blanked it. */
+  counters?: number;
   /** Set by negateAttack so battle resolution can be cancelled. */
   attackNegated?: boolean;
   battlePhaseEnded?: boolean;
@@ -1209,6 +1223,23 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
     return;
   }
+  /* Paid for rather than suffered, and paid from the Graveyard: while your
+     pile still holds one of this card's own kind, being destroyed banishes one
+     of them and the card stays where it is. Placed beside the shed above and
+     for the same reason — this is a price, not an immunity, so a God's blow
+     collects it too, and an empty pile means an ordinary death. */
+  if (flags.paysWithGraveInstead) {
+    const kin = card(c.slug).type;
+    const pile = state.players[found.controller].grave;
+    const at = pile.findIndex((g) => CARDS[g.slug]?.kind === 'monster' && CARDS[g.slug]?.type === kin);
+    if (at >= 0) {
+      const paid = pile.splice(at, 1)[0];
+      log(state, `${displayName(state, c)} feeds on ${displayName(state, paid)} and will not fall.`,
+        'effect', found.controller, logSlug(c));
+      anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
+      return;
+    }
+  }
   if (byBattle && flags.indestructibleByBattle && !divine) {
     log(state, `${displayName(state, c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
     return;
@@ -1298,6 +1329,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'gainAtk': {
         let amount = op.amount ?? 0;
         if (op.scale === 'perCardInGrave') amount = (op.amount ?? 0) * state.players[ctx.controller].grave.length;
+        else if (op.scale === 'perCardInEitherGrave') {
+          amount = (op.amount ?? 0) * (state.players.p1.grave.length + state.players.p2.grave.length);
+        }
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
         /* Multiplies whatever the op already carries, so the card writes its
            own rate: Garoozis says 100 per pip and a 4 is 400, in one beat. No
@@ -1316,12 +1350,18 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       }
-      case 'gainDef':
+      case 'gainDef': {
+        let amount = op.amount;
+        if (op.scale === 'perCardInGrave') amount = op.amount * state.players[ctx.controller].grave.length;
+        else if (op.scale === 'perCardInEitherGrave') {
+          amount = op.amount * (state.players.p1.grave.length + state.players.p2.grave.length);
+        }
         for (const t of resolveTargets(ctx, op.target)) {
-          if (op.duration === 'permanent') t.defMod += op.amount;
-          else t.turnDefMod += op.amount;
+          if (op.duration === 'permanent') t.defMod += amount;
+          else t.turnDefMod += amount;
         }
         break;
+      }
       case 'setAtk':
         for (const t of resolveTargets(ctx, op.target)) t.atkMod = op.value - baseAtk(t.slug);
         break;
@@ -1349,6 +1389,26 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           destroyCard(state, t, false, ctx);
           if (before && !findOnField(state, t.uid)) ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
         }
+        break;
+      case 'sendToGrave':
+        /* Not a destruction. `onSentToGrave` fires and `onDestroyed` does not,
+           which is the difference between a moth moulting and a moth dying. */
+        for (const t of resolveTargets(ctx, op.target)) {
+          const where = findOnField(state, t.uid);
+          if (where) toGrave(state, t.uid, true, false);
+        }
+        break;
+      case 'byCounters': {
+        /* Highest tier the source has actually reached — read off the ctx when
+           the card paid for this with its own body, because by then the pile
+           has blanked it. */
+        const have = ctx.counters ?? ctx.source.counters;
+        const tier = [...op.tiers].sort((a, b) => b.at - a.at).find((t) => have >= t.at);
+        if (tier) runOps(ctx, tier.ops);
+        break;
+      }
+      case 'paysWithGraveInstead':
+        applyFlag(ctx.source, 'paysWithGraveInstead', true, op.duration);
         break;
       case 'banish':
         for (const t of resolveTargets(ctx, op.target)) {
@@ -1691,10 +1751,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         if (!found) break;
         const old = displayName(state, ctx.source);
         ctx.source.slug = op.slug;
-        /* The new form starts on its own rung, not at zero — a Petit Moth
-           that evolved into Larvae Moth used to restart the climb from
-           nothing while a hand-summoned Larvae began at 2. */
-        ctx.source.counters = MOTH_STAGE[op.slug] ?? 0;
+        ctx.source.counters = 0;
         log(state, `${old} evolves into ${card(op.slug).name}!`, 'summon', ctx.controller);
         anim(state, { kind: 'fusion', uid: ctx.source.uid, slug: op.slug, player: ctx.controller });
         fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {});
@@ -1703,7 +1760,6 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'addCounter':
         ctx.source.counters += op.amount;
         log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
-        applyEvolution(state, ctx.source, ctx.controller);
         break;
       case 'negateAttack': {
         /* A God's blow cannot be refused. "They can attack over swords over
@@ -1980,41 +2036,6 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
     }
   }
-}
-
-/**
- * Where each rung of Petit Moth's ladder stands, in Evolution Counters.
- *
- * Weevil's deck holds Larvae Moth and both Great Moths as ordinary monsters, so
- * one can be Normal Summoned straight out of the hand — and it arrived with no
- * counters at all, needing three more End Phases to reach the rung *above* the
- * one it was already standing on. A moth summoned by hand now starts where a
- * moth that grew into it would be, so the ladder reads the same either way:
- * Larvae Moth is one End Phase from Great Moth however it got there.
- */
-const MOTH_STAGE: Record<string, number> = {
-  'petit-moth': 0,
-  'larvae-moth': 2,
-  'great-moth': 3,
-  'perfectly-ultimate-great-moth': 4,
-};
-
-/** Petit Moth's evolution chain, driven by Evolution Counters. */
-function applyEvolution(state: DuelState, c: CardInstance, controller: PlayerId) {
-  const chain: Record<string, [number, string]> = {
-    'petit-moth': [2, 'larvae-moth'],
-    'larvae-moth': [3, 'great-moth'],
-    'great-moth': [4, 'perfectly-ultimate-great-moth'],
-  };
-  const step = chain[c.slug];
-  if (!step) return;
-  const [needed, next] = step;
-  if (c.counters < needed) return;
-  const old = displayName(state, c);
-  c.slug = next;
-  log(state, `${old} evolves into ${card(next).name}!`, 'summon', controller);
-  anim(state, { kind: 'fusion', uid: c.uid, slug: next, player: controller });
-  fireTriggers(state, c, controller, 'onSummon', {});
 }
 
 function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, controller: PlayerId): boolean {
@@ -2369,7 +2390,15 @@ function resolveBattle(state: DuelState) {
     player: controller,
   });
 
-  const atk = effAtk(state, attacker, controller);
+  /* Insect Barrier stretches over the hive: anything swinging at a monster it
+     shields arrives 1000 lighter, and only for this battle — the toll is taken
+     off the number the battle is measured with, never off the card. */
+  const toll = effFlags(state, target, defender).sapsAttacker ? 1000 : 0;
+  if (toll) {
+    log(state, `${displayName(state, target)}'s barrier saps ${displayName(state, attacker)} of ${toll} ATK.`,
+      'effect', defender, logSlug(target));
+  }
+  const atk = Math.max(0, effAtk(state, attacker, controller) - toll);
   const flags = effFlags(state, attacker, controller);
 
   /**
@@ -2553,6 +2582,15 @@ function endTurn(state: DuelState) {
   for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnEnd', {});
   if (p.spellTrap?.face === 'up') fireTriggers(state, p.spellTrap, pid, 'onOwnTurnEnd', {});
   if (p.field) fireTriggers(state, p.field, pid, 'onOwnTurnEnd', {});
+  /* And the clock cards, on both sides — a turn ending is a turn ending
+     whoever took it. Fired after the active player's own, so the ordering
+     within a single End Phase stays "yours, then everybody's". */
+  for (const side of ['p1', 'p2'] as PlayerId[]) {
+    const sp = state.players[side];
+    for (const m of sp.monsters) if (m && m.face === 'up') fireTriggers(state, m, side, 'onAnyTurnEnd', {});
+    if (sp.spellTrap?.face === 'up') fireTriggers(state, sp.spellTrap, side, 'onAnyTurnEnd', {});
+    if (sp.field) fireTriggers(state, sp.field, side, 'onAnyTurnEnd', {});
+  }
   if (state.winner) return;
 
   returnBorrowedGods(state);
@@ -3461,6 +3499,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          *before* the tribute, because a card in the Graveyard has no
          effective stats to read. */
       const tributedAtk: number[] = [];
+      const sourceCounters = c.counters;
       if (eff.cost?.tribute || eff.cost?.tributeSelf) {
         const fodder = tributeFodder(state, pid, eff, c.uid);
         const need = eff.cost.tributeSelf ? 1 : (eff.cost.tribute ?? 0);
@@ -3482,7 +3521,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       c.effectUsedOnTurn = state.turn;
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? eff.label });
-      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk };
+      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk, counters: sourceCounters };
       runOps(ctx, eff.ops);
       return { state };
     }

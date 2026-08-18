@@ -151,6 +151,14 @@ export type Trigger =
   | 'onOwnTurnStart'
   /** End of controller's turn. */
   | 'onOwnTurnEnd'
+  /**
+   * End of *any* turn, whoever is taking it.
+   *
+   * Cocoon of Evolution thickens on a clock rather than on a player: "gains 1
+   * Evolution Counter at the end of each turn" is twice the rate of an
+   * own-turn counter and is what the shell is priced at.
+   */
+  | 'onAnyTurnEnd'
   /** Spell activation. */
   | 'activate'
   /** Manual once-per-turn activation from the field during Main Phase. */
@@ -273,12 +281,23 @@ export type Op =
   /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
    *  written on the card: Headless Knight counts 100 a corpse, the Magician of
    *  Black Chaos counts 200. `perMonsterOnField` still carries its own 300. */
-  | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
-  | { op: 'gainDef'; amount: number; target: Selector; duration: Duration }
+  | { op: 'gainAtk'; amount?: number; scale?: 'targetAtk' | 'perCardInGrave' | 'perCardInEitherGrave' | 'perMonsterOnField' | 'dicePips'; target: Selector; duration: Duration }
+  /** `scale` multiplies `amount` the same way `gainAtk`'s does — the Perfectly
+   *  Ultimate Great Moth counts every card in both Graveyards, in both stats. */
+  | { op: 'gainDef'; amount: number; scale?: 'perCardInGrave' | 'perCardInEitherGrave'; target: Selector; duration: Duration }
   | { op: 'setAtk'; value: number; target: Selector }
   | { op: 'halveAtk'; target: Selector }
   | { op: 'swapAtkDef'; target: Selector }
   | { op: 'destroy'; target: Selector }
+  /**
+   * Sent to the Graveyard without being destroyed.
+   *
+   * The moths climb this way: Petit Moth is not killed at the start of your
+   * turn, it leaves and something bigger arrives. `onSentToGrave` fires and
+   * `onDestroyed` does not, which is the whole difference — a card that
+   * answers destruction should not answer a moult.
+   */
+  | { op: 'sendToGrave'; target: Selector }
   | { op: 'banish'; target: Selector }
   | { op: 'bounce'; target: Selector }
   /** `turns` is how many turns a non-permanent borrowing lasts; 1 by default,
@@ -364,6 +383,15 @@ export type Op =
   | { op: 'preventBattleDestruction'; who: Side; duration: Duration }
   | { op: 'indestructibleByBattle'; duration: Duration }
   | { op: 'indestructibleByEffect'; duration: Duration }
+  /**
+   * Destruction is paid for out of the Graveyard instead of being suffered.
+   *
+   * Relinquished's `shedsAbsorbedInstead` with a different purse: while your
+   * Graveyard holds a monster of this card's own type, being destroyed banishes
+   * one of them and this stays where it is. The Perfectly Ultimate Great Moth
+   * feeds on its own hive, and when the hive is gone it dies like anything.
+   */
+  | { op: 'paysWithGraveInstead'; duration: Duration }
   | { op: 'untargetable'; duration: Duration }
   | { op: 'skipDraw'; who: Side; turns: number }
   | { op: 'skipBattlePhase'; who: Side; turns: number }
@@ -398,6 +426,13 @@ export type Op =
    *  says `random` and takes whichever Fiend answers. */
   | { op: 'stealFromGrave'; filter?: CardFilter; from?: 'opp' | 'either' | 'own'; pick?: 'strongest' | 'random' }
   | { op: 'coinFlip'; heads: Op[]; tails: Op[] }
+  /**
+   * Runs one branch chosen by how many counters the source is carrying —
+   * the highest tier it has reached, like `coinFlip` but decided by the board
+   * rather than by chance. Cocoon of Evolution hatches whatever it has grown
+   * far enough to hatch.
+   */
+  | { op: 'byCounters'; tiers: { at: number; ops: Op[] }[] }
   | { op: 'diceRoll'; perPip: Op[] }
   | { op: 'forceDefense'; target: Selector }
   | { op: 'forceAttackPosition'; target: Selector }
@@ -430,6 +465,11 @@ export type EquipGrant =
    *  holds anything, being destroyed sheds the lot instead and the monster
    *  stands there at its own printed stats; empty, it dies like anything. */
   | 'shedsAbsorbedInstead'
+  /** Anything attacking this monster swings 1000 lighter, for that battle
+   *  only — Insect Barrier stretched across the hive. */
+  | 'sapsAttacker'
+  /** See the `paysWithGraveInstead` op. */
+  | 'paysWithGraveInstead'
   /** Attacks every opposing monster once each Battle Phase. */
   | 'attackAll'
   /**
@@ -506,6 +546,10 @@ export interface CardEffect {
      * Counting only ever looks at printed card data, never effective stats, so
      * evaluating it from inside the stat calculation cannot recurse.
      */
+    /** Stats per Evolution Counter on the card the aura is landing on. The
+     *  moths are worth what they have grown, read live so a counter added this
+     *  turn is worth its ATK this turn. */
+    perCounter?: { atk?: number; def?: number };
     per?: {
       /**
        * Where to count: one side's Graveyard or both, one side's field or both,
@@ -648,6 +692,10 @@ export interface CardFlags {
   cannotAttack?: boolean;
   mustBeAttacked?: boolean;
   shedsAbsorbedInstead?: boolean;
+  /** See the `sapsAttacker` grant. */
+  sapsAttacker?: boolean;
+  /** See the `paysWithGraveInstead` op. */
+  paysWithGraveInstead?: boolean;
 }
 
 export interface CardInstance {

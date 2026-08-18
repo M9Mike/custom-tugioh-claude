@@ -943,55 +943,372 @@ console.log('\nMagician of Faith reaches for your own Graveyard first');
   ok(!took.includes('monster-reborn'), 'and leaves your own Graveyard alone', took.join(', '));
 }
 
-console.log('\nA moth knows which rung of its own ladder it is on');
+console.log('\nA moth places its own counters as it arrives');
 {
-  /* Larvae Moth and both Great Moths sit in Weevil's main deck, so one can be
-     Normal Summoned straight out of the hand — and it arrived with no counters,
-     needing three more End Phases to reach the rung above the one it was
-     already standing on. */
-  /* Read off a real Weevil deck, not a card built by this file — the engine
-     seeds the counters where every instance is made, and a hand-rolled one
-     would sail past that and prove nothing about the game. */
+  /* The ladder used to be climbed in place — every instance was born already
+     seeded at its rung and grew into the next one on the field. It is a relay
+     now: each moth places its own counters on the way in and hands the next
+     one up at the start of your turn, so a seed at construction would count
+     the same rung twice. Read off a real Weevil deck, because that is where
+     the seeding used to happen. */
   const weevil = createDuel({ seed: 3, p1: { duelistId: 'weevil', name: 'W' }, p2: { duelistId: 'yugi', name: 'Y' } });
   const held = [...weevil.players.p1.deck, ...weevil.players.p1.hand];
-  const stages: Array<[string, number]> = [
-    ['petit-moth', 0],
-    ['larvae-moth', 2],
-    ['great-moth', 3],
-    ['perfectly-ultimate-great-moth', 4],
-  ];
-  for (const [slug, want] of stages) {
+  for (const slug of ['petit-moth', 'larvae-moth', 'great-moth', 'perfectly-ultimate-great-moth']) {
     const found = held.filter((c) => c.slug === slug);
     ok(
-      found.length > 0 && found.every((c) => c.counters === want),
-      `${CARDS[slug].name} starts on ${want}`,
+      found.length > 0 && found.every((c) => c.counters === 0),
+      `${CARDS[slug].name} waits in the deck on nothing`,
       found.length ? `got ${found.map((c) => c.counters).join('/')}` : 'not in the deck'
     );
   }
-  // And the ladder still climbs: Petit Moth reaches Larvae Moth on the second
-  // End Phase, which is the same rung a hand-summoned Larvae Moth starts on.
-  const s = fresh();
-  const petit = card(ME, 'petit-moth');
-  s.players[ME].monsters[0] = petit;
-  let cur = s;
-  for (let i = 0; i < 2; i++) {
-    cur = act(cur, ME, { type: 'endTurn' });
-    cur = act(cur, FOE, { type: 'endTurn' });
-  }
-  ok(cur.players[ME].monsters[0]?.slug === 'larvae-moth', 'Petit Moth becomes Larvae Moth on its second End Phase', cur.players[ME].monsters[0]?.slug);
 }
 
 console.log('\nInsect Barrier does both halves of its sentence');
 {
+  /* It stopped being a debuff on the far side. Their monsters keep every point
+     they have while they stay home; the thousand is a toll, charged to whatever
+     swings at an Insect, for that battle only — so the same attacker pays again
+     the next time it comes. Two assertions, therefore: nothing is taken off the
+     printed number, and the swing lands as if the attacker were 1000 smaller. */
   const s = fresh();
   const barrier = card(ME, 'insect-barrier');
   s.players[ME].hand.push(barrier);
   const ox = card(FOE, 'battle-ox');
   s.players[FOE].monsters[0] = ox;
   const after = act(s, ME, { type: 'activateSpell', uid: barrier.uid, targets: [] });
-  ok(effAtk(after, after.players[FOE].monsters[0]!, FOE) === 1700 - 400, 'their monsters lose 400 ATK', `${effAtk(after, after.players[FOE].monsters[0]!, FOE)}`);
+  ok(effAtk(after, after.players[FOE].monsters[0]!, FOE) === 1700, 'their monsters keep their ATK while they stay home', `${effAtk(after, after.players[FOE].monsters[0]!, FOE)}`);
   const theirTurn = act(after, ME, { type: 'endTurn' });
   ok(!canAttackWith(theirTurn, FOE, theirTurn.players[FOE].monsters[0]!), 'and cannot attack on their next turn');
+
+  /* The toll itself. A 1700 Battle Ox into a 1200 Killer Needle wins every day
+     — unless the wall is up, in which case it swings as a 700 and dies. */
+  const t = fresh('battle');
+  t.players[ME].spellTrap = card(ME, 'insect-barrier');
+  t.players[ME].monsters[0] = card(ME, 'killer-needle');
+  const bug = t.players[ME].monsters[0]!;
+  bug.summonedOnTurn = 0;
+  const raider = card(FOE, 'battle-ox');
+  raider.summonedOnTurn = 0;
+  t.players[FOE].monsters[0] = raider;
+  t.active = FOE;
+  const swung = act(t, FOE, { type: 'attack', uid: raider.uid, targetUid: bug.uid });
+  ok(!swung.players[FOE].monsters[0], 'a 1700 that swings at an Insect swings as a 700 and dies', swung.players[FOE].monsters[0]?.slug ?? 'gone');
+  ok(!!swung.players[ME].monsters[0], 'and the Insect it charged at is still standing');
+}
+
+console.log('\nWeevil: the hive, and the ladder that climbs out of it');
+{
+  /* Both cannons went to 800. They are the only two cards Basic Insect can
+     fetch, and it fetches one of them to wear. */
+  for (const slug of ['laser-cannon-armor', 'insect-armor-with-laser-cannon']) {
+    const s = fresh();
+    const host = card(ME, 'kuwagata');
+    s.players[ME].monsters[0] = host;
+    const armor = card(ME, slug);
+    s.players[ME].hand.push(armor);
+    const worn = act(s, ME, { type: 'activateSpell', uid: armor.uid, targets: [host.uid] });
+    const grew = effAtk(worn, worn.players[ME].monsters[0]!, ME) - effAtk(s, host, ME);
+    ok(grew === 800, `${CARDS[slug].name} is worth 800`, `${grew}`);
+  }
+
+  /* Basic Insect: a 500 body that arrives carrying a cannon and, on the way
+     out, reaches back into the pile for the wall. The pick is real — both
+     cannons are in the Deck and the player names one. */
+  {
+    const s = fresh();
+    ok(baseAtkOf('basic-insect') === 500, 'Basic Insect is a 500', `${baseAtkOf('basic-insect')}`);
+    const bug = card(ME, 'basic-insect');
+    s.players[ME].hand = [bug];
+    s.players[ME].deck = [card(ME, 'laser-cannon-armor'), card(ME, 'insect-armor-with-laser-cannon')];
+    const spec = targetSpecFor('basic-insect', 'onSummon');
+    const offered = spec ? targetCandidates(s, ME, spec).length : 0;
+    ok(offered === 2, 'and it offers both cannons to choose from', `${offered}`);
+    const chosen = s.players[ME].deck[1].uid;
+    const down = act(s, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [chosen] });
+    ok(down.players[ME].hand.some((h) => h.slug === 'insect-armor-with-laser-cannon'), 'and hands you the one you named');
+
+    /* And the wall, out of the Graveyard, as it dies. */
+    const g = fresh();
+    const dying = card(ME, 'basic-insect');
+    g.players[ME].monsters[0] = dying;
+    g.players[ME].grave.push(card(ME, 'insect-barrier'));
+    const hole = card(ME, 'dark-hole');
+    g.players[ME].hand.push(hole);
+    const wiped = act(g, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(wiped.players[ME].hand.some((h) => h.slug === 'insect-barrier'), 'and pulls the wall back out of the Graveyard as it dies');
+  }
+
+  /* Leghul fetches the wall from either pile, and grows on every hit it lands
+     — it attacks directly, so every swing lands. */
+  {
+    const s = fresh();
+    const bug = card(ME, 'leghul');
+    s.players[ME].hand = [bug];
+    s.players[ME].deck = [card(ME, 'insect-barrier'), card(ME, 'kuriboh')];
+    const down = act(s, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(down.players[ME].hand.some((h) => h.slug === 'insect-barrier'), 'Leghul comes in carrying the wall');
+
+    const gr = fresh();
+    const bug2 = card(ME, 'leghul');
+    gr.players[ME].hand = [bug2];
+    gr.players[ME].deck = [card(ME, 'kuriboh')];
+    gr.players[ME].grave.push(card(ME, 'insect-barrier'));
+    const down2 = act(gr, ME, { type: 'normalSummon', uid: bug2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(down2.players[ME].hand.some((h) => h.slug === 'insect-barrier'), 'and out of the Graveyard when the Deck has none');
+
+    const b = fresh('battle');
+    const crawler = card(ME, 'leghul');
+    crawler.summonedOnTurn = 0;
+    b.players[ME].monsters[0] = crawler;
+    const before = effAtk(b, crawler, ME);
+    const hit = act(b, ME, { type: 'attack', uid: crawler.uid, targetUid: null });
+    const after = effAtk(hit, hit.players[ME].monsters[0]!, ME);
+    ok(after === before + 500, 'and it grows 500 on every hit it lands', `${before} → ${after}`);
+  }
+
+  /* Insect Soldiers of the Sky: a thousand, not eight hundred, and only over
+     company. */
+  {
+    const alone = fresh();
+    const flier = card(ME, 'insect-soldiers-of-the-sky');
+    alone.players[ME].monsters[0] = flier;
+    ok(effAtk(alone, flier, ME) === 1000, 'Insect Soldiers of the Sky alone is its printed 1000', `${effAtk(alone, flier, ME)}`);
+    const swarm = structuredClone(alone);
+    swarm.players[ME].monsters[1] = card(ME, 'killer-needle');
+    ok(effAtk(swarm, swarm.players[ME].monsters[0]!, ME) === 2000, 'and 1000 more over a hive-mate', `${effAtk(swarm, swarm.players[ME].monsters[0]!, ME)}`);
+  }
+
+  /* Parasite Paracide bites the hand that kills it in battle — and only in
+     battle. Dark Hole takes it for free. */
+  {
+    const b = fresh('battle');
+    const bug = card(ME, 'parasite-paracide');
+    b.players[ME].monsters[0] = bug;
+    const killer = card(FOE, 'blue-eyes-white-dragon');
+    killer.summonedOnTurn = 0;
+    b.players[FOE].monsters[0] = killer;
+    b.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+    b.active = FOE;
+    const slain = act(b, FOE, { type: 'attack', uid: killer.uid, targetUid: bug.uid });
+    ok(slain.players[FOE].hand.length === 1, 'Parasite Paracide costs them a card when battle kills it', `${slain.players[FOE].hand.length} left`);
+
+    const e = fresh();
+    const bug2 = card(ME, 'parasite-paracide');
+    e.players[ME].monsters[0] = bug2;
+    e.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+    const hole = card(ME, 'dark-hole');
+    e.players[ME].hand.push(hole);
+    const wiped = act(e, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(wiped.players[FOE].hand.length === 2, 'and costs them nothing when an effect does', `${wiped.players[FOE].hand.length} left`);
+  }
+
+  /* Flying Kamakiri #1 reaches for any Insect, not only the biggest. */
+  {
+    const s = fresh();
+    const bug = card(ME, 'flying-kamakiri-1');
+    s.players[ME].monsters[0] = bug;
+    s.players[ME].deck = [card(ME, 'petit-moth'), card(ME, 'kuriboh')];
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand.push(hole);
+    const wiped = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(wiped.players[ME].hand.some((h) => h.slug === 'petit-moth'), 'Flying Kamakiri #1 finds a small Insect too');
+  }
+
+  /* Kuwagata is worth the swarm, living and dead. */
+  {
+    const s = fresh();
+    const beetle = card(ME, 'kuwagata');
+    s.players[ME].monsters[0] = beetle;
+    const base = CARDS['kuwagata'].atk!;
+    ok(effAtk(s, beetle, ME) === base + 400, 'Kuwagata counts itself among the living', `${effAtk(s, beetle, ME)}`);
+    const more = structuredClone(s);
+    more.players[FOE].monsters[0] = card(FOE, 'killer-needle');
+    ok(effAtk(more, more.players[ME].monsters[0]!, ME) === base + 800, 'and counts their Insects too — the field, not your side', `${effAtk(more, more.players[ME].monsters[0]!, ME)}`);
+    const dead = structuredClone(s);
+    dead.players[ME].grave.push(card(ME, 'petit-moth'), card(ME, 'leghul'));
+    ok(effAtk(dead, dead.players[ME].monsters[0]!, ME) === base + 400 + 400, 'and 200 for each one in your Graveyard', `${effAtk(dead, dead.players[ME].monsters[0]!, ME)}`);
+  }
+
+  /* Killer Needle grows on the damage it deals, and there is always another
+     one — sent to the Graveyard by any road, not only destroyed. */
+  {
+    const b = fresh('battle');
+    const needle = card(ME, 'killer-needle');
+    needle.summonedOnTurn = 0;
+    b.players[ME].monsters[0] = needle;
+    b.players[ME].deck = [card(ME, 'killer-needle')];
+    const before = effAtk(b, needle, ME);
+    const hit = act(b, ME, { type: 'attack', uid: needle.uid, targetUid: null });
+    const grown = hit.players[ME].monsters.find((m) => m?.uid === needle.uid);
+    ok(!!grown && effAtk(hit, grown, ME) === before + 500, 'Killer Needle grows 500 on the damage it deals', `${grown ? effAtk(hit, grown, ME) : 'gone'}`);
+    ok(hit.players[FOE].lp === 4000 - 1200 - 500, 'and the extra 500 lands on top of the battle damage', `${hit.players[FOE].lp}`);
+
+    /* Tributed, not destroyed — the next needle still comes. */
+    const t = fresh();
+    const spent = card(ME, 'killer-needle');
+    t.players[ME].monsters[0] = spent;
+    t.players[ME].deck = [card(ME, 'killer-needle')];
+    const big = card(ME, 'summoned-skull');
+    t.players[ME].hand = [big];
+    const paid = act(t, ME, { type: 'normalSummon', uid: big.uid, zone: 1, position: 'atk', face: 'up', tributes: [spent.uid] });
+    ok(on(paid, ME).some((m) => m.slug === 'killer-needle'), 'and another one answers even when it was spent rather than killed', on(paid, ME).map((m) => m.slug).join(','));
+  }
+
+  /* Hercules Beetle thickens on the hive's dead. */
+  {
+    const s = fresh();
+    const beetle = card(ME, 'hercules-beetle');
+    s.players[ME].monsters[0] = beetle;
+    const base = effDef(s, beetle, ME);
+    const buried = structuredClone(s);
+    buried.players[ME].grave.push(card(ME, 'leghul'), card(ME, 'petit-moth'), card(ME, 'dark-hole'));
+    const now = effDef(buried, buried.players[ME].monsters[0]!, ME);
+    ok(now === base + 1000, 'Hercules Beetle gains 500 DEF for each Insect in your Graveyard, and nothing for a Spell', `${base} → ${now}`);
+  }
+}
+
+console.log('\nThe cocoon thickens, and hatches whatever it has grown into');
+{
+  /* A counter at the end of every turn, whoever is sitting — and 500 DEF a
+     counter while it waits. */
+  const s = fresh();
+  const shell = card(ME, 'cocoon-of-evolution');
+  s.players[ME].monsters[0] = shell;
+  const base = effDef(s, shell, ME);
+  let cur = act(s, ME, { type: 'endTurn' });
+  ok(cur.players[ME].monsters[0]!.counters === 1, 'the Cocoon takes a counter at the end of your turn', `${cur.players[ME].monsters[0]!.counters}`);
+  cur = act(cur, FOE, { type: 'endTurn' });
+  ok(cur.players[ME].monsters[0]!.counters === 2, 'and at the end of theirs — every turn, not only yours', `${cur.players[ME].monsters[0]!.counters}`);
+  ok(effDef(cur, cur.players[ME].monsters[0]!, ME) === base + 1000, 'and it is 500 DEF thicker for each one', `${effDef(cur, cur.players[ME].monsters[0]!, ME)}`);
+
+  /* Cracked open on purpose it gives up the rung it has reached. */
+  const rungs: Array<[number, string]> = [
+    [1, 'petit-moth'],
+    [2, 'larvae-moth'],
+    [3, 'great-moth'],
+    [4, 'perfectly-ultimate-great-moth'],
+  ];
+  for (const [n, slug] of rungs) {
+    const h = fresh();
+    const c = card(ME, 'cocoon-of-evolution');
+    c.counters = n;
+    h.players[ME].monsters[0] = c;
+    h.players[ME].deck = rungs.map(([, sl]) => card(ME, sl));
+    const out = act(h, ME, { type: 'ignition', uid: c.uid, targets: [] });
+    ok(on(out, ME).some((m) => m.slug === slug), `at ${n} counters the Cocoon hatches ${CARDS[slug].name}`, on(out, ME).map((m) => m.slug).join(',') || 'nothing');
+  }
+
+  /* Broken by somebody else it gives up one rung less, and never the Ultimate. */
+  {
+    const h = fresh();
+    const c = card(ME, 'cocoon-of-evolution');
+    c.counters = 4;
+    h.players[ME].monsters[0] = c;
+    h.players[ME].deck = rungs.map(([, sl]) => card(ME, sl));
+    const hole = card(ME, 'dark-hole');
+    h.players[ME].hand.push(hole);
+    const wiped = act(h, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const born = on(wiped, ME).map((m) => m.slug);
+    ok(born.includes('great-moth'), 'a Cocoon broken at 4 gives up a Great Moth', born.join(',') || 'nothing');
+    ok(!born.includes('perfectly-ultimate-great-moth'), 'and never the Ultimate — that one is only ever born on purpose');
+  }
+}
+
+console.log('\nThe ladder is a relay now, not a climb');
+{
+  /* Each rung places its own counters as it lands, then hands the next one up
+     at the start of your turn and goes to the Graveyard itself. */
+  const chain: Array<[string, string, number]> = [
+    ['petit-moth', 'larvae-moth', 1],
+    ['larvae-moth', 'great-moth', 2],
+    ['great-moth', 'perfectly-ultimate-great-moth', 3],
+  ];
+  for (const [from, to, counters] of chain) {
+    /* Great Moth is Level 8, so it comes down over two Tributes. Pay whatever
+       its level asks rather than hard-coding a number that will rot. */
+    const s = fresh();
+    const moth = card(ME, from);
+    s.players[ME].hand = [moth];
+    const need = tributesRequired(from, s, ME);
+    const tributes: string[] = [];
+    for (let i = 0; i < need; i++) {
+      const fodder = card(ME, 'kuriboh');
+      s.players[ME].monsters[i + 1] = fodder;
+      tributes.push(fodder.uid);
+    }
+    const down = act(s, ME, { type: 'normalSummon', uid: moth.uid, zone: 0, position: 'atk', face: 'up', tributes });
+    const landed = down.players[ME].monsters.find((m) => m?.slug === from);
+    ok(landed?.counters === counters, `${CARDS[from].name} places its own ${counters} as it lands`, `${landed?.counters}`);
+
+    const relay = structuredClone(down);
+    relay.players[ME].deck = [card(ME, to)];
+    let cur = act(relay, ME, { type: 'endTurn' });
+    cur = act(cur, FOE, { type: 'endTurn' });
+    ok(on(cur, ME).some((m) => m.slug === to), `and hands ${CARDS[to].name} up at the start of your turn`, on(cur, ME).map((m) => m.slug).join(',') || 'nothing');
+    ok(cur.players[ME].grave.some((g) => g.slug === from), `while ${CARDS[from].name} itself goes to the Graveyard`);
+  }
+
+  /* And the counters are worth what the cards say. */
+  const sizes: Array<[string, number, number, number]> = [
+    ['petit-moth', 1, 500, 500],
+    ['larvae-moth', 2, 500, 1000],
+    ['great-moth', 3, 1000, 1000],
+  ];
+  for (const [slug, n, atkPer, defPer] of sizes) {
+    const s = fresh();
+    const moth = card(ME, slug);
+    s.players[ME].monsters[0] = moth;
+    const bare = { a: effAtk(s, moth, ME), d: effDef(s, moth, ME) };
+    moth.counters = n;
+    ok(effAtk(s, moth, ME) === bare.a + atkPer * n, `${CARDS[slug].name} is worth ${atkPer} ATK a counter`, `${effAtk(s, moth, ME)}`);
+    ok(effDef(s, moth, ME) === bare.d + defPer * n, `and ${defPer} DEF a counter`, `${effDef(s, moth, ME)}`);
+  }
+}
+
+console.log('\nThe Ultimate clears the table and then measures the wreckage');
+{
+  /* Born the only way it can be: hatched out of a full Cocoon, so the summon
+     trigger fires the way the board fires it rather than being poked by hand. */
+  const t = fresh();
+  t.players[ME].monsters[0] = card(ME, 'kuriboh');
+  t.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+  t.players[FOE].monsters[1] = card(FOE, 'summoned-skull');
+  t.players[FOE].spellTrap = card(FOE, 'insect-barrier');
+  t.players[FOE].hand = Array.from({ length: 6 }, () => card(FOE, 'kuriboh'));
+  t.players[ME].deck = [card(ME, 'perfectly-ultimate-great-moth')];
+  const cocoon = card(ME, 'cocoon-of-evolution');
+  cocoon.counters = 4;
+  t.players[ME].monsters[1] = cocoon;
+  const out = act(t, ME, { type: 'ignition', uid: cocoon.uid, targets: [] });
+  const apex = on(out, ME).find((m) => m.slug === 'perfectly-ultimate-great-moth');
+  ok(!!apex, 'the Ultimate is born', on(out, ME).map((m) => m.slug).join(',') || 'nothing');
+  ok(on(out, ME).length === 1 && on(out, FOE).length === 0, 'and every other monster on the field is gone', `${on(out, ME).length} mine, ${on(out, FOE).length} theirs`);
+  ok(out.players[FOE].spellTrap === null, 'their backrow with it');
+  ok(out.players[FOE].hand.length === 1, 'and their hand is five cards lighter', `${out.players[FOE].hand.length} left`);
+  const graves = out.players[ME].grave.length + out.players[FOE].grave.length;
+  const printed = CARDS['perfectly-ultimate-great-moth'].atk!;
+  ok(apex !== undefined && effAtk(out, apex, ME) === printed + 100 * graves, 'and it reads the wreckage it just made for its own size', `${apex ? effAtk(out, apex, ME) : '?'} vs ${printed} + 100×${graves}`);
+
+  /* And it pays for its life out of the hive — born the same way, so the
+     protection is the card's and not the harness's. */
+  const born2 = (insectsInPile: number) => {
+    const d = fresh();
+    d.players[ME].deck = [card(ME, 'perfectly-ultimate-great-moth')];
+    const shell = card(ME, 'cocoon-of-evolution');
+    shell.counters = 4;
+    d.players[ME].monsters[0] = shell;
+    const hatched = act(d, ME, { type: 'ignition', uid: shell.uid, targets: [] });
+    hatched.players[ME].grave = hatched.players[ME].grave.filter((g) => CARDS[g.slug]?.type !== 'Insect');
+    for (let i = 0; i < insectsInPile; i++) hatched.players[ME].grave.push(card(ME, 'leghul'));
+    const hole = card(ME, 'dark-hole');
+    hatched.players[ME].hand.push(hole);
+    return act(hatched, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  };
+  const shielded = born2(1);
+  ok(on(shielded, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'Dark Hole cannot take the Ultimate while an Insect lies in the pile', on(shielded, ME).map((m) => m.slug).join(',') || 'gone');
+  ok(!shielded.players[ME].grave.some((g) => g.slug === 'leghul'), 'the Insect in the pile is spent instead');
+  const bare = born2(0);
+  ok(!on(bare, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'and once the hive is empty it dies like anything else');
 }
 
 console.log('\nA Token says what it is');
@@ -2067,12 +2384,16 @@ console.log('\nThe balance pass: a theme is the reason a deck wins');
   const impDown = act(fi, ME, { type: 'normalSummon', uid: imp.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
   ok(impDown.players[ME].hand.some((h) => h.slug === 'right-leg-of-the-forbidden-one'), 'Feral Imp finds a piece of the Forbidden One');
 
-  const pm = fresh();
-  const moth = card(ME, 'petit-moth');
-  pm.players[ME].hand = [moth];
-  pm.players[ME].deck = [card(ME, 'cocoon-of-evolution'), card(ME, 'kuriboh')];
-  const mothDown = act(pm, ME, { type: 'normalSummon', uid: moth.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
-  ok(mothDown.players[ME].hand.some((h) => h.slug === 'cocoon-of-evolution'), 'Petit Moth fetches its Cocoon');
+  /* Petit Moth used to stand here fetching its Cocoon. Its card was rewritten
+     from the ground up — it places its own counter now and hands the ladder up
+     itself — so the seat goes to the other bug that comes in carrying
+     something: Basic Insect, whose whole worth is the cannon it arrives with. */
+  const bi = fresh();
+  const bug = card(ME, 'basic-insect');
+  bi.players[ME].hand = [bug];
+  bi.players[ME].deck = [card(ME, 'laser-cannon-armor'), card(ME, 'kuriboh')];
+  const bugDown = act(bi, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(bugDown.players[ME].hand.some((h) => h.slug === 'laser-cannon-armor'), 'Basic Insect arrives carrying a cannon');
 
   // And the Cocoon holds the larva: battle cannot crack the shell around it.
   const shell = fresh();

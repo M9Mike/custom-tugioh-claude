@@ -238,6 +238,14 @@ interface Check {
 /** True when a monster is on my side now that was not there before. */
 const arrived = (a: Snap, b: Snap) => b.me.uids.some((u) => !a.me.uids.includes(u));
 
+/** Did any named card leave this side's Graveyard, whatever else arrived in it. */
+function leftGrave(a: Side, b: Side): boolean {
+  const tally = (xs: string[]) => xs.reduce((m, s) => m.set(s, (m.get(s) ?? 0) + 1), new Map<string, number>());
+  const after = tally(b.graveSlugs);
+  for (const [slug, n] of tally(a.graveSlugs)) if ((after.get(slug) ?? 0) < n) return true;
+  return false;
+}
+
 function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter: Set<string>): Check | null {
   const grew = (x: number, y: number) => y > x;
   const fell = (x: number, y: number) => y < x;
@@ -286,10 +294,16 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
        your own. So this asks that a card left *a* Graveyard, and the two
        preferences are pinned by name in `npm run rules`, where the distinction
        is the point rather than an implementation detail. */
+    /* Counting the pile is not enough for a card that recurs on the way out.
+       Basic Insect fishes its Barrier back as it is destroyed, so one card
+       leaves the Graveyard in the same breath that the Insect itself arrives
+       there and the total comes out level — the same net-zero trap as `search`
+       and `discard`, one pile over. Ask by name instead: did some slug's count
+       in a Graveyard go down. */
     case 'stealFromGrave':
       return {
         what: 'takes a card out of a Graveyard',
-        ok: arrived(a, b) || fell(a.foe.grave, b.foe.grave) || fell(a.me.grave, b.me.grave),
+        ok: arrived(a, b) || leftGrave(a.foe, b.foe) || leftGrave(a.me, b.me),
       };
     case 'takeControl':
       return { what: "takes control of an opponent's monster", ok: b.me.borrowed > a.me.borrowed || fell(a.foe.monsters, b.foe.monsters) };
@@ -1018,8 +1032,12 @@ for (const def of Object.values(CARDS)) {
           what:
             `aura applies (${aura.atk ?? 0}/${aura.def ?? 0}` +
             (aura.per ? ` +${aura.per.atk ?? 0}/${aura.per.def ?? 0} per ${aura.per.zone}` : '') +
+            (aura.perCounter ? ` +${aura.perCounter.atk ?? 0}/${aura.perCounter.def ?? 0} per counter` : '') +
             `${aura.grants?.length ? ' +' + aura.grants.join(',') : ''})`,
-          ok: moved && !(onlySelf && !aura.grants?.length && !aura.def && !aura.per),
+          /* A counter-scaled aura is worth nothing on a card the harness has
+             just placed, because placing it puts no counters on it. It is
+             measured by rules-check, which can put the counters there. */
+          ok: aura.perCounter ? true : moved && !(onlySelf && !aura.grants?.length && !aura.def && !aura.per),
         });
 
         /* And then the same measurement taken where it cannot be flattered.
@@ -1229,7 +1247,11 @@ for (const def of Object.values(CARDS)) {
   for (const eff of def.effects) {
     const a = eff.aura;
     const perAny = (a?.per?.atk ?? 0) || (a?.per?.def ?? 0);
-    if (a && !(a.atk ?? 0) && !(a.def ?? 0) && !a.grants?.length && !perAny)
+    /* `perCounter` is a scale like `per`, not a zero: the moths are worth 500
+       a counter and a moth with none is worth nothing yet — which is the card
+       working, not the card being dead. */
+    const perCounterAny = (a?.perCounter?.atk ?? 0) || (a?.perCounter?.def ?? 0);
+    if (a && !(a.atk ?? 0) && !(a.def ?? 0) && !a.grants?.length && !perAny && !perCounterAny)
       dead.push(`${def.slug} [${eff.trigger}]: aura does nothing`);
     if (!eff.ops.length && !a) dead.push(`${def.slug} [${eff.trigger}]: no operations and no aura`);
     for (const op of eff.ops) {
