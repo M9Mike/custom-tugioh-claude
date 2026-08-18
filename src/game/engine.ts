@@ -3711,59 +3711,15 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          already hides the card, so this only catches a tap that raced the
          board — but a Spell that leaves the hand having done nothing is the
          worst way to find out. */
-      if (eff?.condition && !conditionMet(state, eff, c, pid)) {
-        return { state: prev, error: 'Its condition is not met.' };
-      }
-      if (eff && activationIsDead(state, pid, c, def, eff)) {
-        return { state: prev, error: 'There is nothing for that card to affect.' };
-      }
       const isField = def.subKind === 'Field';
       // An Equip Spell stays face-up in the Spell/Trap Zone holding its monster,
       // exactly like a Continuous Spell — it is not spent on activation.
       const isContinuous = def.subKind === 'Continuous' || isField || isEquipSpell(c.slug);
       if (!isField && p.spellTrap) return { state: prev, error: 'Your Spell/Trap Zone is occupied.' };
 
-      if (eff?.cost?.lp) {
-        const due = lpCost(state, pid, eff);
-        if (p.lp <= due) return { state: prev, error: 'Not enough Life Points.' };
-        p.lp -= due;
-        log(state, `${p.name} pays ${due} Life Points.`, 'effect', pid);
-        /* A cost is still Life Points leaving, so it is announced like any
-           other. The total must never move with nothing on screen saying why —
-           that is exactly what made damage look like it landed early. */
-        anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
-      }
-      if (eff?.cost?.discard) {
-        const n = Math.min(eff.cost.discard, p.hand.length - 1);
-        for (let i = 0; i < n; i++) {
-          const idx = p.hand.findIndex((h) => h.uid !== c.uid);
-          if (idx < 0) break;
-          p.grave.push(p.hand.splice(idx, 1)[0]);
-        }
-      }
-      /* Whichever ones the player pointed at, and only then whatever is left.
-         This took the first monsters in the row regardless — the board asks
-         "Choose a monster to Tribute", collected an answer, and the engine
-         threw it away. The ignition path was fixed for Catapult Turtle and
-         this one was not.
-         The uids that pay are then kept *out* of the effect's own target list,
-         so a Spell that costs a Tribute and then asks a second question does
-         not hand the first answer to the second question: Black Illusion
-         Ritual tributes a monster and summons Relinquished, whose arrival asks
-         what to swallow. */
-      const paidForCost: string[] = [];
-      if (eff?.cost?.tribute) {
-        const fodder = tributeFodder(state, pid, eff, c.uid);
-        if (fodder.length < eff.cost.tribute) return { state: prev, error: 'Not enough monsters to tribute.' };
-        const chosen = (action.targets ?? [])
-          .map((uid) => fodder.find((m) => m.uid === uid))
-          .filter((m): m is CardInstance => !!m);
-        const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, eff.cost.tribute);
-        for (const m of paying) {
-          paidForCost.push(m.uid);
-          toGrave(state, m.uid, true);
-        }
-      }
+      const paid = payActivation(state, pid, c, def, eff, action.targets ?? []);
+      if ('error' in paid) return { state: prev, error: paid.error };
+      const paidForCost = paid.paidForCost;
 
       const hi2 = p.hand.findIndex((h) => h.uid === action.uid);
       if (hi2 >= 0) p.hand.splice(hi2, 1);
@@ -3825,12 +3781,20 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         checkExodia(state);
         return { state };
       }
-      // Set Spell — activate it now.
+      // Set Spell — activate it now, on the same terms as one played from hand.
       const eff = def.effects.find((e) => e.trigger === 'activate');
       if (!eff) return { state: prev, error: 'That card cannot be activated.' };
+      /* This path used to skip the gate entirely: no condition, no Life Points,
+         no discard, no Tributes. The same card was priced from the hand and
+         free off the field — a Ritual Spell Set face-down summoned without its
+         Tribute, and Tribute to the Doomed took nothing at all. */
+      const setPaid = payActivation(state, pid, c, def, eff, action.targets ?? []);
+      if ('error' in setPaid) return { state: prev, error: setPaid.error };
       log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
-      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} };
+      /* Minus whatever the cost already ate, exactly as the hand path does. */
+      const setTargets = (action.targets ?? []).filter((u) => !setPaid.paidForCost.includes(u));
+      const ctx: EffectCtx = { state, controller: pid, source: c, targets: setTargets, cursor: 0, trig: {} };
       runOps(ctx, eff.ops);
       if (def.subKind !== 'Continuous') {
         p.spellTrap = null;
@@ -4101,6 +4065,69 @@ function handleChoice(state: DuelState, pid: PlayerId, uids: string[]): DuelStat
   drainChoices(state);
   checkExodia(state);
   return state;
+}
+
+/**
+ * Checks an activation's gate and pays its price: condition, dead-activation,
+ * Life Points, discard, Tributes. Returns the uids the cost ate — so a Spell
+ * that pays a Tribute and then asks a second question does not hand the first
+ * answer to the second — or a refusal message.
+ *
+ * One function because there were two paths and only one of them did any of
+ * this. A Spell played from the hand paid; the *same Spell* Set face-down and
+ * flipped up paid nothing and was asked nothing. Eight cards were free that
+ * way: Black Illusion Ritual and Fortress Whale's Oath Ritual Summoned without
+ * their Tribute, Millennium Ankh and Tribute to the Doomed cost no Life Points
+ * at all, and the conditions on Snatch Steal, Soul Exchange, Harpie Lady
+ * Phoenix Formation and Eradicating Aerosol were not consulted. Reported as
+ * "Tribute to the Doomed needs to cost before the opponent discards", which is
+ * what it looks like from the seat: the payment never happened.
+ */
+function payActivation(
+  state: DuelState,
+  pid: PlayerId,
+  c: CardInstance,
+  def: CardDef,
+  eff: CardEffect | undefined,
+  targets: string[]
+): { paidForCost: string[] } | { error: string } {
+  const p = state.players[pid];
+  if (eff?.condition && !conditionMet(state, eff, c, pid)) return { error: 'Its condition is not met.' };
+  if (eff && activationIsDead(state, pid, c, def, eff)) return { error: 'There is nothing for that card to affect.' };
+
+  if (eff?.cost?.lp) {
+    const due = lpCost(state, pid, eff);
+    if (p.lp <= due) return { error: 'Not enough Life Points.' };
+    p.lp -= due;
+    log(state, `${p.name} pays ${due} Life Points.`, 'effect', pid);
+    /* A cost is still Life Points leaving, so it is announced like any other.
+       The total must never move with nothing on screen saying why — that is
+       exactly what made damage look like it landed early. */
+    anim(state, { kind: 'damage', player: pid, amount: due });
+  }
+  if (eff?.cost?.discard) {
+    const n = Math.min(eff.cost.discard, p.hand.length - (p.hand.some((h) => h.uid === c.uid) ? 1 : 0));
+    for (let i = 0; i < n; i++) {
+      const idx = p.hand.findIndex((h) => h.uid !== c.uid);
+      if (idx < 0) break;
+      p.grave.push(p.hand.splice(idx, 1)[0]);
+    }
+  }
+  /* Whichever ones the player pointed at, and only then whatever is left. This
+     took the first monsters in the row regardless — the board asks "Choose a
+     monster to Tribute", collected an answer, and the engine threw it away. */
+  const paidForCost: string[] = [];
+  if (eff?.cost?.tribute) {
+    const fodder = tributeFodder(state, pid, eff, c.uid);
+    if (fodder.length < eff.cost.tribute) return { error: 'Not enough monsters to tribute.' };
+    const chosen = targets.map((uid) => fodder.find((m) => m.uid === uid)).filter((m): m is CardInstance => !!m);
+    const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, eff.cost.tribute);
+    for (const m of paying) {
+      paidForCost.push(m.uid);
+      toGrave(state, m.uid, true);
+    }
+  }
+  return { paidForCost };
 }
 
 function handleTrapResponse(state: DuelState, pid: PlayerId, uid: string | null, targets: string[]): DuelState {

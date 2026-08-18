@@ -1420,6 +1420,72 @@ console.log('\nYour own Deck is yours to read, but not to read in order');
   ok(offered.length === 2, 'so Basic Insect offers both cannons from the board the player is actually looking at', offered.join(',') || '(none)');
 }
 
+console.log('\nA Spell costs the same whether it comes from your hand or off the field');
+{
+  /* Set face-down and flipped up, a Spell used to skip the whole gate: no
+     condition, no Life Points, no discard, no Tributes. Eight cards were free
+     that way. Reported as "Tribute to the Doomed needs to cost before the
+     opponent discards", which is what it looks like from the seat — the
+     payment never happened at all. */
+  const setUp = (slug: string): DuelState => {
+    const s = fresh();
+    const c = card(ME, slug);
+    c.face = 'down';
+    c.summonedOnTurn = 1;
+    s.players[ME].spellTrap = c;
+    return s;
+  };
+
+  /* Tribute to the Doomed: priced off their hand as it stood *before* the
+     discard it causes. Four cards in hand is 4000, and they end holding one. */
+  {
+    const s = setUp('tribute-to-the-doomed');
+    /* Room to pay: the bill is 4000 and the cost has to leave you standing. */
+    s.players[ME].lp = 8000;
+    s.players[FOE].hand = Array.from({ length: 4 }, () => card(FOE, 'kuriboh'));
+    s.players[FOE].monsters = [card(FOE, 'battle-ox'), card(FOE, 'petit-moth'), card(FOE, 'kuriboh')];
+    const before = s.players[ME].lp;
+    const after = act(s, ME, { type: 'activateSetCard', uid: s.players[ME].spellTrap!.uid, targets: [s.players[FOE].monsters[0]!.uid] });
+    ok(before - after.players[ME].lp === 4000, 'a Set Tribute to the Doomed pays for their whole hand', `${before - after.players[ME].lp}`);
+    ok(after.players[FOE].hand.length === 1, 'and the discard it causes does not shrink the bill', `${after.players[FOE].hand.length} left`);
+  }
+
+  /* A Ritual Spell Set face-down summoned for free — no Tribute at all. */
+  {
+    const s = setUp('fortress-whale-s-oath');
+    const fodder = card(ME, 'kuriboh');
+    s.players[ME].monsters[0] = fodder;
+    s.players[ME].hand.push(card(ME, 'fortress-whale'));
+    const after = act(s, ME, { type: 'activateSetCard', uid: s.players[ME].spellTrap!.uid, targets: [fodder.uid] });
+    ok(!on(after, ME).some((m) => m.uid === fodder.uid), 'a Set Ritual Spell still eats its Tribute', on(after, ME).map((m) => m.slug).join(','));
+  }
+
+  /* And a condition is consulted rather than assumed. */
+  {
+    const s = setUp('eradicating-aerosol');
+    s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    const refused = applyAction(s, ME, { type: 'activateSetCard', uid: s.players[ME].spellTrap!.uid, targets: [s.players[FOE].monsters[0]!.uid] });
+    ok(!!refused.error, 'a Set Spell with no Insect on the field is refused too', refused.error ?? '(activated)');
+
+    const withBug = setUp('eradicating-aerosol');
+    withBug.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    withBug.players[ME].monsters[0] = card(ME, 'killer-needle');
+    const sprayed = act(withBug, ME, { type: 'activateSetCard', uid: withBug.players[ME].spellTrap!.uid, targets: [withBug.players[FOE].monsters[0]!.uid] });
+    ok(!sprayed.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'), 'and goes off once there is a bug to spray');
+  }
+
+  /* Not enough Life Points is a refusal, off the field as much as out of hand. */
+  {
+    const s = setUp('tribute-to-the-doomed');
+    s.players[ME].lp = 3000;
+    s.players[FOE].hand = Array.from({ length: 4 }, () => card(FOE, 'kuriboh'));
+    s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    const broke = applyAction(s, ME, { type: 'activateSetCard', uid: s.players[ME].spellTrap!.uid, targets: [s.players[FOE].monsters[0]!.uid] });
+    ok(!!broke.error, 'and a bill you cannot pay is refused rather than taken', broke.error ?? '(activated)');
+    ok(broke.state.players[ME].lp === 3000, 'with nothing deducted on the way out');
+  }
+}
+
 console.log('\nThe aerosol needs a bug to spray');
 {
   /* It does not care whose bug. The card sits in Weevil's own deck, so a
