@@ -9604,6 +9604,64 @@ console.log('\nA kill is paid for only when there was a kill');
       'CONTROL: and one that does die is swallowed', full.absorbed.map((a) => a.slug).join(',') || '(empty)');
   }
 
+  /* --- A stolen body that refuses to fall is not stolen for ever --- */
+  {
+    /* Possessed Dark Soul's whole price is that the possession ends. The clock
+       was cleared *before* asking whether the body died, so anything that can
+       survive an effect left the captor holding it with no expiry at all.
+
+       Serket is the reachable one: it sheds what it has swallowed instead of
+       dying to an effect, which is exactly the case. The Sphinx cannot show
+       this — its one life is spent against *battle* only, and the End Phase
+       crumble is an effect. */
+    const s = ring();
+    s.phase = 'main';
+    s.players[FOE].field = { ...card(FOE, 'temple-of-the-kings'), face: 'up' as const };
+    const beast = card(FOE, 'mystical-beast-of-serket');
+    s.players[FOE].hand = [beast];
+    s.active = FOE;
+    const summoned = act(s, FOE, {
+      type: 'normalSummon', uid: beast.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    const scorpion = summoned.players[FOE].monsters.find((m) => m?.uid === beast.uid)!;
+    scorpion.absorbed = [{ slug: 'kuriboh', owner: FOE }];
+
+    /* Taken, and standing in the captor's zones on its last End Phase. */
+    const taken = { ...summoned, active: ME, phase: 'main' as const };
+    taken.players[FOE].monsters = [null, null, null];
+    scorpion.possessedEndPhases = 1;
+    taken.players[ME].monsters = [scorpion, null, null];
+    const done = act(taken, ME, { type: 'endTurn' });
+    const held = done.players[ME].monsters.find((m) => m?.uid === beast.uid);
+    ok(!!held && held.absorbed.length === 0, 'the stolen scorpion pays with its stomach rather than falling',
+      held ? String(held.absorbed.length) : '(gone)');
+    ok(held?.possessedEndPhases === 1,
+      'and the Rod keeps its clock wound, so the ka is spent again next End Phase',
+      String(held?.possessedEndPhases));
+    ok(!done.log.some((l) => /crumbles — the ka is spent/.test(l.text)),
+      'nothing crumbled, and the board does not say it did',
+      done.log.slice(-3).map((l) => l.text).join(' | '));
+
+    /* And the End Phase after that finishes it: the stomach is empty now. */
+    const again = { ...done, phase: 'main' as const, active: ME };
+    const ended = act(again, ME, { type: 'endTurn' });
+    ok(!ended.players[ME].monsters.some((m) => m?.uid === beast.uid),
+      'and the next End Phase, with nothing left to pay with, it does crumble',
+      ended.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* CONTROL: an ordinary stolen body crumbles the first time it is asked. */
+    const plain = ring();
+    plain.phase = 'main';
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    ox.possessedEndPhases = 1;
+    plain.players[ME].monsters = [ox, null, null];
+    const gone = act(plain, ME, { type: 'endTurn' });
+    ok(!gone.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'CONTROL: an ordinary stolen body crumbles when the clock runs out',
+      gone.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
   /* --- And the board does not announce a death that did not happen --- */
   {
     /* An even trade against a Sphinx: the attacker falls, the Sphinx sinks.

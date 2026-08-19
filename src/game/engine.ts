@@ -3492,9 +3492,21 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       );
       continue;
     }
-    m.possessedEndPhases = undefined;
-    log(state, `${displayName(state, m)} crumbles — the ka is spent.`, 'effect', pid, logSlug(m));
-    destroyCard(state, m, false);
+    /* Spent only if the body actually falls. A stolen Guardian Sphinx sinks
+       back into the sand rather than dying, and clearing the clock before
+       asking meant the Rod kept it *for ever* — the one monster in the game
+       that could be possessed permanently, by a card whose whole price is that
+       the possession ends. Wound back to one instead, so the ka is spent again
+       at the next End Phase and the body falls the moment it can.
+       The line follows the outcome for the same reason: `destroyCard` says its
+       own piece, and "crumbles" over a monster still standing was the board
+       reporting a death that did not happen. */
+    if (destroyCard(state, m, false)) {
+      m.possessedEndPhases = undefined;
+      log(state, `${displayName(state, m)} crumbles — the ka is spent.`, 'effect', pid, logSlug(m));
+    } else {
+      m.possessedEndPhases = 1;
+    }
   }
   // Tick down ongoing effects that target the player whose turn just ended.
   state.ongoing = state.ongoing.filter((o) => {
