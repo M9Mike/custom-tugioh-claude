@@ -2798,12 +2798,14 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
   }
   for (const h of p.hand) {
     const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)).filter(live(h)) ?? [];
-    /* A hand trap is spent to be activated, so the same question applies —
-       though no card reaches this today: Kuriboh is the only one, and shielding
-       you from damage needs nothing to point at. Written for consistency rather
-       than coverage, so the two halves of this function cannot answer the same
-       question differently the day a second hand trap exists. It is not pinned,
-       because nothing in the game can currently make it false. */
+    /* A hand trap is spent to be activated, so the same question applies.
+       Kuriboh is the only one today and shielding you from damage points at
+       nothing, so it is never refused — and that is pinned rather than
+       asserted: the battery declares an attack, checks Kuriboh is offered out
+       of the hand and eats the whole blow, and inverting this line turns it
+       red. The two halves of this function cannot answer the same question
+       differently, and the half nobody would think to test is the one a real
+       card walks through every duel. */
     if (effs.some((e) => !activationIsDead(state, pid, h, CARDS[h.slug], e))) out.push(h);
   }
   return out;

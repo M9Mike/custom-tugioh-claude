@@ -8212,6 +8212,27 @@ console.log('\nA protector that dies in the same breath still protected');
   ok(!swept(['robotic-knight', 'steel-ogre-grotto-1']).includes('robotic-knight'),
     'CONTROL: the Knight does not shield himself');
 
+  /* AND A GOD IS STILL ABOVE ALL OF IT.
+     The verdict is now taken before the batch begins, which is exactly the kind
+     of change that can quietly hand a shield authority it never had — the
+     shield is decided a moment earlier, and a moment earlier is before anyone
+     has asked whose effect this is. Obelisk's fist goes through it, in either
+     Monster Zone order, the same as it goes through everything else. */
+  const fist = (zones: string[]) => {
+    const s = fresh();
+    const god = card(ME, 'obelisk-the-tormentor');
+    s.players[ME].monsters = [god, card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+    s.players[FOE].monsters = [card(FOE, zones[0]), card(FOE, zones[1]), null];
+    const smitten = act(s, ME, { type: 'ignition', uid: god.uid, targets: [] });
+    return smitten.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || '(none)';
+  };
+  ok(fist(['robotic-knight', 'steel-ogre-grotto-1']) === '(none)',
+    "no shield stands before a God — Obelisk's fist takes the Knight and everything he was guarding",
+    fist(['robotic-knight', 'steel-ogre-grotto-1']));
+  ok(fist(['steel-ogre-grotto-1', 'robotic-knight']) === '(none)',
+    'and the zone order changes nothing there either',
+    fist(['steel-ogre-grotto-1', 'robotic-knight']));
+
   /* And the same verdict through a targeted mass destroy, not just a sweep. */
   const virus = fresh();
   virus.active = ME;
@@ -8272,6 +8293,30 @@ console.log('\nA trap window only offers what the trap can actually use');
     forced.state.players[ME].spellTrap?.face ?? '(gone)');
   ok(!forced.state.players[ME].spellTrap?.equippedTo,
     'never left equipped to nothing, blocking the zone');
+
+  /* Kuriboh is the hand-trap half of the same gate, and it must keep working.
+     Shielding you from damage points at nothing, so `activationIsDead` has no
+     grounds to refuse it — but "no grounds" is a claim, and a claim about a
+     card the owner actually plays is worth a check rather than a comment. This
+     covers the branch with the one card that reaches it: inverting the gate
+     stops Kuriboh being offered and turns these red. */
+  {
+    const swing = fresh('battle');
+    swing.active = FOE;
+    const beater = card(FOE, 'summoned-skull'); // 2500, straight to the face
+    beater.summonedOnTurn = 0;
+    swing.players[FOE].monsters = [beater, null, null];
+    swing.players[ME].monsters = [null, null, null];
+    const fuzz = card(ME, 'kuriboh');
+    swing.players[ME].hand = [fuzz];
+    const declared = applyAction(swing, FOE, { type: 'attack', uid: beater.uid, targetUid: null }).state;
+    ok(declared.pending?.kind === 'trap' && declared.pending.options.includes(fuzz.uid),
+      'Kuriboh is still offered out of the hand when the attack is declared',
+      declared.pending?.kind ?? '(no window)');
+    const saved = act(declared, ME, { type: 'respondTrap', uid: fuzz.uid });
+    ok(saved.players[ME].lp === 4000, 'and it still takes the whole blow', `LP ${saved.players[ME].lp}`);
+    ok(saved.players[ME].grave.some((g) => g.slug === 'kuriboh'), 'paying itself out of the hand to do it');
+  }
 
   /* CONTROL: give it a body and the window opens exactly as before, or the
      check above is satisfied by a trap that simply never works. */
