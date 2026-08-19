@@ -1330,7 +1330,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   'snatch-steal': {
     /* The same theft, kept. The signature line of the deck, and the reason
        "yours were never yours" is on the card back. */
-    text: 'Take control of 1 monster your opponent controls. At the start of each of your turns, your opponent gains 1000 Life Points.',
+    text: 'Take control of 1 monster your opponent controls. At the start of each of your turns, its owner gains 2000 Life Points.',
     cry: 'Mine now.',
     effects: [
       {

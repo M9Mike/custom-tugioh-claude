@@ -335,6 +335,50 @@ function checkSelfCondition(def: CardDef): string[] {
   return out;
 }
 
+/**
+ * A Life Point figure the text promises must be the figure the card pays.
+ *
+ * Snatch Steal's text said "your opponent gains 1000 Life Points" for as long
+ * as this game has existed and the card never paid a point — a permanent theft
+ * with no price, and a whole clause that did nothing. When the rent was finally
+ * implemented the number was set to 2000 and the *text* was left at 1000 by a
+ * script that aborted halfway, so for one commit the card charged twice what it
+ * said. Neither the missing clause nor the mismatched number was visible to
+ * anything here.
+ *
+ * Narrow on purpose: it reads the one clause the DSL can express as a number —
+ * `takeControl.rent` — and insists the sentence agrees with it. A card whose
+ * text mentions a per-turn Life Point payment and carries no rent at all is the
+ * first failure; a card whose numbers disagree is the second.
+ */
+const SAYS_RENT = /\b(?:gains?|gain) ([\d,]+) Life Points/i;
+function checkRent(def: CardDef): string[] {
+  const out: string[] = [];
+  const rent = def.effects
+    ?.flatMap((e) => e.ops)
+    .find((o) => o.op === 'takeControl' && o.rent);
+  const said = SAYS_RENT.exec(def.text ?? '');
+  const perTurn = /at the start of each of your turns/i.test(def.text ?? '');
+  /* Both halves, or this is not the sentence being checked. Nightmare Wheel
+     also pays out at the start of each turn — in damage, which is a different
+     clause with a different op, and gating on the timing alone reported a card
+     that works perfectly. */
+  if (!perTurn || !said) return out;
+  if (!rent || rent.op !== 'takeControl') {
+    out.push(
+      `${def.name} (${def.slug}) — the text promises Life Points at the start of each turn and no effect pays them`
+    );
+    return out;
+  }
+  const promised = Number(said[1].replace(/,/g, ''));
+  if (promised !== rent.rent) {
+    out.push(
+      `${def.name} (${def.slug}) — text says ${promised} Life Points a turn, the card pays ${rent.rent}`
+    );
+  }
+  return out;
+}
+
 for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown' || !def.text) continue;
   checked += 1;
@@ -342,6 +386,7 @@ for (const def of Object.values(CARDS)) {
   problems.push(...checkSelfReference(def));
   problems.push(...checkBackrowReach(def));
   problems.push(...checkSelfCondition(def));
+  problems.push(...checkRent(def));
 
   for (const { phrase, needs, label, orElse } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;
