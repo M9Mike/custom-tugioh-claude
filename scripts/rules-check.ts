@@ -8222,6 +8222,324 @@ console.log('\nA card that comes up empty says so');
 }
 
 /* ------------------------------------------------------------------ */
+/* Odion: the backrow is the board                                       */
+/* ------------------------------------------------------------------ */
+console.log('\nOdion: every face-down card is a question');
+{
+  const odion = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+      s.players[pid].deck = Array.from({ length: 12 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+
+  /* --- Statue of the Wicked: two prices, no safe answer --- */
+  {
+    /* Broken under its own card back, it pays triple. `resetInstance` turns a
+       card face-up on its way to the pile, so the farewell used to be asked
+       which way up it was lying *after* it had been turned over — the same
+       shape as the Cocoon being asked its counters from inside the Graveyard. */
+    const hidden = odion();
+    hidden.players[FOE].spellTrap = { ...card(FOE, 'statue-of-the-wicked'), face: 'down' as const };
+    const duster = card(ME, 'harpie-s-feather-duster');
+    hidden.players[ME].hand = [duster];
+    const swept = act(hidden, ME, { type: 'activateSpell', uid: duster.uid, targets: [] });
+    const risen = swept.players[FOE].monsters.filter(Boolean);
+    ok(risen.length === 3, 'breaking the Statue face-down stands three up', String(risen.length));
+    ok(risen.every((m) => m!.tokenAtk === 3000 && m!.position === 'def'),
+      'at 3000 apiece, in Defence',
+      risen.map((m) => `${m!.tokenAtk}/${m!.position}`).join(','));
+
+    /* CONTROL: face-up, it has already done its job and pays nothing more. */
+    const shown = odion();
+    shown.players[FOE].spellTrap = { ...card(FOE, 'statue-of-the-wicked'), face: 'up' as const };
+    const duster2 = card(ME, 'harpie-s-feather-duster');
+    shown.players[ME].hand = [duster2];
+    const after = act(shown, ME, { type: 'activateSpell', uid: duster2.uid, targets: [] });
+    ok(after.players[FOE].monsters.filter(Boolean).length === 0,
+      'CONTROL: face-up, it pays nothing — it has already been spent',
+      after.players[FOE].monsters.map((m) => m?.tokenName ?? '-').join(','));
+  }
+
+  /* --- Mystical Beast of Serket --- */
+  {
+    /* The temple is the price instead of the bodies. */
+    const s = odion();
+    s.players[ME].field = { ...card(ME, 'temple-of-the-kings'), face: 'up' as const };
+    const beast = card(ME, 'mystical-beast-of-serket');
+    s.players[ME].hand = [beast];
+    ok(tributesRequired('mystical-beast-of-serket', s, ME) === 0,
+      'with the Temple open, Serket costs no Tributes');
+    const out = act(s, ME, { type: 'normalSummon', uid: beast.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(!out.players[ME].field, 'and the Temple is spent to free it');
+    ok(out.players[ME].banished.some((c) => c.slug === 'temple-of-the-kings'),
+      'banished rather than destroyed, so nothing answers its death');
+
+    /* It eats what it kills, at half, and swings once more for each. */
+    const hunt = structuredClone(out);
+    hunt.phase = 'battle';
+    const serket = hunt.players[ME].monsters.find((m) => m?.slug === 'mystical-beast-of-serket')!;
+    serket.summonedOnTurn = 0;
+    const prey = card(FOE, 'battle-ox'); // 1700
+    prey.summonedOnTurn = 0;
+    hunt.players[FOE].monsters = [prey, null, null];
+    const fed = act(hunt, ME, { type: 'attack', uid: serket.uid, targetUid: prey.uid });
+    const grown = fed.players[ME].monsters.find((m) => m?.slug === 'mystical-beast-of-serket')!;
+    ok(effAtk(fed, grown, ME) === baseAtkOf('mystical-beast-of-serket') + 850,
+      'it grows by half of what it swallowed', String(effAtk(fed, grown, ME)));
+    ok(maxAttacks(fed, grown, ME) === 2, 'and swings once more for it',
+      String(maxAttacks(fed, grown, ME)));
+    /* The body it ate is in the Graveyard once, not twice — a ghost is a tally,
+       not a card the duel has to account for a second time. */
+    ok(fed.players[FOE].grave.filter((g) => g.slug === 'battle-ox').length === 1,
+      'and what it ate lies in the Graveyard exactly once',
+      fed.players[FOE].grave.map((g) => g.slug).join(','));
+
+    /* A card effect takes the meal. */
+    const answered = structuredClone(fed);
+    answered.active = FOE;
+    answered.phase = 'main';
+    const hole = card(FOE, 'dark-hole');
+    answered.players[FOE].hand = [hole];
+    const spared = act(answered, FOE, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const survivor = spared.players[ME].monsters.find((m) => m?.slug === 'mystical-beast-of-serket');
+    ok(!!survivor && survivor.absorbed.length === 0,
+      'a card effect takes everything it holds instead of the beast',
+      survivor ? `absorbed ${survivor.absorbed.length}` : 'destroyed');
+    /* And holding nothing, it dies like anything else. */
+    const again = structuredClone(spared);
+    const hole2 = card(FOE, 'dark-hole');
+    again.players[FOE].hand = [hole2];
+    const dead = act(again, FOE, { type: 'activateSpell', uid: hole2.uid, targets: [] });
+    ok(!dead.players[ME].monsters.some((m) => m?.slug === 'mystical-beast-of-serket'),
+      'CONTROL: holding nothing, the next one kills it');
+  }
+
+  /* --- Guardian Sphinx: one life, and the sweep twice --- */
+  {
+    const s = odion();
+    s.phase = 'battle';
+    s.active = FOE;
+    const sphinx = { ...card(ME, 'guardian-sphinx'), face: 'down' as const, position: 'def' as const };
+    sphinx.summonedOnTurn = 0;
+    s.players[ME].monsters = [sphinx, null, null];
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beater, null, null];
+    const swung = act(s, FOE, { type: 'attack', uid: beater.uid, targetUid: sphinx.uid });
+    const held = swung.players[ME].monsters.find((m) => m?.slug === 'guardian-sphinx');
+    ok(!!held, 'the Sphinx is not destroyed by the blow that beats it');
+    ok(held?.face === 'down', 'it sinks back into the sand instead', held?.face ?? '(gone)');
+    ok(held?.flags.usedFlipEscape === true, 'and the escape is spent');
+    /* Its FLIP fired on the way, which is the other half of the trade. */
+    ok(!swung.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'),
+      'and the sweep it woke up for sent the attacker home',
+      swung.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* CONTROL: the second blow lands. */
+    const twice = structuredClone(swung);
+    twice.active = FOE;
+    twice.phase = 'battle';
+    const second = card(FOE, 'summoned-skull');
+    second.summonedOnTurn = 0;
+    twice.players[FOE].monsters = [second, null, null];
+    const finished = act(twice, FOE, { type: 'attack', uid: second.uid, targetUid: held!.uid });
+    ok(!finished.players[ME].monsters.some((m) => m?.slug === 'guardian-sphinx'),
+      'CONTROL: the second blow lands — it buys one life, not immunity',
+      finished.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- The traps that refill the zone they spend --- */
+  {
+    /* Judgment of Anubis Sets the next trap out of the Deck. */
+    const s = odion();
+    s.phase = 'battle';
+    s.active = FOE;
+    const anubis = { ...card(ME, 'judgment-of-anubis'), face: 'down' as const };
+    anubis.summonedOnTurn = 0;
+    s.players[ME].spellTrap = anubis;
+    s.players[ME].deck = [card(ME, 'mirror-force'), card(ME, 'kuriboh')];
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beater, null, null];
+    const declared = applyAction(s, FOE, { type: 'attack', uid: beater.uid, targetUid: null }).state;
+    const judged = act(declared, ME, { type: 'respondTrap', uid: anubis.uid });
+    ok(judged.players[ME].spellTrap?.slug === 'mirror-force',
+      'Judgment of Anubis Sets the next Trap into the zone it just emptied',
+      judged.players[ME].spellTrap?.slug ?? '(empty)');
+    ok(judged.players[ME].spellTrap?.face === 'down', 'face-down, like any Set card');
+
+    /* Mask of Darkness Sets one back out of the Graveyard — or hands it over
+       when the zone is taken, which is the board a trap deck usually has. */
+    const mask = odion();
+    const face = { ...card(ME, 'mask-of-darkness'), face: 'down' as const, position: 'def' as const };
+    face.summonedOnTurn = 0;
+    mask.players[ME].monsters = [face, null, null];
+    mask.players[ME].grave = [card(ME, 'mirror-force')];
+    const flipped = act(mask, ME, { type: 'changePosition', uid: face.uid });
+    ok(flipped.players[ME].spellTrap?.slug === 'mirror-force',
+      'Mask of Darkness Sets a Trap back out of the Graveyard',
+      flipped.players[ME].spellTrap?.slug ?? '(empty)');
+
+    const busy = odion();
+    const face2 = { ...card(ME, 'mask-of-darkness'), face: 'down' as const, position: 'def' as const };
+    face2.summonedOnTurn = 0;
+    busy.players[ME].monsters = [face2, null, null];
+    busy.players[ME].grave = [card(ME, 'mirror-force')];
+    busy.players[ME].spellTrap = { ...card(ME, 'trap-hole'), face: 'down' as const };
+    const handed = act(busy, ME, { type: 'changePosition', uid: face2.uid });
+    ok(handed.players[ME].hand.some((h) => h.slug === 'mirror-force'),
+      'and hands it over instead when the zone is taken',
+      handed.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+    ok(handed.players[ME].spellTrap?.slug === 'trap-hole', 'leaving what was already there alone');
+  }
+
+  /* --- The Temple decides tomorrow, and pays on the way out --- */
+  {
+    const s = odion();
+    const temple = card(ME, 'temple-of-the-kings');
+    s.players[ME].hand = [temple];
+    const wanted = card(ME, 'mirror-force');
+    s.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), wanted, card(ME, 'kuriboh')];
+    const open = act(s, ME, { type: 'activateSpell', uid: temple.uid, targets: [wanted.uid] });
+    ok(open.players[ME].destinyDrawUid === wanted.uid, 'the Temple names your next draw');
+    const drawn = act(act(open, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    ok(drawn.players[ME].hand.some((h) => h.uid === wanted.uid),
+      'and that is the card that comes, not whatever was on top',
+      drawn.players[ME].hand.map((h) => h.slug).join(','));
+    ok(drawn.players[ME].destinyDrawUid === undefined, 'the promise is spent once, not standing');
+
+    /* Breaking it costs the breaker a card back. */
+    const broken = odion();
+    broken.players[FOE].field = { ...card(FOE, 'temple-of-the-kings'), face: 'up' as const };
+    broken.players[FOE].deck = [card(FOE, 'guardian-sphinx')];
+    const duster = card(ME, 'harpie-s-feather-duster');
+    broken.players[ME].hand = [duster];
+    const razed = act(broken, ME, { type: 'activateSpell', uid: duster.uid, targets: [] });
+    ok(razed.players[FOE].hand.some((h) => h.slug === 'guardian-sphinx'),
+      'and breaking the Temple hands its keeper a Sphinx',
+      razed.players[FOE].hand.map((h) => h.slug).join(',') || '(empty)');
+  }
+
+  /* --- The serpents are worth what has been spent --- */
+  {
+    const s = odion();
+    s.players[ME].grave = [card(ME, 'embodiment-of-apophis'), card(ME, 'trap-hole')];
+    s.players[FOE].grave = [card(FOE, 'mirror-force')];
+    const swamp = { ...card(ME, 'apophis-the-swamp-deity'), face: 'down' as const };
+    swamp.summonedOnTurn = 0;
+    s.players[ME].spellTrap = swamp;
+    s.active = FOE;
+    const mon = card(FOE, 'battle-ox');
+    s.players[FOE].hand = [mon];
+    const summoned = applyAction(s, FOE, {
+      type: 'normalSummon', uid: mon.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    }).state;
+    ok(summoned.pending?.kind === 'trap', 'the swamp answers a Summon',
+      summoned.pending?.kind ?? '(no window)');
+    const risen = act(summoned, ME, { type: 'respondTrap', uid: swamp.uid });
+    const serpent = risen.players[ME].monsters.find((m) => m?.isToken)!;
+    /* Four traps across the two Graveyards by the time it resolves — the two
+       of mine, theirs, and the Apophis itself, which has just been spent. */
+    ok(effAtk(risen, serpent, ME) === 4000, 'and the serpent is worth 1000 a Trap in either Graveyard',
+      String(effAtk(risen, serpent, ME)));
+    ok(effDef(risen, serpent, ME) === 4000, 'in both stats');
+    /* Live, not fixed: bury one more and it grows without anything updating it. */
+    const later = structuredClone(risen);
+    later.players[FOE].grave.push(card(FOE, 'trap-hole'));
+    const same = later.players[ME].monsters.find((m) => m?.isToken)!;
+    ok(effAtk(later, same, ME) === 5000, 'read live, so a Trap buried later makes it bigger',
+      String(effAtk(later, same, ME)));
+
+    /* CONTROL: with no Embodiment in the pile it is not offered at all. */
+    const early = odion();
+    const swamp2 = { ...card(ME, 'apophis-the-swamp-deity'), face: 'down' as const };
+    swamp2.summonedOnTurn = 0;
+    early.players[ME].spellTrap = swamp2;
+    early.active = FOE;
+    const mon2 = card(FOE, 'battle-ox');
+    early.players[FOE].hand = [mon2];
+    const quiet = applyAction(early, FOE, {
+      type: 'normalSummon', uid: mon2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    }).state;
+    ok(quiet.pending?.kind !== 'trap',
+      'CONTROL: without an Embodiment already spent, the swamp stays shut',
+      quiet.pending?.kind ?? '(no window)');
+  }
+
+  /* --- Ra's Disciples, and the Spy that plants the next question --- */
+  {
+    const s = odion();
+    const first = card(ME, 'ra-s-disciple');
+    s.players[ME].hand = [first, card(ME, 'ra-s-disciple')];
+    s.players[ME].deck = [card(ME, 'temple-of-the-kings'), card(ME, 'ra-s-disciple')];
+    const out = act(s, ME, { type: 'normalSummon', uid: first.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const three = out.players[ME].monsters.filter((m) => m?.slug === 'ra-s-disciple');
+    ok(three.length === 3, 'a Disciple brings the other two — from the Deck or the hand',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(effFlags(out, three[0]!, ME).indestructibleByBattle === true,
+      'and while all three stand, battle cannot break them');
+    /* CONTROL: break the set and the protection goes with it. */
+    const broken = structuredClone(out);
+    broken.players[ME].monsters[2] = null;
+    ok(effFlags(broken, broken.players[ME].monsters[0]!, ME).indestructibleByBattle !== true,
+      'CONTROL: two of them are ordinary bodies again');
+
+    /* The Spy digs out something worth setting, face-down. */
+    const spy = odion();
+    const watcher = { ...card(ME, 'gravekeeper-s-spy'), face: 'down' as const, position: 'def' as const };
+    watcher.summonedOnTurn = 0;
+    spy.players[ME].monsters = [watcher, null, null];
+    /* Battle Ox is the control that matters: Level 4, so the level clause does
+       not exclude it, and no FLIP effect — the only thing keeping it out is the
+       clause being tested. An earlier version used Summoned Skull, which is
+       Level 6, so the check passed on the level bound and proved nothing about
+       flips at all. */
+    spy.players[ME].deck = [card(ME, 'battle-ox'), card(ME, 'wall-of-illusion')];
+    const flipped = act(spy, ME, { type: 'changePosition', uid: watcher.uid });
+    const planted = flipped.players[ME].monsters.find((m) => m?.slug === 'wall-of-illusion');
+    ok(!!planted, 'the Spy plants another face-down question',
+      flipped.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(planted?.face === 'down' && planted?.position === 'def', 'face-down, in Defence',
+      `${planted?.face}/${planted?.position}`);
+    ok(!flipped.players[ME].monsters.some((m) => m?.slug === 'battle-ox'),
+      'CONTROL: and only a monster that does something when flipped',
+      flipped.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Wall of Illusion --- */
+  {
+    const s = odion();
+    const wall = { ...card(ME, 'wall-of-illusion'), face: 'down' as const, position: 'def' as const };
+    wall.summonedOnTurn = 0;
+    s.players[ME].monsters = [wall, null, null];
+    s.players[FOE].spellTrap = { ...card(FOE, 'trap-hole'), face: 'down' as const };
+    const flipped = act(s, ME, { type: 'changePosition', uid: wall.uid, targets: [s.players[FOE].spellTrap!.uid] });
+    ok(!flipped.players[FOE].spellTrap, 'flipping the Wall takes a backrow card with it');
+
+    const hit = odion();
+    hit.phase = 'battle';
+    hit.active = FOE;
+    const shield = card(ME, 'wall-of-illusion');
+    shield.summonedOnTurn = 0;
+    hit.players[ME].monsters = [shield, null, null];
+    const charger = card(FOE, 'summoned-skull');
+    charger.summonedOnTurn = 0;
+    hit.players[FOE].monsters = [charger, null, null];
+    const lp = hit.players[FOE].lp;
+    const sent = act(hit, FOE, { type: 'attack', uid: charger.uid, targetUid: shield.uid });
+    ok(lp - sent.players[FOE].lp === 800, 'and being attacked costs them 800 now',
+      String(lp - sent.players[FOE].lp));
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Priest Seto: the God, and the bodies bought to pay for it             */
 /* ------------------------------------------------------------------ */
 console.log('\nPriest Seto: three Tributes, and everything that pays them');

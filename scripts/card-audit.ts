@@ -420,22 +420,21 @@ function matchesLoosely(slug: string, filter: CardFilter | undefined) {
 }
 
 function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'monster', exclude: string[] = []) {
+  /* The engine's own filter, not a fourth copy of it. This *was* a copy —
+     eighteen hand-written clauses — and like every other copy of this rule in
+     the repo it went stale: Gravekeeper's Spy searches for a monster with a
+     FLIP effect, the copy had never heard of that clause, so it stocked the
+     Deck with something that did not qualify, the engine correctly refused to
+     summon it, and the harness reported a working card as broken.
+     `picker-check` learned this same lesson about its own copy; this is the
+     last one. */
   return Object.values(CARDS).find(
     (x) =>
       (kind === 'any' || x.kind === 'monster') &&
       x.slug !== 'facedown' &&
       x.slug !== 'polymerization' &&
       !exclude.includes(x.slug) &&
-      (!filter?.kind || x.kind === filter.kind) &&
-      (!filter?.type || x.type === filter.type) &&
-      (!filter?.attribute || x.attribute === filter.attribute) &&
-      (!filter?.nameIncludes || x.name.includes(filter.nameIncludes)) &&
-      (!filter?.toon || isToon(x.slug)) &&
-      (!filter?.slugs || filter.slugs.includes(x.slug)) &&
-      (filter?.maxAtk == null || (x.atk ?? 0) <= filter.maxAtk) &&
-      (filter?.minAtk == null || (x.atk ?? 0) >= filter.minAtk) &&
-      (filter?.maxLevel == null || (x.level ?? 0) <= filter.maxLevel) &&
-      (filter?.minLevel == null || (x.level ?? 0) >= filter.minLevel)
+      matchesFilter({ slug: x.slug, isToken: false, position: 'atk', face: 'up' } as CardInstance, filter)
   );
 }
 
@@ -479,7 +478,7 @@ function summonRoute(slug: string): { slug: string; counters: number } | null {
   return null;
 }
 
-function stockDeckFor(s: DuelState, eff: CardEffect) {
+function stockDeckFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
   for (const op of eff.ops) {
     const filter = 'filter' in op ? op.filter : undefined;
     if (op.op !== 'search' && !(op.op === 'specialSummon' && summonsFrom(op, 'deck'))) continue;
@@ -490,7 +489,7 @@ function stockDeckFor(s: DuelState, eff: CardEffect) {
     // The test card is played from an arbitrary duelist's deck, which may hold
     // nothing its search can legally find. Put one in rather than report the
     // card broken for a reason that is purely about this position.
-    if (match) s.players[ME].deck.push(mint(s, ME, match.slug));
+    if (match) s.players[owner].deck.push(mint(s, owner, match.slug));
   }
 }
 
@@ -515,7 +514,7 @@ function stockHostFor(s: DuelState, eff: CardEffect) {
 }
 
 /** Puts a legal revival target in the Graveyard for `specialSummon from grave`. */
-function stockGraveFor(s: DuelState, eff: CardEffect) {
+function stockGraveFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
   for (const op of eff.ops) {
     /* Two more ways an effect reads the pile, neither of which is a summon.
        A stat scale counts what is down there — Sword Arm of Dragon is worth
@@ -526,12 +525,12 @@ function stockGraveFor(s: DuelState, eff: CardEffect) {
        over: the harness has to stock whatever the card is going to read. */
     if ((op.op === 'gainAtk' || op.op === 'gainDef') && (op.scale === 'perCardInGrave' || op.scale === 'perCardInEitherGrave')) {
       const want = matchCard(op.op === 'gainAtk' ? op.filter : undefined, 'any');
-      if (want) s.players[ME].grave.push(mint(s, ME, want.slug));
+      if (want) s.players[owner].grave.push(mint(s, owner, want.slug));
       continue;
     }
     if (op.op === 'shuffleIntoDeck' && op.target.zone === 'grave') {
       const want = matchCard(op.target.filter, 'any');
-      if (want) s.players[ME].grave.push(mint(s, ME, want.slug));
+      if (want) s.players[owner].grave.push(mint(s, owner, want.slug));
       continue;
     }
     /* `stealFromGrave` reads the Graveyard too, and was not stocked for — the
@@ -544,7 +543,7 @@ function stockGraveFor(s: DuelState, eff: CardEffect) {
     /* 'any', not the default 'monster': the Graveyard holds Spells and Traps
        too, and a card that recurs one needs the harness to find one. */
     const match = matchCard('filter' in op ? op.filter : undefined, 'any');
-    if (match) s.players[ME].grave.push(mint(s, ME, match.slug));
+    if (match) s.players[owner].grave.push(mint(s, owner, match.slug));
   }
 }
 
@@ -554,18 +553,22 @@ function stockGraveFor(s: DuelState, eff: CardEffect) {
  * read the deck, and exposed the day Machine Conversion Factory shipped small
  * Machines out of the hand alone.
  */
-function stockHandFor(s: DuelState, eff: CardEffect) {
+function stockHandFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
   for (const op of eff.ops) {
     if (op.op !== 'specialSummon' || !summonsFrom(op, 'hand')) continue;
     const match = matchCard(op.filter);
-    if (match) s.players[ME].hand.push(mint(s, ME, match.slug));
+    if (match) s.players[owner].hand.push(mint(s, owner, match.slug));
   }
 }
 
-function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance) {
-  stockDeckFor(s, eff);
-  stockGraveFor(s, eff);
-  stockHandFor(s, eff);
+function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: PlayerId = ME) {
+  /* Stocked on the side the card is actually on. A Spell or Trap is destroyed
+     by the *other* player, so it sits on their side of the field — and a
+     harness that filled ME's Deck for a card standing over there was answering
+     a question nobody asked. */
+  stockDeckFor(s, eff, owner);
+  stockGraveFor(s, eff, owner);
+  stockHandFor(s, eff, owner);
   // Effects that reach across the field need a legal victim over there, and a
   // free zone over here to put it in.
   for (const op of eff.ops) {
@@ -1393,6 +1396,30 @@ for (const def of Object.values(CARDS)) {
        rather than quietly landing in "effects not driven". */
     if (eff.trigger === 'onSentToGrave' || eff.trigger === 'onDestroyed') {
       const s = stocked();
+      /* A Spell or Trap leaves the field from the Spell/Trap Zone, not from a
+         Monster Zone. Statue of the Wicked is the first non-monster to carry
+         one of these triggers, and putting it in a Monster Zone meant the
+         effect was driven from a position the card can never actually be in —
+         and, since it answers being destroyed *face-down*, from the wrong way
+         up as well. */
+      if (def.kind !== 'monster') {
+        /* A Spell or Trap is destroyed *by the other player*, because the only
+           thing in this game that clears a backrow clears the opponent's. So it
+           is placed on their side and audited from their seat — the card is
+           theirs, the tokens it leaves are theirs, and Dark Hole (which only
+           touches monsters) could never have destroyed it at all. */
+        const c2 = mint(s, FOE, def.slug);
+        if (def.subKindOverride === 'Field' || def.subKind === 'Field') s.players[FOE].field = c2;
+        else s.players[FOE].spellTrap = c2;
+        c2.summonedOnTurn = 0;
+        // Face-down when the card's own condition asks for it.
+        if (eff.condition?.faceDown) c2.face = 'down';
+        satisfy(s, eff, c2, FOE);
+        const duster = mint(s, ME, 'harpie-s-feather-duster');
+        s.players[ME].hand.push(duster);
+        audit(def, eff, s, (st) => run(st, ME, { type: 'activateSpell', uid: duster.uid, targets: [] }), 0, FOE);
+        continue;
+      }
       const zone = s.players[ME].monsters.findIndex((m) => !m);
       const c = place(s, ME, zone < 0 ? 2 : zone, def.slug);
       c.summonedOnTurn = 0;

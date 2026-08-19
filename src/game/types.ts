@@ -279,6 +279,13 @@ export interface CardFilter {
   /** Pegasus's cartoon monsters — see `isToon`, which knows the ones the name
       does not give away. */
   toon?: boolean;
+  /**
+   * A monster that does something when it is turned face-up. Gravekeeper's Spy
+   * digs out something worth setting, and "worth setting" is exactly this —
+   * asked of the card's own effects rather than kept as a list that would
+   * fall out of date the first time a FLIP card was added.
+   */
+  hasFlipEffect?: boolean;
   position?: Position;
   face?: Face;
 }
@@ -494,7 +501,24 @@ export type Op =
    * gone by the End Phase — bought to be *spent*, on a Tribute or a cost,
    * rather than to hold a board.
    */
-  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def'; deathDamage?: number; fleeting?: boolean }
+  /**
+   * `scale` gives a Token stats that keep moving: "?/?" on the card, and a real
+   * number read off the board every time anyone looks. The serpents are worth
+   * what the Graveyards hold, so they grow through a duel without anything
+   * having to remember to update them.
+   */
+  | {
+      op: 'summonToken';
+      name: string;
+      atk: number;
+      def: number;
+      count: number;
+      artSlug?: string;
+      position?: 'atk' | 'def';
+      deathDamage?: number;
+      fleeting?: boolean;
+      scale?: { zone: 'ownGrave' | 'eitherGrave'; filter?: CardFilter; atk: number; def: number };
+    }
   /**
    * Hands the controller the right to Tribute monsters they do not own, for
    * this turn only. Soul Exchange lends you up to two of theirs: they stay on
@@ -502,6 +526,26 @@ export type Op =
    * may do with them is spend them.
    */
   | { op: 'lendForTribute'; target: Selector }
+  /**
+   * Puts a Trap from your Deck or Graveyard straight into the Spell/Trap Zone,
+   * face-down. `toHandIfOccupied` sends it to the hand instead when the zone is
+   * already taken — Mask of Darkness would otherwise be a blank on exactly the
+   * board a trap deck usually has.
+   */
+  | { op: 'setTrap'; from: 'deck' | 'grave'; toHandIfOccupied?: boolean }
+  /**
+   * Choose a card in your Deck now; your next draw is that card instead of
+   * whatever is on top. The Temple decides what the future holds, which is the
+   * one thing a Field Spell in this deck should be able to do.
+   */
+  | { op: 'destinyDraw' }
+  /**
+   * The scorpion's whole bargain, granted as one thing because it only makes
+   * sense as one thing: it swallows what it kills in battle, counts each meal
+   * at half ATK and DEF, attacks once more for each, and answers a card effect
+   * that would destroy it by giving up everything it holds instead.
+   */
+  | { op: 'devourOnBattleDestroy'; duration: Duration }
   /**
    * Takes control of a monster and starts a clock on it. The possessed body
    * cannot attack, and after `endPhases` end phases *of the player who took
@@ -652,6 +696,8 @@ export type EquipGrant =
   | 'attackCostDiscard'
   /** Attacks at twice its ATK. Metalmorph and Metalzoa both hit like this. */
   | 'doublesWhenAttacking'
+  /** The first battle that would kill it turns it face-down instead — see `CardFlags`. */
+  | 'flipsInsteadOfDying'
   /** Anything that attacks it does so at half strength. */
   | 'halvesAttacker'
   | 'pierce'
@@ -854,6 +900,12 @@ export interface EffectCondition {
    * are all perfectly legal; they just do not wake anything up.
    */
   summonedBy?: string[];
+  /**
+   * This many copies of a named card, face-up on your own field. Ra's Disciples
+   * stand together or not at all — two of them are ordinary 1100 bodies and the
+   * third is what makes the set unbreakable.
+   */
+  controlsCopies?: { slug: string; atLeast: number };
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
   /**
@@ -875,6 +927,13 @@ export interface EffectCondition {
   requiresOnFieldAll?: string[];
   /** Requires this many counters on the card. */
   countersAtLeast?: number;
+  /**
+   * This card was lying face-down. Only `onDestroyed` can usefully ask — every
+   * standing-on-the-field trigger is already gated on face-up — and Statue of
+   * the Wicked is the card that needed it: destroying it under its own card
+   * back is answered differently from destroying it after it has resolved.
+   */
+  faceDown?: boolean;
   /** Requires opponent controls at least one monster. */
   opponentHasMonster?: boolean;
   /**
@@ -958,6 +1017,33 @@ export interface CardFlags {
   bonusVsDefense?: number;
   /** Rolls to shrug off a destruction — see the `rollsToSurvive` op. */
   rollsToSurvive?: boolean;
+  /**
+   * The first battle that would destroy this monster turns it face-down
+   * instead. Once, and then it is spent: the Sphinx buys one life, and the
+   * second blow lands. Being flipped face-up again re-fires its FLIP effect,
+   * which is the consolation — not another life.
+   */
+  flipsInsteadOfDying?: boolean;
+  /** Set once `flipsInsteadOfDying` has been cashed. */
+  usedFlipEscape?: boolean;
+  /**
+   * What this monster has swallowed counts for half its printed ATK and DEF
+   * rather than all of it. Serket grows on what it kills, and at full rate a
+   * scorpion that ate a Blue-Eyes would simply be a Blue-Eyes with extra steps.
+   */
+  absorbHalved?: boolean;
+  /** One attack for each monster swallowed, plus its own. */
+  attacksPerAbsorbed?: boolean;
+  /** Swallows whatever it destroys in battle — see the `devourOnBattleDestroy` op. */
+  devoursOnBattleDestroy?: boolean;
+  /**
+   * A card effect that would destroy this monster takes everything it has
+   * swallowed instead. Empty-handed, it dies like anything else.
+   *
+   * `shedsAbsorbedInstead` is the older, wider version and answers battle too;
+   * this one is the narrower bargain Serket names.
+   */
+  shedsAbsorbedOnEffect?: boolean;
 }
 
 export interface CardInstance {
@@ -1025,6 +1111,8 @@ export interface CardInstance {
    * `possess` op.
    */
   possessedEndPhases?: number;
+  /** A Token whose stats are counted off the board — see `summonToken.scale`. */
+  tokenScale?: { zone: 'ownGrave' | 'eitherGrave'; filter?: CardFilter; atk: number; def: number };
   attacksUsed: number;
   /**
    * Monsters this card has declared an attack on this turn, for "attacks every
@@ -1049,7 +1137,14 @@ export interface CardInstance {
    * absorb wrote down whose it was. Bare slugs guessed, and guessed by
    * assuming the victim was always the other seat.
    */
-  absorbed: { slug: string; owner: PlayerId }[];
+  /**
+   * `ghost` marks a body this monster is merely *counting*, not holding — Serket
+   * grows on what it kills, and what it killed is already lying in a Graveyard.
+   * A ghost is worth stats and an extra attack; it is never sent home again,
+   * because sending it home would put a second copy of a card that already
+   * died into the pile.
+   */
+  absorbed: { slug: string; owner: PlayerId; ghost?: boolean }[];
   /** Set when control was taken; control reverts at end of that turn. */
   controlRevertsOnTurn?: number;
   /** True for Scapegoat-style tokens (cannot be tributed for a Normal Summon). */
@@ -1094,6 +1189,12 @@ export interface PlayerState {
   field: CardInstance | null;
   grave: CardInstance[];
   banished: CardInstance[];
+  /**
+   * A card in this player's Deck that their next draw will take instead of
+   * whatever is on top — the Temple of the Kings choosing what tomorrow holds.
+   * Cleared the moment it is drawn.
+   */
+  destinyDrawUid?: string;
   extra: CardInstance[];
   normalSummonUsed: boolean;
   /** True once this player has connected and locked in their duelist. */

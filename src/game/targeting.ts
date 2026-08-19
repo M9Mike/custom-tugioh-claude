@@ -20,7 +20,7 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (!f) return true;
   if (c.isToken) {
     // Tokens only satisfy the loosest filters.
-    if (f.type || f.attribute || f.slugs || f.nameIncludes || f.minLevel) return false;
+    if (f.type || f.attribute || f.slugs || f.nameIncludes || f.minLevel || f.hasFlipEffect) return false;
     // A Token has no printed type, so it is never the excluded one.
     if (f.kind && f.kind !== 'monster') return false;
     if (f.position && c.position !== f.position) return false;
@@ -39,6 +39,9 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
   if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) return false;
   if (f.toon && !isToon(c.slug)) return false;
+  /* "A monster worth setting face-down" asked of the card itself, rather than
+     kept as a list that goes stale the first time a FLIP card is written. */
+  if (f.hasFlipEffect && !def.effects.some((e) => e.trigger === 'onFlip')) return false;
   if (f.slugs && !f.slugs.includes(c.slug)) return false;
   if (f.position && c.position !== f.position) return false;
   if (f.face && c.face !== f.face) return false;

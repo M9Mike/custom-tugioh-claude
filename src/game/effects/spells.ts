@@ -1436,13 +1436,33 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        single Spell/Trap Zone free, because his traps are his monsters. A
        Continuous Spell here would have been the deck strangling itself. */
     subKindOverride: 'Field',
-    text: 'Field Spell: monsters you control gain 300 ATK, a further 100 ATK for each monster you control, and inflict piercing battle damage. Required to Summon "Mystical Beast of Serket".',
+    text:
+      'Field Spell: monsters you control gain 300 ATK, a further 100 ATK for each monster you control, ' +
+      'and inflict piercing battle damage. Required to Summon "Mystical Beast of Serket". ' +
+      'When this card is activated: choose 1 card in your Deck — your next draw is that card. ' +
+      'When this card is destroyed: add 1 "Guardian Sphinx" from your Deck or Graveyard to your hand.',
     cry: 'The temple opens for its keeper.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
         aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 300, grants: ['pierce'] },
+      },
+      {
+        /* The temple decides what tomorrow holds. A Field Spell in a deck built
+           on answers should be able to *choose* the answer, and one named draw
+           is the cheapest possible version of that — it costs nothing, it
+           cannot be chained into, and it is spent the moment it pays out. */
+        trigger: 'activate',
+        targets: 1,
+        ops: [{ op: 'destinyDraw' }],
+      },
+      {
+        /* And it hands the sphinx over on the way down. Breaking the Temple is
+           the counterplay to this whole deck — Serket needs it, every monster
+           is 400 weaker without it — so it costs the breaker a card back. */
+        trigger: 'onDestroyed',
+        ops: [{ op: 'search', filter: { slugs: ['guardian-sphinx'] }, orGrave: true }],
       },
       {
         /* The shrine pays the assembled guard. Odion's whole engine makes
@@ -1467,7 +1487,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        resolves, which is what stops a trap deck strangling itself on a single
        zone — the backrow becomes the board. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent declares an attack — negate the attack and Special Summon 3 "Apophis Serpent" Tokens (1300/1500) in Attack Position.',
+    text:
+      'Trap: when your opponent declares an attack — negate the attack and Special Summon 3 "Apophis Serpent" Tokens ' +
+      '(1300/1500) in Attack Position. Each Token gains 100 ATK and DEF for every Trap Card in your Graveyard.',
     cry: 'The serpent was always coiled here.',
     effects: [
       {
@@ -1481,38 +1503,87 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              above anime OP; a trap that answers the attack and fills the board
              is the card the deck is named for. It also turns the Temple on:
              the shrine pays per monster standing, so the swarm buffs itself. */
-          { op: 'summonToken', name: 'Apophis Serpent', atk: 1300, def: 1500, count: 3, artSlug: 'embodiment-of-apophis', position: 'atk' },
+          /* The serpents are worth what the deck has already spent. Read live
+             off the Graveyard rather than fixed at summon time, so a trap
+             played three turns later makes the ones already standing bigger —
+             which is the shape of a deck whose backrow is its board. */
+          {
+            op: 'summonToken',
+            name: 'Apophis Serpent',
+            atk: 1300,
+            def: 1500,
+            count: 3,
+            artSlug: 'embodiment-of-apophis',
+            position: 'atk',
+            scale: { zone: 'ownGrave', filter: { kind: 'trap' }, atk: 100, def: 100 },
+          },
         ],
       },
     ],
   },
 
   'apophis-the-swamp-deity': {
-    /* The width version of the same idea: two bodies instead of one, and no
-       attack needed to trigger it. */
+    /* The late-game version of the Embodiment: one serpent instead of three,
+       and it is worth whatever both players have burned through. Gated on the
+       Embodiment already lying in your Graveyard, so it is the *second* half of
+       a pair rather than a card you can open on — and by the time it is live,
+       the Graveyards it counts are deep. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent Summons a monster — Special Summon 3 "Swamp Serpent" Tokens (1400/1400).',
+    text:
+      'Trap: activate only while "Embodiment of Apophis" is in your Graveyard. When your opponent Summons a monster — ' +
+      'Special Summon 1 "Swamp Serpent" Token (?/?). Its ATK and DEF are each 1000 for every Trap Card in either Graveyard.',
     cry: 'The swamp rises to meet you.',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentSummon',
         label: 'Apophis the Swamp Deity',
-        ops: [{ op: 'summonToken', name: 'Swamp Serpent', atk: 1400, def: 1400, count: 3, artSlug: 'apophis-the-swamp-deity' }],
+        condition: { graveHasSlug: 'embodiment-of-apophis' },
+        ops: [
+          {
+            op: 'summonToken',
+            name: 'Swamp Serpent',
+            atk: 0,
+            def: 0,
+            count: 1,
+            artSlug: 'apophis-the-swamp-deity',
+            position: 'atk',
+            scale: { zone: 'eitherGrave', filter: { kind: 'trap' }, atk: 1000, def: 1000 },
+          },
+        ],
       },
     ],
   },
 
   'statue-of-the-wicked': {
-    /* Removal becomes income: killing one of his leaves two behind. */
-    text: 'Trap: when a monster you control is destroyed — Special Summon 3 "Wicked Tokens" (1200/1200).',
-    cry: 'Break one, and two stand up.',
+    /* Removal becomes income, and answering it the other way is worse.
+       Play it and it pays three 1500 walls. Try to get rid of it while it is
+       still face-down — the way a careful player answers a Set card — and it
+       pays three 3000 walls instead, which is more board than most decks can
+       remove twice. There is no safe way to deal with it, only a choice of
+       which price to pay, and that is the whole of Odion. */
+    text:
+      'Trap: when a monster you control is destroyed — Special Summon 3 "Wicked Tokens" (1500/1500) ' +
+      'in face-up Defense Position. ' +
+      'If this card is destroyed while it is face-down: Special Summon 3 "Wicked Tokens" (3000/3000) ' +
+      'in face-up Defense Position instead.',
+    cry: 'Break one, and three stand up.',
     effects: [
       {
         trigger: 'trap',
         window: 'monsterDestroyed',
         label: 'Statue of the Wicked',
-        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 1200, def: 1200, count: 3, artSlug: 'statue-of-the-wicked', position: 'atk' }],
+        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 1500, def: 1500, count: 3, artSlug: 'statue-of-the-wicked', position: 'def' }],
+      },
+      {
+        /* Destroyed under its own card back. `onDestroyed` is deliberately not
+           gated on face-up — a card leaving the field leaves it whichever way
+           up it was lying — so the condition can simply ask which way up it
+           was. A Statue destroyed *after* it has been flipped up has already
+           paid out and gets nothing more. */
+        trigger: 'onDestroyed',
+        condition: { faceDown: true },
+        ops: [{ op: 'summonToken', name: 'Wicked Token', atk: 3000, def: 3000, count: 3, artSlug: 'statue-of-the-wicked', position: 'def' }],
       },
     ],
   },
@@ -1521,7 +1592,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     /* The single clean answer: the attack is refused and the attacker is
        destroyed. One copy, because a deck this wide does not also need to be
        this safe. */
-    text: 'Trap: when your opponent declares an attack — negate the attack, destroy the attacking monster and gain 1000 Life Points.',
+    text:
+      'Trap: when your opponent declares an attack — negate the attack, destroy the attacking monster, ' +
+      'gain 1000 Life Points and Set 1 Trap Card from your Deck.',
     cry: 'Anubis judges you unworthy.',
     effects: [
       {
@@ -1532,6 +1605,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
           { op: 'negateAttack' },
           { op: 'destroy', target: sel('opp', 'attacker') },
           { op: 'heal', amount: 1000, to: 'own' },
+          /* And it replaces itself with whichever trap the board actually
+             wants. This card spends the one Spell/Trap Zone to answer one
+             attack; refilling that zone as it goes is what stops the answer
+             costing more than the attack did. Last, so it Sets into the zone
+             this very card is about to leave. */
+          { op: 'setTrap', from: 'deck' },
         ],
       },
     ],

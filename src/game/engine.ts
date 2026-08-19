@@ -413,18 +413,44 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
   return bonus;
 }
 
+/**
+ * What a Token with moving stats is worth right now.
+ *
+ * "?/?" on the card and a real number every time anyone looks — the serpents
+ * are worth what the Graveyards hold, so they grow through a duel without
+ * anything having to remember to update them. Counts printed card data only,
+ * so this can be called from inside the stat calculation without recursing.
+ */
+function tokenScaleOf(state: DuelState, c: CardInstance, ctrl: PlayerId): { atk: number; def: number } {
+  const s = c.tokenScale;
+  if (!s) return { atk: 0, def: 0 };
+  const piles =
+    s.zone === 'eitherGrave'
+      ? [state.players.p1.grave, state.players.p2.grave]
+      : [state.players[ctrl].grave];
+  let n = 0;
+  for (const pile of piles) for (const g of pile) if (matchesFilter(g, s.filter)) n += 1;
+  return { atk: n * s.atk, def: n * s.def };
+}
+
 export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId): number {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
   const base = c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug);
-  const absorbed = c.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0);
-  return Math.max(0, base + absorbed + c.atkMod + c.turnAtkMod + aurasFor(state, c, ctrl).atk);
+  /* Half for a monster that swallows what it kills. A scorpion eating a
+     Blue-Eyes at full rate is simply a Blue-Eyes with extra steps. */
+  const rate = c.flags.absorbHalved || c.turnFlags.absorbHalved ? 0.5 : 1;
+  const absorbed = Math.floor(c.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0) * rate);
+  const scaled = tokenScaleOf(state, c, ctrl).atk;
+  return Math.max(0, base + scaled + absorbed + c.atkMod + c.turnAtkMod + aurasFor(state, c, ctrl).atk);
 }
 
 export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId): number {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
   const base = c.isToken ? (c.tokenDef ?? 0) : baseDef(c.slug);
-  const absorbed = c.absorbed.reduce((sum, a) => sum + baseDef(a.slug), 0);
-  return Math.max(0, base + absorbed + c.defMod + c.turnDefMod + aurasFor(state, c, ctrl).def);
+  const rate = c.flags.absorbHalved || c.turnFlags.absorbHalved ? 0.5 : 1;
+  const absorbed = Math.floor(c.absorbed.reduce((sum, a) => sum + baseDef(a.slug), 0) * rate);
+  const scaled = tokenScaleOf(state, c, ctrl).def;
+  return Math.max(0, base + scaled + absorbed + c.defMod + c.turnDefMod + aurasFor(state, c, ctrl).def);
 }
 
 export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerId): CardFlags {
@@ -450,6 +476,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('paysWithGraveInstead')) merged.paysWithGraveInstead = true;
   if (grants.has('attackCostDiscard')) merged.attackCostDiscard = true;
   if (grants.has('doublesWhenAttacking')) merged.doublesWhenAttacking = true;
+  if (grants.has('flipsInsteadOfDying')) merged.flipsInsteadOfDying = true;
   if (grants.has('halvesAttacker')) merged.halvesAttacker = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
@@ -509,7 +536,11 @@ function battleDamageFrom(
 
 export function maxAttacks(state: DuelState, c: CardInstance, controller: PlayerId): number {
   const f = effFlags(state, c, controller);
-  const extra = f.extraAttacks ?? 0;
+  /* One swing for each thing swallowed, on top of its own. Serket's whole
+     shape: every kill is another attack next turn, so a scorpion left alone
+     for two turns is the reason the traps were buying time. */
+  const eaten = f.attacksPerAbsorbed ? c.absorbed.length : 0;
+  const extra = (f.extraAttacks ?? 0) + eaten;
   /* An allowance it cannot pay for is not an allowance. `canAttackWith`
      already refuses a swing with nothing left in hand, so a Two-Headed King
      Rex answering "two" here was the engine disagreeing with itself — and the
@@ -640,7 +671,18 @@ export function createDuel(opts: {
 
 function drawCard(state: DuelState, pid: PlayerId, silent = false): boolean {
   const p = state.players[pid];
-  const c = p.deck.shift();
+  /* A draw the Temple already decided. Taken out of the middle of the Deck
+     rather than the top, and the promise is cleared as it is spent — so it is
+     one draw, not a standing arrangement. If the card has since left the Deck
+     (milled, searched, shuffled away) the promise simply lapses and the top
+     card comes as usual. */
+  let c: CardInstance | undefined;
+  if (p.destinyDrawUid) {
+    const at = p.deck.findIndex((x) => x.uid === p.destinyDrawUid);
+    p.destinyDrawUid = undefined;
+    if (at >= 0) c = p.deck.splice(at, 1)[0];
+  }
+  c ??= p.deck.shift();
   if (!c) {
     if (!state.winner) {
       state.winner = other(pid);
@@ -791,6 +833,10 @@ interface PendingDeparture {
   destroyed: boolean;
   /** What it was carrying on the way out — see `toGrave`. */
   counters: number;
+  /** And which way up it was lying. `resetInstance` turns everything face-up on
+   *  the way to the pile, so a card that answers being destroyed *face-down*
+   *  was always asked the question after it had been turned over. */
+  face: Face;
 }
 
 /**
@@ -835,9 +881,14 @@ function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
        A Cocoon of Evolution hatches whatever rung it had grown to, and it was
        being asked that question after the pile had already blanked it. */
     d.c.counters = d.counters;
+    /* And which way up it was. Statue of the Wicked pays three times as much
+       for being broken under its own card back, and `resetInstance` had already
+       turned it over by the time it was asked. */
+    d.c.face = d.face;
     if (d.destroyed) fireTriggers(state, d.c, d.controller, 'onDestroyed', {});
     fireTriggers(state, d.c, d.controller, 'onSentToGrave', {});
     d.c.counters = 0;
+    d.c.face = 'up';
   }
 }
 
@@ -853,6 +904,8 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
      table often enough, and "the other side from whoever is holding me" sent a
      stolen monster to the thief's Graveyard. */
   for (const ab of c.absorbed) {
+    // A ghost is a tally of something already dead — see `absorbed.ghost`.
+    if (ab.ghost) continue;
     landInGrave(state, newInstance(state, ab.slug, ab.owner), ab.owner);
   }
 
@@ -871,12 +924,13 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
 
   const wasOnField = fromField && controller != null;
   const counters = c.counters;
+  const face = c.face;
   resetInstance(c);
   state.players[c.owner].grave.push(c);
 
   if (wasOnField) {
-    if (defer) defer.push({ c, controller, destroyed, counters });
-    else fireDepartures(state, [{ c, controller, destroyed, counters }]);
+    if (defer) defer.push({ c, controller, destroyed, counters, face });
+    else fireDepartures(state, [{ c, controller, destroyed, counters, face }]);
   }
   /* And the arrival, which is a different sentence from the departure: this one
      is true of a card that was never on the board. */
@@ -1362,10 +1416,43 @@ function destroyCard(
      answerable rather than a wall.
      Before the protection checks below on purpose: this is not immunity, it
      is a price, and a God's blow collects it the same as anyone's. */
+  /* One life, and only against battle. The Sphinx turns face-down rather than
+     dying, once — and being flipped face-up again re-fires its FLIP effect,
+     which is the consolation rather than a second life. Placed with the prices
+     above the immunities because it can run out, and when it does the blow
+     lands like any other. */
+  if (byBattle && flags.flipsInsteadOfDying && !c.flags.usedFlipEscape && !divine) {
+    /* Written into the permanent bag rather than the turn one: the life is
+       spent for good, not until the end of the turn. */
+    c.flags.usedFlipEscape = true;
+    c.face = 'down';
+    c.position = 'def';
+    log(state, `${displayName(state, c)} sinks back into the sand rather than falling.`, 'effect', found.controller, logSlug(c));
+    anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
+    return;
+  }
+  /* The narrower bargain: a card *effect* takes everything this monster has
+     swallowed instead of the monster. Battle is not covered — Serket is meant
+     to be answerable by putting something bigger in front of it. */
+  if (!byBattle && flags.shedsAbsorbedOnEffect && c.absorbed.length && !divine) {
+    const shed = c.absorbed;
+    c.absorbed = [];
+    for (const ab of shed) if (!ab.ghost) landInGrave(state, newInstance(state, ab.slug, ab.owner), ab.owner);
+    log(
+      state,
+      `${displayName(state, c)} disgorges ${shed.length} ka and holds its ground!`,
+      'effect',
+      found.controller,
+      logSlug(c)
+    );
+    anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
+    return;
+  }
   if (flags.shedsAbsorbedInstead && c.absorbed.length) {
     const shed = c.absorbed;
     c.absorbed = [];
     for (const ab of shed) {
+      if (ab.ghost) continue;
       landInGrave(state, newInstance(state, ab.slug, ab.owner), ab.owner);
     }
     log(
@@ -1638,6 +1725,73 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           }
         }
         checkExodia(state);
+        break;
+      case 'setTrap': {
+        const p = state.players[ctx.controller];
+        const pile = op.from === 'deck' ? p.deck : p.grave;
+        /* The player's own choice first — a deck full of traps is a real
+           decision — and otherwise whatever is nearest, which is the same
+           fallback every other search here uses. */
+        const wanted = ctx.targets[ctx.cursor];
+        let at = wanted ? pile.findIndex((x) => x.uid === wanted && CARDS[x.slug]?.kind === 'trap') : -1;
+        if (at >= 0) ctx.cursor += 1;
+        else at = pile.findIndex((x) => CARDS[x.slug]?.kind === 'trap');
+        if (at < 0) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds no Trap to set.`);
+          break;
+        }
+        const trap = pile.splice(at, 1)[0];
+        /* The zone the resolving card is standing in is a zone it has finished
+           with. Judgment of Anubis Sets the next Trap into the slot it is about
+           to vacate, and asking "is the zone occupied?" during its own
+           resolution answered yes — by itself. Sent to the Graveyard here, so
+           the trap path's own cleanup finds nothing left to move and the card
+           is not lost between the two. */
+        if (p.spellTrap && p.spellTrap.uid === ctx.source.uid) {
+          toGrave(state, ctx.source.uid, true);
+        }
+        if (p.spellTrap && op.toHandIfOccupied) {
+          /* The zone is taken, so it comes back to hand instead of being lost.
+             A trap deck usually has that zone full, and a card that is a blank
+             on the board it was designed for is not a card. */
+          p.hand.push(trap);
+          log(state, `${p.name} takes ${card(trap.slug).name} back to hand — the zone is occupied.`, 'effect', ctx.controller, logSlug(trap));
+          anim(state, { kind: 'draw', uid: trap.uid, slug: trap.slug, player: ctx.controller });
+          break;
+        }
+        if (p.spellTrap) {
+          pile.splice(at, 0, trap);
+          emptyHanded(state, ctx, `${p.name} has no free Spell/Trap Zone.`);
+          break;
+        }
+        trap.face = 'down';
+        /* Set this turn, so it cannot fire until the next — the same wait a
+           trap played from the hand serves, and the reason a Set trap is a
+           threat rather than an instant answer. */
+        trap.summonedOnTurn = state.turn;
+        p.spellTrap = trap;
+        log(state, `${p.name} sets a Trap from their ${op.from === 'deck' ? 'Deck' : 'Graveyard'}.`, 'effect', ctx.controller, logSlug(ctx.source));
+        anim(state, { kind: 'activate', uid: trap.uid, slug: trap.slug, player: ctx.controller, reports: true });
+        break;
+      }
+      case 'destinyDraw': {
+        const p = state.players[ctx.controller];
+        const wanted = ctx.targets[ctx.cursor];
+        const pick = wanted ? p.deck.find((x) => x.uid === wanted) : p.deck[0];
+        if (!pick) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} sees nothing left to foretell.`);
+          break;
+        }
+        if (wanted) ctx.cursor += 1;
+        p.destinyDrawUid = pick.uid;
+        log(state, `${p.name}'s next draw is already decided.`, 'effect', ctx.controller, logSlug(ctx.source));
+        break;
+      }
+      case 'devourOnBattleDestroy':
+        applyFlag(ctx.source, 'devoursOnBattleDestroy', true, op.duration);
+        applyFlag(ctx.source, 'absorbHalved', true, op.duration);
+        applyFlag(ctx.source, 'attacksPerAbsorbed', true, op.duration);
+        applyFlag(ctx.source, 'shedsAbsorbedOnEffect', true, op.duration);
         break;
       case 'lendForTribute': {
         /* Lent, not taken. The monsters stay in their owner's zones — the
@@ -2074,6 +2228,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.tokenDef = op.def;
           t.tokenDeathDamage = op.deathDamage;
           t.fleeting = op.fleeting;
+          t.tokenScale = op.scale;
           t.position = op.position ?? 'def';
           t.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = t;
@@ -2500,9 +2655,16 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
      asks it on every stat calculation, long after the beat that put the card
      down has passed. */
   if (cond.summonedBy && !cond.summonedBy.includes(c.summonedBy ?? '')) return false;
+  /* "While all three stand." Counted face-up on the controller's own field, so
+     one lying face-down does not hold the set together. */
+  if (cond.controlsCopies) {
+    const n = p.monsters.filter((m) => m && m.face === 'up' && m.slug === cond.controlsCopies!.slug).length;
+    if (n < cond.controlsCopies.atLeast) return false;
+  }
   if (cond.ownLpBelow != null && p.lp > cond.ownLpBelow) return false;
   if (cond.graveAtLeast != null && p.grave.length < cond.graveAtLeast) return false;
   if (cond.countersAtLeast != null && c.counters < cond.countersAtLeast) return false;
+  if (cond.faceDown != null && (c.face === 'down') !== cond.faceDown) return false;
   if (cond.turnAtLeast != null && state.turn < cond.turnAtLeast) return false;
   if (cond.opponentHasMonster && state.players[other(controller)].monsters.every((m) => !m)) return false;
   if (cond.controlsOtherToon) {
@@ -3122,12 +3284,24 @@ function resolveBattle(state: DuelState) {
     dealDamage(state, other(who), amount, true);
   };
 
+  /* Serket eats what it kills. Recorded *before* the blow lands, because a
+     moment later the body is in the Graveyard and there is nothing left to
+     read — and recorded as a ghost, because it is already going to the
+     Graveyard on its own and a second copy would be a card the duel never
+     had. Half rate and one extra attack apiece are read off this list. */
+  const devour = (eater: CardInstance, eaten: CardInstance, side: PlayerId) => {
+    if (!effFlags(state, eater, side).devoursOnBattleDestroy || eaten.isToken) return;
+    eater.absorbed = [...eater.absorbed, { slug: eaten.slug, owner: eaten.owner, ghost: true }];
+    log(state, `${displayName(state, eater)} feeds on ${displayName(state, eaten)}.`, 'effect', side, logSlug(eater));
+  };
+
   if (target.position === 'atk') {
     const tAtk = effAtk(state, target, defender);
     if (atk > tAtk) {
       // Same rule as the direct swing: the trigger is about damage that landed.
       const before = state.players[defender].lp;
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
+      devour(attacker, target, controller);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) {
         fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
@@ -3147,6 +3321,7 @@ function resolveBattle(state: DuelState) {
     const tDef = effDef(state, target, defender);
     if (atk > tDef) {
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
+      devour(attacker, target, controller);
       destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
       if (!state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
     } else if (atk < tDef) {
@@ -3489,7 +3664,27 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
   if (need > 0 && state && pid && slug !== 'bickuribox' && toonActive(slug, faceUpOnSide(state, pid, 'toon-world'))) {
     need = 0;
   }
+  /* And the scorpion walks out of the temple that was holding it. The Temple of
+     the Kings is already required to Summon Serket at all; spending it is the
+     alternative to paying a body, and it costs the whole engine — the piercing,
+     the +300, the per-monster bonus — so it is a real decision rather than a
+     discount. Banished by `summonCostBanish` below at the moment the Summon
+     resolves; this half is only the price. */
+  if (need > 0 && state && pid && summonBanishFor(slug) && faceUpOnSide(state, pid, summonBanishFor(slug)!)) {
+    need = 0;
+  }
   return need;
+}
+
+/**
+ * A card on your own field this monster may banish instead of paying Tributes.
+ *
+ * Written as a lookup rather than a `CardDef` field because exactly one card
+ * does it, and the summon path needs to ask the same question twice — once to
+ * price the Summon and once to collect.
+ */
+export function summonBanishFor(slug: string): string | null {
+  return slug === 'mystical-beast-of-serket' ? 'temple-of-the-kings' : null;
 }
 
 export function monstersFrozen(state: DuelState, pid: PlayerId): boolean {
@@ -4127,6 +4322,18 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
           paidAtk += effAtk(state, t, pid);
           paidDef += effDef(state, t, pid);
         }
+      }
+      /* The temple pays instead of the bodies. Collected only when no Tribute
+         was paid — a Serket Summoned the ordinary way, off three bodies, leaves
+         the shrine standing. Banished rather than destroyed, so nothing in the
+         deck reads it as a Field Spell dying and answers. */
+      const shrine = summonBanishFor(c.slug);
+      if (shrine && tributes.length === 0 && p.field?.slug === shrine) {
+        const spent = p.field;
+        p.field = null;
+        p.banished.push(spent);
+        log(state, `${card(shrine).name} is banished to free the beast within.`, 'effect', pid, logSlug(spent));
+        anim(state, { kind: 'activate', uid: spent.uid, slug: spent.slug, player: pid, reports: true, text: 'BANISHED' });
       }
       /* Held back until the monster they bought is standing. See
          `PendingDeparture`: a painting that lets three of itself out on the way

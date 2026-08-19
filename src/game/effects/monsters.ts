@@ -3967,7 +3967,10 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The enabler that finds itself. Odion's whole deck wants the Temple down,
        and a deck that hopes to draw its hinge is a deck that loses to its own
        shuffle. */
-    text: 'When this monster is Normal Summoned: add "Temple of the Kings" from your Deck to your hand, then Special Summon 2 "Ra\'s Disciple" from your Deck in Attack Position.',
+    text:
+      'When this monster is Normal Summoned: add "Temple of the Kings" from your Deck to your hand, ' +
+      'then Special Summon 2 "Ra\'s Disciple" from your Deck or hand in Attack Position. ' +
+      'While you control 3 "Ra\'s Disciple", they cannot be destroyed by battle.',
     cry: 'I keep the forgery, and the faith.',
     effects: [
       {
@@ -3979,8 +3982,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
              2400 each rather than three 1100 bodies hiding in Defence — the
              swarm is the payoff, and a swarm in Defence is invisible to the
              race term the AI actually scores. */
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['ra-s-disciple'] }, count: 2, position: 'atk' },
+          /* The hand counts too. Drawing your second and third Disciple used to
+             be actively bad luck — the search could only reach the Deck, so the
+             copies in your hand were the ones it could not find. */
+          { op: 'specialSummon', from: ['deck', 'hand'], side: 'own', filter: { slugs: ['ra-s-disciple'] }, count: 2, position: 'atk' },
         ],
+      },
+      {
+        /* Three, or nothing. Two Disciples are a pair of ordinary 1100 bodies;
+           the third is what makes the set unbreakable, so breaking it up is
+           the counterplay — and a card effect still answers them, which is
+           what keeps the wall from being a wall. */
+        trigger: 'continuous',
+        condition: { controlsCopies: { slug: 'ra-s-disciple', atLeast: 3 } },
+        ops: [],
+        aura: { target: sel('own', 'all', { filter: { slugs: ['ra-s-disciple'] } }), grants: ['indestructibleByBattle'] },
       },
     ],
   },
@@ -3993,26 +4009,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        back to being only a wall, which is the counterplay. */
     summonRequires: 'temple-of-the-kings',
     text:
-      'Requires "Temple of the Kings". ' +
-      'Each time this monster destroys a monster by battle, it gains 500 ATK permanently. ' +
-      'This monster can attack twice during each Battle Phase.',
+      'Requires "Temple of the Kings", and can be Normal Summoned without a Tribute by banishing it. ' +
+      'This monster swallows every monster it destroys by battle: it gains half the ATK and DEF of each, ' +
+      'and attacks once more each Battle Phase for every one it holds. ' +
+      'When a card effect would destroy this monster, it loses everything it has swallowed instead; ' +
+      'holding nothing, it is destroyed.',
     cry: 'The scorpion feeds.',
     effects: [
       {
-        /* Two swings. The scorpion is the only card in Odion's deck that
-           actually kills, and a single 2500 attack a turn is not a win
-           condition behind a wall of traps — it is a clock so slow the deck
-           loses to time. Two attacks with a body that grows 800 every kill is
-           the finisher the traps have been buying turns for. */
-        trigger: 'continuous',
-        ops: [],
-        aura: { target: SELF, grants: ['doubleAttack'] },
-      },
-      {
-        trigger: 'onBattleDestroy',
-        ops: [
-          { op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' },
-        ],
+        /* Everything the scorpion is, granted the moment it lands, so it is
+           true of one summoned any way at all rather than only of the intended
+           route.
+           Half rate on what it eats: a scorpion that swallowed a Blue-Eyes at
+           full price would simply be a Blue-Eyes with extra steps. The extra
+           swings are where the danger actually is — a Serket left alone for two
+           turns attacks three times, and that is what the trap wall was buying
+           time for. */
+        trigger: 'onSummon',
+        ops: [{ op: 'devourOnBattleDestroy', duration: 'permanent' }],
       },
     ],
   },
@@ -4020,17 +4034,28 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'gravekeeper-s-spy': {
     /* A face-down card that turns out to be a threat — the shape of the whole
        deck, in monster form. */
-    text: 'FLIP: Special Summon 2 "Gravekeeper\'s Spy" from your Deck in Attack Position.',
+    text: 'FLIP: Special Summon 1 Level 4 or lower monster with a FLIP effect from your Deck in face-down Defense Position.',
     cry: 'You were watched the whole time.',
     effects: [
       {
         trigger: 'onFlip',
-        /* Attack Position, and two of them. A 1200 body is nothing; a 1200 body
-           under the Temple standing beside two more is 1200 + 400 + 900 = 2500,
-           three times over. Every one of Odion's summons had been putting cards
-           down in Defence, which is exactly the shape of deck that never
-           closes a duel out. */
-        ops: [{ op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['gravekeeper-s-spy'] }, count: 2, position: 'atk' }],
+        /* A spy that plants the next spy. Face-down is the whole point: what it
+           digs out is another card back for the opponent to guess at, and this
+           deck wins by making every face-down card a question. `hasFlipEffect`
+           is asked of the card's own effects rather than kept as a list, so a
+           FLIP monster written next year is findable without anyone
+           remembering to come back here. */
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'deck',
+            side: 'own',
+            filter: { kind: 'monster', maxLevel: 4, hasFlipEffect: true },
+            count: 1,
+            position: 'def',
+            face: 'down',
+          },
+        ],
       },
     ],
   },
@@ -4038,14 +4063,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'mask-of-darkness': {
     /* Trap recursion. In this deck the traps ARE the bodies, so getting one
        back is getting a monster back. */
-    text: 'FLIP: add 1 Trap Card from your Graveyard to your hand.',
+    text:
+      'FLIP: Set 1 Trap Card from your Graveyard. ' +
+      'If your Spell/Trap Zone is occupied, add it to your hand instead.',
     cry: 'Nothing is ever really spent.',
     effects: [
       {
         trigger: 'onFlip',
-        ops: [
-          { op: 'stealFromGrave', from: 'own', filter: { kind: 'trap' } },
-        ],
+        targets: 1,
+        /* Set, not returned to hand — a trap in the zone is a threat this turn
+           and a trap in hand is a card you still have to find room for. The
+           fallback matters more than it looks: a trap deck usually *has* that
+           zone full, and a card that is a blank on the board it was designed
+           for is not a card. */
+        ops: [{ op: 'setTrap', from: 'grave', toHandIfOccupied: true }],
       },
     ],
   },
@@ -4053,15 +4084,27 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'wall-of-illusion': {
     /* The shield's shield: anything that hits it is sent home. Odion does not
        open, he answers, and this is the cheapest answer in the deck. */
-    text: 'When this monster is attacked: return the attacking monster to its owner\'s hand after the damage step and inflict 600 damage to your opponent.',
+    text:
+      'When this monster is attacked: return the attacking monster to its owner\'s hand after the damage step ' +
+      'and inflict 800 damage to your opponent. ' +
+      'FLIP: destroy 1 Spell or Trap your opponent controls.',
     cry: 'A shield does not need to strike back.',
     effects: [
       {
         trigger: 'onAttacked',
         ops: [
           { op: 'bounce', target: sel('opp', 'attacker') },
-          { op: 'damage', amount: 600, to: 'opp' },
+          { op: 'damage', amount: 800, to: 'opp' },
         ],
+      },
+      {
+        /* Set it and it answers twice: the flip takes their backrow, and then
+           it is still standing there as the wall that sends attackers home.
+           Odion does not open, he answers, and this is now the cheapest answer
+           to a Set card in the deck. */
+        trigger: 'onFlip',
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }],
       },
     ],
   },
@@ -4073,9 +4116,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        is one per turn cycle and the rest sit in hand. Two of those slots are
        this instead: a card that is face-down like a trap, answers like a trap,
        and is a 2400 wall in the meantime. */
-    text: 'FLIP: inflict 400 damage to your opponent for each monster they control, then return every monster your opponent controls to their hand.',
+    text:
+      'FLIP: inflict 400 damage to your opponent for each monster they control, then return every monster ' +
+      'your opponent controls to their hand. ' +
+      'The first time a battle would destroy this monster, it is turned face-down instead.',
     cry: 'The sphinx wakes, and the field is swept.',
     effects: [
+      {
+        /* One life, and it buys more than a life: sunk back into the sand, the
+           sphinx is a face-down card again, and turning it face-up sweeps the
+           board a second time. The second blow lands — this is a card that
+           costs the opponent two attacks and a board, not a card that cannot
+           be killed. Granted continuously so it is true of a Set sphinx as
+           well as a summoned one; the escape itself is spent once and written
+           into the instance. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['flipsInsteadOfDying'] },
+      },
       {
         trigger: 'onFlip',
         /* The damage is read *before* the sweep, because `perOppMonster` counts
