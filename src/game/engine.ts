@@ -2738,14 +2738,28 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
     // goes off every time its window opens — that ongoing threat is the whole
     // reason it is allowed to sit in the zone.
     const ready = st.face === 'down' ? st.summonedOnTurn < state.turn : effs.some((e) => e.reusable);
-    // And a trap the controller cannot pay for is not an option — offering it
-    // would fire the window, skip the cost-gated effect, and waste the card.
-    const payable = effs.some((e) => canPayCost(state, pid, e));
-    if (ready && payable && effs.length) out.push(st);
+    /* And a trap the controller cannot pay for, or that has nothing to point
+       at, is not an option — offering it fires the window, skips the effect
+       and wastes the card.
+       The target half was missing, and it is the same rule the Spell path has
+       always used. Metalmorph was offered with an empty board, announced
+       itself, found no monster to equip, and then *stayed* — an Equip Trap
+       does not go to the Graveyard — so it sat in the one Spell/Trap Zone
+       attached to nothing, for the rest of the duel. Reported. */
+    const usable = effs.some(
+      (e) => canPayCost(state, pid, e) && !activationIsDead(state, pid, st, CARDS[st.slug], e)
+    );
+    if (ready && usable && effs.length) out.push(st);
   }
   for (const h of p.hand) {
     const effs = CARDS[h.slug]?.effects.filter((e) => e.trigger === 'trap' && e.fromHand && windowMatches(e.window, window)).filter(live(h)) ?? [];
-    if (effs.length) out.push(h);
+    /* A hand trap is spent to be activated, so the same question applies —
+       though no card reaches this today: Kuriboh is the only one, and shielding
+       you from damage needs nothing to point at. Written for consistency rather
+       than coverage, so the two halves of this function cannot answer the same
+       question differently the day a second hand trap exists. It is not pinned,
+       because nothing in the game can currently make it false. */
+    if (effs.some((e) => !activationIsDead(state, pid, h, CARDS[h.slug], e))) out.push(h);
   }
   return out;
 }

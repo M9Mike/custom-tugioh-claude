@@ -8167,6 +8167,75 @@ console.log('\nA card that comes up empty says so');
 }
 
 /* ------------------------------------------------------------------ */
+/* A Trap with nothing to point at is never offered                      */
+/* ------------------------------------------------------------------ */
+console.log('\nA trap window only offers what the trap can actually use');
+{
+  /* Reported: "Metalmorph asked me to activate it when I had no monsters on
+     the field."
+
+     The trap window checked three things — the right window, the card being
+     ready, and the cost being payable — and never asked the fourth: whether
+     the effect had anything to point at. The Spell path has asked that since
+     Mai kept playing De-Spell at an empty backrow.
+
+     Metalmorph is the worst shape of it, because an Equip Trap does not go to
+     the Graveyard when it resolves. Offered on an empty board it announced
+     itself, found no monster, and then *stayed* — sitting in the one
+     Spell/Trap Zone attached to nothing for the rest of the duel. */
+  const board = (mine: string | null) => {
+    const s = fresh();
+    s.active = FOE;
+    s.players[ME].monsters = [mine ? card(ME, mine) : null, null, null];
+    const skull = card(FOE, 'summoned-skull');
+    skull.summonedOnTurn = 0;
+    s.players[FOE].monsters = [skull, null, null];
+    const trap = { ...card(ME, 'metalmorph'), face: 'down' as const };
+    trap.summonedOnTurn = 0;
+    s.players[ME].spellTrap = trap;
+    return { state: applyAction(s, FOE, { type: 'toPhase', phase: 'battle' }).state, trap };
+  };
+
+  const empty = board(null);
+  ok(empty.state.pending?.kind !== 'trap',
+    'with no monster to equip, Metalmorph is not offered at all',
+    empty.state.pending?.kind ?? '(no window)');
+  /* And the engine agrees if the response is sent anyway, so the two cannot
+     drift apart the way the picker and the gate did over 7 Completed. */
+  const forced = applyAction(empty.state, ME, { type: 'respondTrap', uid: empty.trap.uid });
+  ok(forced.state.players[ME].spellTrap?.face === 'down',
+    'and it stays face-down rather than being spent for nothing',
+    forced.state.players[ME].spellTrap?.face ?? '(gone)');
+  ok(!forced.state.players[ME].spellTrap?.equippedTo,
+    'never left equipped to nothing, blocking the zone');
+
+  /* CONTROL: give it a body and the window opens exactly as before, or the
+     check above is satisfied by a trap that simply never works. */
+  const armed = board('cannon-soldier');
+  ok(armed.state.pending?.kind === 'trap',
+    'CONTROL: with a monster standing it is offered',
+    armed.state.pending?.kind ?? '(no window)');
+  const bolted = act(armed.state, ME, { type: 'respondTrap', uid: armed.trap.uid, targets: [armed.state.players[ME].monsters[0]!.uid] });
+  ok(bolted.players[ME].spellTrap?.equippedTo === bolted.players[ME].monsters[0]!.uid,
+    'and it attaches to it');
+
+  /* The rule is the window, not the card: a Trap whose whole job is removal
+     is not offered against a board with nothing to remove either. */
+  const nothingToKill = fresh('battle');
+  nothingToKill.active = FOE;
+  const beater = card(FOE, 'summoned-skull');
+  beater.summonedOnTurn = 0;
+  nothingToKill.players[FOE].monsters = [beater, null, null];
+  const wall = { ...card(ME, 'mirror-force'), face: 'down' as const };
+  wall.summonedOnTurn = 0;
+  nothingToKill.players[ME].spellTrap = wall;
+  const swung = applyAction(nothingToKill, FOE, { type: 'attack', uid: beater.uid, targetUid: null }).state;
+  ok(swung.pending?.kind === 'trap',
+    'CONTROL: Mirror Force still answers an attack — its target comes from the attack, not a pool',
+    swung.pending?.kind ?? '(no window)');
+}
+
+/* ------------------------------------------------------------------ */
 /* A result is not an entrance                                           */
 /* ------------------------------------------------------------------ */
 console.log('\nWhat the board says, not just what the engine wrote');
