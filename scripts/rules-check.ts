@@ -8167,6 +8167,70 @@ console.log('\nA card that comes up empty says so');
 }
 
 /* ------------------------------------------------------------------ */
+/* One effect, one verdict: a shield is judged before anything falls     */
+/* ------------------------------------------------------------------ */
+console.log('\nA protector that dies in the same breath still protected');
+{
+  /* Reported: Crush Card Virus took a Robotic Knight and the Steel Ogre Grotto
+     #1 he was shielding, and the owner asked whether the ogre should have been
+     protected.
+
+     It should — and the reason it was not is worse than either ruling. The
+     destroy op judged each card as its turn came round, so a protector that
+     fell earlier in the same batch took everything it shielded with it, and
+     which card fell first was decided by nothing better than Monster Zone
+     order. The same board could go either way depending on where you happened
+     to have put your monsters, which is not a rule anybody could play around. */
+  const swept = (zones: string[]) => {
+    const s = fresh();
+    s.active = FOE;
+    s.players[ME].monsters = [
+      zones[0] ? card(ME, zones[0]) : null,
+      zones[1] ? card(ME, zones[1]) : null,
+      null,
+    ];
+    const hole = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [hole];
+    const after = act(s, FOE, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    return after.players[ME].monsters.filter(Boolean).map((m) => m!.slug).sort().join(',') || '(none)';
+  };
+
+  ok(swept(['robotic-knight', 'steel-ogre-grotto-1']) === 'steel-ogre-grotto-1',
+    'a Machine shielded by Robotic Knight outlives the sweep that kills him',
+    swept(['robotic-knight', 'steel-ogre-grotto-1']));
+  ok(swept(['steel-ogre-grotto-1', 'robotic-knight']) === 'steel-ogre-grotto-1',
+    'and the Monster Zones they happen to sit in change nothing',
+    swept(['steel-ogre-grotto-1', 'robotic-knight']));
+
+  /* CONTROL: without the Knight there is no shield, so the ogre is not simply
+     immune to sweeps on its own. */
+  ok(swept(['steel-ogre-grotto-1', 'cannon-soldier']) === '(none)',
+    'CONTROL: with no Knight standing, the ogre dies like anything else',
+    swept(['steel-ogre-grotto-1', 'cannon-soldier']));
+  /* CONTROL: the Knight never shielded himself — `excludeSelf` — so he is not
+     surviving his own aura. */
+  ok(!swept(['robotic-knight', 'steel-ogre-grotto-1']).includes('robotic-knight'),
+    'CONTROL: the Knight does not shield himself');
+
+  /* And the same verdict through a targeted mass destroy, not just a sweep. */
+  const virus = fresh();
+  virus.active = ME;
+  virus.players[ME].monsters = [card(ME, 'robotic-knight'), card(ME, 'steel-ogre-grotto-1'), null];
+  const ccv = { ...card(FOE, 'crush-card-virus'), face: 'down' as const };
+  ccv.summonedOnTurn = 0;
+  virus.players[FOE].spellTrap = ccv;
+  const opened = applyAction(virus, ME, { type: 'toPhase', phase: 'battle' }).state;
+  ok(opened.pending?.kind === 'trap', 'Crush Card Virus answers the Battle Phase',
+    opened.pending?.kind ?? '(no window)');
+  const crushed = act(opened, FOE, { type: 'respondTrap', uid: ccv.uid });
+  ok(crushed.players[ME].monsters.some((m) => m?.slug === 'steel-ogre-grotto-1'),
+    'and the ogre survives Crush Card Virus too',
+    crushed.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!crushed.players[ME].monsters.some((m) => m?.slug === 'robotic-knight'),
+    'while the Knight who shielded it does not');
+}
+
+/* ------------------------------------------------------------------ */
 /* A Trap with nothing to point at is never offered                      */
 /* ------------------------------------------------------------------ */
 console.log('\nA trap window only offers what the trap can actually use');

@@ -1306,10 +1306,41 @@ function addOngoing(state: DuelState, kind: OngoingEffect['kind'], target: Playe
   state.ongoing.push({ id: `o${state.ongoing.length}_${state.version}`, source, kind, target, turns });
 }
 
-function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?: EffectCtx) {
+/**
+ * Whether this card shrugs a destruction off outright, as the board stands now.
+ *
+ * Split out so a *batch* can ask before it starts killing things. One effect
+ * that destroys several monsters used to judge each one as its turn came round,
+ * which meant a protector dying earlier in the same batch left everything it was
+ * shielding to die with it — and which one went first was decided by nothing
+ * better than Monster Zone order. Reported: Crush Card Virus took a Robotic
+ * Knight and the Steel Ogre Grotto #1 he was shielding, and swapping the two
+ * zones saved the ogre.
+ */
+function shrugsOffDestruction(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  byBattle: boolean
+): boolean {
+  const f = effFlags(state, c, controller);
+  return byBattle ? !!f.indestructibleByBattle : !!f.indestructibleByEffect;
+}
+
+function destroyCard(
+  state: DuelState,
+  c: CardInstance,
+  byBattle: boolean,
+  ctx?: EffectCtx,
+  /* The verdict from before the batch began, when one was taken. Everything a
+     single effect destroys is judged against the board as it stood when that
+     effect resolved, so the order they fall in cannot change who survives. */
+  preJudged?: boolean
+) {
   const found = findOnField(state, c.uid);
   if (!found) return;
   const flags = effFlags(state, c, found.controller);
+  const shielded = preJudged ?? shrugsOffDestruction(state, c, found.controller, byBattle);
   /* Every battle call and every effect call hands this function a ctx whose
      `source` is the card responsible, so the decree is one check: a God's
      blow and a God's effect ignore the protection outright. */
@@ -1380,15 +1411,15 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
     anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: found.controller, reports: true, text: `${dice.join(' ')} ${made ? '= 7' : '✗'}` });
     if (made) return;
   }
-  if (byBattle && flags.indestructibleByBattle && !divine) {
+  if (byBattle && shielded && !divine) {
     log(state, `${displayName(state, c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
     return;
   }
-  if (!byBattle && flags.indestructibleByEffect && !divine) {
+  if (!byBattle && shielded && !divine) {
     log(state, `${displayName(state, c)} is immune to that effect.`, 'effect', found.controller, logSlug(c));
     return;
   }
-  if (divine && (flags.indestructibleByBattle || flags.indestructibleByEffect || flags.untargetable)) {
+  if (divine && (shielded || flags.untargetable)) {
     /* Its own beat, rather than riding on the destroy below. A beat carries one
        line, so two lines about the same card need two beats — and this one is
        the reason the next one happens. */
@@ -1532,8 +1563,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.turnDefMod += a - d;
         }
         break;
-      case 'destroy':
-        for (const t of resolveTargets(ctx, op.target)) {
+      case 'destroy': {
+        const marked = resolveTargets(ctx, op.target);
+        /* Who is shielded is settled here, once, against the board as it stands
+           before anything falls — not re-asked as each card's turn comes round.
+           A protector destroyed earlier in the same batch used to take
+           everything it was shielding with it, and which card went first was
+           decided by nothing better than Monster Zone order: Crush Card Virus
+           killed a Robotic Knight and the Steel Ogre Grotto #1 he was
+           protecting, and swapping their two zones saved the ogre. Reported. */
+        const shielded = new Map<string, boolean>();
+        for (const t of marked) {
+          const at = findOnField(state, t.uid);
+          if (at) shielded.set(t.uid, shrugsOffDestruction(state, t, at.controller, false));
+        }
+        for (const t of marked) {
           /* Counted from the board, not from the list: `destroyCard` refuses a
              God and anything else standing beyond reach, and a card that
              survived must not be charged for by a `perDestroyed` damage. */
@@ -1542,13 +1586,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              Soldier fires its own monster at them for exactly its ATK, and a
              card in the Graveyard has no effective stats left to read. */
           const worth = before ? effAtk(state, t, before.controller) : 0;
-          destroyCard(state, t, false, ctx);
+          destroyCard(state, t, false, ctx, shielded.get(t.uid));
           if (before && !findOnField(state, t.uid)) {
             ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
             ctx.destroyedAtk = (ctx.destroyedAtk ?? 0) + worth;
           }
         }
         break;
+      }
       case 'sendToGrave':
         /* Not a destruction. `onSentToGrave` fires and `onDestroyed` does not,
            which is the difference between a moth moulting and a moth dying. */
