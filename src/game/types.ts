@@ -823,6 +823,18 @@ export interface EffectCondition {
   graveHasSlug?: string;
   /** The opponent is holding at least one card. */
   opponentHasHand?: boolean;
+  /**
+   * This monster was Special Summoned by one of these cards' effects.
+   *
+   * Metalzoa is what Zoa becomes, and only that: summoned any other way — off
+   * the top of a hand for two Tributes, dragged back by Time Machine, revived
+   * by Monster Reborn — it is the same 3000 body with none of the text. The
+   * transformation is the card, so the route it arrived by is the condition.
+   *
+   * Not `summonOnlyBy`, which forbids every other route outright. Those summons
+   * are all perfectly legal; they just do not wake anything up.
+   */
+  summonedBy?: string[];
   /** Requires a face-up card with this slug on own field. */
   requiresOnField?: string;
   /**
@@ -965,6 +977,16 @@ export interface CardInstance {
    * to the other side of the field permanently.
    */
   specialSummonedOnTurn?: number;
+  /**
+   * The slug of the card whose effect Special Summoned this one, if any.
+   *
+   * How a monster arrived can be worth more than the monster: Metalzoa is the
+   * thing Zoa turns into, and one that was Normal Summoned off the top of a
+   * hand or dragged back by Time Machine is the same body without the story.
+   * Cleared by `resetInstance` on every arrival, so a previous life's route
+   * cannot carry over — see `condition.summonedBy`.
+   */
+  summonedBy?: string;
   attacksUsed: number;
   /**
    * Monsters this card has declared an attack on this turn, for "attacks every

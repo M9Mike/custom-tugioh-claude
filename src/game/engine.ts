@@ -713,6 +713,11 @@ function resetInstance(c: CardInstance) {
      was bounced back to the hand and then properly Tribute Summoned cannot
      inherit a stale "did not pay for itself" from a previous life. */
   c.specialSummonedOnTurn = undefined;
+  /* Same reasoning, one field over. Metalzoa is only the real thing when Zoa
+     called it up, so a Metalzoa that arrived that way, died, and was later
+     revived by Time Machine must not still be wearing Zoa's name. Cleared on
+     every arrival; only the Special Summon that caused it writes it back. */
+  c.summonedBy = undefined;
 }
 
 /**
@@ -898,7 +903,9 @@ function landSpecialSummon(
   controller: PlayerId,
   zone: number,
   position: Position,
-  face: Face
+  face: Face,
+  /** The card whose effect did this, for `condition.summonedBy`. */
+  by?: string
 ) {
   removeFromAnywhere(state, c.uid);
   resetInstance(c);
@@ -907,6 +914,10 @@ function landSpecialSummon(
   c.summonedOnTurn = state.turn;
   // It arrived without paying for itself — see `returnBorrowedGods`.
   c.specialSummonedOnTurn = state.turn;
+  /* How it got here, so a card can be worth less when it came the easy way.
+     Written after `resetInstance` has cleared it, which is what stops a
+     previous life's route carrying over. */
+  c.summonedBy = by;
   state.players[controller].monsters[zone] = c;
   log(state, `${state.players[controller].name} Special Summons ${displayName(state, c)}!`, 'summon', controller);
   anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: controller });
@@ -1707,7 +1718,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         /* `found` came off the top with `shift`, so it is already out of the
            Deck — splicing for it again found nothing and took the bottom card
            instead, quietly eating one more than the dig was worth. */
-        landSpecialSummon(state, found, ctx.controller, zone, op.position ?? 'atk', 'up');
+        landSpecialSummon(state, found, ctx.controller, zone, op.position ?? 'atk', 'up', ctx.source.slug);
         ctx.summoned = [...(ctx.summoned ?? []), found.uid];
         fireTriggers(state, found, ctx.controller, 'onSummon', {});
         if (!state.winner) {
@@ -1763,7 +1774,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           emptyHanded(state, ctx, `${displayName(state, ctx.source)} has no room to arrive.`);
           break;
         }
-        landSpecialSummon(state, ctx.source, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up');
+        landSpecialSummon(state, ctx.source, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up', ctx.source.slug);
         ctx.summoned = [...(ctx.summoned ?? []), ctx.source.uid];
         if (ctx.source.face === 'up') {
           fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
@@ -1925,7 +1936,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             blocked ??= 'pool';
             break;
           }
-          landSpecialSummon(state, picked, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up');
+          landSpecialSummon(state, picked, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up', ctx.source.slug);
           arrived += 1;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
           /* The targets the activating player named and nothing has claimed
@@ -2395,6 +2406,11 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     const arrived = trig?.summonedUid ? findOnField(state, trig.summonedUid)?.c : null;
     if (!arrived || !matchesFilter(arrived, cond.summonedIs)) return false;
   }
+  /* How this monster got here. Read off the instance rather than the trigger
+     context, because the question outlives the summon: a continuous effect
+     asks it on every stat calculation, long after the beat that put the card
+     down has passed. */
+  if (cond.summonedBy && !cond.summonedBy.includes(c.summonedBy ?? '')) return false;
   if (cond.ownLpBelow != null && p.lp > cond.ownLpBelow) return false;
   if (cond.graveAtLeast != null && p.grave.length < cond.graveAtLeast) return false;
   if (cond.countersAtLeast != null && c.counters < cond.countersAtLeast) return false;
@@ -3122,7 +3138,7 @@ function startTurn(state: DuelState) {
     const zone = p.monsters.findIndex((m) => !m);
     if (at < 0 || zone < 0) continue;
     const back = p.grave[at];
-    landSpecialSummon(state, back, pid, zone, 'atk', 'up');
+    landSpecialSummon(state, back, pid, zone, 'atk', 'up', owed.source);
     /* Bigger than it left. `resetInstance` has just wiped the modifiers, so
        these are written after the landing rather than before it. */
     back.atkMod += owed.atkBonus ?? 0;

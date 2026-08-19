@@ -7705,30 +7705,49 @@ console.log('\nA card that comes up empty says so');
     ok(blown.players[FOE].lp === lp, 'and none of it is damage', `LP ${blown.players[FOE].lp}`);
   }
 
-  /* --- Metalzoa: twice going out, half coming in --- */
+  /* --- Metalzoa: twice going out, half coming in, and only for Zoa --- */
   {
-    /* Summoned for real, never hand-flagged. Writing `flags` onto the instance
-       proves the engine can double a swing; only summoning the card proves
-       *Metalzoa* does — and the first version of this pin stayed green with
-       both grants deleted off the card. Level 8, so it costs two bodies. */
-    const bring = (phase: 'main' | 'battle') => {
-      const s = fresh(); // summoned in the Main Phase, then walked into the one asked for
-      const metal = card(ME, 'metalzoa');
-      const fodder1 = card(ME, 'kuriboh');
-      const fodder2 = card(ME, 'kuriboh');
-      s.players[ME].monsters = [fodder1, fodder2, null];
-      s.players[ME].hand = [metal];
-      const up = act(s, ME, {
-        type: 'normalSummon', uid: metal.uid, zone: 2, position: 'atk', face: 'up',
-        tributes: [fodder1.uid, fodder2.uid],
-      });
+    /* Summoned for real, never hand-flagged, and now only ever *through Zoa* —
+       which is the whole card. A Metalzoa that arrived any other way is a plain
+       3000 body, so the helper below has to kill a Zoa to get one, exactly the
+       way a duel does. */
+    const bring = () => {
+      const s = fresh();
+      const beast = card(ME, 'zoa');
+      beast.summonedOnTurn = 0;
+      s.players[ME].monsters = [beast, null, null];
+      s.players[ME].deck = [card(ME, 'metalzoa')];
+      s.active = FOE;
+      const bolt = card(FOE, 'tribute-to-the-doomed');
+      s.players[FOE].hand = [bolt];
+      const up = act(s, FOE, { type: 'activateSpell', uid: bolt.uid, targets: [beast.uid] });
       const landed = up.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
       landed.summonedOnTurn = 0;
-      up.phase = phase;
       return { state: up, metal: landed };
     };
 
-    const { state: mz, metal } = bring('battle');
+    /* The same body, arriving the ordinary way: two Tributes out of the hand. */
+    const plainly = () => {
+      const s = fresh();
+      const metal = card(ME, 'metalzoa');
+      const f1 = card(ME, 'kuriboh');
+      const f2 = card(ME, 'kuriboh');
+      s.players[ME].monsters = [f1, f2, null];
+      s.players[ME].hand = [metal];
+      const up = act(s, ME, {
+        type: 'normalSummon', uid: metal.uid, zone: 2, position: 'atk', face: 'up',
+        tributes: [f1.uid, f2.uid],
+      });
+      const landed = up.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
+      landed.summonedOnTurn = 0;
+      return { state: up, metal: landed };
+    };
+
+    const { state: mz0 } = bring();
+    const mz = structuredClone(mz0);
+    mz.active = ME;
+    mz.phase = 'battle';
+    const live = mz.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
     const wall = card(FOE, 'kuriboh'); // 300/200
     wall.summonedOnTurn = 0;
     mz.players[FOE].monsters = [wall, null, null];
@@ -7736,45 +7755,120 @@ console.log('\nA card that comes up empty says so');
        reads a capped total is measuring the floor rather than the swing. */
     mz.players[FOE].lp = 20000;
     const before = mz.players[FOE].lp;
-    const swung = act(mz, ME, { type: 'attack', uid: metal.uid, targetUid: wall.uid });
-    /* 3000 doubled is 6000, through a 200 DEF Kuriboh in Attack Position:
-       6000 − 300 = 5700, which is the duel. The pin reads the damage rather
-       than the winner so a later LP change cannot quietly retire it. */
+    const swung = act(mz, ME, { type: 'attack', uid: live.uid, targetUid: wall.uid });
+    /* 3000 doubled is 6000, into a 300 ATK Kuriboh standing up: 5700. */
     ok(before - swung.players[FOE].lp === 6000 - 300, 'Metalzoa swings at twice its ATK',
       String(before - swung.players[FOE].lp));
     ok(swung.log.some((l) => /doubl/i.test(l.text)), 'and says so',
       swung.log.slice(-5).map((l) => l.text).join(' | '));
 
     /* And halves whatever comes at it. */
-    const { state: inbound, metal: guard } = bring('battle');
+    const inbound = structuredClone(bring().state);
+    inbound.phase = 'battle';
     inbound.active = FOE;
+    const guard = inbound.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
     const charger = card(FOE, 'summoned-skull'); // 2500 → 1250
     charger.summonedOnTurn = 0;
     inbound.players[FOE].monsters = [charger, null, null];
+    const foeLp = inbound.players[FOE].lp;
     const met = act(inbound, FOE, { type: 'attack', uid: charger.uid, targetUid: guard.uid });
     /* 1250 into 3000 is 1750 of recoil, and the metal is untouched. */
-    ok(4000 - met.players[FOE].lp === 3000 - 1250, 'and halves whatever attacks it',
-      String(4000 - met.players[FOE].lp));
+    ok(foeLp - met.players[FOE].lp === 3000 - 1250, 'and halves whatever attacks it',
+      String(foeLp - met.players[FOE].lp));
     ok(met.players[ME].monsters.some((m) => m?.slug === 'metalzoa'), 'and stands');
 
     /* Arriving strips their hand of Spells and Traps as well as the field. */
     const clean = fresh();
-    const zoa2 = card(ME, 'metalzoa');
-    const f1 = card(ME, 'kuriboh');
-    const f2 = card(ME, 'kuriboh');
-    clean.players[ME].monsters = [f1, f2, null];
-    clean.players[ME].hand = [zoa2];
+    const beast2 = card(ME, 'zoa');
+    beast2.summonedOnTurn = 0;
+    clean.players[ME].monsters = [beast2, null, null];
+    clean.players[ME].deck = [card(ME, 'metalzoa')];
     clean.players[FOE].hand = [card(FOE, 'pot-of-greed'), card(FOE, 'mirror-force'), card(FOE, 'battle-ox')];
-    clean.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
-    const arrived = act(clean, ME, {
-      type: 'normalSummon', uid: zoa2.uid, zone: 2, position: 'atk', face: 'up',
-      tributes: [f1.uid, f2.uid],
-    });
-    ok(!arrived.players[FOE].spellTrap, "Metalzoa's arrival clears their backrow");
+    clean.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+    clean.active = FOE;
+    const bolt2 = card(FOE, 'tribute-to-the-doomed');
+    clean.players[FOE].hand.push(bolt2);
+    const arrived = act(clean, FOE, { type: 'activateSpell', uid: bolt2.uid, targets: [beast2.uid] });
+    ok(!arrived.players[FOE].field, "Metalzoa's arrival clears their backrow");
     const kept = arrived.players[FOE].hand.map((h) => h.slug);
     ok(!kept.includes('pot-of-greed') && !kept.includes('mirror-force'),
       'and empties their hand of Spells and Traps', kept.join(',') || '(empty)');
     ok(kept.includes('battle-ox'), 'CONTROL: their monsters stay where they are', kept.join(','));
+
+    /* --- and the whole card is gated on having been Zoa --- */
+    const vanilla = plainly();
+    const bare = vanilla.state.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
+    const f = effFlags(vanilla.state, bare, ME);
+    ok(!f.doublesWhenAttacking && !f.halvesAttacker && !f.pierce && !f.indestructibleByBattle,
+      'Normal Summoned out of the hand, Metalzoa is a plain body with none of the text',
+      JSON.stringify({ d: !!f.doublesWhenAttacking, h: !!f.halvesAttacker, p: !!f.pierce, i: !!f.indestructibleByBattle }));
+
+    /* The backrow-and-hand wipe is gated with it — the clearest half to see. */
+    const untouched = fresh();
+    const metal2 = card(ME, 'metalzoa');
+    const g1 = card(ME, 'kuriboh');
+    const g2 = card(ME, 'kuriboh');
+    untouched.players[ME].monsters = [g1, g2, null];
+    untouched.players[ME].hand = [metal2];
+    untouched.players[FOE].field = { ...card(FOE, 'umi'), face: 'up' as const };
+    untouched.players[FOE].hand = [card(FOE, 'mirror-force')];
+    const quiet = act(untouched, ME, {
+      type: 'normalSummon', uid: metal2.uid, zone: 2, position: 'atk', face: 'up',
+      tributes: [g1.uid, g2.uid],
+    });
+    ok(!!quiet.players[FOE].field && quiet.players[FOE].hand.length === 1,
+      'and it strips nothing on the way in either');
+
+    /* CONTROL: the one that came through Zoa really does carry all of it, so
+       the checks above are the route and not a card that lost its text. */
+    const real = effFlags(mz0, mz0.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!, ME);
+    ok(!!real.doublesWhenAttacking && !!real.halvesAttacker && !!real.pierce && !!real.indestructibleByBattle,
+      'CONTROL: the one Zoa called up carries every line of it');
+
+    /* And the route does not survive a second life.
+
+       This has to be the *same instance* Zoa summoned, and it has to come back
+       by a road that does not overwrite the field — or the pin proves nothing.
+       Two earlier versions proved nothing: a freshly minted Metalzoa in the
+       Graveyard never carried Zoa's name to begin with, and a Time Machine
+       revival is itself a Special Summon, so it rewrites the route whether or
+       not anything clears it.
+
+       A bounce is the road that matters. It puts the card in the *hand*, and a
+       Normal Summon out of the hand never touches the field at all — so
+       without the clear, a Metalzoa the opponent politely returned could be
+       re-summoned with two Tributes and keep every line of Zoa's text. */
+    const bounced = structuredClone(mz0);
+    bounced.active = FOE;
+    bounced.phase = 'main';
+    const amazon = card(FOE, 'amazon-of-the-seas');
+    bounced.players[FOE].hand = [amazon];
+    bounced.players[FOE].monsters = [null, null, null];
+    const metalUid = bounced.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!.uid;
+    const home = act(bounced, FOE, {
+      type: 'normalSummon', uid: amazon.uid, zone: 0, position: 'atk', face: 'up',
+      tributes: [], targets: [metalUid],
+    });
+    const inHand = home.players[ME].hand.find((h) => h.slug === 'metalzoa');
+    ok(!!inHand, 'a Zoa-summoned Metalzoa can be bounced back to the hand',
+      home.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+    ok(inHand?.summonedBy === undefined,
+      'and it does not carry Zoa home with it', String(inHand?.summonedBy));
+
+    const resummoned = structuredClone(home);
+    resummoned.active = ME;
+    resummoned.phase = 'main';
+    resummoned.players[ME].normalSummonUsed = false;
+    const t1 = card(ME, 'kuriboh');
+    const t2 = card(ME, 'kuriboh');
+    resummoned.players[ME].monsters = [t1, t2, null];
+    const reborn = act(resummoned, ME, {
+      type: 'normalSummon', uid: inHand!.uid, zone: 2, position: 'atk', face: 'up',
+      tributes: [t1.uid, t2.uid],
+    });
+    const second = reborn.players[ME].monsters.find((m) => m?.slug === 'metalzoa')!;
+    ok(!effFlags(reborn, second, ME).doublesWhenAttacking,
+      'so Tribute Summoning it out of the hand a second time gets none of the text back');
   }
 
   /* --- Zoa and Metalmorph: the loop closes both ways --- */

@@ -2928,19 +2928,27 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   metalzoa: {
-    /* What Zoa becomes, and it arrives swinging. The backrow goes on summon,
-       the *hand* goes with it — there is no Spell or Trap answer left anywhere
-       — and then the metal fights on its own terms: twice its ATK going out,
-       half of theirs coming in. A 3000 body attacking at 6000 and defending
-       against 900 from a Blue-Eyes is the ceiling of this whole deck, and it
-       costs a Zoa that had to die first to get here. */
+    /* What Zoa becomes, and only that. The backrow goes on summon, the *hand*
+       goes with it — there is no Spell or Trap answer left anywhere — and then
+       the metal fights on its own terms: twice its ATK going out, half of
+       theirs coming in. A 3000 body attacking at 6000 and defending against 900
+       from a Blue-Eyes is the ceiling of this whole deck.
+
+       All of it is gated on the route. Summoned any other way — two Tributes
+       out of the hand, Time Machine, Monster Reborn — nothing here fires, and
+       since every line of the card is granted by this one trigger, what lands
+       is a plain 3000/2300 body. That is the point: the transformation is the
+       card, and a Metalzoa that never was a Zoa has not transformed into
+       anything. The other routes stay legal; they simply wake nothing up. */
     text:
+      'This monster gains its effects only if it was Special Summoned by "Zoa"; summoned any other way it is treated as a Normal Monster. ' +
       'When this monster is summoned: destroy every Spell and Trap your opponent controls, and they discard every Spell and Trap in their hand. ' +
       'When this monster attacks, its ATK is doubled; when it is attacked, the attacking monster\'s ATK is halved. ' +
       'This monster inflicts piercing battle damage and cannot be destroyed by battle.',
     effects: [
       {
         trigger: 'onSummon',
+        condition: { summonedBy: ['zoa'] },
         ops: [
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
           { op: 'discard', count: 0, all: true, who: 'opp', filter: { kind: 'spell' } },
