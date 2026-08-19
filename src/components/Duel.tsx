@@ -22,6 +22,7 @@ import {
   maxAttacks,
   monstersFrozen,
   other,
+  summonBanishFor,
   summonBlocked,
   tributableBodies,
   tributesRequired,
@@ -881,7 +882,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const startSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down') => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
-    const need = tributesRequired(slug, state, me);
+    /* The body price, deliberately — the shrine is a *second* button, not a
+       discount applied behind the player's back. See `tributesRequired`. */
+    const need = tributesRequired(slug, state, me, true);
     if (need > 0) {
       setMode({ kind: 'tributes', uid, need, picked: [], position, face });
       return;
@@ -894,7 +897,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
     const spec = face === 'up' && !targets ? summonTargetSpec(slug) : null;
     if (spec) {
-      const options = pickableUids(spec);
+      // Never the monster that is arriving — see `targetCandidates`.
+      const options = pickableUids(spec, uid);
       const want = spec.count ?? 1;
       // More candidates than the effect takes: that is a real choice. Exactly
       // as many, or fewer: name them and go, rather than opening a prompt with
@@ -919,8 +923,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      re-implement it — and a test that re-implements the rule agrees with the
      bug it is meant to catch. */
   const pickableUids = useCallback(
-    (spec: TargetSpec): string[] =>
-      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true).map(
+    /* `exclude` is the card doing the asking — see `targetCandidates`, which
+       owns that rule now rather than the engine keeping it to itself. */
+    (spec: TargetSpec, exclude?: string): string[] =>
+      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true, exclude).map(
         (c) => c.uid
       ),
     [state, me]
@@ -1318,7 +1324,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     const acts: { label: string; run: () => void; disabled?: boolean; hint?: string }[] = [];
     const freeZone = mine.monsters.findIndex((m) => !m) >= 0;
     if (handDef.kind === 'monster') {
-      const need = tributesRequired(handCard.slug, state, me);
+      /* What the bodies cost, with the shrine left out of it. Serket's Temple
+         is an alternative price and gets its own button below; folding it in
+         here priced the Tribute Summon at nothing, so the only route the board
+         offered was the one that needs a free Monster Zone — and a full board,
+         which is exactly when a Tribute Summon is wanted, could not Summon it
+         at all. Reported. */
+      const need = tributesRequired(handCard.slug, state, me, true);
       const bodies = mine.monsters.filter((m): m is CardInstance => !!m).length;
       /* A Tribute Summon *makes* its own room — the tributes leave the field
          before the new monster arrives, and `finishSummon` already resolves the
@@ -1357,6 +1369,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       if (!gate && need > 0 && handDef.mayForgoTributes) {
         acts.push({
           label: 'Summon untributed (half ATK/DEF)',
+          disabled: !(myTurn && state.phase === 'main' && !mine.normalSummonUsed && freeZone),
+          hint: !freeZone ? 'No free Monster Zone' : mine.normalSummonUsed ? 'Already summoned this turn' : undefined,
+          run: () => finishSummon(handCard.uid, 'atk', 'up', []),
+        });
+      }
+      /* The other way in, for the one card that has one. Serket is Normal
+         Summoned either by paying two bodies or by banishing the Temple that
+         was holding it, and those are two different Summons with two different
+         costs — so they are two buttons, and the player says which. A single
+         route that silently spent the Temple was not the card. */
+      const shrine = summonBanishFor(handCard.slug);
+      const shrineReady = !!shrine && mine.field?.slug === shrine && mine.field.face === 'up';
+      if (!gate && need > 0 && shrine && shrineReady) {
+        acts.push({
+          label: `Normal Summon (banish ${CARDS[shrine].name})`,
           disabled: !(myTurn && state.phase === 'main' && !mine.normalSummonUsed && freeZone),
           hint: !freeZone ? 'No free Monster Zone' : mine.normalSummonUsed ? 'Already summoned this turn' : undefined,
           run: () => finishSummon(handCard.uid, 'atk', 'up', []),
@@ -2167,7 +2194,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       {/* Deck search (Toon World, Toon Alligator). Your own deck, so showing it
           gives nothing away — and picking beats being handed whatever the
           shuffle put nearest the top. */}
-      {mode.kind === 'target' && (mode.spec.zone === 'deck' || mode.spec.zone === 'handOrDeck') && (
+      {mode.kind === 'target' &&
+        (mode.spec.zone === 'deck' ||
+          mode.spec.zone === 'handOrDeck' ||
+          mode.spec.zone === 'deckOrGrave' ||
+          mode.spec.zone === 'handOrDeckOrGrave') && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
           style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}
@@ -2184,24 +2215,32 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             {/* Exactly what the picker counts as legal, so the modal can never
                 show a card the pick would then refuse. */}
             <div className="flex flex-wrap gap-2">
-              {/* `handOrDeck` lays both piles out as one list, because "from
-                  your hand or Deck" is one choice — and the card says which
-                  pile each copy came from so the player is not guessing. */}
-              {(mode.spec.zone === 'handOrDeck' ? [...mine.hand, ...mine.deck] : mine.deck)
+              {/* Every private pile, filtered by what the picker actually
+                  accepts. A multi-pile spec — "from your hand, Deck or
+                  Graveyard" — is one choice rather than three prompts, and
+                  drawing the piles this modal *thinks* the zone means is how a
+                  picker ends up narrower than the card: `targetableSet` is the
+                  authority, and each option says which pile it came from so the
+                  player is not guessing. */}
+              {[...mine.hand, ...mine.deck, ...mine.grave]
                 .filter((c) => targetableSet.has(c.uid))
                 .map((c) => (
                   <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
                     <GameCard card={c} displayName={shownName(c)} />
                     <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
-                    {mode.spec.zone === 'handOrDeck' && (
+                    {mode.spec.zone !== 'deck' && (
                       <p className="truncate text-center text-[8px] uppercase tracking-wide text-brass">
-                        {mine.hand.some((h) => h.uid === c.uid) ? 'hand' : 'deck'}
+                        {mine.hand.some((h) => h.uid === c.uid)
+                          ? 'hand'
+                          : mine.deck.some((d) => d.uid === c.uid)
+                            ? 'deck'
+                            : 'grave'}
                       </p>
                     )}
                   </button>
                 ))}
             </div>
-            {![...mine.hand, ...mine.deck].some((c) => targetableSet.has(c.uid)) && (
+            {![...mine.hand, ...mine.deck, ...mine.grave].some((c) => targetableSet.has(c.uid)) && (
               <p className="py-4 text-center text-xs text-ptextdim">Nothing in your Deck matches.</p>
             )}
           </div>

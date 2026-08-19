@@ -25,12 +25,16 @@
  *
  * So this asks the questions the board asks, in the board's order:
  *
- *   A. If the engine will let this card be used and its effect names a target,
+ *   A. A card whose effect declares `targets` must produce a spec at all — the
+ *      one claim that needs no position, and the one this harness used to skip,
+ *      because it began every question with "given a spec". A card with none is
+ *      a card whose choice the engine quietly makes for the player.
+ *   B. If the engine will let this card be used and its effect names a target,
  *      the board must be able to offer at least one. Anything else is a card
  *      the interface refuses and the rules allow.
- *   B. Everything offered must sit on the side and in the zone the spec names —
+ *   C. Everything offered must sit on the side and in the zone the spec names —
  *      no phantom options the engine would then throw away.
- *   C. Everything offered must sit in a pile the modal actually draws, so the
+ *   D. Everything offered must sit in a pile the modal actually draws, so the
  *      list the player sees is the list the board computed.
  *
  * Each card is given a position built to satisfy its own filter: if it names
@@ -43,7 +47,7 @@
  */
 import { canActivateFromHand, canActivateSetCard, canChangePosition, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
-import { pickerSides, targetCandidates, targetSpecFor, type TargetSpec } from '../src/game/ui';
+import { pickerSides, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '../src/game/ui';
 import type { CardDef, CardFilter, CardInstance, DuelState, PlayerId, Trigger } from '../src/game/types';
 
 const ONLY = process.argv[2];
@@ -307,6 +311,32 @@ for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown') continue;
   if (ONLY && def.slug !== ONLY) continue;
 
+  /* A. A card that declares a target must have a question to ask.
+     ------------------------------------------------------------------
+     Everything below this starts with a spec and checks that the spec is
+     honest, which means a card with *no* spec is invisible to the whole
+     harness — and a missing spec is not a missing question, it is a question
+     the engine answers for you. `destinyDraw` had none, so the Temple of the
+     Kings resolved with an empty target list and the engine took the top card:
+     the exact card that was coming anyway, so the effect looked like it had
+     simply not fired. Reported by the owner as "it did not let me pick a card
+     for the next draw". Mask of Darkness was sitting on the same silence.
+
+     `targets` is the card saying, in the data, "somebody chooses here". If the
+     interface cannot turn that into a prompt, the promise is broken before the
+     duel starts, and this is the one claim that can be made without building a
+     position at all. */
+  def.effects.forEach((eff, i) => {
+    if (!eff.targets) return;
+    ok(
+      !!targetSpecForEffect(def.slug, i),
+      `effect ${i} declares ${eff.targets} target(s) and the board knows what to ask`,
+      `${def.name} (${def.slug}) effect ${i} [${eff.trigger}] declares targets: ${eff.targets}, but ` +
+        `\`specFromEffect\` produces no spec for ops [${eff.ops.map((o) => o.op).join(', ')}] — ` +
+        'the player is never asked and the engine picks for them'
+    );
+  });
+
   for (const trigger of TRIGGERS) {
     const spec = targetSpecFor(def.slug, trigger);
     if (!spec) continue;
@@ -322,7 +352,7 @@ for (const def of Object.values(CARDS)) {
 
     const offered = targetCandidates(s, ME, spec);
 
-    /* A. The board must have something to offer. */
+    /* B. The board must have something to offer. */
     ok(
       offered.length > 0,
       `offers ${offered.length}`,
@@ -331,7 +361,7 @@ for (const def of Object.values(CARDS)) {
     );
     if (!offered.length) continue;
 
-    /* B. Nothing phantom: every option is on the named side, in the named zone. */
+    /* C. Nothing phantom: every option is on the named side, in the named zone. */
     const sidesNamed: PlayerId[] = spec.side === 'both' ? [ME, FOE] : spec.side === 'opp' ? [FOE] : [ME];
     const zoneHolds = (pid: PlayerId, card: CardInstance): boolean => {
       const p = s.players[pid];
@@ -360,7 +390,7 @@ for (const def of Object.values(CARDS)) {
         `which is not in any ${spec.side} ${spec.zone}`
     );
 
-    /* C. The modal must draw from a pile that actually holds the options. This
+    /* D. The modal must draw from a pile that actually holds the options. This
           is the second Graverobber bug exactly: the list was right and the
           modal looked somewhere else, so it rendered empty. */
     const drawn = pickerSides(spec, ME, FOE);
@@ -373,7 +403,7 @@ for (const def of Object.values(CARDS)) {
         `${drawn.join(' + ')}'s ${spec.zone}, so the picker opens empty`
     );
 
-    /* D. The hostile position: a pile holding ONLY the awkward half of what the
+    /* E. The hostile position: a pile holding ONLY the awkward half of what the
           spec accepts. This is the one that catches a picker quietly narrower
           than its own spec — see `narrowTo`. */
     const hostile = stocked();

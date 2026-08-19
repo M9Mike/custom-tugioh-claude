@@ -1948,6 +1948,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onSummon',
+        /* Which brother comes is the whole decision. Valkyrion wants the two
+           Gamma is missing, and "the strongest Magnet Warrior available" is
+           Beta every time — so the player who needed Alpha could not ask for
+           it. All three piles are one list; see `handOrDeckOrGrave`. */
+        targets: 1,
         ops: [
           {
             op: 'specialSummon',
@@ -4045,6 +4050,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
            is asked of the card's own effects rather than kept as a list, so a
            FLIP monster written next year is findable without anyone
            remembering to come back here. */
+        /* And the player picks which. Nine cards in this game carry a FLIP
+           effect and they do nine different things — Man-Eater Bug bites,
+           Magician of Faith recurs a Spell, Wall of Illusion breaks a backrow —
+           so taking the biggest one is not a decision, it is the absence of
+           one. Reported by the owner. `targets` is how a card asks; see
+           `specFromEffect`. */
+        targets: 1,
         ops: [
           {
             op: 'specialSummon',

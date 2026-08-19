@@ -77,6 +77,28 @@ function shuffle<T>(state: DuelState, arr: T[]): T[] {
   return arr;
 }
 
+/**
+ * A Deck that has been looked at is a Deck that gets shuffled.
+ *
+ * Only a handful of cards open the Deck at all — a search, a Summon out of it,
+ * a Trap Set from it, the Temple naming tomorrow's draw — and every one of them
+ * shows the player cards they are not otherwise entitled to see. Leaving the
+ * order untouched afterwards would turn each of those into a free look at the
+ * next several draws, which is the oldest way there is to cheat at this game.
+ * So the rule is the paper one: you may look, and then you shuffle.
+ *
+ * Written once and called by name, because the alternative — a `shuffle` at the
+ * end of whichever op happened to be remembered — is how `search` came to be
+ * the only card in the game that did it.
+ *
+ * Safe to call *before* the card is taken as well as after: every one of those
+ * ops finds its card by uid, so no shuffle can lose a choice the player already
+ * made. That is the same reason a named draw survives one — see `drawCard`.
+ */
+function deckSeen(state: DuelState, pid: PlayerId): void {
+  shuffle(state, state.players[pid].deck);
+}
+
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
@@ -1729,6 +1751,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'setTrap': {
         const p = state.players[ctx.controller];
         const pile = op.from === 'deck' ? p.deck : p.grave;
+        /* Shuffled the moment the answer comes back, before the Trap is taken.
+           The Graveyard is public and stays as it lies; the Deck was just laid
+           out for its owner and must not still be in that order afterwards. */
+        if (op.from === 'deck') deckSeen(state, ctx.controller);
         /* The player's own choice first — a deck full of traps is a real
            decision — and otherwise whatever is nearest, which is the same
            fallback every other search here uses. */
@@ -1776,6 +1802,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       }
       case 'destinyDraw': {
         const p = state.players[ctx.controller];
+        /* Shuffled first, and the promise still holds: it is kept by uid, so
+           the named card is the card that comes whatever the shuffle does to
+           the order — which is the whole reason this is safe to offer at all.
+           Without the shuffle, choosing your next draw would also mean reading
+           the four behind it. */
+        deckSeen(state, ctx.controller);
         const wanted = ctx.targets[ctx.cursor];
         const pick = wanted ? p.deck.find((x) => x.uid === wanted) : p.deck[0];
         if (!pick) {
@@ -2115,7 +2147,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           log(state, `${p.name} adds ${displayName(state, c)} from their Deck to their hand.`, 'effect', ctx.controller, logSlug(c));
         }
         if (!found) emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to add.`);
-        shuffle(state, p.deck);
+        deckSeen(state, ctx.controller);
         checkExodia(state);
         break;
       }
@@ -2213,6 +2245,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               ? `${state.players[ctx.controller].name} has no room to Special Summon.`
               : `${displayName(state, ctx.source)} finds nothing to Special Summon.`
           );
+        }
+        /* Calling a monster out of the Deck means reading the Deck, so it
+           closes the same way a search does — after every body has arrived,
+           not between them. `side: 'both'` reaches across the table, and that
+           Deck was opened too. */
+        if ((Array.isArray(op.from) ? op.from : [op.from]).includes('deck')) {
+          deckSeen(state, ctx.controller);
+          if (op.side === 'both') deckSeen(state, other(ctx.controller));
         }
         break;
       }
@@ -2858,7 +2898,6 @@ function raiseChoice(
   if (!eff.targets) return false;
   const spec = targetSpecFor(c.slug, trigger);
   if (!spec) return false;
-  const offered = targetCandidates(state, controller, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
   /* Never the card doing the asking. A monster does not Special Summon itself
      with its own "when this card is destroyed" effect — the summon op has
      refused that for as long as it has existed — and Anthrosaurus, which is a
@@ -2871,8 +2910,18 @@ function raiseChoice(
      only card that opts in and it never asks a question, so the exception was
      a branch nothing could take and no test could prove — and an unfalsifiable
      line is worth less than the rule it was guarding. The day a card both opts
-     in and asks, it will need a test, and this is where it goes. */
-  const options = offered.filter((o) => o.uid !== c.uid);
+     in and asks, it will need a test, and this is where it goes.
+
+     Asked of `targetCandidates` rather than filtered here, so the board gets
+     the same answer: this rule lived in this function alone and the modal knew
+     nothing about it. */
+  const options = targetCandidates(
+    state,
+    controller,
+    spec,
+    (t, owner) => effFlags(state, t, owner).untargetable === true,
+    c.uid
+  );
   const want = spec.count ?? 1;
   /* "Up to" always asks, so long as there is anything to point at: taking two
      of the two on the board is a decision, and so is taking neither. A
@@ -3616,7 +3665,24 @@ export function summonBlocked(state: DuelState, pid: PlayerId, slug: string): st
 }
 
 
-export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId): number {
+export function tributesRequired(
+  slug: string,
+  state?: DuelState,
+  pid?: PlayerId,
+  /**
+   * Price the Summon as though the shrine were not there.
+   *
+   * The banish is an *alternative* price, not a discount that applies itself:
+   * spending the Temple of the Kings costs Serket its entire engine, and a
+   * player holding three bodies may well rather pay them. The board could not
+   * even ask, because this function had already decided — so with three
+   * monsters standing and no free zone, the only route it offered was the one
+   * that needed an empty zone, and Serket could not be Summoned at all.
+   * Reported by the owner. The interface asks both ways now and puts the
+   * choice back where it belongs.
+   */
+  ignoreShrine = false
+): number {
   const def = CARDS[slug];
   const level = def?.level ?? 0;
   let need = level >= 7 ? 2 : level >= 5 ? 1 : 0;
@@ -3670,7 +3736,7 @@ export function tributesRequired(slug: string, state?: DuelState, pid?: PlayerId
      the +300, the per-monster bonus — so it is a real decision rather than a
      discount. Banished by `summonCostBanish` below at the moment the Summon
      resolves; this half is only the price. */
-  if (need > 0 && state && pid && summonBanishFor(slug) && faceUpOnSide(state, pid, summonBanishFor(slug)!)) {
+  if (!ignoreShrine && need > 0 && state && pid && summonBanishFor(slug) && faceUpOnSide(state, pid, summonBanishFor(slug)!)) {
     need = 0;
   }
   return need;
@@ -4291,7 +4357,16 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!Number.isInteger(action.zone) || action.zone < 0 || action.zone >= MONSTER_ZONES) {
         return { state: prev, error: 'Invalid Monster Zone.' };
       }
-      const need = tributesRequired(c.slug, state, pid);
+      /* Two prices, and the tribute list says which one is being paid.
+         Serket may be Tribute Summoned off two bodies *or* Normal Summoned by
+         banishing the Temple of the Kings — the card offers both — and pricing
+         it only the second way meant the tributes the player chose arrived here
+         and were sliced straight off, so the Temple was spent whatever they
+         did. The board could not offer the body route either, which is how a
+         board with three monsters and no free zone ended up unable to Summon
+         Serket at all. Reported by the owner. */
+      const bodies = tributesRequired(c.slug, state, pid, true);
+      const need = (action.tributes ?? []).length > 0 ? bodies : tributesRequired(c.slug, state, pid);
       const tributes = (action.tributes ?? []).slice(0, need);
       /* Parrot Dragon's bargain: come out now for none of the price and half of
          the body. Only the whole cost may be skipped — paying one of two and

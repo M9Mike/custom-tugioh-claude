@@ -10,7 +10,7 @@
  */
 import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
+import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
 import { ignitionOptions, tributableBodies } from '../src/game/engine';
@@ -9110,6 +9110,223 @@ console.log('\nWhat the board says, not just what the engine wrote');
     .map((b) => spokenFor(built, b)?.text ?? '(silent)');
   ok(fare.some((s) => /banished from the Graveyard/.test(s)),
     'and the board says which corpse paid the fare', fare.join(' | '));
+}
+
+console.log('\nThe Deck answers to the player, and never twice in the same order');
+{
+  /* A bare table with a Deck big enough that a shuffle is visible. Twelve
+     identical Kuriboh would do for "did it move" — the uids differ — but real
+     cards make the failures readable. */
+  const table = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+      s.players[pid].deck = Array.from({ length: 14 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+  const uids = (s: DuelState, pid: PlayerId) => s.players[pid].deck.map((c) => c.uid);
+  /* Did the pile keep its order? Asked of the cards that are still in it, so a
+     search taking one out is not mistaken for a shuffle. */
+  const stillInOrder = (before: string[], after: string[]) => {
+    const kept = new Set(after);
+    return before.filter((u) => kept.has(u)).join(',') === after.join(',');
+  };
+
+  /* --- The Temple names tomorrow, and the player names the card --- */
+  {
+    const spec = targetSpecForEffect('temple-of-the-kings', 1);
+    ok(!!spec && spec.zone === 'deck' && spec.side === 'own',
+      'the Temple of the Kings asks which card the future holds',
+      JSON.stringify(spec));
+
+    const s = table();
+    const temple = card(ME, 'temple-of-the-kings');
+    s.players[ME].hand = [temple];
+    const wanted = s.players[ME].deck[9];
+    const before = uids(s, ME);
+    const open = act(s, ME, { type: 'activateSpell', uid: temple.uid, targets: [wanted.uid] });
+    ok(open.players[ME].destinyDrawUid === wanted.uid,
+      'and the card the player pointed at is the one it names',
+      `${open.players[ME].destinyDrawUid} vs ${wanted.uid}`);
+    ok(!stillInOrder(before, uids(open, ME)),
+      'the Deck it laid open does not stay in the order it was read in',
+      uids(open, ME).join(','));
+    const drawn = act(act(open, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    ok(drawn.players[ME].hand.some((h) => h.uid === wanted.uid),
+      'and the promise is kept anyway — it travels by card, not by position',
+      drawn.players[ME].hand.map((h) => h.slug).join(','));
+  }
+
+  /* --- Every other way in is closed behind you too --- */
+  {
+    /* A Trap Set out of the Deck. */
+    const s = table();
+    s.phase = 'battle';
+    s.active = FOE;
+    const anubis = { ...card(ME, 'judgment-of-anubis'), face: 'down' as const };
+    anubis.summonedOnTurn = 0;
+    s.players[ME].spellTrap = anubis;
+    const chosen = card(ME, 'trap-hole');
+    s.players[ME].deck = [card(ME, 'mirror-force'), ...s.players[ME].deck, chosen];
+    const before = uids(s, ME);
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beater, null, null];
+    const declared = applyAction(s, FOE, { type: 'attack', uid: beater.uid, targetUid: null }).state;
+    const judged = act(declared, ME, { type: 'respondTrap', uid: anubis.uid, targets: [chosen.uid] });
+    ok(judged.players[ME].spellTrap?.uid === chosen.uid,
+      'Judgment of Anubis Sets the Trap the player named, not the nearest one',
+      judged.players[ME].spellTrap?.slug ?? '(empty)');
+    ok(!stillInOrder(before, uids(judged, ME)),
+      'and shuffles the Deck it went through',
+      uids(judged, ME).join(','));
+
+    /* A monster called out of the Deck. */
+    const spy = table();
+    const eye = { ...card(ME, 'gravekeeper-s-spy'), face: 'down' as const, position: 'def' as const };
+    eye.summonedOnTurn = 0;
+    spy.players[ME].monsters = [eye, null, null];
+    const bug = card(ME, 'man-eater-bug');
+    spy.players[ME].deck = [card(ME, 'wall-of-illusion'), ...spy.players[ME].deck, bug];
+    const deckBefore = uids(spy, ME);
+    const planted = act(spy, ME, { type: 'changePosition', uid: eye.uid, targets: [bug.uid] });
+    ok(planted.players[ME].monsters.some((m) => m?.uid === bug.uid),
+      "Gravekeeper's Spy plants the monster the player chose",
+      planted.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!stillInOrder(deckBefore, uids(planted, ME)),
+      'and the Deck it searched is shuffled behind it',
+      uids(planted, ME).join(','));
+
+    /* And flipped face-up by an attack, where the board never had a chance to
+       ask, the engine stops and asks instead of choosing — `raiseChoice`, which
+       has been waiting for a card like this. Before the Spy declared `targets`
+       it silently took Wall of Illusion, the biggest thing that qualified,
+       every time. */
+    const blind = act(spy, ME, { type: 'changePosition', uid: eye.uid });
+    ok(blind.pending?.kind === 'choose' && blind.pending.player === ME,
+      'and asked nothing, it stops and asks rather than choosing for you',
+      blind.pending ? `${blind.pending.kind}/${blind.pending.player}` : '(resolved silently)');
+    ok(!blind.players[ME].monsters.some((m) => m?.slug === 'wall-of-illusion'),
+      'CONTROL: nothing is planted while the question is still open',
+      blind.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- The other two that were choosing for themselves --- */
+  {
+    /* Magical Hats: four magicians qualify and only one of them is the point. */
+    const s = table();
+    s.phase = 'battle';
+    s.active = FOE;
+    const hats = { ...card(ME, 'magical-hats'), face: 'down' as const };
+    hats.summonedOnTurn = 0;
+    s.players[ME].spellTrap = hats;
+    const faith = card(ME, 'magician-of-faith');
+    s.players[ME].deck = [card(ME, 'dark-magician'), ...s.players[ME].deck, faith];
+    const beater = card(FOE, 'summoned-skull');
+    beater.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beater, null, null];
+    const declared = applyAction(s, FOE, { type: 'attack', uid: beater.uid, targetUid: null }).state;
+    /* A Trap resolves where it is played rather than through `fireTriggers`, so
+       nothing parks it and asks — the board is the only thing that can, and it
+       only asks when the card declares it wants to be asked. That declaration
+       is what this assertion is really about. */
+    const hatSpec = targetSpecFor('magical-hats', 'trap');
+    ok(hatSpec?.zone === 'deck' && hatSpec.side === 'own',
+      'Magical Hats asks which magician goes under the hat', JSON.stringify(hatSpec));
+    const underHats = hatSpec ? targetCandidates(declared, ME, hatSpec).map((c) => c.slug).sort() : [];
+    ok(underHats.join(',') === 'dark-magician,magician-of-faith',
+      'and offers every magician it could hide, big or small', underHats.join(',') || '(none)');
+    const hidden = act(declared, ME, { type: 'respondTrap', uid: hats.uid, targets: [faith.uid] });
+    ok(hidden.players[ME].monsters.some((m) => m?.uid === faith.uid),
+      'the hat hides the magician the player picked, not the biggest one',
+      hidden.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* CONTROL: the two answers are genuinely different, so the pin above cannot
+       pass by accident — asked nothing, it still reaches for the 2500. */
+    const blindHat = act(declared, ME, { type: 'respondTrap', uid: hats.uid });
+    ok(blindHat.players[ME].monsters.some((m) => m?.slug === 'dark-magician'),
+      'CONTROL: and with no answer it takes the biggest, which is not the one chosen',
+      blindHat.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Gamma reaches into three piles, and the Graveyard is one of them — the
+       pile the modal could not draw at all until the zone existed. */
+    const magnets = table();
+    const gamma = card(ME, 'gamma-the-magnet-warrior');
+    magnets.players[ME].hand = [gamma];
+    const alpha = card(ME, 'alpha-the-magnet-warrior');
+    magnets.players[ME].grave = [alpha];
+    magnets.players[ME].deck = [card(ME, 'beta-the-magnet-warrior'), ...magnets.players[ME].deck];
+    const spec = targetSpecFor('gamma-the-magnet-warrior', 'onSummon');
+    ok(spec?.zone === 'handOrDeckOrGrave', 'and it offers all three piles at once', JSON.stringify(spec));
+    const brothers = spec ? targetCandidates(magnets, ME, spec) : [];
+    ok(brothers.some((c) => c.uid === alpha.uid) && brothers.some((c) => c.slug === 'beta-the-magnet-warrior'),
+      'both brothers, wherever they are lying — one in the Deck, one in the pile',
+      brothers.map((c) => c.slug).join(',') || '(none)');
+    /* And never itself. Gamma is a Magnet Warrior sitting in the hand it is
+       about to leave, so it matched its own filter — the engine struck it off
+       inside `raiseChoice` and the board, which asks a different way, did not.
+       One rule, in `targetCandidates`, asked by both. */
+    const asked = spec ? targetCandidates(magnets, ME, spec, undefined, gamma.uid) : [];
+    ok(!asked.some((c) => c.uid === gamma.uid),
+      'and never the monster doing the asking',
+      asked.map((c) => c.slug).join(','));
+    ok(brothers.some((c) => c.uid === gamma.uid),
+      'CONTROL: it does match its own filter, so striking it off is real work',
+      brothers.map((c) => c.slug).join(','));
+    const pulled = act(magnets, ME, {
+      type: 'normalSummon', uid: gamma.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [alpha.uid],
+    });
+    ok(pulled.players[ME].monsters.some((m) => m?.uid === alpha.uid),
+      'and the brother out of the Graveyard is the one that answers',
+      pulled.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Serket has two doors, and the player chooses which --- */
+  {
+    const s = table();
+    s.players[ME].field = { ...card(ME, 'temple-of-the-kings'), face: 'up' as const };
+    const beast = card(ME, 'mystical-beast-of-serket');
+    s.players[ME].hand = [beast];
+    const bodies = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+    for (const b of bodies) b.summonedOnTurn = 0;
+    s.players[ME].monsters = [bodies[0], bodies[1], bodies[2]];
+
+    ok(tributesRequired('mystical-beast-of-serket', s, ME, true) === 1,
+      'the ordinary price is bodies, Temple standing or not',
+      String(tributesRequired('mystical-beast-of-serket', s, ME, true)));
+    ok(tributesRequired('mystical-beast-of-serket', s, ME) === 0,
+      'and the Temple is the other price, not a discount on that one');
+
+    /* The reported board exactly: three monsters, no free zone, Temple up. */
+    const paid = act(s, ME, {
+      type: 'normalSummon', uid: beast.uid, zone: 0, position: 'atk', face: 'up', tributes: [bodies[0].uid],
+    });
+    ok(paid.players[ME].monsters.some((m) => m?.slug === 'mystical-beast-of-serket'),
+      'a full board Tribute Summons Serket, which is what a full board is for',
+      paid.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(paid.players[ME].field?.slug === 'temple-of-the-kings',
+      'and the Temple it did not spend is still standing',
+      paid.players[ME].field?.slug ?? '(gone)');
+    ok(paid.players[ME].grave.some((g) => g.uid === bodies[0].uid), 'the body it did spend is in the Graveyard');
+
+    /* And the other door still opens. */
+    const empty = table();
+    empty.players[ME].field = { ...card(ME, 'temple-of-the-kings'), face: 'up' as const };
+    const beast2 = card(ME, 'mystical-beast-of-serket');
+    empty.players[ME].hand = [beast2];
+    const freed = act(empty, ME, {
+      type: 'normalSummon', uid: beast2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    ok(freed.players[ME].monsters.some((m) => m?.slug === 'mystical-beast-of-serket'),
+      'or it walks out of the Temple with no body paid at all');
+    ok(freed.players[ME].field === null && freed.players[ME].banished.some((b) => b.slug === 'temple-of-the-kings'),
+      'and that Temple is banished, which is the price of the shortcut',
+      freed.players[ME].field?.slug ?? '(gone)');
+  }
 }
 
 /* The summary goes LAST, and there is nothing after it.

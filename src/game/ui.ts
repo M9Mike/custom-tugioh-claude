@@ -13,8 +13,21 @@ export interface TargetSpec {
   /* `handOrDeck` is one pool spanning both, because that is what a card like
      Fortress Whale's Oath reaches into — "from your hand or Deck" is a single
      choice, not two prompts, and the copy you hold and the copy you have not
-     drawn are the same option to the player. */
-  zone: 'monster' | 'spellTrap' | 'backrow' | 'grave' | 'hand' | 'deck' | 'handOrDeck';
+     drawn are the same option to the player. `deckOrGrave` and
+     `handOrDeckOrGrave` are the same idea one and two piles wider: Gamma the
+     Magnet Warrior fetches a brother "from your hand, Deck or Graveyard", and
+     offering only some of those piles is the picker being narrower than the
+     engine — the bug this file keeps relearning. */
+  zone:
+    | 'monster'
+    | 'spellTrap'
+    | 'backrow'
+    | 'grave'
+    | 'hand'
+    | 'deck'
+    | 'handOrDeck'
+    | 'deckOrGrave'
+    | 'handOrDeckOrGrave';
   count: number;
   prompt: string;
   /** Narrows what may be picked — a Deck search is rarely "any card". */
@@ -79,6 +92,32 @@ function scanOps(ops: Op[], owner: string): TargetSpec | null {
         count: op.count ?? 1,
         prompt: 'Choose a card to add to your hand',
         filter: op.filter,
+      };
+    }
+    /* Naming tomorrow's draw is the whole card, so it has to be asked. The
+       Temple of the Kings resolved with an empty target list and the engine
+       took `deck[0]` — the card that was coming anyway, which is
+       indistinguishable from the effect not existing. Reported by the owner as
+       "it did not let me pick a card for the next draw". */
+    if (op.op === 'destinyDraw') {
+      return {
+        side: 'own',
+        zone: 'deck',
+        count: 1,
+        prompt: 'Choose the card you will draw next turn',
+      };
+    }
+    /* And so is which Trap gets Set. The same silence sat on Mask of Darkness
+       and Judgment of Anubis: the engine's fallback is "the first Trap in the
+       pile", which in a Deck is whatever the shuffle left nearest — a choice
+       the player was promised and never offered. */
+    if (op.op === 'setTrap') {
+      return {
+        side: 'own',
+        zone: op.from === 'deck' ? 'deck' : 'grave',
+        count: 1,
+        prompt: 'Choose a Trap to Set',
+        filter: { kind: 'trap' },
       };
     }
     /* An equip that names its own host asks the player nothing. Spellbinding
@@ -148,6 +187,49 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
      presence of the op: handling it inside `scanOps` would have started
      prompting for Hitotsu-Me Giant and Lady of Faith too, neither of which was
      asked for and neither of which has a player to answer. */
+  /* Calling a monster out of the Deck, the same way and for the same reason.
+     `scanOps` handles a Special Summon from the hand or the Graveyard and stops
+     short of the Deck, which is not an oversight — most Deck summons in this
+     game resolve where there is nobody standing there to ask: Sangan on its way
+     to the Graveyard, the Cocoon hatching on its own turn, Witch replacing
+     herself as she dies. But some of them are a player pressing a button, and
+     those were choosing for themselves too. Gravekeeper's Spy names *nine*
+     possible Flip monsters and took the biggest one every single time —
+     reported by the owner as "it should allow me to select which monster I
+     would special summon".
+
+     So the gate is the effect's own `targets`, exactly as it is for the
+     Graveyard steal directly below: the card opts in, one card at a time, and
+     the death triggers keep resolving themselves. Placed after the Tribute cost
+     above so a card that pays a price first still asks about the price first.
+
+     Note this cannot land in `scanOps`: Black Illusion Ritual would match it,
+     and its first question is which monster to Tribute — the summon comes after
+     and is asked by `summonRiderSpec`. */
+  if (eff.targets) {
+    const summon = eff.ops.find((o) => o.op === 'specialSummon');
+    if (summon && summon.op === 'specialSummon') {
+      const zones = Array.isArray(summon.from) ? summon.from : [summon.from];
+      if (zones.includes('deck')) {
+        const zone: TargetSpec['zone'] = zones.includes('grave')
+          ? zones.includes('hand')
+            ? 'handOrDeckOrGrave'
+            : 'deckOrGrave'
+          : zones.includes('hand')
+            ? 'handOrDeck'
+            : 'deck';
+        return {
+          side: summon.side === 'both' ? 'both' : 'own',
+          zone,
+          count: summon.count ?? 1,
+          prompt: 'Choose a monster to Special Summon',
+          filter: { ...(summon.filter ?? {}), kind: 'monster' },
+          revivableOnly: true,
+          revivableBy: owner,
+        };
+      }
+    }
+  }
   if (eff.targets && eff.ops.some((o) => o.op === 'stealFromGrave')) {
     const steal = eff.ops.find((o) => o.op === 'stealFromGrave');
     if (steal && steal.op === 'stealFromGrave') {
@@ -204,7 +286,19 @@ export function targetCandidates(
   state: DuelState,
   viewer: PlayerId,
   spec: TargetSpec,
-  isUntargetable: (c: CardInstance, owner: PlayerId) => boolean = () => false
+  isUntargetable: (c: CardInstance, owner: PlayerId) => boolean = () => false,
+  /**
+   * The card doing the asking, which is never one of its own answers.
+   *
+   * The engine has always struck it off — a monster does not Special Summon
+   * itself with its own effect — but it did so in `raiseChoice` alone, so the
+   * board kept its own opinion. Gamma the Magnet Warrior fetches a brother
+   * "from your hand, Deck or Graveyard" and is itself a Magnet Warrior sitting
+   * in that hand while the question is asked: the modal offered it as one of
+   * its own answers, and by the time the effect resolved it had left the hand
+   * and the pick matched nothing at all. One rule, asked here, by both.
+   */
+  exclude?: string
 ): CardInstance[] {
   const foe: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
   const sides: PlayerId[] = spec.side === 'own' ? [viewer] : spec.side === 'opp' ? [foe] : [viewer, foe];
@@ -234,16 +328,22 @@ export function targetCandidates(
       out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
-    } else if (spec.zone === 'handOrDeck' && pid === viewer) {
-      /* Hand first: a copy already drawn is the one a player expects to be
-         offered, and it is the one that costs nothing to reach. */
-      out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
-      out.push(...p.deck.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
+    } else if ((spec.zone === 'handOrDeck' || spec.zone === 'deckOrGrave' || spec.zone === 'handOrDeckOrGrave') && pid === viewer) {
+      /* One pool, laid out in the order a player would reach for it: the copy
+         already in hand costs nothing, the Deck is next, and the Graveyard
+         last. Which piles are in it is the card's own sentence — see the zone
+         union — and the modal draws whatever this returns rather than deciding
+         for itself, so the two cannot drift apart. */
+      const legal = (c: CardInstance) =>
+        keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy));
+      if (spec.zone !== 'deckOrGrave') out.push(...p.hand.filter(legal));
+      out.push(...p.deck.filter(legal));
+      if (spec.zone !== 'handOrDeck') out.push(...p.grave.filter(legal));
     } else if (spec.zone === 'hand' && pid === viewer) {
       out.push(...p.hand.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     }
   }
-  return out;
+  return exclude ? out.filter((c) => c.uid !== exclude) : out;
 }
 
 /** The subset of the engine's card filter these pickers actually use. */

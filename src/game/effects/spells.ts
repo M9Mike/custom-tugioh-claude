@@ -179,6 +179,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Magical Hats',
+        /* Which magician is under the hat is the player's call — they are the
+           one holding the card. Four very different bodies qualify and the
+           engine was taking the strongest, so Magician of Faith, the whole
+           reason to hide something small, could never be the one chosen. */
+        targets: 1,
         ops: [
           { op: 'negateAttack' },
           { op: 'endBattlePhase' },
