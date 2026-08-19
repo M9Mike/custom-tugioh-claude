@@ -11,6 +11,7 @@ import {
   canActivateSetCard,
   canAttackWith,
   canChangePosition,
+  canDiscardForEffect,
   canIgnite,
   effAtk,
   effDef,
@@ -1426,10 +1427,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         });
       }
       if (handDef.effects.some((e) => e.trigger === 'handDiscard')) {
+        /* Asked, not assumed. The button checked the turn and the phase and
+           nothing else, so Zolga could be thrown into an empty backrow and the
+           player lost a monster for nothing. Reported. */
+        const canThrow = canDiscardForEffect(state, me, handCard);
         acts.push({
           label: 'Discard for its effect',
-          disabled: !(myTurn && state.phase === 'main'),
-          hint: !myTurn ? 'Not your turn' : state.phase !== 'main' ? 'Main Phase only' : undefined,
+          disabled: !canThrow,
+          hint: !myTurn
+            ? 'Not your turn'
+            : state.phase !== 'main'
+              ? 'Main Phase only'
+              : !canThrow
+                ? 'There is nothing that effect can do right now'
+                : undefined,
           run: () => {
             sfx.click();
             void run({ type: 'discardForEffect', uid: handCard.uid });

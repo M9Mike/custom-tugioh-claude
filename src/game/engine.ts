@@ -4230,6 +4230,31 @@ export function wastedWithoutTarget(state: DuelState, pid: PlayerId, c: CardInst
   return activationIsDead(state, pid, c, def, eff);
 }
 
+/**
+ * Whether this card in the hand may be thrown away for its effect right now.
+ *
+ * Three callers ask — the button in the hand, the action that spends the card,
+ * and the regressions — and until this existed the first two asked nothing at
+ * all. Zolga could be discarded into an empty backrow: the card left the hand,
+ * the destroy found nothing, and the player had thrown a monster away for
+ * exactly nothing. Reported by the owner, and the same shape as 7 Completed
+ * equipping onto no Machine and Metalmorph offering itself over an empty board.
+ *
+ * `activationIsDead` has known the answer the whole time — it is what refuses
+ * every other card spent for nothing — and this is the door that never asked
+ * it. Note it deliberately does not refuse a card whose worth is a rider: the
+ * Toon panic button destroys your own board and then *searches*, and a search
+ * is substantive whether or not there was anything to destroy.
+ */
+export function canDiscardForEffect(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
+  if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
+  const def = CARDS[c.slug];
+  const eff = def?.effects.find((e) => e.trigger === 'handDiscard');
+  if (!def || !eff) return false;
+  if (eff.condition && !conditionMet(state, eff, c, pid)) return false;
+  return !activationIsDead(state, pid, c, def, eff);
+}
+
 export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
   const def = CARDS[c.slug];
@@ -4796,6 +4821,14 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const eff = CARDS[c.slug]?.effects.find((e) => e.trigger === 'handDiscard');
       if (!eff) return { state: prev, error: 'That card cannot be discarded for an effect.' };
       if (eff.condition && !conditionMet(state, eff, c, pid)) return { state: prev, error: 'Its condition is not met.' };
+      /* And it must be able to do something. The card is spent the moment it
+         leaves the hand, so a discard into an empty board is a monster thrown
+         away for nothing — refused here as well as greyed out on the board,
+         because the action comes off the network and the board's opinion is
+         not a rule. */
+      if (!canDiscardForEffect(state, pid, c)) {
+        return { state: prev, error: 'There is nothing that effect can do right now.' };
+      }
 
       p.hand.splice(hi, 1);
       log(state, `${p.name} discards ${displayName(state, c)}.`, 'effect', pid, logSlug(c));

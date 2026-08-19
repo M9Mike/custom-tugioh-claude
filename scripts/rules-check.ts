@@ -13,7 +13,7 @@ import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
-import { ignitionOptions, summonAffordable, tributableBodies } from '../src/game/engine';
+import { canDiscardForEffect, ignitionOptions, summonAffordable, tributableBodies } from '../src/game/engine';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import { INFINITE_ATK, type CardInstance, type DuelAction, type DuelState, type Op, type PlayerId } from '../src/game/types';
 
@@ -9931,6 +9931,28 @@ console.log('\nIshizu: the tomb pays, and everything that falls into it comes ba
     ok(thrown.players[FOE].spellTrap === null, 'Zolga is thrown away and the Set card breaks',
       thrown.players[FOE].spellTrap?.slug ?? '(empty)');
     ok(thrown.players[ME].grave.some((c) => c.uid === zolga.uid), 'and she lands in the tomb, where the deck wanted her');
+
+    /* But never into an empty backrow. The card is spent the moment it leaves
+       the hand, so a discard with nothing to break is a monster thrown away for
+       nothing — reported by the owner, and the same shape as 7 Completed
+       equipping onto no Machine. */
+    const bare = tomb();
+    const spare = card(ME, 'zolga');
+    bare.players[ME].hand = [spare];
+    ok(!canDiscardForEffect(bare, ME, spare),
+      'and the board will not let her be thrown at an empty backrow');
+    const refused = applyAction(bare, ME, { type: 'discardForEffect', uid: spare.uid });
+    ok(!!refused.error, 'the engine refuses it too — the board is not the rule', refused.error ?? '(allowed)');
+    ok(refused.state.players[ME].hand.some((h) => h.uid === spare.uid),
+      'and she is still in the hand', refused.state.players[ME].hand.map((h) => h.slug).join(','));
+
+    /* CONTROL: with something to break she is offered, so the gate is not
+       simply switched off. */
+    const armed = tomb();
+    const ready = card(ME, 'zolga');
+    armed.players[ME].hand = [ready];
+    armed.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    ok(canDiscardForEffect(armed, ME, ready), 'CONTROL: with a Set card across the table she is offered');
   }
 
   /* --- Royal Tribute finds the ace on its way down --- */
