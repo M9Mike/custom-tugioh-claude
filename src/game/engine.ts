@@ -1366,7 +1366,7 @@ function destroyCard(state: DuelState, c: CardInstance, byBattle: boolean, ctx?:
       found.controller,
       logSlug(c)
     );
-    anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: found.controller, text: `${dice.join(' ')} ${made ? '= 7' : '✗'}` });
+    anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: found.controller, reports: true, text: `${dice.join(' ')} ${made ? '= 7' : '✗'}` });
     if (made) return;
   }
   if (byBattle && flags.indestructibleByBattle && !divine) {
@@ -2284,7 +2284,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         let landed = 0;
         for (let i = 0; i < coins; i++) if (nextRandom(state) < 0.5) landed += 1;
         log(state, `${coins} coins: ${landed} HEADS, ${coins - landed} TAILS!`, 'effect', ctx.controller, logSlug(ctx.source));
-        anim(state, { kind: 'activate', uid: ctx.source.uid, slug: ctx.source.slug, text: `${landed}/${coins} HEADS`, player: ctx.controller });
+        anim(state, { kind: 'activate', uid: ctx.source.uid, slug: ctx.source.slug, reports: true, text: `${landed}/${coins} HEADS`, player: ctx.controller });
         for (let i = 0; i < landed; i++) runOps(ctx, op.heads);
         for (let i = 0; i < coins - landed; i++) runOps(ctx, op.tails);
         break;
@@ -2306,6 +2306,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           kind: 'activate',
           uid: ctx.source.uid,
           slug: ctx.source.slug,
+          reports: true,
           text: `${dice.join(' ')} ${made ? '= 7' : '✗'}`,
           player: ctx.controller,
         });
@@ -3490,7 +3491,7 @@ function spendExtraCosts(
     const spent = p.grave.splice(idx, 1)[0];
     p.banished.push(spent);
     log(state, `${card(want).name} is banished from the Graveyard.`, 'effect', pid, logSlug(spent));
-    anim(state, { kind: 'activate', uid: spent.uid, slug: spent.slug, player: pid, text: 'BANISHED' });
+    anim(state, { kind: 'activate', uid: spent.uid, slug: spent.slug, player: pid, reports: true, text: 'BANISHED' });
   }
   return null;
 }

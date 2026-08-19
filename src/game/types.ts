@@ -1166,6 +1166,21 @@ export interface AnimEvent {
       whose draw-on-summon rider looked exactly like the second mouth. The
       board says the card's cry instead, which belongs to the arrival. */
   arrival?: boolean;
+  /**
+   * This beat reports an *outcome*, not an activation — the coins landing, the
+   * dice making seven, a card leaving the Graveyard to pay for something.
+   *
+   * The board's default voice for an `activate` beat carrying a slug is
+   * "…'s effect activates", which is right for the beat that announces a card
+   * going off and wrong for every beat after it: Barrel Dragon flipped three
+   * coins and the board said "Barrel Dragon's effect activates" a second time
+   * instead of the result, which was in the log and nowhere else. Reported.
+   *
+   * A reporting beat says the log line the engine paired with it, and never
+   * claims the signature flourish — Barrel Dragon is Keith's emblem, so the
+   * coin toss was also playing his whole cutscene over again.
+   */
+  reports?: boolean;
 }
 
 export interface LogEntry {

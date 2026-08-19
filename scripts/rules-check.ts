@@ -12,6 +12,7 @@ import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, ca
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
+import { isSignatureBeat, spokenFor } from '../src/game/announce';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
@@ -8040,6 +8041,77 @@ console.log('\nA card that comes up empty says so');
     ok(effAtk(flesh, ox, ME) === baseAtkOf('battle-ox'), 'but it comes back at exactly what it was',
       String(effAtk(flesh, ox, ME)));
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* A result is not an entrance                                           */
+/* ------------------------------------------------------------------ */
+console.log('\nWhat the board says, not just what the engine wrote');
+{
+  /* Reported: "When Barrel Dragon effect activated I see in the logs the coin
+     tosses but I don't see the messages on the board."
+
+     The engine was emitting the tally, and every engine-side check agreed it
+     was there — the log line, the beat, the card art beside it. The board said
+     "Barrel Dragon's effect activates" instead, because the rule that chooses
+     the sentence answers for *any* activate beat carrying a slug, and the coin
+     beat had just been given one so it could show a face. Two requirements, one
+     of them satisfied at the cost of the other.
+
+     So this asks the announcing rule directly. Nothing that only reads the log
+     or only reads the beats can see this class: the bug lives in the step
+     between them, which is why it survived a green battery. */
+  const bd = fresh();
+  const dragon = card(ME, 'barrel-dragon');
+  bd.players[ME].monsters = [dragon, null, null];
+  bd.players[FOE].monsters = [card(FOE, 'kuriboh'), null, null];
+  bd.players[FOE].spellTrap = { ...card(FOE, 'de-spell'), face: 'down' as const };
+  bd.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+
+  const fired = act(bd, ME, { type: 'ignition', uid: dragon.uid, targets: [] });
+  const beats = fired.anims.filter((a) => a.id.startsWith(`a${fired.version}_`));
+  const said = beats.map((b) => spokenFor(fired, b)?.text ?? '(silent)');
+
+  ok(said.some((s) => /HEADS/.test(s) && /TAILS/.test(s)),
+    'the board says what the coins did, not just the log', said.join(' | '));
+  ok(said.filter((s) => /effect activates/.test(s)).length === 1,
+    'and announces the dragon once, not once per beat it emits', said.join(' | '));
+
+  const tally = beats.find((b) => b.reports);
+  ok(!!tally && tally.slug === 'barrel-dragon',
+    'the tally still carries the card, so the line is not printed over empty space',
+    tally?.slug ?? '(no beat)');
+  /* Barrel Dragon is Keith's own emblem, so before this the coin toss played
+     his entire signature moment a second time, every ignition. */
+  ok(!!tally && !isSignatureBeat(tally),
+    'and a result never claims the signature flourish, even on a duelist emblem');
+  ok(isSignatureBeat(beats[0]!),
+    'CONTROL: the beat that really announces the card still earns it',
+    spokenFor(fired, beats[0]!)?.text ?? '(silent)');
+
+  /* The same shape, three more places — every beat that reports an outcome
+     rather than an activation. Slot Machine's reels are the clearest: the
+     ignition announces the card, the dice report a result. */
+  const sm = fresh();
+  const reels = card(ME, 'slot-machine');
+  sm.players[ME].monsters = [reels, null, null];
+  const spun = act(sm, ME, { type: 'ignition', uid: reels.uid, targets: [] });
+  const spoke = spun.anims
+    .filter((a) => a.id.startsWith(`a${spun.version}_`))
+    .map((b) => spokenFor(spun, b)?.text ?? '(silent)');
+  ok(spoke.some((s) => /seven/.test(s)), 'the dice say what they made', spoke.join(' | '));
+
+  /* And the fare Pendulum Machine pays, which is a cost and not an activation. */
+  const pm = fresh();
+  const ball = card(ME, 'pendulum-machine');
+  pm.players[ME].hand = [ball];
+  pm.players[ME].grave = [card(ME, 'steel-ogre-grotto-1')];
+  const built = act(pm, ME, { type: 'handSummon', uid: ball.uid });
+  const fare = built.anims
+    .filter((a) => a.id.startsWith(`a${built.version}_`))
+    .map((b) => spokenFor(built, b)?.text ?? '(silent)');
+  ok(fare.some((s) => /banished from the Graveyard/.test(s)),
+    'and the board says which corpse paid the fare', fare.join(' | '));
 }
 
 /* The summary goes LAST, and there is nothing after it.
