@@ -16,6 +16,7 @@ import { targetCandidates, targetSpecFor } from './ui';
    the engine. Moving the file they live in should not move everyone's import. */
 export { matchesFilter, revivable } from './targeting';
 import {
+  INFINITE_ATK,
   MONSTER_ZONES,
   OPENING_HAND,
   STARTING_LP,
@@ -458,6 +459,11 @@ function tokenScaleOf(state: DuelState, c: CardInstance, ctrl: PlayerId): { atk:
 
 export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId): number {
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
+  /* Read off the instance rather than through `effFlags`, which asks the auras,
+     which ask for stats: this is inside the stat calculation and cannot call
+     back into it. Nothing grants infinite ATK from outside anyway — the Fist of
+     Fate sets it on Obelisk himself and nothing else in the game does. */
+  if (c.flags.infiniteAtk || c.turnFlags.infiniteAtk) return INFINITE_ATK;
   const base = c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug);
   /* Half for a monster that swallows what it kills. A scorpion eating a
      Blue-Eyes at full rate is simply a Blue-Eyes with extra steps. */
@@ -1905,6 +1911,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           /* One turn is the default and the old behaviour; Dragon Piper asks
              for two, so the borrowing outlives the turn it was taken on. */
           if (op.duration !== 'permanent') t.controlRevertsOnTurn = state.turn + ((op.turns ?? 1) - 1);
+          if (op.rent) t.rentPerTurn = op.rent;
           state.players[ctx.controller].monsters[dest] = t;
           log(state, `${state.players[ctx.controller].name} takes control of ${displayName(state, t)}!`, 'effect', ctx.controller, logSlug(t));
         }
@@ -2136,6 +2143,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       }
       case 'attackCostDiscard':
         applyFlag(ctx.source, 'attackCostDiscard', true, op.duration);
+        break;
+      case 'infiniteAtk':
+        applyFlag(ctx.source, 'infiniteAtk', true, op.duration);
+        log(state, `${displayName(state, ctx.source)}'s power stops being a number.`, 'effect', ctx.controller, logSlug(ctx.source));
+        anim(state, { kind: 'activate', uid: ctx.source.uid, slug: ctx.source.slug, player: ctx.controller, reports: true, text: '∞ ATK' });
         break;
       case 'search': {
         const p = state.players[ctx.controller];
@@ -3623,6 +3635,20 @@ function startTurn(state: DuelState) {
       fireAllySummon(state, pid, back.uid);
     }
   }
+  /* Rent on anything stolen and kept. Paid before the standing monsters take
+     their turn-start triggers, so a duel that is won by the rent is won before
+     anything else happens — and paid to the body's *owner*, which is who the
+     card means by "your opponent" however many times control has changed. */
+  for (const m of p.monsters) {
+    if (!m?.rentPerTurn) continue;
+    if (m.owner === pid) {
+      /* It has come home. Nobody pays rent on their own monster. */
+      m.rentPerTurn = undefined;
+      continue;
+    }
+    healPlayer(state, m.owner, m.rentPerTurn);
+    log(state, `${state.players[m.owner].name} is paid ${m.rentPerTurn} Life Points for ${displayName(state, m)}.`, 'effect', m.owner, logSlug(m));
+  }
   for (const m of p.monsters) if (m && m.face === 'up') fireTriggers(state, m, pid, 'onOwnTurnStart', {});
   /* A face-up card in the Spell/Trap Zone ticks too. Only the Field Zone did,
      so a Continuous Trap could never carry a per-turn clause at all — which is
@@ -3862,6 +3888,30 @@ export function tributesRequired(
  * does it, and the summon path needs to ask the same question twice — once to
  * price the Summon and once to collect.
  */
+/**
+ * Whether a Normal Summon of this card can be paid for right now.
+ *
+ * The board worked this out for itself and kept its own idea of what counts as
+ * a body: `mine.monsters`, which is not the same set the engine will accept.
+ * Soul Exchange lends you their monsters for a Tribute and leaves them standing
+ * on their own side, so a board of one plus two borrowed was three payable
+ * Tributes — and the button read one, refused the Summon, and made the card
+ * unusable at exactly the moment it was played. Reported by the owner, holding
+ * Obelisk.
+ *
+ * Lives here because that is the lesson this file keeps relearning: a rule
+ * written as a closure in the board can only be tested by re-implementing it,
+ * and a test that re-implements a rule agrees with its bug.
+ *
+ * A Tribute Summon makes its own room — the bodies leave before the new monster
+ * arrives — so only a Summon costing nothing needs a zone going spare.
+ */
+export function summonAffordable(state: DuelState, pid: PlayerId, slug: string): boolean {
+  const need = tributesRequired(slug, state, pid, true);
+  if (need > 0) return tributableBodies(state, pid).length >= need;
+  return state.players[pid].monsters.some((m) => !m);
+}
+
 export function summonBanishFor(slug: string): string | null {
   return slug === 'mystical-beast-of-serket' ? 'temple-of-the-kings' : null;
 }

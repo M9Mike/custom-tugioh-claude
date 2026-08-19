@@ -13,9 +13,9 @@ import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
-import { ignitionOptions, tributableBodies } from '../src/game/engine';
+import { ignitionOptions, summonAffordable, tributableBodies } from '../src/game/engine';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
-import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
+import { INFINITE_ATK, type CardInstance, type DuelAction, type DuelState, type Op, type PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
 const FOE: PlayerId = 'p2';
@@ -4673,8 +4673,10 @@ console.log('\nObelisk is the God that does not scale');
     'it never takes a summon below one tribute',
     `${tributesRequired('guardian-sphinx', coston, ME)}`);
 
-  /* The Fist of Fate: two souls spent, their field erased, and the souls come
-     out the other side as damage. The burn is what separates it from Ra. */
+  /* The Fist of Fate: two souls spent and the God's power stops being a number
+     for the turn. It has to connect now — the sweep-and-burn happened the
+     moment it was pressed, and this does not — which is the whole of the
+     change and the reason a turn with no opening is a turn it does not win. */
   const fist = fresh();
   const ob = card(ME, 'obelisk-the-tormentor');
   ob.summonedOnTurn = 0;
@@ -4682,18 +4684,36 @@ console.log('\nObelisk is the God that does not scale');
   const fodderB = card(ME, 'battle-ox');      // 1700
   fist.players[ME].monsters = [ob, fodderA, fodderB];
   fist.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), card(FOE, 'kuriboh'), null];
-  // The real pool, because 2500 + 1700 through a 4000 test pool floors at zero
-  // and the assertion would be measuring the floor rather than the burn.
   fist.players[FOE].lp = 8000;
   const foeLp = fist.players[FOE].lp;
   const blown = act(fist, ME, { type: 'ignition', uid: ob.uid, targets: [fodderA.uid, fodderB.uid] });
-  ok(on(blown, FOE).length === 0, 'the Fist erases their whole field',
+  const limitless = blown.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor')!;
+  ok(effAtk(blown, limitless, ME) === INFINITE_ATK,
+    'the Fist spends two souls and the God stops being a number',
+    String(effAtk(blown, limitless, ME)));
+  ok(on(blown, FOE).length === 2,
+    'and their field is untouched — it has to be swung, not merely pressed',
     on(blown, FOE).map((m) => m.slug).join(',') || 'empty');
-  ok(blown.players[FOE].lp === foeLp - (2500 + 1700),
-    'and burns them for exactly what the two souls were worth',
+  ok(blown.players[FOE].lp === foeLp, 'and nothing is burned by the pressing alone',
     `${foeLp} -> ${blown.players[FOE].lp}`);
-  ok(!!blown.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor'),
-    'CONTROL: the God itself is still standing');
+  ok(blown.players[ME].monsters.filter(Boolean).length === 1,
+    'CONTROL: the two souls really were spent',
+    blown.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* And what limitless means when it lands: the Blue-Eyes in the way is worth
+     nothing at all, and the damage ends the duel. */
+  const swung = act(act(blown, ME, { type: 'toPhase', phase: 'battle' }), ME, {
+    type: 'attack', uid: ob.uid, targetUid: blown.players[FOE].monsters.find((m) => m?.slug === 'blue-eyes-white-dragon')!.uid,
+  });
+  ok(swung.winner === ME, 'a limitless swing ends the duel through whatever is standing there',
+    swung.winner ?? '(nobody)');
+
+  /* It lasts the turn and no longer. */
+  const cooled = act(act(blown, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  const back = cooled.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor')!;
+  ok(effAtk(cooled, back, ME) === baseAtkOf('obelisk-the-tormentor'),
+    'and it is a number again next turn',
+    String(effAtk(cooled, back, ME)));
 
   /* A God is not fodder for another God's fist. */
   const greedy = fresh();
@@ -8950,16 +8970,20 @@ console.log('\nA protector that dies in the same breath still protected');
      shield is decided a moment earlier, and a moment earlier is before anyone
      has asked whose effect this is. Obelisk's fist goes through it, in either
      Monster Zone order, the same as it goes through everything else. */
+  /* Ra's God Phoenix rather than Obelisk's Fist, which no longer destroys
+     anything — the claim is about a God's *effect* going through a shield, and
+     it needs a God effect that sweeps. */
   const fist = (zones: string[]) => {
     const s = fresh();
-    const god = card(ME, 'obelisk-the-tormentor');
+    const god = card(ME, 'the-winged-dragon-of-ra');
+    god.summonedOnTurn = 0;
     s.players[ME].monsters = [god, card(ME, 'kuriboh'), card(ME, 'battle-ox')];
     s.players[FOE].monsters = [card(FOE, zones[0]), card(FOE, zones[1]), null];
     const smitten = act(s, ME, { type: 'ignition', uid: god.uid, targets: [] });
     return smitten.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || '(none)';
   };
   ok(fist(['robotic-knight', 'steel-ogre-grotto-1']) === '(none)',
-    "no shield stands before a God — Obelisk's fist takes the Knight and everything he was guarding",
+    'no shield stands before a God — Ra takes the Knight and everything he was guarding',
     fist(['robotic-knight', 'steel-ogre-grotto-1']));
   ok(fist(['steel-ogre-grotto-1', 'robotic-knight']) === '(none)',
     'and the zone order changes nothing there either',
@@ -10045,6 +10069,114 @@ console.log('\nIshizu: the tomb pays, and everything that falls into it comes ba
     ok(answered.players[ME].deck.some((c) => c.slug === 'mudora'),
       'the guardians she buried are the cards she now draws',
       answered.players[ME].deck.map((c) => c.slug).join(','));
+  }
+}
+
+console.log('\nWhat the board must let you spend, and who it must ask');
+{
+  const table = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+    }
+    return s;
+  };
+
+  /* --- Soul Exchange lends bodies, and they count --- */
+  {
+    /* Reported: with one monster of her own and two of theirs selected, the
+       board still refused the Tribute Summon. The engine was right the whole
+       time — it was the button that kept its own opinion of what can pay. */
+    const s = table();
+    const mine = card(ME, 'kuriboh');
+    mine.summonedOnTurn = 0;
+    s.players[ME].monsters = [mine, null, null];
+    const theirs = [card(FOE, 'battle-ox'), card(FOE, 'summoned-skull')];
+    for (const t of theirs) t.summonedOnTurn = 0;
+    s.players[FOE].monsters = [theirs[0], theirs[1], null];
+    const ob = card(ME, 'obelisk-the-tormentor');
+    const swap = card(ME, 'soul-exchange');
+    s.players[ME].hand = [swap, ob];
+
+    ok(tributableBodies(s, ME).length === 1, 'CONTROL: one body of her own before the Exchange',
+      String(tributableBodies(s, ME).length));
+    const lent = act(s, ME, { type: 'activateSpell', uid: swap.uid, targets: [theirs[0].uid, theirs[1].uid] });
+    /* This is the number the button reads. It counted `mine.monsters` and got
+       one, so a God needing three was refused with three payable bodies on the
+       table. */
+    ok(tributableBodies(lent, ME).length === 3,
+      'and three the moment the Exchange lends her theirs',
+      tributableBodies(lent, ME).map((m) => m.slug).join(','));
+    /* And the question the button actually asks. It counted `mine.monsters`
+       and so answered no with three payable bodies on the table; it asks the
+       engine now, and this is the assertion that stops it drifting again. */
+    ok(!summonAffordable(s, ME, 'obelisk-the-tormentor'),
+      'CONTROL: one body cannot pay for a God');
+    ok(summonAffordable(lent, ME, 'obelisk-the-tormentor'),
+      'and with theirs lent, the board can afford him — which is the whole point of the card');
+
+    const summoned = act(lent, ME, {
+      type: 'normalSummon', uid: ob.uid, zone: 1, position: 'atk', face: 'up',
+      tributes: [mine.uid, theirs[0].uid, theirs[1].uid],
+    });
+    ok(summoned.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'),
+      'and Obelisk stands on one of her bodies and two of theirs',
+      summoned.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(summoned.players[FOE].monsters.every((m) => !m),
+      'their side is empty — the lent bodies really were spent',
+      summoned.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Newdoria takes the one you pick --- */
+  {
+    const s = table();
+    const doria = card(ME, 'newdoria');
+    doria.summonedOnTurn = 0;
+    s.players[ME].monsters = [doria, null, null];
+    const small = card(FOE, 'kuriboh');
+    const big = card(FOE, 'summoned-skull');
+    small.summonedOnTurn = 0;
+    big.summonedOnTurn = 0;
+    s.players[FOE].monsters = [big, small, null];
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand = [hole];
+    const razed = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(razed.pending?.kind === 'choose' && razed.pending.player === ME,
+      'Newdoria stops and asks which body she takes with her',
+      razed.pending ? `${razed.pending.kind}/${razed.pending.player}` : '(chosen for you)');
+    /* Dark Hole has already swept the board, so what is left to point at is
+       whatever survived — the claim is that the question is asked at all, and
+       that the answer given is the one honoured. */
+    const options = razed.pending?.options ?? [];
+    ok(options.length > 1, 'with more than one answer available', String(options.length));
+  }
+
+  /* --- Obelisk's Fist, and Snatch Steal's rent --- */
+  {
+    /* Rent is the counterplay for a theft that never ends. The text has
+       promised it since the card was written and it never paid a point. */
+    const s = table();
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const steal = card(ME, 'snatch-steal');
+    s.players[ME].hand = [steal];
+    const taken = act(s, ME, { type: 'activateSpell', uid: steal.uid, targets: [ox.uid] });
+    ok(taken.players[ME].monsters.some((m) => m?.uid === ox.uid), 'Snatch Steal takes the body');
+    const owed = taken.players[FOE].lp;
+    const round = act(act(taken, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    ok(round.players[FOE].lp === owed + 2000,
+      'and its owner is paid 2000 at the start of each turn it is kept',
+      `${owed} -> ${round.players[FOE].lp}`);
+    /* Twice round, twice paid: it is rent, not a one-off. */
+    const twice = act(act(round, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    ok(twice.players[FOE].lp === owed + 4000,
+      'every turn, for as long as it is kept',
+      `${round.players[FOE].lp} -> ${twice.players[FOE].lp}`);
   }
 }
 

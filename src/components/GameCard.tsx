@@ -1,7 +1,7 @@
 'use client';
 
 import { CARDS, artUrl } from '@/game/cards';
-import type { CardInstance } from '@/game/types';
+import { INFINITE_ATK, type CardInstance } from '@/game/types';
 
 export function frameClass(slug: string, isToken?: boolean): string {
   if (isToken) return 'frame-token';
@@ -164,8 +164,12 @@ export default function GameCard({
                   like an untouched one the only way to notice was to remember
                   what it started at — which is how a 0 ATK monster gets sent
                   into an attack. */}
+              {/* A God whose power has stopped being a number says so. Seven
+                  digits in a stat band is unreadable and, worse, reads as a
+                  bug — the Fist of Fate is meant to look like the end of the
+                  argument, not like an overflow. */}
               <span style={statTint(atk, isToken ? card.tokenAtk : (cardDef?.atkOverride ?? cardDef?.atk))}>
-                {atk ?? (isToken ? card.tokenAtk : cardDef?.atk) ?? 0}
+                {atk === INFINITE_ATK ? '∞' : (atk ?? (isToken ? card.tokenAtk : cardDef?.atk) ?? 0)}
               </span>
               <span className="card-level opacity-70">
                 {isToken ? '★' : '★'.repeat(Math.min(cardDef?.level ?? 0, 4))}

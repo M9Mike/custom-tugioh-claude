@@ -22,6 +22,7 @@ import {
   maxAttacks,
   monstersFrozen,
   other,
+  summonAffordable,
   summonBanishFor,
   summonBlocked,
   tributableBodies,
@@ -1331,14 +1332,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
          which is exactly when a Tribute Summon is wanted, could not Summon it
          at all. Reported. */
       const need = tributesRequired(handCard.slug, state, me, true);
-      const bodies = mine.monsters.filter((m): m is CardInstance => !!m).length;
-      /* A Tribute Summon *makes* its own room — the tributes leave the field
-         before the new monster arrives, and `finishSummon` already resolves the
-         destination after they are paid. Demanding a free zone up front meant a
-         full board locked out the one summon a full board is for, which is
-         exactly backwards. Only a summon costing nothing needs a zone going
-         spare. */
-      const roomFor = need > 0 ? bodies >= need : freeZone;
+      const bodies = tributableBodies(state, me).length;
+      /* Asked, not worked out. This line counted `mine.monsters` and so had no
+         idea that Soul Exchange had just lent three payable bodies — see
+         `summonAffordable`, which is where the rule lives now. */
+      const roomFor = summonAffordable(state, me, handCard.slug);
       const canSummon = myTurn && state.phase === 'main' && !mine.normalSummonUsed && roomFor;
       /* The engine's own answer, asked here rather than left to refuse at the
          end: offering "Normal Summon" for a Ritual monster walked the player all

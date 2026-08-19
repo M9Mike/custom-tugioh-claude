@@ -3588,7 +3588,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'Requires 3 Tributes. ' +
       'Once per turn, either: Tribute 2 monsters you control, except a Divine-Beast, ' +
-      'to destroy every monster your opponent controls and inflict damage equal to their combined ATK; ' +
+      "and this monster's ATK becomes infinite until the end of the turn; " +
       'or Tribute 1 monster you control, except a Divine-Beast, so this monster can attack 4 times this turn. ' +
       "This monster cannot be targeted by your opponent's card effects. " +
       "A God is above everything: this monster's attacks and effects ignore your opponent's protections. " +
@@ -3608,19 +3608,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         aura: { target: SELF, grants: ['untargetable'] },
       },
       {
-        /* Soul energy MAX. The printed Fist of Fate is "Tribute 2 monsters:
-           destroy all monsters your opponent controls"; the burn is this game's
-           addition and it is what makes the button worth pressing over simply
-           attacking. `scale: 'tributedAtk'` sums what was paid, so feeding it
-           the fat bodies hurts more than feeding it tokens — the choice of
-           *which* two to spend is the play. */
+        /* Soul energy MAX. Two souls and the God's power stops being a
+           number for the turn — the anime version of the Fist, and a different
+           button from the one it replaces: the sweep-and-burn happened the
+           moment it was pressed, and this has to *connect*. A body in the way
+           is no longer an answer, but a turn with no opening is a turn the Fist
+           does not win, and the two souls are spent either way.
+           The other ignition is still the alternative it always was: four
+           swings at 4000 against a board that can be cleared piecemeal, or one
+           limitless swing at whatever is left. */
         trigger: 'ignition',
-        label: 'Fist of Fate — spend two souls, clear the field',
+        label: 'Fist of Fate — spend two souls, become limitless',
         oncePerTurn: true,
         cost: { tribute: 2, tributeFilter: { excludeType: 'Divine-Beast' } },
         ops: [
-          { op: 'destroy', target: OPP_ALL },
-          { op: 'damage', scale: 'tributedAtk', to: 'opp' },
+          { op: 'infiniteAtk', duration: 'turn' },
         ],
       },
       {
@@ -3754,6 +3756,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onSentToGrave',
+        /* The player picks which one. `OPP_PICK` was already on the op and
+           nobody was ever asked, because the engine only stops to ask when the
+           effect itself declares a target — so it took the strongest every
+           time and Newdoria's whole decision, which body to take with her, was
+           made for you. Reported by the owner. */
+        targets: 1,
         ops: [
           { op: 'destroy', target: OPP_PICK },
           /* The burn is what makes feeding the Fist a *play* rather than a

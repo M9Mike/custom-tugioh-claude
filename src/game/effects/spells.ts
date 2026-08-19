@@ -1336,7 +1336,18 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'activate',
         condition: { opponentHasMonster: true },
-        ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'permanent' }],
+        ops: [
+          {
+            op: 'takeControl',
+            target: OPP_PICK,
+            duration: 'permanent',
+            /* The rent the text has always promised and the card never paid.
+               A permanent theft with no price is the strongest removal in the
+               game; 2000 a turn is what makes keeping it a decision, and it is
+               the counterplay for a card that otherwise had none. */
+            rent: 2000,
+          },
+        ],
       },
     ],
   },

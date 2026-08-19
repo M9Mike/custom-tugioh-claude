@@ -400,7 +400,10 @@ export type Op =
   | { op: 'bounce'; target: Selector }
   /** `turns` is how many turns a non-permanent borrowing lasts; 1 by default,
    *  which is the end of the turn it was taken on. */
-  | { op: 'takeControl'; target: Selector; duration: Duration; turns?: number }
+  /** `rent` is Life Points the taker pays the monster's owner at the start of
+   *  each of their own turns, for as long as they keep it — Snatch Steal's
+   *  price, and the only thing that makes a permanent theft answerable. */
+  | { op: 'takeControl'; target: Selector; duration: Duration; turns?: number; rent?: number }
   | { op: 'draw'; count: number; who: Side }
   /**
    * Draws up to a hand size rather than a fixed number — "each player draws
@@ -461,6 +464,8 @@ export type Op =
    * order would be handing over a known Deck.
    */
   | { op: 'swapDeckAndGrave' }
+  /** The Fist of Fate: this monster's ATK stops being a number. */
+  | { op: 'infiniteAtk'; duration: Duration }
   /**
    * Dig down through your own Deck, burying everything, until you turn over a
    * monster the filter accepts — then Special Summon that one instead of
@@ -1010,7 +1015,19 @@ export interface EffectCondition {
 /* Runtime state                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * What "infinite ATK" is worth in a game made of numbers.
+ *
+ * Large enough that nothing on the roster can stand in front of it and the
+ * battle damage ends the duel outright, which is exactly what the Fist of Fate
+ * is for — and a named constant rather than a magic number sprinkled about, so
+ * the board can recognise it and print ∞ instead of seven digits.
+ */
+export const INFINITE_ATK = 9_999_999;
+
 export interface CardFlags {
+  /** ATK is not a number this turn — see `INFINITE_ATK`. */
+  infiniteAtk?: boolean;
   pierce?: boolean;
   directAttack?: boolean;
   indestructibleByBattle?: boolean;
@@ -1177,6 +1194,16 @@ export interface CardInstance {
   absorbed: { slug: string; owner: PlayerId; ghost?: boolean }[];
   /** Set when control was taken; control reverts at end of that turn. */
   controlRevertsOnTurn?: number;
+  /**
+   * Life Points its owner is paid at the start of each of its captor's turns,
+   * for as long as they keep it.
+   *
+   * Snatch Steal's text has always promised this and the card never paid a
+   * point: a permanent theft with no price at all, and a clause on the card
+   * that did nothing. Carried on the stolen body rather than on the Spell,
+   * because the Spell is in the Graveyard by the time the first rent is due.
+   */
+  rentPerTurn?: number;
   /** True for Scapegoat-style tokens (cannot be tributed for a Normal Summon). */
   isToken?: boolean;
   tokenName?: string;
