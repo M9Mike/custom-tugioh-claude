@@ -114,13 +114,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'just-desserts': {
-    text: 'Inflict 600 damage to your opponent for each monster they control.',
+    text: 'Inflict 700 damage to your opponent for each monster they control.',
     effects: [
       {
         trigger: 'trap',
         window: 'anyOpponentTurn',
         label: 'Just Desserts',
-        ops: [{ op: 'damage', amount: 600, scale: 'perOppMonster', to: 'opp' }],
+        ops: [{ op: 'damage', amount: 700, scale: 'perOppMonster', to: 'opp' }],
       },
     ],
   },
@@ -1368,13 +1368,29 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        theme with an answer — destroy her, or destroy the valley — and it is
        still read live, which is what keeps the tomb visible to an AI that
        scores stats and is blind to Graveyards. */
-    text: 'Field Spell: monsters you control gain 300 ATK.',
+    text:
+      'Field Spell: monsters you control gain 400 ATK. ' +
+      'When this card is sent to the Graveyard, however it gets there: add 1 card from your Graveyard to your hand.',
     cry: 'The valley has been waiting for you.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 300 },
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster' } }), atk: 400 },
+      },
+      {
+        /* Breaking the valley is the answer to this whole deck, and it should
+           cost the breaker something. Whatever the tomb holds comes back — the
+           mill that has been running all game is suddenly a hand — so the
+           counterplay is still there and is no longer free.
+
+           `onAnyToGrave` because the card says however it gets there: milled
+           out of the Deck by her own Royal Tribute, discarded, or shattered on
+           the field. `targets` so the player chooses, rather than the engine
+           reaching for whatever it thinks is biggest. */
+        trigger: 'onAnyToGrave',
+        targets: 1,
+        ops: [{ op: 'stealFromGrave', from: 'own' }],
       },
     ],
   },
@@ -1384,31 +1400,55 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        her guardians are paid for. Conditioned so it is never a blank — a mill
        into an empty board is the state the design is built for, but paying a
        card for nothing is not. */
-    text: 'Send the top 3 cards of your Deck to the Graveyard, then draw 1 card.',
+    text:
+      'Send the top 3 cards of your Deck to the Graveyard, then draw 1 card. ' +
+      'When this card is sent to the Graveyard, however it gets there: add 1 "Mystical Knight of Jackal" from your Deck or Graveyard to your hand.',
     cry: 'The tomb takes its due.',
-    effects: [{ trigger: 'activate', ops: [{ op: 'mill', count: 3, who: 'own' }, { op: 'draw', count: 1, who: 'own' }] }],
+    effects: [
+      { trigger: 'activate', ops: [{ op: 'mill', count: 3, who: 'own' }, { op: 'draw', count: 1, who: 'own' }] },
+      {
+        /* The offering finds the ace. Every route ends here — a Royal Tribute
+           spent, destroyed in the zone, discarded, or buried by another Royal
+           Tribute's own mill — so the card that fills the tomb is also the card
+           that fetches the monster the tomb is for. Deck before Graveyard,
+           which `orGrave` already does: what has not been drawn yet is the copy
+           you would rather spend. */
+        trigger: 'onAnyToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['mystical-knight-of-jackal'] }, orGrave: true }],
+      },
+    ],
   },
 
   'exchange-of-the-spirit': {
-    /* Her signature, and the one card that says "I have already seen this".
-       A one-shot rather than the printed Graveyard swap, which this engine has
-       no way to express and which would be a deck-out win condition the AI
-       cannot see coming. */
+    /* Her signature, and now the printed one: the whole game turned over.
+       Everything both players have spent becomes everything they have left.
+
+       It is not an attack answer any more, so it does not sit in an attack
+       window — `anyOpponentTurn`, because the moment to turn the table over is
+       whenever you decide the piles have grown the right way round, and that is
+       the entire decision the card asks for.
+
+       Both players, both ways. That is what stops it being a one-sided
+       deck-out: Ishizu has been burying her own Deck all game, so the swap
+       hands her a full Deck of guardians and hands the opponent back everything
+       they have already used — which is a real gift if they have been trading
+       and a disaster if they have not. */
     subKindOverride: 'Normal',
-    text: 'Trap: when your opponent declares an attack — negate the attack, send the top 3 cards of your Deck to the Graveyard, and each guardian you control gains 600 ATK until the end of the turn.',
+    text:
+      'Trap: each player sends the top card of their Deck to their Graveyard, ' +
+      'then each player\'s Deck and Graveyard change places and the new Deck is shuffled.',
     cry: 'I saw this before you drew it.',
     effects: [
       {
         trigger: 'trap',
-        window: 'opponentDeclareAttack',
+        window: 'anyOpponentTurn',
         label: 'Exchange of the Spirit',
         ops: [
-          { op: 'negateAttack' },
-          /* The mill is the buff here: every card it buries is another 300 on
-             every guardian through Necrovalley, so the negate and the pump are
-             the same sentence read twice. */
-          { op: 'mill', count: 3, who: 'own' },
-          { op: 'gainAtk', amount: 600, target: sel('own', 'all', { filter: { kind: 'monster' } }), duration: 'turn' },
+          /* One card down first, from both, so the swap can never be a no-op:
+             an empty Graveyard would otherwise trade a full Deck for nothing
+             and hand its owner the loss on their next draw. */
+          { op: 'mill', count: 1, who: 'both' },
+          { op: 'swapDeckAndGrave' },
         ],
       },
     ],
@@ -1424,6 +1464,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         window: 'opponentDeclareAttack',
         label: 'Blast Held by a Tribute',
         ops: [
+          /* Buried before the blast, deliberately: the price is "one for each
+             monster they control", read off the board that declared the attack
+             rather than off the board the destruction leaves behind. Written
+             after the destroy it would have quietly charged one less every
+             time, which is the sort of arithmetic nobody notices.
+             And it is a price that pays her: everything it buries is ATK on
+             Mudora and the Jackal, so answering a wide board with this is the
+             deck doing what it wants to do anyway. */
+          { op: 'mill', count: 1, scale: 'perOppMonster', who: 'own' },
           { op: 'destroy', target: sel('opp', 'attacker') },
           { op: 'damage', amount: 800, to: 'opp' },
         ],

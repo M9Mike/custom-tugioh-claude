@@ -445,7 +445,22 @@ export type Op =
   | { op: 'cascade'; branches: Array<{ condition?: EffectCondition; ops: Op[] }> }
   /** This monster rolls to shrug off destruction — see `CardFlags`. */
   | { op: 'rollsToSurvive'; duration: Duration }
-  | { op: 'mill'; count: number; who: Side }
+  /** `scale` multiplies `count` by something on the board. Blast Held by a
+   *  Tribute buries "one for each monster they control", so the price of
+   *  answering a wide board is paid out of your own Deck. */
+  | { op: 'mill'; count: number; scale?: 'perOppMonster'; who: Side }
+  /**
+   * Deck and Graveyard change places, for both players at once, and the new
+   * Deck is shuffled.
+   *
+   * Exchange of the Spirit turns the whole game over: everything spent becomes
+   * everything left, and the pile you have been feeding all duel is suddenly
+   * what you draw from. Written as its own op rather than as a pile of moves
+   * because the shuffle is part of the swap — a Graveyard is a *stack* whose
+   * order both players have watched being built, and handing it back in that
+   * order would be handing over a known Deck.
+   */
+  | { op: 'swapDeckAndGrave' }
   /**
    * Dig down through your own Deck, burying everything, until you turn over a
    * monster the filter accepts — then Special Summon that one instead of
@@ -822,7 +837,7 @@ export interface CardEffect {
        * or the controller's hand — which is Slifer, whose ATK is "1000 for each
        * card in your hand" and therefore falls the moment you spend one.
        */
-      zone: 'ownGrave' | 'eitherGrave' | 'ownField' | 'oppField' | 'field' | 'ownHand';
+      zone: 'ownGrave' | 'oppGrave' | 'eitherGrave' | 'ownField' | 'oppField' | 'field' | 'ownHand';
       /** Only count cards matching this. Omit to count everything there. */
       filter?: CardFilter;
       /**

@@ -3859,25 +3859,34 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        the one card the deck is built to land. A deck whose ace does not
        benefit from its own field is a deck with two themes. */
     text:
-      'When this monster destroys a monster by battle: send the top 3 cards of your opponent\'s Deck to the Graveyard. ' +
-      'While you control another Fairy monster, this monster cannot be destroyed by battle.',
+      'This monster gains 100 ATK for each card in your opponent\'s Graveyard. ' +
+      'When this monster is Summoned: your opponent discards 1 card. ' +
+      'When this monster destroys a monster by battle: send the top 3 cards of your opponent\'s Deck to the Graveyard.',
     cry: 'Anubis has already weighed you.',
     effects: [
+      {
+        /* He is worth what he has already taken. The mill below feeds this
+           directly — three cards off their Deck is 300 ATK on the Jackal — so
+           the two halves of the card are one engine rather than two effects
+           that happen to share a body. Read live through `aura.per`, so a
+           Graveyard emptied out from under him takes the ATK with it. */
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'oppGrave', atk: 100 } },
+      },
+      {
+        /* However he arrives. Ishizu's ace is a Level 7 who mostly comes down
+           on a Tribute of two guardians she was going to spend anyway, and a
+           trigger that only answered a Normal Summon would have missed every
+           other way she can get him there. */
+        trigger: 'onSummon',
+        ops: [{ op: 'discard', count: 1, who: 'opp' }],
+      },
       {
         trigger: 'onBattleDestroy',
         ops: [
           { op: 'mill', count: 3, who: 'opp' },
         ],
-      },
-      {
-        /* "Another Fairy" rather than "another monster": every tomb guardian
-           in the deck is a Fairy, so the sentence is the same promise with a
-           condition the DSL can actually read — and it says out loud that the
-           Jackal is protected by the guard around him, not by himself. */
-        trigger: 'continuous',
-        condition: { controlsOtherOfType: 'Fairy' },
-        ops: [],
-        aura: { target: SELF, grants: ['indestructibleByBattle'] },
       },
     ],
   },
@@ -3887,24 +3896,38 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        tomb filling up is ATK on the board in the same instant rather than
        stored value — which is the one thing that makes this theme visible to
        an AI that scores stats and is blind to Graveyards. */
-    text: 'This monster gains 200 ATK for each monster in your Graveyard. When this monster is Normal Summoned: send the top 2 cards of your Deck to the Graveyard, then Special Summon 1 "Mudora" from your Deck.',
+    text:
+      'This monster gains 300 ATK for each monster in your Graveyard. ' +
+      'When this monster is Summoned: send the top 2 cards of your Deck to the Graveyard. ' +
+      'When this monster is sent to the Graveyard, however it gets there: Special Summon 1 "Mudora" from your Deck or hand in Attack Position.',
     cry: 'The dead are counted, and they answer to me.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 200 } },
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 300 } },
       },
       {
-        trigger: 'onNormalSummon',
+        /* However she arrives, so the copy that stands up out of the pile
+           buries two of its own on the way in. */
+        trigger: 'onSummon',
+        ops: [{ op: 'mill', count: 2, who: 'own' }],
+      },
+      {
+        /* And the replacement comes out of the tomb rather than out of the
+           Summon. This is the change that makes her the engine: every Mudora
+           that dies, is Tributed, is milled or is discarded stands the next one
+           up, and each one buries two more on arrival — so answering a Mudora
+           is what makes the next Mudora bigger. `onAnyToGrave` because the card
+           says "however it gets there" and means it: the copy buried by another
+           Mudora's own mill answers too.
+
+           It cannot run away with itself. Every copy that stands up leaves the
+           Deck or the hand for good, so the chain is exactly as long as the
+           number of Mudora in the deck and then it stops. */
+        trigger: 'onAnyToGrave',
         ops: [
-          { op: 'mill', count: 2, who: 'own' },
-          /* The mill and the twin are one sentence: four cards buried is 1200
-             on every guardian through Necrovalley and 1600 on each Mudora, and
-             the second body is what turns that arithmetic into a board. This is
-             the deck's whole engine in one Normal Summon — bury, then stand up
-             something that got bigger while you were burying. */
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['mudora'] }, count: 1, position: 'atk' },
+          { op: 'specialSummon', from: ['deck', 'hand'], side: 'own', filter: { slugs: ['mudora'] }, count: 1, position: 'atk' },
         ],
       },
     ],
@@ -3913,14 +3936,24 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'keldo': {
     /* The enabler that finds itself: the deck hinges on Necrovalley and cannot
        be left hoping to draw it. */
-    text: 'When this monster is Normal Summoned: add "Necrovalley" from your Deck to your hand, then Special Summon 1 "Keldo" from your Deck.',
+    text:
+      'When this monster is Summoned: add "Necrovalley" from your Deck to your hand. ' +
+      'When this monster is destroyed: Special Summon 1 "Agido" from your Deck or hand in Defence Position.',
     cry: 'The valley remembers.',
     effects: [
       {
-        trigger: 'onNormalSummon',
+        trigger: 'onSummon',
+        ops: [{ op: 'search', filter: { slugs: ['necrovalley'] } }],
+      },
+      {
+        /* The guard closes ranks. Keldo falls and Agido takes the post; Agido
+           falls and Keldo takes it back — see Agido, which is the other half of
+           the same sentence. In Defence, because what arrives is a replacement
+           wall rather than a counter-attack, and each swap costs a copy out of
+           the Deck or hand, so the pair runs down rather than round. */
+        trigger: 'onDestroyed',
         ops: [
-          { op: 'search', filter: { slugs: ['necrovalley'] } },
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['keldo'] }, count: 1, position: 'atk' },
+          { op: 'specialSummon', from: ['deck', 'hand'], side: 'own', filter: { slugs: ['agido'] }, count: 1, position: 'def' },
         ],
       },
     ],
@@ -3931,7 +3964,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        simply sent home. Once per turn on purpose — an unconditional free
        bounce on every attack is an unlimited lock, invisible to the AI's
        evaluate(), and the kind of thing this file already refuses to ship. */
-    text: 'Once per turn, when this monster is attacked: return the attacking monster to its owner\'s hand.',
+    text:
+      'Once per turn, when this monster is attacked: return the attacking monster to its owner\'s hand. ' +
+      'When this monster is destroyed: Special Summon 1 "Kelbek" from your Deck in Defence Position.',
     cry: 'That attack was never going to land.',
     effects: [
       {
@@ -3941,6 +3976,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'bounce', target: sel('opp', 'attacker') },
         ],
       },
+      {
+        /* The wall that puts itself back up. Kelbek's bounce is only worth
+           anything while she is standing, so breaking her used to answer the
+           card for the rest of the duel — now it costs a copy out of the Deck
+           and buys the same turn back. */
+        trigger: 'onDestroyed',
+        ops: [
+          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['kelbek'] }, count: 1, position: 'def' },
+        ],
+      },
     ],
   },
 
@@ -3948,18 +3993,26 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Body income out of the tomb, and the second half of the mill engine:
        every guardian that dies makes the next one bigger, so the deck is paid
        for losing as well as for winning. */
-    text: 'When this monster is sent to the Graveyard from the field: Special Summon 1 "Agido" or "Keldo" from your Deck, and send the top 2 cards of your Deck to the Graveyard.',
+    text:
+      'When this monster is Summoned: send the top 2 cards of your Deck to the Graveyard. ' +
+      'When this monster is destroyed: Special Summon 1 "Keldo" from your Deck or hand in Defence Position.',
     cry: 'One falls, another rises.',
     effects: [
       {
-        trigger: 'onSentToGrave',
-        oncePerTurn: true,
+        /* The burying is the arrival now, not the departure. Every guardian
+           Ishizu stands up feeds Mudora and the Jackal by two, so a board that
+           keeps replacing itself keeps getting heavier — which is the whole
+           promise of a tomb deck and was being paid one death at a time. */
+        trigger: 'onSummon',
+        ops: [{ op: 'mill', count: 2, who: 'own' }],
+      },
+      {
+        /* And the post is handed back. See Keldo: the two of them relieve each
+           other, in Defence, one copy at a time until the Deck runs out of
+           guards. */
+        trigger: 'onDestroyed',
         ops: [
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['agido', 'keldo'] }, count: 1, position: 'atk' },
-          /* Two up and two buried, so losing a guardian makes the survivors
-             bigger as well as more numerous. That is the whole promise of a
-             tomb deck and it was being paid one card at a time. */
-          { op: 'mill', count: 2, who: 'own' },
+          { op: 'specialSummon', from: ['deck', 'hand'], side: 'own', filter: { slugs: ['keldo'] }, count: 1, position: 'def' },
         ],
       },
     ],
@@ -3969,9 +4022,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The offering. Her biggest guardian, and worth more spent than standing —
        `onSentToGrave` so it pays whether it is Tributed for the Jackal or
        simply destroyed. */
-    text: 'When this monster is sent to the Graveyard from the field: gain 1500 Life Points and draw 1 card.',
+    text:
+      'When this monster is sent to the Graveyard from the field: gain 1500 Life Points and draw 1 card. ' +
+      'You may discard this monster from your hand: destroy 1 Spell or Trap your opponent controls.',
     cry: 'Take what is left of me.',
     effects: [
+      {
+        /* The offering made early. Zolga is worth more spent than standing, and
+           this is the version of that you can reach on turn one — a guardian in
+           the hand answers a Set card and lands in the pile, which is where the
+           rest of the deck wanted it anyway. */
+        trigger: 'handDiscard',
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }],
+      },
       {
         trigger: 'onSentToGrave',
         ops: [

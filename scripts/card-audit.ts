@@ -1308,6 +1308,7 @@ for (const def of Object.values(CARDS)) {
         const emptyPool = () => {
           if (per.zone === 'ownHand') s.players[ME].hand = [];
           else if (per.zone === 'ownGrave') s.players[ME].grave = [];
+          else if (per.zone === 'oppGrave') s.players[FOE].grave = [];
           else if (per.zone === 'eitherGrave') { s.players[ME].grave = []; s.players[FOE].grave = []; }
         };
         if (!feed || !step) {
@@ -1319,6 +1320,11 @@ for (const def of Object.values(CARDS)) {
           // card that only ever looks at its own is caught rather than flattered.
           if (per.zone === 'ownHand') s.players[ME].hand.push(mint(s, ME, feed.slug));
           else if (per.zone === 'ownGrave') s.players[ME].grave.push(mint(s, ME, feed.slug));
+          /* Across the table, which is the whole point of the zone. Fed on the
+             near side this would have passed on a card that counts its own
+             pile — the Mystical Knight of Jackal is paid for what it has taken
+             off *them*. */
+          else if (per.zone === 'oppGrave') s.players[FOE].grave.push(mint(s, FOE, feed.slug));
           else if (per.zone === 'eitherGrave') s.players[FOE].grave.push(mint(s, FOE, feed.slug));
           else {
             const side = per.zone === 'ownField' ? ME : FOE;

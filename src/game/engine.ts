@@ -359,6 +359,7 @@ function auraCount(
   const onField = (pid: PlayerId) => state.players[pid].monsters.filter((m): m is CardInstance => !!m);
   if (per.zone === 'ownHand') pools.push(state.players[controller].hand);
   else if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
+  else if (per.zone === 'oppGrave') pools.push(state.players[other(controller)].grave);
   else if (per.zone === 'eitherGrave') pools.push(state.players.p1.grave, state.players.p2.grave);
   else if (per.zone === 'ownField') pools.push(onField(controller));
   else if (per.zone === 'oppField') pools.push(onField(other(controller)));
@@ -1959,17 +1960,69 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           }
         }
         break;
-      case 'mill':
+      case 'mill': {
+        /* Read once, from the board as it stands when the op resolves — not
+           per player, because "the number of monsters your opponent controls"
+           is a number about the *activating* player's opponent whoever is
+           being asked to bury. */
+        const want =
+          op.scale === 'perOppMonster'
+            ? op.count * state.players[other(ctx.controller)].monsters.filter(Boolean).length
+            : op.count;
         for (const pid of sideToPlayers(ctx, op.who)) {
           const p = state.players[pid];
-          for (let i = 0; i < op.count; i++) {
+          let buried = 0;
+          for (let i = 0; i < want; i++) {
             const c = p.deck.shift();
             if (!c) break;
             landInGrave(state, c, pid);
+            buried += 1;
           }
-          log(state, `${p.name} sends ${op.count} cards from the top of their Deck to the Graveyard.`, 'effect', pid);
+          /* What actually went down, not what was asked for — a Deck with two
+             cards left cannot bury five, and the board must not say it did. */
+          /* With the card that caused it. The line used to stand on its own,
+             which meant a banner over empty space — and a mill is never
+             spontaneous: something buried those cards and the board should say
+             what. Both sides' lines carry the same card for the same reason,
+             because one card is what emptied both Decks. */
+          if (buried) {
+            log(
+              state,
+              `${p.name} sends ${buried} card${buried === 1 ? '' : 's'} from the top of their Deck to the Graveyard.`,
+              'effect',
+              pid,
+              logSlug(ctx.source)
+            );
+          }
         }
         break;
+      }
+      case 'swapDeckAndGrave': {
+        /* Everything spent becomes everything left. Both piles change places
+           for both players, and the new Deck is shuffled: a Graveyard is a
+           stack whose order both players have watched being built, so handing
+           it back face-down in that order would be handing over a Deck whose
+           every card is already known. */
+        for (const pid of ['p1', 'p2'] as PlayerId[]) {
+          const p = state.players[pid];
+          const wasDeck = p.deck;
+          p.deck = p.grave;
+          p.grave = wasDeck;
+          /* Cards coming back out of a Graveyard have been face-up, flipped,
+             equipped and buffed. They go back into a Deck as what they are
+             printed as, exactly as a card returning to the hand does. */
+          for (const c of p.deck) resetInstance(c);
+          shuffle(state, p.deck);
+          log(
+            state,
+            `${p.name}'s Graveyard becomes their Deck — ${p.deck.length} card${p.deck.length === 1 ? '' : 's'} return.`,
+            'effect',
+            pid,
+            logSlug(ctx.source)
+          );
+        }
+        break;
+      }
       case 'millUntilSummon': {
         /* Dig, burying as you go, and stop on the first monster the filter
            accepts — that one lands instead of being buried. A dig that finds

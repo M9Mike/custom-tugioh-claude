@@ -4767,26 +4767,37 @@ console.log('\nThe valley guards every guardian; only Mudora counts the dead');
   const mudora = card(ME, 'mudora');
   s.players[ME].monsters = [jackal, mudora, null];
   s.players[ME].grave = [];
+  s.players[FOE].grave = [];
   const bareJackal = effAtk(s, jackal, ME);
-  ok(bareJackal === baseAtkOf('mystical-knight-of-jackal') + 300,
-    'the valley pays her Beast-Warrior ace its flat 300', `${bareJackal}`);
+  ok(bareJackal === baseAtkOf('mystical-knight-of-jackal') + 400,
+    'the valley pays her Beast-Warrior ace its flat 400', `${bareJackal}`);
 
   const buried = structuredClone(s);
   buried.players[ME].grave = [card(ME, 'kuriboh'), card(ME, 'battle-ox')];
   const j2 = buried.players[ME].monsters[0]!;
   ok(effAtk(buried, j2, ME) === bareJackal,
-    'and filling the tomb does not move him — the valley counts nothing',
+    'and filling her OWN tomb does not move him — neither the valley nor the Jackal counts it',
     `${bareJackal} -> ${effAtk(buried, j2, ME)}`);
+  /* Theirs is the pile he is paid for, which is the same pile his own mill
+     fills — three off their Deck is 300 on him, so the two halves of the card
+     are one engine. Fed on the far side deliberately: a Jackal that counted
+     his own Graveyard would have passed the check above and failed the duel. */
+  const theirs = structuredClone(buried);
+  theirs.players[FOE].grave = [card(FOE, 'kuriboh'), card(FOE, 'battle-ox'), card(FOE, 'summoned-skull')];
+  ok(effAtk(theirs, theirs.players[ME].monsters[0]!, ME) === bareJackal + 300,
+    'but every card in THEIR tomb is 100 more on him',
+    `${effAtk(theirs, theirs.players[ME].monsters[0]!, ME)}`);
+
   const m2 = buried.players[ME].monsters[1]!;
-  ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 300 + 400,
-    'Mudora alone counts the dead: the valley\'s flat 300 and her own 200 a body',
+  ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 400 + 600,
+    'Mudora alone counts the dead: the valley\'s flat 400 and her own 300 a body',
     `${effAtk(buried, m2, ME)}`);
   /* And the count is hers, so it keeps moving — the half that makes the theme
      visible to an AI that scores stats and is blind to Graveyards. */
   const deeper = structuredClone(buried);
   deeper.players[ME].grave.push(card(ME, 'summoned-skull'));
-  ok(effAtk(deeper, deeper.players[ME].monsters[1]!, ME) === effAtk(buried, m2, ME) + 200,
-    'one more body in the tomb is exactly 200 more on her',
+  ok(effAtk(deeper, deeper.players[ME].monsters[1]!, ME) === effAtk(buried, m2, ME) + 300,
+    'one more body in the tomb is exactly 300 more on her',
     `${effAtk(deeper, deeper.players[ME].monsters[1]!, ME)}`);
 }
 
@@ -5471,12 +5482,15 @@ console.log('\nThe summon rule, and the seven cards it must NOT reach');
      counting the deck". Converting them would have let one summon fill the
      board off the Deck. The guard is pinned so the next sweep cannot quietly
      remove it. */
+  /* Mudora and Keldo used to be on this list and are deliberately off it now.
+     Neither summons a copy of itself on a summon trigger any more: Keldo calls
+     *Agido* when it is destroyed, and Mudora's replacement comes out of the
+     tomb rather than out of the Summon — see the block below, which pins that
+     the new chain terminates on its own. */
   const GUARDED = [
     'bowganian',
     'viser-des',
     'millennium-seeker',
-    'mudora',
-    'keldo',
     'ra-s-disciple',
     'giant-red-seasnake',
   ];
@@ -5504,21 +5518,42 @@ console.log('\nThe summon rule, and the seven cards it must NOT reach');
     ok(selfSummons && guarded, `${def.name} still summons its twin on onNormalSummon only`);
   }
 
-  /* And the guard actually holds: Normal Summon Mudora and exactly ONE twin
-     joins him, not a full board. This is the assertion the type-level check
-     above cannot make. */
+  /* And Mudora's new chain, which runs the other way round: the replacement
+     comes out of the *tomb*, so it is death that stands the next one up. The
+     guard is no longer structural — it is arithmetic. Every copy that arrives
+     has left the Deck or the hand for good, so the chain is exactly as long as
+     the number of Mudora there are and then it stops. */
   const m = fresh();
-  const mudora = card(ME, 'mudora');
-  m.players[ME].hand = [mudora];
-    /* Fillers on top: Mudora's own mill takes two off the Deck BEFORE the twin
-     is fetched, and with the copies on top it buried them and then found
-     nothing — the test's deck order, not the card. */
-  m.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'mudora'), card(ME, 'mudora')];
-  const twinned = act(m, ME, { type: 'normalSummon', uid: mudora.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const dying = card(ME, 'mudora');
+  m.players[ME].monsters = [dying, null, null];
+  m.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'mudora')];
+  const hole = card(ME, 'dark-hole');
+  m.players[ME].hand = [hole];
+  const replaced = act(m, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
   ok(
-    twinned.players[ME].monsters.filter((x) => x?.slug === 'mudora').length === 2,
-    'Mudora brings exactly one twin — the chain is one link, not a full board',
-    `${twinned.players[ME].monsters.filter((x) => x?.slug === 'mudora').length} on the field`
+    replaced.players[ME].monsters.some((x) => x?.slug === 'mudora'),
+    'a Mudora that dies stands the next one up out of the Deck',
+    replaced.players[ME].monsters.map((x) => x?.slug ?? '-').join(',')
+  );
+  ok(
+    !replaced.players[ME].deck.some((c) => c.slug === 'mudora'),
+    'and that copy has left the Deck, which is what ends the chain',
+    replaced.players[ME].deck.map((c) => c.slug).join(',')
+  );
+
+  /* The whole line, run out: three copies and a Dark Hole, and the board is
+     left holding one. Nothing loops, and nothing arrives from nowhere. */
+  const all = fresh();
+  const first = card(ME, 'mudora');
+  all.players[ME].monsters = [first, null, null];
+  all.players[ME].deck = [card(ME, 'mudora'), card(ME, 'mudora'), card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const sweep = card(ME, 'dark-hole');
+  all.players[ME].hand = [sweep];
+  const after = act(all, ME, { type: 'activateSpell', uid: sweep.uid, targets: [] });
+  ok(
+    after.players[ME].monsters.filter((x) => x?.slug === 'mudora').length === 1,
+    'one falls, one stands — the chain is one link at a time however many are left',
+    `${after.players[ME].monsters.filter((x) => x?.slug === 'mudora').length} on the field`
   );
 }
 
@@ -9694,6 +9729,322 @@ console.log('\nA kill is paid for only when there was a kill');
     ok(both.log.some((l) => /Both monsters are destroyed/.test(l.text)),
       'CONTROL: and an even trade that really is even still says so',
       both.log.slice(-3).map((l) => l.text).join(' | '));
+  }
+}
+
+console.log('\nIshizu: the tomb pays, and everything that falls into it comes back');
+{
+  const tomb = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+      s.players[pid].deck = Array.from({ length: 10 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+
+  /* --- The Jackal is worth what he has already taken --- */
+  {
+    /* Special Summoned, which is the half a Normal-Summon-only trigger would
+       have missed entirely. */
+    const s = tomb();
+    const jackal = card(ME, 'mystical-knight-of-jackal');
+    s.players[ME].grave = [jackal];
+    const reborn = card(ME, 'monster-reborn');
+    s.players[ME].hand = [reborn];
+    s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'battle-ox')];
+    const summoned = act(s, ME, { type: 'activateSpell', uid: reborn.uid, targets: [jackal.uid] });
+    ok(summoned.players[FOE].hand.length === 1,
+      'the Jackal arrives however he arrives, and they throw one away',
+      String(summoned.players[FOE].hand.length));
+
+    /* And a Tribute Summon, which is how a Level 7 actually reaches the board:
+       two guardians she was going to spend anyway. */
+    const paid = tomb();
+    const jackal2 = card(ME, 'mystical-knight-of-jackal');
+    paid.players[ME].hand = [jackal2];
+    const fodder = [card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+    for (const f of fodder) f.summonedOnTurn = 0;
+    paid.players[ME].monsters = [fodder[0], fodder[1], null];
+    paid.players[FOE].hand = [card(FOE, 'battle-ox')];
+    const tributed = act(paid, ME, {
+      type: 'normalSummon', uid: jackal2.uid, zone: 2, position: 'atk', face: 'up',
+      tributes: [fodder[0].uid, fodder[1].uid],
+    });
+    ok(tributed.players[FOE].hand.length === 0,
+      'and a Tribute Summon empties their hand just the same',
+      String(tributed.players[FOE].hand.length));
+
+    /* The mill and the ATK are one engine: what he takes off their Deck is
+       what he is paid for. */
+    const fight = tomb();
+    const knight = card(ME, 'mystical-knight-of-jackal');
+    knight.summonedOnTurn = 0;
+    fight.players[ME].monsters = [knight, null, null];
+    const prey = card(FOE, 'kuriboh');
+    prey.summonedOnTurn = 0;
+    fight.players[FOE].monsters = [prey, null, null];
+    fight.phase = 'battle';
+    const before = effAtk(fight, knight, ME);
+    const struck = act(fight, ME, { type: 'attack', uid: knight.uid, targetUid: prey.uid });
+    const after = struck.players[ME].monsters.find((m) => m?.uid === knight.uid)!;
+    /* Three off their Deck plus the body he just broke: four cards in their
+       Graveyard, four hundred on him. */
+    ok(effAtk(struck, after, ME) === before + 400,
+      'the three he buries and the one he broke are 400 ATK back on him',
+      `${before} -> ${effAtk(struck, after, ME)}`);
+  }
+
+  /* --- Mudora replaces herself out of the tomb, however she got there --- */
+  {
+    const s = tomb();
+    const held = card(ME, 'mudora');
+    s.players[ME].hand = [held, card(ME, 'kuriboh')];
+    s.players[ME].deck = [card(ME, 'mudora'), ...s.players[ME].deck];
+    /* Discarded, not destroyed — "however it gets there" is the whole clause,
+       and `onSentToGrave` would have watched only the field.
+       Cannon Soldier's cost is the whole hand, which is the cleanest discard in
+       the game; it is given a named victim so the monster it fires does not
+       turn out to be the replacement that just arrived. */
+    const soldier = card(ME, 'cannon-soldier');
+    soldier.summonedOnTurn = 0;
+    const ammo = card(ME, 'kuriboh');
+    ammo.summonedOnTurn = 0;
+    s.players[ME].monsters = [soldier, ammo, null];
+    const fired = act(s, ME, { type: 'ignition', uid: soldier.uid, targets: [ammo.uid] });
+    ok(fired.players[ME].monsters.some((m) => m?.slug === 'mudora'),
+      'a Mudora thrown away out of the hand still stands the next one up',
+      fired.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- The guard relieves itself: Keldo falls, Agido takes the post --- */
+  {
+    const s = tomb();
+    const keldo = card(ME, 'keldo');
+    keldo.summonedOnTurn = 0;
+    s.players[ME].monsters = [keldo, null, null];
+    s.players[ME].deck = [card(ME, 'agido'), ...s.players[ME].deck];
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand = [hole];
+    const swept = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const relief = swept.players[ME].monsters.find((m) => m?.slug === 'agido');
+    ok(!!relief, 'Keldo falls and Agido takes the post',
+      swept.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(relief?.position === 'def', 'in Defence, as a replacement wall should be', relief?.position ?? '-');
+
+    /* And Agido buries two on the way in, which is what the guard is for. */
+    ok(swept.players[ME].grave.filter((c) => c.slug === 'kuriboh').length >= 2,
+      'and buries two of her own arriving',
+      String(swept.players[ME].grave.filter((c) => c.slug === 'kuriboh').length));
+
+    /* Keldo now finds the valley however it arrives, not only off a Normal
+       Summon — and it no longer stands up a twin. */
+    const called = tomb();
+    const k2 = card(ME, 'keldo');
+    called.players[ME].hand = [k2];
+    called.players[ME].deck = [card(ME, 'necrovalley'), card(ME, 'keldo'), ...called.players[ME].deck];
+    const up = act(called, ME, {
+      type: 'normalSummon', uid: k2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    ok(up.players[ME].hand.some((h) => h.slug === 'necrovalley'), 'Keldo still finds the valley',
+      up.players[ME].hand.map((h) => h.slug).join(','));
+    ok(up.players[ME].monsters.filter((m) => m?.slug === 'keldo').length === 1,
+      'and stands up no twin — that half is gone',
+      up.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Agido the other way round --- */
+  {
+    const s = tomb();
+    const agido = card(ME, 'agido');
+    agido.summonedOnTurn = 0;
+    s.players[ME].monsters = [agido, null, null];
+    s.players[ME].deck = [card(ME, 'keldo'), card(ME, 'necrovalley'), ...s.players[ME].deck];
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand = [hole];
+    const swept = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const relief = swept.players[ME].monsters.find((m) => m?.slug === 'keldo');
+    ok(!!relief && relief.position === 'def', 'Agido falls and Keldo takes it back, in Defence',
+      swept.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* And that Keldo finds the valley on the way in. This is the assertion that
+       makes "when Summoned, not just Normal Summoned" real: a Keldo standing up
+       out of Agido's death is a Special Summon, and the old trigger would have
+       watched it arrive and done nothing. */
+    ok(swept.players[ME].hand.some((h) => h.slug === 'necrovalley'),
+      'and a Keldo that arrives by Special Summon still finds the valley',
+      swept.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+  }
+
+  /* --- Kelbek puts her own wall back up --- */
+  {
+    const s = tomb();
+    const kelbek = card(ME, 'kelbek');
+    kelbek.summonedOnTurn = 0;
+    s.players[ME].monsters = [kelbek, null, null];
+    s.players[ME].deck = [card(ME, 'kelbek'), ...s.players[ME].deck];
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand = [hole];
+    const swept = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const back = swept.players[ME].monsters.find((m) => m?.slug === 'kelbek');
+    ok(!!back && back.position === 'def', 'a broken Kelbek is replaced in Defence',
+      swept.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!swept.players[ME].deck.some((c) => c.slug === 'kelbek'),
+      'out of the Deck, so the wall runs down rather than round');
+  }
+
+  /* --- Zolga answers a Set card from the hand --- */
+  {
+    const s = tomb();
+    const zolga = card(ME, 'zolga');
+    s.players[ME].hand = [zolga];
+    const set = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[FOE].spellTrap = set;
+    const thrown = act(s, ME, { type: 'discardForEffect', uid: zolga.uid, targets: [set.uid] });
+    ok(thrown.players[FOE].spellTrap === null, 'Zolga is thrown away and the Set card breaks',
+      thrown.players[FOE].spellTrap?.slug ?? '(empty)');
+    ok(thrown.players[ME].grave.some((c) => c.uid === zolga.uid), 'and she lands in the tomb, where the deck wanted her');
+  }
+
+  /* --- Royal Tribute finds the ace on its way down --- */
+  {
+    /* The ace is put out of the draw's reach on purpose: three buried and one
+       drawn is the first four cards, so a Jackal any nearer than fifth would
+       have arrived in the hand by the ordinary route and the pin would have
+       passed on a card that fetches nothing. It did, in the first draft. */
+    const s = tomb();
+    const rt = card(ME, 'royal-tribute');
+    s.players[ME].hand = [rt];
+    const ace = card(ME, 'mystical-knight-of-jackal');
+    s.players[ME].deck = [
+      card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh'),
+      ace,
+      ...s.players[ME].deck,
+    ];
+    const spent = act(s, ME, { type: 'activateSpell', uid: rt.uid, targets: [] });
+    ok(spent.players[ME].hand.some((h) => h.uid === ace.uid),
+      'the offering is spent and the ace comes with it',
+      spent.players[ME].hand.map((h) => h.slug).join(','));
+    ok(spent.players[ME].grave.some((c) => c.uid === rt.uid),
+      'CONTROL: and the offering itself is in the tomb, which is what fetched him');
+
+    /* However it gets there — buried by another Royal Tribute's own mill, with
+       the ace again too deep to be drawn. */
+    const buried = tomb();
+    const rt2 = card(ME, 'royal-tribute');
+    buried.players[ME].hand = [rt2];
+    const ace2 = card(ME, 'mystical-knight-of-jackal');
+    buried.players[ME].deck = [
+      card(ME, 'royal-tribute'), card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh'),
+      ace2,
+      ...buried.players[ME].deck,
+    ];
+    const dug = act(buried, ME, { type: 'activateSpell', uid: rt2.uid, targets: [] });
+    ok(dug.players[ME].hand.some((h) => h.uid === ace2.uid),
+      'and a Royal Tribute buried by another one fetches too',
+      dug.players[ME].hand.map((h) => h.slug).join(','));
+  }
+
+  /* --- Breaking the valley costs the breaker a card back --- */
+  {
+    const s = tomb();
+    s.players[ME].field = { ...card(ME, 'necrovalley'), face: 'up' as const };
+    s.players[ME].grave = [card(ME, 'summoned-skull'), card(ME, 'mudora')];
+    const duster = card(FOE, 'harpie-s-feather-duster');
+    s.players[FOE].hand = [duster];
+    s.active = FOE;
+    const razed = act(s, FOE, { type: 'activateSpell', uid: duster.uid, targets: [] });
+    ok(razed.players[ME].field === null, 'the valley can still be broken — the counterplay is intact');
+    /* Two cards down there and one to take, so the engine stops and asks — the
+       valley's keeper chooses which. */
+    ok(razed.pending?.kind === 'choose' && razed.pending.player === ME,
+      'and it asks its keeper which card comes back',
+      razed.pending ? `${razed.pending.kind}/${razed.pending.player}` : '(resolved silently)');
+    ok(!(razed.pending?.options ?? []).some((u) => razed.players[ME].grave.find((g) => g.uid === u)?.slug === 'necrovalley'),
+      'never itself — a card cannot answer its own destruction with its own body',
+      (razed.pending?.options ?? []).map((u) => razed.players[ME].grave.find((g) => g.uid === u)?.slug ?? '?').join(','));
+    const wanted = razed.players[ME].grave.find((g) => g.slug === 'mudora')!;
+    const answered = act(razed, ME, { type: 'chooseCard', uids: [wanted.uid] });
+    ok(answered.players[ME].hand.some((h) => h.uid === wanted.uid),
+      'and hands back the one that was chosen',
+      answered.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+  }
+
+  /* --- Just Desserts is worth 700 a body --- */
+  {
+    /* Fired out of its own Set zone, which is what an `anyOpponentTurn` Trap
+       allows and needs no attack to answer. */
+    const s = tomb();
+    const dessert = { ...card(ME, 'just-desserts'), face: 'down' as const };
+    dessert.summonedOnTurn = 0;
+    s.players[ME].spellTrap = dessert;
+    const three = [card(FOE, 'summoned-skull'), card(FOE, 'battle-ox'), card(FOE, 'kuriboh')];
+    for (const m of three) m.summonedOnTurn = 0;
+    s.players[FOE].monsters = [three[0], three[1], three[2]];
+    const before = s.players[FOE].lp;
+    const served = act(s, ME, { type: 'activateSetCard', uid: dessert.uid, targets: [] });
+    ok(before - served.players[FOE].lp === 2100,
+      'three monsters is 2100 — 700 a body, not 600',
+      String(before - served.players[FOE].lp));
+  }
+
+  /* --- Blast Held by a Tribute charges by their board --- */
+  {
+    const s = tomb();
+    s.phase = 'battle';
+    s.active = FOE;
+    const blast = { ...card(ME, 'blast-held-by-a-tribute'), face: 'down' as const };
+    blast.summonedOnTurn = 0;
+    s.players[ME].spellTrap = blast;
+    const three = [card(FOE, 'summoned-skull'), card(FOE, 'battle-ox'), card(FOE, 'kuriboh')];
+    for (const m of three) m.summonedOnTurn = 0;
+    s.players[FOE].monsters = [three[0], three[1], three[2]];
+    const declared = applyAction(s, FOE, { type: 'attack', uid: three[0].uid, targetUid: null }).state;
+    const answered = act(declared, ME, { type: 'respondTrap', uid: blast.uid });
+    /* Three monsters when the attack was declared: three cards buried, read off
+       the board that swung rather than the one the destruction leaves. */
+    ok(answered.players[ME].grave.filter((c) => c.slug === 'kuriboh').length === 3,
+      'three monsters across the table is three cards out of her own Deck',
+      String(answered.players[ME].grave.filter((c) => c.slug === 'kuriboh').length));
+    ok(!answered.players[FOE].monsters.some((m) => m?.uid === three[0].uid),
+      'and the attacker is still destroyed');
+  }
+
+  /* --- Exchange of the Spirit turns the whole game over --- */
+  {
+    /* Activated from its own Set zone in her own Main Phase, which is what an
+       `anyOpponentTurn` Trap allows and is the moment this card is actually
+       played: you turn the table over when you have decided the piles have
+       grown the right way round. */
+    const s = tomb();
+    const swap = { ...card(ME, 'exchange-of-the-spirit'), face: 'down' as const };
+    swap.summonedOnTurn = 0;
+    s.players[ME].spellTrap = swap;
+    s.players[ME].grave = [card(ME, 'mudora'), card(ME, 'keldo'), card(ME, 'agido'), card(ME, 'zolga')];
+    s.players[FOE].grave = [card(FOE, 'battle-ox')];
+    const myDeck = s.players[ME].deck.length;
+    const theirDeck = s.players[FOE].deck.length;
+    const answered = act(s, ME, { type: 'activateSetCard', uid: swap.uid, targets: [] });
+    /* One off each Deck first, then the piles change places — so her new Deck
+       is the four guardians plus the one card she just buried. */
+    ok(answered.players[ME].deck.length === 5,
+      'her Graveyard becomes her Deck, one card heavier for the mill',
+      String(answered.players[ME].deck.length));
+    /* Nine cards of old Deck, plus the Trap itself — a spent Trap goes to the
+       Graveyard after it resolves, so it lands in the new pile rather than the
+       old one. */
+    ok(answered.players[ME].grave.length === myDeck,
+      'and what was her Deck is now her Graveyard, the spent Trap on top',
+      `${answered.players[ME].grave.length} vs ${myDeck}`);
+    ok(answered.players[FOE].deck.length === 2 && answered.players[FOE].grave.length === theirDeck - 1,
+      'both players, both ways — it is not a one-sided deck-out',
+      `${answered.players[FOE].deck.length} / ${answered.players[FOE].grave.length}`);
+    ok(answered.players[ME].deck.some((c) => c.slug === 'mudora'),
+      'the guardians she buried are the cards she now draws',
+      answered.players[ME].deck.map((c) => c.slug).join(','));
   }
 }
 
