@@ -346,7 +346,17 @@ export type Op =
    * so a card that was protected, or a second target that was never chosen,
    * does not get billed for.
    */
-  | { op: 'damage'; amount?: number; scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk'; to: Side }
+  /** `plusPerCounter` is a base plus a rate, which is what a card that grows
+   *  actually reads like: Red-Eyes blasts for 800 "plus 400 for each monster it
+   *  has destroyed in battle". A `scale` alone could not say it — every scale
+   *  here multiplies `amount`, so an unfed dragon would blast for nothing. */
+  | {
+      op: 'damage';
+      amount?: number;
+      scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk';
+      plusPerCounter?: number;
+      to: Side;
+    }
   | { op: 'heal'; amount: number; to: Side }
   /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
    *  written on the card: Headless Knight counts 100 a corpse, the Magician of
@@ -559,6 +569,11 @@ export type Op =
       /** Ceiling. The Cocoon thickens to four and stops — past the top rung
        *  there is nothing further to hatch into, so the clock stops with it. */
       max?: number;
+      /** What the counter is called on the board. The Cocoon's are Evolution
+       *  Counters and were the only ones in the game, so the name was written
+       *  into the log line — which would have had Red-Eyes evolving every time
+       *  it burned something down. */
+      label?: string;
     }
   | { op: 'negateAttack' }
   | { op: 'endBattlePhase' }

@@ -1606,6 +1606,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const n = state.players[other(ctx.controller)].monsters.filter(Boolean).length;
           amount = (op.amount ?? 0) * n;
         }
+        /* The fire remembers what it has burned. A base plus a rate rather than
+           a `scale`, because every scale here multiplies `amount` and a dragon
+           that had killed nothing yet would blast for nothing at all. Read live
+           off the counters the source is carrying, so it is worth what it has
+           done at the moment it is fired — and a Red-Eyes that dies loses the
+           lot, because the counters go to the Graveyard with the body. */
+        if (op.plusPerCounter) amount += op.plusPerCounter * (ctx.counters ?? ctx.source.counters);
         for (const pid of sideToPlayers(ctx, op.to)) dealDamage(state, pid, amount);
         break;
       }
@@ -2331,7 +2338,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         const was = ctx.source.counters;
         ctx.source.counters = op.max != null ? Math.min(op.max, was + op.amount) : was + op.amount;
         if (ctx.source.counters !== was) {
-          log(state, `${displayName(state, ctx.source)} gains an Evolution Counter (${ctx.source.counters}).`, 'effect', ctx.controller, logSlug(ctx.source));
+          const name = op.label ?? 'Evolution Counter';
+          log(
+            state,
+            `${displayName(state, ctx.source)} gains ${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name} (${ctx.source.counters}).`,
+            'effect',
+            ctx.controller,
+            logSlug(ctx.source)
+          );
         }
         break;
       }

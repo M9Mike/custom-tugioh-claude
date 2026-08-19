@@ -689,16 +689,38 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'red-eyes-black-dragon': {
-    text: 'Once per turn: inflict 800 damage to your opponent. Each time this monster destroys a monster in battle it gains 400 ATK permanently.',
+    /* The Blast grows with the Graveyard it made. Red-Eyes was a flat 800 a
+       turn forever — a fine opener and worth nothing at all by turn ten, on a
+       card whose whole legend is that it gets angrier. Now every monster it
+       burns down in battle is worth another 400 on every Blast after it, so the
+       dragon that has been allowed to fight is the one you cannot let live.
+
+       Counters rather than a flag, because they carry the count *and* show it:
+       the number on the card is how much hotter the next Blast is. They also
+       answer the reset for free — counters go to the Graveyard with the body,
+       so a revived Red-Eyes starts at 800 again, exactly as its ATK does.
+
+       There is no Main Phase 2 in this game, so a kill can never feed the same
+       turn's Blast: the Battle Phase is where the turn ends, and the fire is
+       hotter the next time you reach for it. */
+    text:
+      'Once per turn: inflict 800 damage to your opponent, plus 400 for each monster it has already destroyed in battle. ' +
+      'Each time this monster destroys a monster in battle it gains 400 ATK permanently.',
     cry: 'Inferno Fire Blast!',
     effects: [
       {
         trigger: 'ignition',
         label: 'Inferno Fire Blast',
         oncePerTurn: true,
-        ops: [{ op: 'damage', amount: 800, to: 'opp' }],
+        ops: [{ op: 'damage', amount: 800, plusPerCounter: 400, to: 'opp' }],
       },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' }] },
+      {
+        trigger: 'onBattleDestroy',
+        ops: [
+          { op: 'gainAtk', amount: 400, target: SELF, duration: 'permanent' },
+          { op: 'addCounter', amount: 1, label: 'Blast Counter' },
+        ],
+      },
     ],
   },
 

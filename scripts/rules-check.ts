@@ -9329,6 +9329,118 @@ console.log('\nThe Deck answers to the player, and never twice in the same order
   }
 }
 
+console.log('\nThe Inferno Fire Blast is worth what the dragon has burned');
+{
+  const arena = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+    }
+    return s;
+  };
+  /* One turn of the crank: burn the prey down, hand the turn over, take it
+     back. There is no Main Phase 2 in this game, so a kill can never feed the
+     same turn's Blast — the Battle Phase is where the turn ends. */
+  const feed = (s: DuelState, dragon: CardInstance, prey: CardInstance): DuelState => {
+    /* Topped up first. A dragon fed twice runs its owner out of Life Points
+       before the third Blast can be measured, and a duel that ends early is not
+       the thing under test. */
+    s.players[FOE].lp = 8000;
+    const fed = act(act(s, ME, { type: 'toPhase', phase: 'battle' }), ME, {
+      type: 'attack', uid: dragon.uid, targetUid: prey.uid,
+    });
+    return act(act(fed, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+  };
+  const blast = (s: DuelState, dragon: CardInstance): number => {
+    s.players[FOE].lp = 8000;
+    return 8000 - act(s, ME, { type: 'ignition', uid: dragon.uid, targets: [] }).players[FOE].lp;
+  };
+
+  {
+    const s = arena();
+    const red = card(ME, 'red-eyes-black-dragon');
+    red.summonedOnTurn = 0;
+    s.players[ME].monsters = [red, null, null];
+    const first = card(FOE, 'kuriboh');
+    first.summonedOnTurn = 0;
+    s.players[FOE].monsters = [first, null, null];
+
+    const cold = blast(s, red);
+    ok(cold === 800, 'a dragon that has burned nothing blasts for 800', String(cold));
+
+    const once = feed(s, red, first);
+    const fedOnce = once.players[ME].monsters.find((m) => m?.uid === red.uid)!;
+    ok(fedOnce.counters === 1, 'and carries what it killed on its face', String(fedOnce.counters));
+    const warm = blast(once, fedOnce);
+    ok(warm === 1200, 'so the next Blast is 1200', String(warm));
+    ok(fedOnce.atkMod === 400, 'and the 400 ATK it always gained is still gained', String(fedOnce.atkMod));
+
+    const second = card(FOE, 'kuriboh');
+    second.summonedOnTurn = 0;
+    once.players[FOE].monsters = [second, null, null];
+    const twice = feed(once, red, second);
+    const fedTwice = twice.players[ME].monsters.find((m) => m?.uid === red.uid)!;
+    const hot = blast(twice, fedTwice);
+    ok(hot === 1600, 'two kills, 1600 — it is a rate, not a one-off', String(hot));
+    ok(fedTwice.atkMod === 800, 'and 800 ATK, one gain per kill', String(fedTwice.atkMod));
+  }
+
+  /* --- It burns nothing it did not kill itself --- */
+  {
+    const s = arena();
+    const red = card(ME, 'red-eyes-black-dragon');
+    red.summonedOnTurn = 0;
+    const ally = card(ME, 'summoned-skull');
+    ally.summonedOnTurn = 0;
+    s.players[ME].monsters = [red, ally, null];
+    const prey = card(FOE, 'kuriboh');
+    prey.summonedOnTurn = 0;
+    s.players[FOE].monsters = [prey, null, null];
+    const other = act(act(s, ME, { type: 'toPhase', phase: 'battle' }), ME, {
+      type: 'attack', uid: ally.uid, targetUid: prey.uid,
+    });
+    const turned = act(act(other, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    const unfed = turned.players[ME].monsters.find((m) => m?.uid === red.uid)!;
+    const still = blast(turned, unfed);
+    ok(still === 800, 'a kill made by the monster beside it feeds it nothing', String(still));
+  }
+
+  /* --- And the fire dies with the body --- */
+  {
+    const s = arena();
+    const red = card(ME, 'red-eyes-black-dragon');
+    red.summonedOnTurn = 0;
+    s.players[ME].monsters = [red, null, null];
+    const prey = card(FOE, 'kuriboh');
+    prey.summonedOnTurn = 0;
+    s.players[FOE].monsters = [prey, null, null];
+    const fed = feed(s, red, prey);
+
+    const hole = card(ME, 'dark-hole');
+    fed.players[ME].hand = [hole];
+    const razed = act(fed, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    const reborn = card(ME, 'monster-reborn');
+    razed.players[ME].hand = [reborn];
+    const back = act(razed, ME, {
+      type: 'activateSpell', uid: reborn.uid, targets: [razed.players[ME].grave.find((g) => g.uid === red.uid)!.uid],
+    });
+    const risen = back.players[ME].monsters.find((m) => m?.slug === 'red-eyes-black-dragon')!;
+    ok(risen.counters === 0, 'a Red-Eyes brought back is a Red-Eyes that has burned nothing', String(risen.counters));
+    /* And the Blast is fresh too, which has to be checked rather than inferred:
+       the counters are what the damage reads, so a reset that only cleared the
+       ATK would have left a 1200 Blast on a 2400 body. */
+    const cool = arena();
+    cool.players[ME].monsters = [{ ...risen }, null, null];
+    cool.players[ME].monsters[0]!.effectUsedOnTurn = -1;
+    const afterDeath = blast(cool, cool.players[ME].monsters[0]!);
+    ok(afterDeath === 800, 'and blasts for 800 again, not for what its last life earned', String(afterDeath));
+  }
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it
