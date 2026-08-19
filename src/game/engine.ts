@@ -3579,9 +3579,14 @@ function activationIsDead(state: DuelState, pid: PlayerId, c: CardInstance, def:
       continue;
     }
     /* An equip with no selector of its own attaches to one of the controller's
-       own monsters, so that is its pool. */
+       own monsters, so that is its pool — narrowed by what it actually fits.
+       Without the filter, 7 Completed looked alive beside any monster at all:
+       it was allowed onto the field, refused the Spellcaster it was pointed
+       at, and sat in the Spell/Trap Zone having done nothing. Reported. */
     const sel: Selector =
-      'target' in op && op.target ? op.target : { side: 'own', pick: 'all' };
+      'target' in op && op.target
+        ? op.target
+        : { side: 'own', pick: 'all', filter: op.op === 'equipTo' ? op.filter : undefined };
     sawTargeting = true;
     if (hasLegalTarget(ctx, sel)) return false;
   }

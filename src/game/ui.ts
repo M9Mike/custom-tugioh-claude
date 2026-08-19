@@ -89,7 +89,19 @@ function scanOps(ops: Op[], owner: string): TargetSpec | null {
        attacked directly and want it most. */
     if (op.op === 'equipTo') {
       if (op.target) continue;
-      return { side: 'own', zone: 'monster', count: 1, prompt: 'Choose a monster to equip' };
+      /* What it fits, not "any monster you control". 7 Completed bolts onto a
+         Machine and nothing else, and the modal laid out every body on the
+         board — so the player picked a Spellcaster, the equip correctly
+         refused it at resolution, and the card was spent for nothing with the
+         Spell/Trap Zone occupied. Reported. The engine's own gate reads the
+         same filter; the two must not disagree about which hosts exist. */
+      return {
+        side: 'own',
+        zone: 'monster',
+        count: 1,
+        prompt: 'Choose a monster to equip',
+        filter: op.filter,
+      };
     }
     if ('target' in op && op.target && op.target.pick === 'chosen') {
       const zone = (op.target.zone ?? 'monster') as TargetSpec['zone'];

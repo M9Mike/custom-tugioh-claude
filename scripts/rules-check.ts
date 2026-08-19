@@ -7986,15 +7986,44 @@ console.log('\nA card that comes up empty says so');
 
   /* --- 7 Completed: Keith's plating on Keith's machines --- */
   {
+    /* Reported: "I activated it and it did not equip anything and it blocked
+       my spell and trap card zone for nothing."
+
+       Three places have to agree that a Spellcaster is not a host: the gate
+       that decides whether the card may be played at all, the modal that lays
+       out the choices, and the resolution. Only the third knew — so the card
+       went down, refused the body it was pointed at, and sat in the one
+       Spell/Trap Zone having achieved nothing. */
     const sc = fresh();
     const mage = card(ME, 'dark-magician'); // Spellcaster
     sc.players[ME].monsters = [mage, null, null];
     const plate = card(ME, '7-completed');
     sc.players[ME].hand = [plate];
-    const refused = act(sc, ME, { type: 'activateSpell', uid: plate.uid, targets: [mage.uid] });
-    ok(effAtk(refused, refused.players[ME].monsters[0]!, ME) === baseAtkOf('dark-magician'),
-      'CONTROL: 7 Completed does not bolt onto a Spellcaster',
-      String(effAtk(refused, refused.players[ME].monsters[0]!, ME)));
+
+    ok(wastedWithoutTarget(sc, ME, plate, 'activate'),
+      'with no Machine standing, 7 Completed is a card spent for nothing');
+    ok(!canActivateFromHand(sc, ME, plate),
+      'so the board does not offer it');
+    const denied = applyAction(sc, ME, { type: 'activateSpell', uid: plate.uid, targets: [mage.uid] });
+    ok(!!denied.error, 'and the engine refuses it if it is sent anyway', denied.error ?? '(allowed)');
+    ok(denied.state.players[ME].spellTrap === null,
+      'leaving the Spell/Trap Zone free rather than blocking it');
+    ok(denied.state.players[ME].hand.some((h) => h.uid === plate.uid),
+      'and the card still in hand');
+
+    /* The modal must offer the same set the gate is judging. A Spellcaster on
+       the board and a Machine beside it: only the Machine is a host. */
+    const both = fresh();
+    const mage2 = card(ME, 'dark-magician');
+    const bot = card(ME, 'cannon-soldier');
+    both.players[ME].monsters = [mage2, bot, null];
+    const plate3 = card(ME, '7-completed');
+    both.players[ME].hand = [plate3];
+    const spec = targetSpecFor('7-completed', 'activate');
+    const offered = spec ? targetCandidates(both, ME, spec).map((o) => o.slug) : [];
+    ok(offered.includes('cannon-soldier') && !offered.includes('dark-magician'),
+      'and the modal offers only the Machine, never a body the equip would refuse',
+      offered.join(',') || '(none)');
 
     const fits = fresh();
     const machine = card(ME, 'cannon-soldier');

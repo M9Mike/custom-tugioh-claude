@@ -18,12 +18,27 @@ import {
   canActivateSetCard,
   createDuel,
   isExtraDeckCard,
+  matchesFilter,
   summonBlocked,
   tributesRequired,
 } from '../src/game/engine';
 import { CARDS, DUELISTS } from '../src/game/cards';
 import { MONSTER_ZONES } from '../src/game/types';
 import type { CardInstance, DuelState, Op, PlayerId } from '../src/game/types';
+
+/** A monster slug this card's equip would accept, if it insists on a kind. */
+function hostFor(slug: string): string | null {
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) {
+      if (op.op !== 'equipTo' || !op.filter) continue;
+      const match = Object.values(CARDS).find(
+        (d) => d.kind === 'monster' && !isExtraDeckCard(d.slug) && matchesFilter({ slug: d.slug } as CardInstance, op.filter)
+      );
+      if (match) return match.slug;
+    }
+  }
+  return null;
+}
 
 /**
  * A duel parked in Main Phase holding the card, with a board and a hand behind
@@ -58,6 +73,17 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
      reports such a card unplayable when it is merely alone. The same fault
      as probing from an empty field, one clause over. */
   p.monsters = [spare(1), spare(2, 'harpie-lady'), null];
+  /* An equip that names what it fits needs one of those standing, or the probe
+     reports a perfectly good card unplayable for a reason that is entirely
+     about this board. 7 Completed bolts onto Machines alone, and the two bodies
+     above are a Fiend and a Winged Beast.
+
+     Read off the card rather than hard-coded, because the next equip to name a
+     type would otherwise fail here in exactly the same way — and the report
+     would again look like the card's fault. Same fix as `stockHostFor` in the
+     audit, which learned this one card earlier. */
+  const fitted = hostFor(slug);
+  if (fitted) p.monsters[2] = spare(7, fitted);
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];
   /* And something already buried. A card conditioned on the Graveyard —
