@@ -1639,6 +1639,49 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         checkExodia(state);
         break;
+      case 'lendForTribute': {
+        /* Lent, not taken. The monsters stay in their owner's zones — the
+           borrower may spend them on a Tribute this turn and do nothing else
+           with them, which is exactly what the card says and strictly less
+           than taking control would hand over. */
+        const lent = resolveTargets(ctx, op.target);
+        for (const m of lent) {
+          m.lentTo = ctx.controller;
+          m.lentUntilTurn = state.turn;
+          log(state, `${displayName(state, m)} may be Tributed by ${state.players[ctx.controller].name} this turn.`,
+            'effect', ctx.controller, logSlug(m));
+        }
+        if (!lent.length) emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to borrow.`);
+        break;
+      }
+      case 'possess': {
+        for (const t of resolveTargets(ctx, op.target)) {
+          const from = controllerOf(state, t.uid);
+          if (!from || from === ctx.controller) continue;
+          const zone = state.players[ctx.controller].monsters.findIndex((m) => !m);
+          if (zone < 0) {
+            emptyHanded(state, ctx, `${state.players[ctx.controller].name} has no room for another body.`);
+            break;
+          }
+          state.players[from].monsters = state.players[from].monsters.map((m) => (m?.uid === t.uid ? null : m)) as typeof state.players[typeof from]['monsters'];
+          state.players[ctx.controller].monsters[zone] = t;
+          /* Held, not commanded: a possessed body is a hostage and a Tribute,
+             never a weapon. Written as a permanent flag rather than a turn one
+             because the possession outlives the turn it started on. */
+          applyFlag(t, 'cannotAttack', true, 'permanent');
+          t.possessedEndPhases = op.endPhases;
+          t.controlRevertsOnTurn = undefined;
+          log(
+            state,
+            `${displayName(state, t)} is possessed — it cannot attack, and it crumbles after ${op.endPhases} of ${state.players[ctx.controller].name}'s End Phases.`,
+            'effect',
+            ctx.controller,
+            logSlug(t)
+          );
+          anim(state, { kind: 'summon', uid: t.uid, slug: t.slug, player: ctx.controller });
+        }
+        break;
+      }
       case 'takeControl': {
         for (const t of resolveTargets(ctx, op.target)) {
           const from = controllerOf(state, t.uid);
@@ -2030,6 +2073,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           t.tokenAtk = op.atk;
           t.tokenDef = op.def;
           t.tokenDeathDamage = op.deathDamage;
+          t.fleeting = op.fleeting;
           t.position = op.position ?? 'def';
           t.summonedOnTurn = state.turn;
           state.players[ctx.controller].monsters[zone] = t;
@@ -3148,6 +3192,38 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       }
     });
   }
+  /* Bodies bought for one turn go back to dust. The Millennium Ankh's three
+     are meant to be *spent* — on a Tribute, on a cost — so any still standing
+     when the turn closes were never really the point of the card. Swept before
+     the possession clock below, so nothing is asked to crumble twice. */
+  for (const who of ['p1', 'p2'] as PlayerId[]) {
+    for (const m of [...state.players[who].monsters]) {
+      if (!m || !m.fleeting) continue;
+      log(state, `${displayName(state, m)} crumbles as the turn ends.`, 'effect', who, logSlug(m));
+      anim(state, { kind: 'destroy', uid: m.uid, slug: m.slug, as: m.tokenName, player: who });
+      toGrave(state, m.uid, true);
+    }
+  }
+  /* And the possession clock, counted on its *captor's* End Phases rather than
+     on every turn that passes — three of yours, so a stolen body is yours for
+     three of your own turns and the count does not run down while you wait. */
+  for (const m of [...state.players[pid].monsters]) {
+    if (!m || m.possessedEndPhases == null) continue;
+    m.possessedEndPhases -= 1;
+    if (m.possessedEndPhases > 0) {
+      log(
+        state,
+        `${displayName(state, m)} strains against the Rod — ${m.possessedEndPhases} End Phase${m.possessedEndPhases > 1 ? 's' : ''} left.`,
+        'effect',
+        pid,
+        logSlug(m)
+      );
+      continue;
+    }
+    m.possessedEndPhases = undefined;
+    log(state, `${displayName(state, m)} crumbles — the ka is spent.`, 'effect', pid, logSlug(m));
+    destroyCard(state, m, false);
+  }
   // Tick down ongoing effects that target the player whose turn just ended.
   state.ongoing = state.ongoing.filter((o) => {
     if (o.target !== pid) return true;
@@ -3500,9 +3576,45 @@ export function tributeFodder(state: DuelState, pid: PlayerId, eff: CardEffect, 
     const c = p.monsters.find((m) => m?.uid === self);
     return c ? [c] : [];
   }
+  /* Your own bodies and no one else's. Soul Exchange lends the opponent's
+     monsters for *Tribute Summoning*, which is what the card says — paying an
+     effect's cost with them is a different sentence, and Obelisk's Fist of Fate
+     eating two borrowed bodies is not the card anybody wrote. The Summon path
+     asks `tributePayable` instead, which does know about the loan. */
   return p.monsters.filter(
     (m): m is CardInstance => !!m && m.uid !== self && matchesFilter(m, eff.cost?.tributeFilter)
   );
+}
+
+/**
+ * Every monster this player may Tribute for a *Summon*: their own, and anything
+ * lent to them this turn.
+ *
+ * One list, because the board's tribute picker had its own copy that read
+ * `mine.monsters` and nothing else — so Soul Exchange lent you two bodies the
+ * engine would happily accept and the modal would not offer, which is the
+ * picker and the engine disagreeing about a rule for the fifth time in this
+ * file.
+ */
+export function tributableBodies(state: DuelState, pid: PlayerId): CardInstance[] {
+  const own = state.players[pid].monsters.filter((m): m is CardInstance => !!m);
+  const lent = state.players[other(pid)].monsters.filter(
+    (m): m is CardInstance => !!m && m.lentTo === pid && m.lentUntilTurn === state.turn
+  );
+  return [...own, ...lent];
+}
+
+/**
+ * A monster this player may spend on a Tribute: their own, or one lent to them
+ * this turn.
+ *
+ * Three separate places in the Summon path looked the payment up in
+ * `p.monsters` and nowhere else, so a Soul Exchange that correctly lent you two
+ * of the opponent's bodies was then refused with "Invalid tribute" when you
+ * tried to spend them — the loan was real and the till would not take it.
+ */
+export function tributePayable(state: DuelState, pid: PlayerId, uid: string): CardInstance | null {
+  return tributableBodies(state, pid).find((m) => m.uid === uid) ?? null;
 }
 
 /** True when the controller can pay an effect's activation cost right now. */
@@ -3769,20 +3881,47 @@ export function handSummonOffer(
   return { discard, banish, ok: true };
 }
 
-export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
-  if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
-  if (c.face === 'down' || c.flags.negated) return false;
+/**
+ * Every ignition on this card that could be pressed right now, with the index
+ * that names it.
+ *
+ * A card used to be allowed exactly one, because everything asked
+ * `effects.find(e => e.trigger === 'ignition')` and took the first. Obelisk is
+ * the first to carry two — the Fist of Fate that eats two bodies and clears the
+ * field, and the one that spends a single body for three more swings — and a
+ * second effect nothing can reach is worse than no second effect at all.
+ *
+ * One function so the button, the AI and the action itself agree on which
+ * effects exist and which are affordable; the same reason `handSummonOffer`
+ * exists one screen over.
+ */
+export function ignitionOptions(
+  state: DuelState,
+  pid: PlayerId,
+  c: CardInstance
+): { index: number; eff: CardEffect; label: string }[] {
+  if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return [];
+  if (c.face === 'down' || c.flags.negated) return [];
+  if (c.effectUsedOnTurn === state.turn) return [];
   const def = CARDS[c.slug];
-  const eff = def?.effects.find((e) => e.trigger === 'ignition');
-  if (!eff) return false;
-  if (!canPayCost(state, pid, eff, c.uid)) return false;
-  /* A condition is as much a gate as a cost, and this never asked. No ignition
-     carried one until the Ultimate Dragon — which spends a Blue-Eyes out of
-     the Graveyard — so an empty pile would have let the button be pressed for
-     free removal with nothing paid. Offering an effect that cannot honour its
-     own first half is the "card looks inert" trap from the other direction. */
-  if (!conditionMet(state, eff, c, pid)) return false;
-  return c.effectUsedOnTurn !== state.turn;
+  if (!def) return [];
+  const out: { index: number; eff: CardEffect; label: string }[] = [];
+  def.effects.forEach((eff, index) => {
+    if (eff.trigger !== 'ignition') return;
+    if (!canPayCost(state, pid, eff, c.uid)) return;
+    /* A condition is as much a gate as a cost, and this never asked. No ignition
+       carried one until the Ultimate Dragon — which spends a Blue-Eyes out of
+       the Graveyard — so an empty pile would have let the button be pressed for
+       free removal with nothing paid. Offering an effect that cannot honour its
+       own first half is the "card looks inert" trap from the other direction. */
+    if (!conditionMet(state, eff, c, pid)) return;
+    out.push({ index, eff, label: eff.label ?? def.name });
+  });
+  return out;
+}
+
+export function canIgnite(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
+  return ignitionOptions(state, pid, c).length > 0;
 }
 
 /**
@@ -3967,8 +4106,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         return { state: prev, error: `This monster requires ${need} tribute(s).` };
       }
       for (const tu of tributes) {
-        const t = p.monsters.find((m) => m?.uid === tu);
-        if (!t) return { state: prev, error: 'Invalid tribute.' };
+        if (!tributePayable(state, pid, tu)) return { state: prev, error: 'Invalid tribute.' };
       }
       // The destination may currently hold a monster that is about to be
       // tributed — that is legal, and is the normal case on a full field.
@@ -3985,7 +4123,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       let paidDef = 0;
       if (def.statsFromTributes) {
         for (const tu of tributes) {
-          const t = p.monsters.find((m) => m?.uid === tu)!;
+          const t = tributePayable(state, pid, tu)!;
           paidAtk += effAtk(state, t, pid);
           paidDef += effDef(state, t, pid);
         }
@@ -3996,7 +4134,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          and the Summon was then refused for want of a zone. */
       const departures: PendingDeparture[] = [];
       for (const tu of tributes) {
-        const paid = p.monsters.find((m) => m?.uid === tu)!;
+        const paid = tributePayable(state, pid, tu)!;
         log(state, `${p.name} tributes ${displayName(state, paid)}.`, 'summon', pid, logSlug(paid));
         toGrave(state, tu, true, false, departures);
       }
@@ -4265,10 +4403,17 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const c = p.monsters.find((m) => m?.uid === action.uid) ?? (p.field?.uid === action.uid ? p.field : null);
       if (!c) return { state: prev, error: 'Card not found on your field.' };
-      if (!canIgnite(state, pid, c)) return { state: prev, error: 'That effect is not available right now.' };
       const def = CARDS[c.slug];
-      const eff = def.effects.find((e) => e.trigger === 'ignition');
-      if (!eff) return { state: prev, error: 'No activated effect.' };
+      /* Which of them, for a card that carries more than one. Named by index
+         when the board asked for a particular button; otherwise the first the
+         card can currently afford, which is what a single-ignition card has
+         always meant. Read from the same list the button was drawn from, so an
+         effect the board offered is never one the engine then refuses. */
+      const offers = ignitionOptions(state, pid, c);
+      const chosen =
+        action.effectIndex != null ? offers.find((o) => o.index === action.effectIndex) : offers[0];
+      if (!chosen) return { state: prev, error: 'That effect is not available right now.' };
+      const eff = chosen.eff;
       if (eff.cost?.lp) {
         const due = lpCost(state, pid, eff);
         if (p.lp <= due) return { state: prev, error: 'Not enough Life Points.' };
@@ -4307,7 +4452,18 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       }
       c.effectUsedOnTurn = state.turn;
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
-      anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry ?? eff.label });
+      /* The card's cry speaks for a card with one button. A card with two has
+         two things to say, and "Obelisk — Fist of Fate!" over the effect that
+         is not the Fist of Fate names the wrong one — so once there is a
+         choice, the beat says which was chosen. */
+      const oneButton = def.effects.filter((e) => e.trigger === 'ignition').length < 2;
+      anim(state, {
+        kind: 'activate',
+        uid: c.uid,
+        slug: c.slug,
+        player: pid,
+        text: oneButton ? (def.cry ?? eff.label) : (eff.label ?? def.cry),
+      });
       const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk, counters: sourceCounters };
       runOps(ctx, eff.ops);
       return { state };

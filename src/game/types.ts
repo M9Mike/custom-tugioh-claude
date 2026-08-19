@@ -488,7 +488,26 @@ export type Op =
    * A token fires no triggers and carries no effects, which is the whole
    * point of one, so the number rides on the instance instead.
    */
-  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def'; deathDamage?: number }
+  /**
+   * `fleeting` tokens are swept at the end of the turn they arrived on. The
+   * Millennium Ankh buys three bodies for a thousand Life Points and they are
+   * gone by the End Phase — bought to be *spent*, on a Tribute or a cost,
+   * rather than to hold a board.
+   */
+  | { op: 'summonToken'; name: string; atk: number; def: number; count: number; artSlug?: string; position?: 'atk' | 'def'; deathDamage?: number; fleeting?: boolean }
+  /**
+   * Hands the controller the right to Tribute monsters they do not own, for
+   * this turn only. Soul Exchange lends you up to two of theirs: they stay on
+   * their side of the field and cannot be attacked with — the only thing you
+   * may do with them is spend them.
+   */
+  | { op: 'lendForTribute'; target: Selector }
+  /**
+   * Takes control of a monster and starts a clock on it. The possessed body
+   * cannot attack, and after `endPhases` end phases *of the player who took
+   * it* it is destroyed.
+   */
+  | { op: 'possess'; target: Selector; endPhases: number }
   | { op: 'transformInto'; slug: string }
   | {
       op: 'addCounter';
@@ -987,6 +1006,25 @@ export interface CardInstance {
    * cannot carry over — see `condition.summonedBy`.
    */
   summonedBy?: string;
+  /**
+   * A token that is swept at the end of the turn it arrived on — see
+   * `summonToken.fleeting`. Bought to be spent, not to hold a board.
+   */
+  fleeting?: boolean;
+  /**
+   * Whose Tributes this monster may pay for, besides its controller's, and
+   * until when. Soul Exchange lends the opponent's bodies for one turn without
+   * moving them: they stay on their own side, and the only thing the borrower
+   * may do is spend them.
+   */
+  lentTo?: PlayerId;
+  lentUntilTurn?: number;
+  /**
+   * End Phases left before a possessed monster crumbles — counted on the turns
+   * of the player who took it, not the one it was stolen from. See the
+   * `possess` op.
+   */
+  possessedEndPhases?: number;
   attacksUsed: number;
   /**
    * Monsters this card has declared an attack on this turn, for "attacks every
@@ -1282,7 +1320,14 @@ export type DuelAction =
   | { type: 'activateSpell'; uid: string; targets?: string[]; zone?: number }
   | { type: 'setSpellTrap'; uid: string }
   | { type: 'activateSetCard'; uid: string; targets?: string[] }
-  | { type: 'ignition'; uid: string; targets?: string[] }
+  /**
+   * `effectIndex` names *which* ignition, for a card that carries more than
+   * one. Obelisk is the first: the Fist of Fate eats two bodies to clear the
+   * field, and the second button spends one body to swing four times. Omitted
+   * means the first one the card can currently afford, which is what every
+   * single-ignition card has always meant.
+   */
+  | { type: 'ignition'; uid: string; targets?: string[]; effectIndex?: number }
   /** Spend a card out of the hand for its `handDiscard` effect. */
   | { type: 'discardForEffect'; uid: string; targets?: string[] }
   | { type: 'fusionSummon'; extraUid: string; materials: string[]; zone: number; position: Position; targets?: string[] }

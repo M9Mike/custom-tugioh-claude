@@ -3560,25 +3560,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
      */
     text:
       'Requires 3 Tributes. ' +
-      'Once per turn: Tribute 2 monsters you control, except a Divine-Beast; ' +
-      'destroy every monster your opponent controls and inflict damage equal to their combined ATK. ' +
+      'Once per turn, either: Tribute 2 monsters you control, except a Divine-Beast, ' +
+      'to destroy every monster your opponent controls and inflict damage equal to their combined ATK; ' +
+      'or Tribute 1 monster you control, except a Divine-Beast, so this monster can attack 4 times this turn. ' +
       "This monster cannot be targeted by your opponent's card effects. " +
       "A God is above everything: this monster's attacks and effects ignore your opponent's protections. " +
-      'This monster cannot attack the turn it is Summoned. ' +
       'If this monster is Special Summoned, it returns to the Graveyard at the end of that turn.',
     cry: 'Obelisk — Fist of Fate!',
     effects: [
       {
-        /* The God privilege, and the same clock Ra carries. `summonSick` is
-           deliberate and copied on purpose: a 4000 body that swings the turn it
-           lands is a two-turn kill, and the lesson already written down here is
-           to nerf the clock rather than the number. The turn it arrives is the
-           turn the other player is given to find an answer to something they
-           cannot target. No pierce — a God does not pierce, so putting a body
-           in the way is a real answer, which is what the Fist exists to punish. */
+        /* The God privilege, and no clock. Obelisk was the only monster in the
+           game that could not attack the turn it arrived — a handicap Ra and
+           Slifer never carried, so it read as a rule about Gods when it was a
+           rule about one God. Three Tributes is the price, and paying it should
+           buy the swing it paid for.
+           No pierce — a God does not pierce, so putting a body in the way is a
+           real answer, which is what the Fist exists to punish. */
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, grants: ['untargetable', 'summonSick'] },
+        aura: { target: SELF, grants: ['untargetable'] },
       },
       {
         /* Soul energy MAX. The printed Fist of Fate is "Tribute 2 monsters:
@@ -3596,6 +3596,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'damage', scale: 'tributedAtk', to: 'opp' },
         ],
       },
+      {
+        /* The other half of the same soul-eating. One body buys three more
+           swings — four in the turn — which against an empty board is 16000
+           and against a defended one is the Fist's job done with attacks
+           instead of an effect.
+           Both buttons are the same once-per-turn: pressing either marks the
+           card used, because clearing their field and then swinging four times
+           into the hole is not two plays, it is the duel. */
+        trigger: 'ignition',
+        label: 'Soul Energy — three more swings',
+        oncePerTurn: true,
+        cost: { tribute: 1, tributeFilter: { excludeType: 'Divine-Beast' } },
+        ops: [{ op: 'extraAttacks', count: 3, duration: 'turn' }],
+      },
     ],
   },
 
@@ -3604,27 +3618,35 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        whose whole job is to make the next step visible — to the player, and to
        the AI's enumeration, which can only plan with what it can see in hand. */
     text:
-      'When this monster is Normal Summoned: add 1 "Obelisk the Tormentor" or "Mound of the Bound Creator" ' +
-      'from your Deck to your hand, then Special Summon 1 "Millennium Seeker" from your Deck.',
+      'When this monster is Normal Summoned: add 1 "Obelisk the Tormentor" from your Deck or Graveyard to your hand, ' +
+      'then Special Summon 2 "Millennium Seeker" from your Deck or hand in face-up Defense Position.',
     cry: 'The Rod shows me where it sleeps.',
     effects: [
       {
         trigger: 'onNormalSummon',
         ops: [
-          { op: 'search', filter: { slugs: ['obelisk-the-tormentor', 'mound-of-the-bound-creator'] } },
+          /* The God and nothing else, and wherever it happens to be lying.
+             `orGrave` is what makes the second Obelisk of a duel reachable:
+             one that has already been swept up is still the card this deck is
+             built to cast, and a search that could only see the Deck went
+             blank the moment it mattered most. */
+          { op: 'search', filter: { slugs: ['obelisk-the-tormentor'] }, orGrave: true },
           /* The fetched twin arrives by Special Summon, so it fires `onSummon`
              and not `onNormalSummon` — no chain, by construction, the same way
              Viser Des is built. Two bodies off one Normal Summon is the shape
              that makes Yami Yugi the deck he is, and it is what makes three
              Tributes payable at all.
-             It was three for a while, with a `per: ownField` aura on top so
-             the swarm bought its own buff. Measured: 1.74 bodies and 3598 board
-             ATK by turn 4, against 1.25 and 2269 for Yami — half again as much
-             board, a turn and a half sooner, and 75% on the bench. Three bodies
-             on a three-zone field is not a strong opening, it is a finished
-             duel, and the self-scaling aura was the Mound's flat buff counted a
-             second time on a swarm the same card had just made. */
-          { op: 'specialSummon', from: 'deck', side: 'own', filter: { slugs: ['millennium-seeker'] }, count: 1, position: 'atk' },
+             Three bodies off one Normal Summon fills the field, and filling
+             the field is the point: Obelisk costs three Tributes and this is
+             the only card that pays them in one turn. They arrive in Defence
+             Position, which is what keeps it a *ramp* rather than an opening
+             that also wins the damage race — 1000 ATK apiece attacking into
+             anything is a bad trade, and the swarm exists to be spent.
+             (A previous version summoned one and carried a `per: ownField`
+             aura, which was the Mound's flat buff counted a second time over a
+             board the same card had just made. The aura is gone; the bodies
+             are the card.) */
+          { op: 'specialSummon', from: ['deck', 'hand'], side: 'own', filter: { slugs: ['millennium-seeker'] }, count: 2, position: 'def', face: 'up' },
         ],
       },
     ],
@@ -3655,14 +3677,41 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'pharaoh-s-servant': {
-    /* A 900 body that is worth more spent than standing, which is the whole
-       deck in one card. It pays on the way out however it leaves — tributed
-       for the God, eaten by the Fist, or destroyed — because `onSentToGrave`
-       fires for every departure from the field, which is exactly right for a
-       card whose text says "sent to the Graveyard". */
-    text: 'When this monster is sent to the Graveyard from the field: inflict 900 damage to your opponent.',
+    /* A servant fetches the next servant, and dies handing you a body. Two
+       clauses that both point the same way: this deck wins by having more
+       cheap Zombies to spend than the opponent has removal, and the Servant is
+       the card that keeps the queue full.
+       The fetch reaches the Graveyard when the Deck is dry, which matters late:
+       by the time you are digging for the third Servant, the first two are
+       usually already down there. */
+    text:
+      'When this monster is summoned: add 1 "Pharaoh\'s Servant" from your Deck or Graveyard to your hand. ' +
+      'When this monster is destroyed: Special Summon 1 Zombie monster from your Graveyard.',
     cry: 'My life is his to spend.',
-    effects: [{ trigger: 'onSentToGrave', ops: [{ op: 'damage', amount: 900, to: 'opp' }] }],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'search', filter: { slugs: ['pharaoh-s-servant'] }, orGrave: true }],
+      },
+      {
+        /* The player picks which corpse gets up — `targets: 1` opens the
+           Graveyard rather than quietly taking the biggest, which on a board
+           holding a Double Coston and a spent Servant is a real choice
+           between a 1700 body and another fetch. */
+        trigger: 'onDestroyed',
+        targets: 1,
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'grave',
+            side: 'own',
+            filter: { kind: 'monster', type: 'Zombie' },
+            count: 1,
+            position: 'atk',
+          },
+        ],
+      },
+    ],
   },
 
   'newdoria': {
@@ -3672,7 +3721,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        it, so it has to pay out on a tribute too. */
     text:
       'When this monster is sent to the Graveyard from the field: destroy 1 monster your opponent controls ' +
-      'and inflict 300 damage to your opponent.',
+      'and inflict 400 damage to your opponent. ' +
+      'When this monster is destroyed: add 1 "Newdoria" from your Deck to your hand.',
     cry: 'I take one with me.',
     effects: [
       {
@@ -3680,10 +3730,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'destroy', target: OPP_PICK },
           /* The burn is what makes feeding the Fist a *play* rather than a
-             price. Two of these eaten by Obelisk is two monsters gone, 1600
+             price. Two of these eaten by Obelisk is two monsters gone, 800
              straight off the top, and the Fist's own damage on top of that. */
-          { op: 'damage', amount: 300, to: 'opp' },
+          { op: 'damage', amount: 400, to: 'opp' },
         ],
+      },
+      {
+        /* Only a *destruction* refills the queue, not a Tribute. Spending one
+           for the God is already paying you a monster and 400 Life Points;
+           handing you the next copy on top would make feeding the Fist free,
+           and the whole deck is built on bodies costing something. */
+        trigger: 'onDestroyed',
+        ops: [{ op: 'search', filter: { slugs: ['newdoria'] } }],
       },
     ],
   },
@@ -3694,10 +3752,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        reason: a card that answers its own destruction needs its own ceiling
        rather than relying on the engine's depth backstop. */
     text:
+      'When this monster is destroyed: inflict 400 damage to your opponent. ' +
       'Once per turn, when this monster is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard, ' +
       'then Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800).',
     cry: 'The tomb is not empty yet.',
     effects: [
+      {
+        /* Its own effect rather than a line inside the revival, because the
+           revival is once per turn and the toll is not. The second Apparition
+           to die in a turn brings nothing back — that ceiling is deliberate —
+           but it still costs them 400 on the way out, which is what makes
+           answering this deck's bodies a losing exchange rather than a chore. */
+        trigger: 'onDestroyed',
+        ops: [{ op: 'damage', amount: 400, to: 'opp' }],
+      },
       {
         trigger: 'onDestroyed',
         oncePerTurn: true,
@@ -3723,18 +3791,31 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        work at all: the cost is paid before the ops run, so the zone this card
        vacates is the zone the stolen monster lands in — on a full board every
        other theft in the deck silently fizzles, and this one cannot. */
-    text: 'Tribute this monster: take control of 1 monster your opponent controls with 2000 or less ATK.',
+    text:
+      'Tribute this monster: take control of 1 monster your opponent controls with 2000 or less ATK. ' +
+      'The possessed monster cannot attack, and it is destroyed after 3 of your End Phases.',
     cry: 'Your ka answers to me now.',
     effects: [
       {
         trigger: 'ignition',
-        /* 2500 rather than 1500 reaches almost everything on the roster that is
-           not a God or a Fusion — and a stolen body is worth double here,
-           because it is one fewer blocker across the table *and* one more soul
-           to feed the Fist with. */
+        /* A hostage rather than a soldier. Taking the body outright was the
+           whole card and it was strictly better than Snatch Steal, which pays
+           the owner 1000 a turn for the same theft — so the theft is priced in
+           time instead: it cannot swing, and it crumbles.
+           Three of *your* End Phases, not three turns: the clock only runs
+           while the thief holds it, so a stolen body is three of your own turns
+           of Tribute fodder and a blocker, which is exactly what this deck
+           wants a stolen body for. 2000 or less reaches almost everything on
+           the roster that is not a God or a Fusion. */
         label: 'Tear out their ka',
         cost: { tributeSelf: true },
-        ops: [{ op: 'takeControl', target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 2000 } }), duration: 'permanent' }],
+        ops: [
+          {
+            op: 'possess',
+            target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 2000 } }),
+            endPhases: 3,
+          },
+        ],
       },
     ],
   },

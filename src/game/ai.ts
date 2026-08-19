@@ -17,7 +17,7 @@ import {
   canActivateSetCard,
   canAttackWith,
   canChangePosition,
-  canIgnite,
+  ignitionOptions,
   handSummonOffer,
   choiceResponses,
   effAtk,
@@ -477,9 +477,13 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
       }
     }
     for (const m of ownMonsters) {
-      if (canIgnite(state, pid, m)) {
+      /* Every button the card offers, not just the first one. Obelisk carries
+         two ignitions and the AI could only ever see the Fist of Fate — a
+         second effect nothing enumerates is a second effect the computer
+         opponent never plays. */
+      for (const opt of ignitionOptions(state, pid, m)) {
         for (const t of targetsFor(state, pid, m.slug, 'ignition')) {
-          acts.push({ type: 'ignition', uid: m.uid, targets: t });
+          acts.push({ type: 'ignition', uid: m.uid, targets: t, effectIndex: opt.index });
         }
       }
     }

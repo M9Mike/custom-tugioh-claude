@@ -1241,14 +1241,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        will be spent for the God, which is the right way round for this deck. */
     subKindOverride: 'Field',
     text:
-      'Field Spell: your monsters other than Divine-Beast monsters gain 300 ATK. ' +
+      'Field Spell: your monsters other than Divine-Beast monsters gain 400 ATK. ' +
       'At the start of your turn: Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800).',
     cry: 'The mound remembers every soul it swallowed.',
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: sel('own', 'all', { filter: { kind: 'monster', excludeType: 'Divine-Beast' } }), atk: 300 },
+        aura: { target: sel('own', 'all', { filter: { kind: 'monster', excludeType: 'Divine-Beast' } }), atk: 400 },
       },
       {
         /* The body engine, and the one income source that is not a card out of
@@ -1265,29 +1265,59 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        actually pay, because `specialSummon` is neither a targeting op nor a
        rider, so `activationIsDead` would never refuse it and the card would
        cheerfully cost 1000 Life Points for nothing. */
-    text: 'Pay 1000 Life Points: Special Summon 2 monsters from your Graveyard, except Divine-Beast monsters.',
+    text:
+      'Pay 1000 Life Points: Special Summon 3 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800) in Defense Position. ' +
+      'They are destroyed at the end of the turn.',
     cry: 'Rise. You are not finished serving me.',
     effects: [
       {
+        /* Three bodies for a thousand Life Points, and they are gone by the End
+           Phase — so they are not a board, they are *currency*. Obelisk costs
+           three Tributes and this is the card that pays them outright: a God
+           on the turn you draw it, out of nowhere, for 1000.
+           Nothing is conditioned on the Graveyard any more, which is the whole
+           change: it used to revive the two bodies the Fist had just eaten,
+           and a card that only works after you have already resolved the
+           expensive half is a card you cannot open with. */
         trigger: 'activate',
-        condition: { graveAtLeast: 2 },
         cost: { lp: 1000 },
-        ops: [{ op: 'specialSummon', from: 'grave', side: 'own', filter: { kind: 'monster', excludeType: 'Divine-Beast' }, count: 2, position: 'atk' }],
+        ops: [
+          {
+            op: 'summonToken',
+            name: 'Ka Token',
+            atk: 800,
+            def: 800,
+            count: 3,
+            artSlug: 'aswan-apparition',
+            position: 'def',
+            fleeting: true,
+          },
+        ],
       },
     ],
   },
 
   'soul-exchange': {
-    /* Borrow one of theirs to pay for the God. Conditioned on them actually
-       having a monster: conditions on an `activate` effect ARE enforced, and
-       without it the card is playable into an empty board for nothing. */
-    text: 'Select 1 monster your opponent controls. Take control of it until the End Phase; it may be Tributed this turn.',
+    /* Borrow theirs to pay for the God. Conditioned on them actually having a
+       monster: conditions on an `activate` effect ARE enforced, and without it
+       the card is playable into an empty board for nothing. */
+    text:
+      'Select up to 2 monsters your opponent controls. They stay on their side of the field, ' +
+      'but you may Tribute them this turn.',
     cry: 'Your soul will pay for this.',
     effects: [
       {
+        /* Lent, not stolen — which is both what the card says and strictly
+           less than it used to do. Taking control handed you a body you could
+           also *attack* with, so the card was a Snatch Steal that expired;
+           now the only thing you may do with their monsters is spend them,
+           which is what a card called Soul Exchange is for.
+           `optional` so one is a legal answer when they have two: a Tribute
+           Summon that needs one more body should not have to take two. */
         trigger: 'activate',
         condition: { opponentHasMonster: true },
-        ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
+        targets: 2,
+        ops: [{ op: 'lendForTribute', target: sel('opp', 'chosen', { count: 2, optional: true }) }],
       },
     ],
   },

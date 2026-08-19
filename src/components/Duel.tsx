@@ -16,17 +16,19 @@ import {
   effDef,
   effFlags,
   fusionOptions,
+  ignitionOptions,
   handSummonOffer,
   legalAttackTargets,
   maxAttacks,
   monstersFrozen,
   other,
   summonBlocked,
+  tributableBodies,
   tributesRequired,
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
-import { effectLabel, pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, type TargetSpec } from '@/game/ui';
+import { pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -92,6 +94,8 @@ type Mode =
       uid: string;
       spec: TargetSpec;
       picked: string[];
+      /** Which ignition, for a card carrying more than one. See `ignitionOptions`. */
+      effectIndex?: number;
       /** Pending summon that resolves once targets are chosen. */
       summon?: { position: 'atk' | 'def'; face: 'up' | 'down'; tributes: string[] };
       /** Answers already given this activation, kept in front of the new ones.
@@ -944,10 +948,15 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     void run({ type: 'attack', uid, targetUid });
   };
 
-  const send = (source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip', uid: string, targets: string[]) => {
+  const send = (
+    source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip',
+    uid: string,
+    targets: string[],
+    effectIndex?: number
+  ) => {
     if (source === 'trap') void run({ type: 'respondTrap', uid, targets });
     else if (source === 'spell') void run({ type: 'activateSpell', uid, targets });
-    else if (source === 'ignition') void run({ type: 'ignition', uid, targets });
+    else if (source === 'ignition') void run({ type: 'ignition', uid, targets, effectIndex });
     else if (source === 'flip') void run({ type: 'changePosition', uid, targets });
     else void run({ type: 'activateSetCard', uid, targets });
   };
@@ -956,9 +965,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip',
     uid: string,
     slug: string,
-    trigger: 'activate' | 'ignition' | 'trap' | 'onFlip'
+    trigger: 'activate' | 'ignition' | 'trap' | 'onFlip',
+    /* Which ignition was pressed, for a card with more than one — the spec and
+       the action both have to name the same effect, or the player answers one
+       question and the engine resolves the other. */
+    effectIndex?: number
   ) => {
-    const spec = targetSpecFor(slug, trigger);
+    const spec = effectIndex != null ? targetSpecForEffect(slug, effectIndex) : targetSpecFor(slug, trigger);
     if (!spec) {
       /* No question of its own, but the monster it summons may have one. */
       const rider = source === 'spell' ? summonRiderSpec(slug, 'activate') : null;
@@ -966,13 +979,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         const riderOptions = pickableUids(rider);
         const riderWant = rider.count ?? 1;
         if (riderOptions.length > riderWant) {
-          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: [] });
+          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: [], effectIndex });
           return;
         }
-        send(source, uid, riderOptions.slice(0, riderWant));
+        send(source, uid, riderOptions.slice(0, riderWant), effectIndex);
         return;
       }
-      send(source, uid, []);
+      send(source, uid, [], effectIndex);
       return;
     }
     const options = pickableUids(spec);
@@ -1009,10 +1022,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        It did not always: `destroy` fell back to the strongest legal card while
        the damage beside it read the target list and found nothing. */
     if (options.length <= want) {
-      send(source, uid, options.slice(0, want));
+      send(source, uid, options.slice(0, want), effectIndex);
       return;
     }
-    setMode({ kind: 'target', source, uid, spec, picked: [] });
+    setMode({ kind: 'target', source, uid, spec, picked: [], effectIndex });
   };
 
   /* What the monster you just picked wants to know, if anything. Looked up
@@ -1024,7 +1037,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const submitTargets = (picked: string[]) => {
     if (mode.kind !== 'target') return;
-    const { source, uid, summon, carry } = mode;
+    const { source, uid, summon, carry, effectIndex } = mode;
     if (source === 'summon' && summon) {
       finishSummon(uid, summon.position, summon.face, summon.tributes, picked);
       return;
@@ -1066,7 +1079,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         if (rider2) {
           const riderOptions = pickableUids(rider2);
           if (riderOptions.length > (rider2.count ?? 1)) {
-            setMode({ kind: 'target', source, uid, spec: rider2, picked: [], carry: answers });
+            setMode({ kind: 'target', source, uid, spec: rider2, picked: [], carry: answers, effectIndex });
             return;
           }
           void run({ type: 'activateSpell', uid, targets: [...answers, ...riderOptions.slice(0, rider2.count ?? 1)] });
@@ -1081,7 +1094,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         const options = pickableUids(rider);
         const want = rider.count ?? 1;
         if (options.length > want) {
-          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: answers });
+          setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: answers, effectIndex });
           return;
         }
         if (options.length) {
@@ -1091,7 +1104,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       }
     }
     if (source === 'spell') void run({ type: 'activateSpell', uid, targets: answers });
-    else if (source === 'ignition') void run({ type: 'ignition', uid, targets: picked });
+    else if (source === 'ignition') void run({ type: 'ignition', uid, targets: picked, effectIndex });
     else if (source === 'setcard') void run({ type: 'activateSetCard', uid, targets: picked });
     else if (source === 'trap') void run({ type: 'respondTrap', uid, targets: picked });
     else if (source === 'flip') void run({ type: 'changePosition', uid, targets: picked });
@@ -1119,7 +1132,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
            three zones were full of tokens stood in front of a Tribute Summon
            they could see and could not pay. Nothing in any card's text says a
            token cannot be tributed, and the engine has always accepted it. */
-        mine.monsters.filter((m): m is CardInstance => !!m && !mode.picked.includes(m.uid)).map((m) => m.uid)
+        /* Your own bodies *and* anything lent to you this turn — Soul Exchange
+           leaves the opponent's monsters where they stand and makes them
+           spendable, and a modal that only drew your own zones offered a
+           Tribute Summon the engine would accept and the player could not
+           reach. Asked of the engine rather than worked out here again. */
+        tributableBodies(state, me).filter((m) => !mode.picked.includes(m.uid)).map((m) => m.uid)
       );
     }
     return new Set<string>();
@@ -2027,17 +2045,22 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   )}
                 </button>
               )}
-              {canIgnite(state, me, monsterCard) && (
+              {/* One button per ignition the card can currently afford. A card
+                  used to be allowed exactly one; Obelisk carries two, and a
+                  second effect the board never draws is a second effect that
+                  does not exist. */}
+              {ignitionOptions(state, me, monsterCard).map((opt) => (
                 <button
+                  key={opt.index}
                   className="btn btn-primary rounded px-3 py-2 text-xs"
                   onClick={() => {
                     sfx.click();
-                    beginTargeting('ignition', monsterCard.uid, monsterCard.slug, 'ignition');
+                    beginTargeting('ignition', monsterCard.uid, monsterCard.slug, 'ignition', opt.index);
                   }}
                 >
-                  ✦ {effectLabel(monsterCard.slug, 'ignition')}
+                  ✦ {opt.label}
                 </button>
-              )}
+              ))}
               {canChangePosition(state, me, monsterCard) && (
                 <button
                   className="btn rounded px-3 py-2 text-xs"

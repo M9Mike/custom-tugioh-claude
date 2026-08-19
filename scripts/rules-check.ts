@@ -13,6 +13,7 @@ import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
+import { ignitionOptions, tributableBodies } from '../src/game/engine';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
 import type { CardInstance, DuelAction, DuelState, Op, PlayerId } from '../src/game/types';
 
@@ -4373,24 +4374,53 @@ console.log('\nA card that names its options means them in that order');
     'CONTROL: an unordered search still reaches for what it wants');
 }
 
-console.log('\nOnly the first ignition on a card can ever be reached');
+console.log('\nEvery ignition on a card can be reached');
 {
-  /* `applyAction` resolves an ignition with
-     `def.effects.find((e) => e.trigger === 'ignition')` — the FIRST one — and
-     `canIgnite` asks the same question. So a card carrying two activated
-     effects has a second one that no player and no AI can ever use: dead text
-     of exactly the kind `npm run text` exists to catch, except the text check
-     sees an ignition trigger and is satisfied.
+  /* This used to say the opposite. `applyAction` resolved an ignition with
+     `def.effects.find((e) => e.trigger === 'ignition')` — the FIRST one — so a
+     card carrying two activated effects had a second nobody could ever press:
+     dead text of exactly the kind `npm run text` exists to catch, except the
+     text check sees an ignition trigger and is satisfied. The guard forbade a
+     second ignition outright and said "lift this the day the engine learns to
+     choose."
 
-     Found by giving Ra both the God Phoenix and the One-Turn Kill; the audit
-     caught it because the second effect never fired. Asserted over the whole
-     card set so the next card to try it fails here rather than shipping half
-     a sentence. Lift this the day the engine learns to choose. */
-  const offenders = Object.entries(CARDS)
-    .filter(([, def]) => def.effects.filter((e) => e.trigger === 'ignition').length > 1)
-    .map(([slug]) => slug);
-  ok(offenders.length === 0,
-    'no card carries a second ignition the engine cannot reach', offenders.join(', '));
+     Obelisk is the day. It carries the Fist of Fate and a second button that
+     spends one body for three more swings, so the assertion is inverted: every
+     ignition a card carries must be offered, and the one the board offered must
+     be the one the engine resolves. */
+  const multi = Object.entries(CARDS).filter(
+    ([, def]) => def.effects.filter((e) => e.trigger === 'ignition').length > 1
+  );
+  ok(multi.length > 0, 'a card carries more than one ignition, so this is not vacuous',
+    multi.map(([s]) => s).join(', ') || '(none)');
+
+  for (const [slug, def] of multi) {
+    /* A board where every ignition on the card is affordable: three spare
+       bodies beside it, so a cost of one or two Tributes is payable either
+       way, and a full Graveyard for anything that reads it. */
+    const s = fresh();
+    const owner = card(ME, slug);
+    owner.summonedOnTurn = 0;
+    s.players[ME].monsters = [owner, card(ME, 'battle-ox'), card(ME, 'kuriboh')];
+    s.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+    s.players[ME].grave = [card(ME, 'newdoria'), card(ME, 'pharaoh-s-servant')];
+    const offers = ignitionOptions(s, ME, owner);
+    const written = def.effects.map((e, i) => [e, i] as const).filter(([e]) => e.trigger === 'ignition');
+    ok(offers.length === written.length,
+      `${slug}: every ignition it carries is offered`,
+      `${offers.length} offered vs ${written.length} written`);
+
+    /* And each one resolves as itself. Pressing a button must run the effect
+       whose label it carried — the failure this whole section exists to stop is
+       the board offering one and the engine running another. */
+    for (const o of offers) {
+      const fired = applyAction(s, ME, { type: 'ignition', uid: owner.uid, targets: [], effectIndex: o.index });
+      ok(!fired.error, `${slug}: the '${o.label}' button is accepted`, fired.error ?? '');
+      const said = fired.state.anims.find((a) => a.kind === 'activate' && a.uid === owner.uid);
+      ok(said?.text === o.label, `${slug}: and the board names the one that was pressed`,
+        `${said?.text ?? '(silent)'} vs ${o.label}`);
+    }
+  }
 }
 
 console.log('\nA card lying face-down is doing nothing');
@@ -4676,14 +4706,39 @@ console.log('\nObelisk is the God that does not scale');
   ok(!!refused.error || !!refused.state.players[ME].monsters.find((m) => m?.slug === 'slifer-the-sky-dragon'),
     'a Divine-Beast cannot be spent to pay for the Fist');
 
-  /* The same clock Ra carries: the turn it lands is the turn they get to
-     answer it. Asserted in the Battle Phase, because `canAttackWith` is false
-     in Main Phase anyway and the check would pass on a deleted flag. */
+  /* And no clock. Obelisk was the only monster in the game that could not
+     attack the turn it arrived — Ra and Slifer never carried it, so it read as
+     a rule about Gods when it was a rule about one God. Three Tributes is the
+     price and it buys the swing it paid for. Asserted in the Battle Phase,
+     because `canAttackWith` is false in Main Phase whatever the flags say. */
   const fresh2 = fresh('battle');
   const justLanded = card(ME, 'obelisk-the-tormentor');
   justLanded.summonedOnTurn = fresh2.turn;
   fresh2.players[ME].monsters = [justLanded, null, null];
-  ok(!canAttackWith(fresh2, ME, justLanded), 'and it cannot attack the turn it arrives');
+  fresh2.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+  ok(canAttackWith(fresh2, ME, justLanded), 'and it swings the turn it arrives, like every other monster');
+
+  /* The second button: one body for three more swings. */
+  const soul = fresh();
+  const theFist = card(ME, 'obelisk-the-tormentor');
+  theFist.summonedOnTurn = 0;
+  soul.players[ME].monsters = [theFist, card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+  const opts = ignitionOptions(soul, ME, theFist);
+  ok(opts.length === 2, 'Obelisk offers both of its buttons', opts.map((o) => o.label).join(' | '));
+  const boosted = act(soul, ME, {
+    type: 'ignition',
+    uid: theFist.uid,
+    targets: [soul.players[ME].monsters[1]!.uid],
+    effectIndex: opts.find((o) => /swings/.test(o.label))!.index,
+  });
+  const swinger = boosted.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor')!;
+  ok(maxAttacks(boosted, swinger, ME) === 4, 'and Soul Energy buys it four attacks for the turn',
+    String(maxAttacks(boosted, swinger, ME)));
+  ok(!boosted.players[ME].monsters.some((m) => m?.slug === 'kuriboh'), 'paid for with a body');
+  /* One button per turn, not both: clearing their field and then swinging four
+     times into the hole is not two plays, it is the duel. */
+  ok(ignitionOptions(boosted, ME, swinger).length === 0,
+    'and pressing one button spends the turn for both');
   const rested = structuredClone(fresh2);
   rested.players[ME].monsters[0]!.summonedOnTurn = rested.turn - 1;
   ok(canAttackWith(rested, ME, rested.players[ME].monsters[0]!), 'CONTROL: a turn later it swings');
@@ -8163,6 +8218,319 @@ console.log('\nA card that comes up empty says so');
     ok(!!ox, 'CONTROL: something that is no Machine still comes back');
     ok(effAtk(flesh, ox, ME) === baseAtkOf('battle-ox'), 'but it comes back at exactly what it was',
       String(effAtk(flesh, ox, ME)));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Priest Seto: the God, and the bodies bought to pay for it             */
+/* ------------------------------------------------------------------ */
+console.log('\nPriest Seto: three Tributes, and everything that pays them');
+{
+  const seto = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      /* Enough Deck to survive the turns these checks end. An empty Deck is a
+         loss on the next draw, and a duel that ends mid-check reports as the
+         engine refusing an action rather than as the setup running out. */
+      s.players[pid].deck = Array.from({ length: 12 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+
+  /* --- Millennium Ankh: three bodies for a thousand, gone by the End Phase --- */
+  {
+    const s = seto();
+    const ankh = card(ME, 'millennium-ankh');
+    s.players[ME].hand = [ankh];
+    const paid = act(s, ME, { type: 'activateSpell', uid: ankh.uid, targets: [] });
+    ok(paid.players[ME].lp === 4000 - 1000, 'the Ankh costs a thousand', `LP ${paid.players[ME].lp}`);
+    ok(paid.players[ME].monsters.filter(Boolean).length === 3, 'and buys three bodies',
+      paid.players[ME].monsters.map((m) => m?.tokenName ?? '-').join(','));
+    ok(paid.players[ME].monsters.every((m) => m?.position === 'def'), 'standing in Defence');
+    /* They are currency, not a board: gone when the turn closes. */
+    const closed = act(paid, ME, { type: 'endTurn' });
+    ok(closed.players[ME].monsters.every((m) => !m), 'and they crumble at the end of the turn',
+      closed.players[ME].monsters.map((m) => m?.tokenName ?? '-').join(','));
+
+    /* Spent, which is what they are for: three tokens are three Tributes. */
+    const withGod = structuredClone(paid);
+    const god = card(ME, 'obelisk-the-tormentor');
+    withGod.players[ME].hand = [god];
+    const bodies = withGod.players[ME].monsters.filter(Boolean).map((m) => m!.uid);
+    ok(tributesRequired('obelisk-the-tormentor', withGod, ME) === 3, 'Obelisk still costs three');
+    const summoned = act(withGod, ME, {
+      type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up', tributes: bodies,
+    });
+    ok(summoned.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'),
+      'and three Ka Tokens pay for a God outright',
+      summoned.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Obelisk: no clock, and a second button --- */
+  {
+    const s = seto();
+    const god = card(ME, 'obelisk-the-tormentor');
+    god.summonedOnTurn = s.turn; // it arrived this very turn
+    s.players[ME].monsters = [god, card(ME, 'kuriboh'), card(ME, 'battle-ox')];
+    s.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+    const battle = structuredClone(s);
+    battle.phase = 'battle';
+    ok(canAttackWith(battle, ME, battle.players[ME].monsters[0]!),
+      'Obelisk swings the turn it lands — the handicap was its alone and is gone');
+
+    const both = ignitionOptions(s, ME, god);
+    ok(both.length === 2, 'and it offers both of its buttons', both.map((o) => o.label).join(' | '));
+    const soul = both.find((o) => /swings/.test(o.label))!;
+    const boosted = act(s, ME, {
+      type: 'ignition', uid: god.uid, targets: [s.players[ME].monsters[1]!.uid], effectIndex: soul.index,
+    });
+    const swinger = boosted.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor')!;
+    ok(maxAttacks(boosted, swinger, ME) === 4, 'one body buys it four attacks',
+      String(maxAttacks(boosted, swinger, ME)));
+    ok(boosted.players[ME].grave.some((g) => g.slug === 'kuriboh'), 'and the body was really spent');
+    ok(ignitionOptions(boosted, ME, swinger).length === 0,
+      'CONTROL: pressing one button spends the turn for both');
+    /* CONTROL: the extra attacks are this turn's, not the duel's. */
+    const nextTurn = act(act(boosted, ME, { type: 'endTurn' }), FOE, { type: 'endTurn' });
+    const rested = nextTurn.players[ME].monsters.find((m) => m?.slug === 'obelisk-the-tormentor')!;
+    ok(maxAttacks(nextTurn, rested, ME) === 1, 'CONTROL: and they are gone by the next turn',
+      String(maxAttacks(nextTurn, rested, ME)));
+  }
+
+  /* --- Soul Exchange: lent, not stolen --- */
+  {
+    const s = seto();
+    const theirs1 = card(FOE, 'battle-ox');
+    const theirs2 = card(FOE, 'kuriboh');
+    s.players[FOE].monsters = [theirs1, theirs2, null];
+    const mine = card(ME, 'newdoria');
+    s.players[ME].monsters = [mine, null, null];
+    const swap = card(ME, 'soul-exchange');
+    const god = card(ME, 'obelisk-the-tormentor');
+    s.players[ME].hand = [swap, god];
+
+    const lent = act(s, ME, { type: 'activateSpell', uid: swap.uid, targets: [theirs1.uid, theirs2.uid] });
+    ok(lent.players[FOE].monsters.filter(Boolean).length === 2,
+      'Soul Exchange leaves their monsters on their own side',
+      lent.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(lent.players[ME].monsters.filter(Boolean).length === 1, 'and hands you nothing to command');
+
+    const summoned = act(lent, ME, {
+      type: 'normalSummon', uid: god.uid, zone: 1, position: 'atk', face: 'up',
+      tributes: [mine.uid, theirs1.uid, theirs2.uid],
+    });
+    ok(summoned.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'),
+      'but you may Tribute them — one of yours and two of theirs pays for a God');
+    ok(summoned.players[FOE].grave.some((g) => g.slug === 'battle-ox'),
+      'and a borrowed body goes to its own owner\'s Graveyard');
+
+    /* The modal must offer them too, or the rule exists only in the engine.
+       This is the fifth time in this file the picker and the engine have had
+       separate copies of one rule; they read the same list now. */
+    ok(
+      tributableBodies(lent, ME).some((m) => m.uid === theirs1.uid),
+      'and the tribute picker is offered the borrowed bodies, not just your own',
+      tributableBodies(lent, ME).map((m) => m.slug).join(',')
+    );
+
+    /* Tribute *Summoning*, and nothing else. Obelisk's Fist of Fate eats two
+       bodies as an effect cost, and borrowed ones are not on the menu — the
+       card lends them for a Summon, which is what its text says. */
+    const fistBoard = structuredClone(lent);
+    const godOnField = card(ME, 'obelisk-the-tormentor');
+    godOnField.summonedOnTurn = 0;
+    fistBoard.players[ME].monsters = [godOnField, null, null];
+    ok(
+      ignitionOptions(fistBoard, ME, godOnField).every((o) => !/Fist/.test(o.label)),
+      'CONTROL: but a borrowed body cannot pay for the Fist of Fate — the loan is for Summoning',
+      ignitionOptions(fistBoard, ME, godOnField).map((o) => o.label).join(' | ') || '(nothing offered)'
+    );
+
+    /* The loan is for this turn only. */
+    const tomorrow = structuredClone(lent);
+    tomorrow.turn += 1;
+    ok(
+      !!applyAction(tomorrow, ME, {
+        type: 'normalSummon', uid: god.uid, zone: 1, position: 'atk', face: 'up',
+        tributes: [mine.uid, theirs1.uid, theirs2.uid],
+      }).error,
+      'CONTROL: and the loan is over by the next turn'
+    );
+  }
+
+  /* --- Possessed Dark Soul: a hostage on a clock --- */
+  {
+    const s = seto();
+    const thief = card(ME, 'possessed-dark-soul');
+    thief.summonedOnTurn = 0;
+    s.players[ME].monsters = [thief, null, null];
+    const prey = card(FOE, 'battle-ox');
+    s.players[FOE].monsters = [prey, null, null];
+    let held = act(s, ME, { type: 'ignition', uid: thief.uid, targets: [prey.uid] });
+    ok(held.players[ME].monsters.some((m) => m?.slug === 'battle-ox'), 'the ka is torn out and changes sides');
+    ok(!held.players[FOE].monsters.some((m) => m?.slug === 'battle-ox'), 'and leaves theirs');
+    const hostage = held.players[ME].monsters.find((m) => m?.slug === 'battle-ox')!;
+    ok(effFlags(held, hostage, ME).cannotAttack === true, 'a possessed body cannot attack');
+
+    /* Three of *your* End Phases. Their turns in between do not count, which is
+       the whole of "of the player that controls it". */
+    const seen: string[] = [];
+    for (let i = 0; i < 6 && held.players[ME].monsters.some((m) => m?.slug === 'battle-ox'); i++) {
+      held = act(held, held.active, { type: 'endTurn' });
+      const still = held.players[ME].monsters.find((m) => m?.slug === 'battle-ox');
+      seen.push(still ? String(still.possessedEndPhases) : 'gone');
+    }
+    ok(seen.join(',') === '2,2,1,1,gone',
+      'and it crumbles after three of YOUR End Phases, not three turns', seen.join(','));
+  }
+
+  /* --- Millennium Seeker: the ramp --- */
+  {
+    const s = seto();
+    const seeker = card(ME, 'millennium-seeker');
+    s.players[ME].hand = [seeker];
+    s.players[ME].deck = [
+      card(ME, 'obelisk-the-tormentor'),
+      card(ME, 'millennium-seeker'),
+      card(ME, 'millennium-seeker'),
+      card(ME, 'mound-of-the-bound-creator'),
+    ];
+    const out = act(s, ME, {
+      type: 'normalSummon', uid: seeker.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    ok(out.players[ME].hand.some((h) => h.slug === 'obelisk-the-tormentor'),
+      'the Seeker finds Obelisk', out.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+    ok(!out.players[ME].hand.some((h) => h.slug === 'mound-of-the-bound-creator'),
+      'CONTROL: and only Obelisk — the Mound is no longer part of the search',
+      out.players[ME].hand.map((h) => h.slug).join(','));
+    const bodies = out.players[ME].monsters.filter((m) => m?.slug === 'millennium-seeker');
+    ok(bodies.length === 3, 'and brings two more of itself, filling the field',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(bodies.slice(1).every((m) => m!.position === 'def' && m!.face === 'up'),
+      'the pair arriving face-up in Defence',
+      bodies.map((m) => `${m!.position}/${m!.face}`).join(','));
+    /* Three bodies is three Tributes, which is the entire point. */
+    ok(tributesRequired('obelisk-the-tormentor', out, ME) === 3, 'Obelisk costs three');
+    const god = out.players[ME].hand.find((h) => h.slug === 'obelisk-the-tormentor')!;
+    /* The following turn, in a real duel: the Seeker used this turn's Normal
+       Summon and the God wants the next one. What is being checked here is the
+       price and who can pay it, not the turn structure — so the flag is reset
+       rather than spending two draws to walk round the table. */
+    const nextTurn = structuredClone(out);
+    nextTurn.players[ME].normalSummonUsed = false;
+    const cast = act(nextTurn, ME, {
+      type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up',
+      tributes: nextTurn.players[ME].monsters.filter(Boolean).map((m) => m!.uid),
+    });
+    ok(cast.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'),
+      'and the three of them pay for it in one turn');
+
+    /* The Graveyard is reached when the Deck is dry — a swept Obelisk is still
+       the card this deck exists to cast. */
+    const buried = seto();
+    const s2 = card(ME, 'millennium-seeker');
+    buried.players[ME].hand = [s2];
+    buried.players[ME].deck = [card(ME, 'millennium-seeker')];
+    buried.players[ME].grave = [card(ME, 'obelisk-the-tormentor')];
+    const dug = act(buried, ME, {
+      type: 'normalSummon', uid: s2.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    ok(dug.players[ME].hand.some((h) => h.slug === 'obelisk-the-tormentor'),
+      'and a buried Obelisk is dug back up when the Deck has none',
+      dug.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+  }
+
+  /* --- Pharaoh's Servant, Newdoria, Aswan: the queue that refills --- */
+  {
+    const s = seto();
+    const servant = card(ME, 'pharaoh-s-servant');
+    s.players[ME].hand = [servant];
+    s.players[ME].deck = [card(ME, 'pharaoh-s-servant')];
+    s.players[ME].grave = [card(ME, 'double-coston')];
+    const up = act(s, ME, {
+      type: 'normalSummon', uid: servant.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    ok(up.players[ME].hand.some((h) => h.slug === 'pharaoh-s-servant'),
+      'a Servant arriving fetches the next Servant',
+      up.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+    const standing = up.players[ME].monsters.find((m) => m?.slug === 'pharaoh-s-servant')!;
+    const killed = structuredClone(up);
+    killed.active = FOE;
+    const hole = card(FOE, 'dark-hole');
+    killed.players[FOE].hand = [hole];
+    const razed = act(killed, FOE, { type: 'activateSpell', uid: hole.uid, targets: [standing.uid] });
+    ok(razed.players[ME].monsters.some((m) => m?.slug === 'double-coston'),
+      'and a Servant destroyed puts a Zombie back on the board',
+      razed.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Newdoria: 400 now, and it replaces itself only when destroyed. */
+    const nd = seto();
+    const doom = card(ME, 'newdoria');
+    doom.summonedOnTurn = 0;
+    nd.players[ME].monsters = [doom, null, null];
+    nd.players[ME].deck = [card(ME, 'newdoria')];
+    nd.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+    nd.active = FOE;
+    const wipe = card(FOE, 'dark-hole');
+    nd.players[FOE].hand = [wipe];
+    const blown = act(nd, FOE, { type: 'activateSpell', uid: wipe.uid, targets: [] });
+    ok(4000 - blown.players[FOE].lp === 400, 'Newdoria takes 400 with it now',
+      String(4000 - blown.players[FOE].lp));
+    ok(blown.players[ME].hand.some((h) => h.slug === 'newdoria'),
+      'and a destroyed Newdoria hands you the next one',
+      blown.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+    /* CONTROL: a Tribute is not a destruction, so feeding the God does not
+       also refill the queue. */
+    const fed = seto();
+    const doom2 = card(ME, 'newdoria');
+    const spare = card(ME, 'kuriboh');
+    const spare2 = card(ME, 'battle-ox');
+    fed.players[ME].monsters = [doom2, spare, spare2];
+    fed.players[ME].deck = [card(ME, 'newdoria')];
+    const godCard = card(ME, 'obelisk-the-tormentor');
+    fed.players[ME].hand = [godCard];
+    const eaten = act(fed, ME, {
+      type: 'normalSummon', uid: godCard.uid, zone: 0, position: 'atk', face: 'up',
+      tributes: [doom2.uid, spare.uid, spare2.uid],
+    });
+    ok(!eaten.players[ME].hand.some((h) => h.slug === 'newdoria'),
+      'CONTROL: but Tributing one for the God does not — only a destruction refills',
+      eaten.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+    /* Aswan pays a toll on the way out, every time, even past its once-per-turn
+       revival. */
+    const aw = seto();
+    const ghost = card(ME, 'aswan-apparition');
+    ghost.summonedOnTurn = 0;
+    aw.players[ME].monsters = [ghost, null, null];
+    aw.active = FOE;
+    const bolt = card(FOE, 'dark-hole');
+    aw.players[FOE].hand = [bolt];
+    const tolled = act(aw, FOE, { type: 'activateSpell', uid: bolt.uid, targets: [] });
+    ok(4000 - tolled.players[FOE].lp >= 400, 'Aswan costs them 400 on the way out',
+      String(4000 - tolled.players[FOE].lp));
+  }
+
+  /* --- The Mound --- */
+  {
+    const s = seto();
+    const servant = card(ME, 'pharaoh-s-servant'); // 900 printed
+    s.players[ME].monsters = [servant, null, null];
+    s.players[ME].field = { ...card(ME, 'mound-of-the-bound-creator'), face: 'up' as const };
+    ok(effAtk(s, servant, ME) === baseAtkOf('pharaoh-s-servant') + 400,
+      'the Mound is worth 400 now', String(effAtk(s, servant, ME)));
+    /* CONTROL: still not to the God it houses. */
+    const withGod = structuredClone(s);
+    const god = card(ME, 'obelisk-the-tormentor');
+    withGod.players[ME].monsters[1] = god;
+    ok(effAtk(withGod, withGod.players[ME].monsters[1]!, ME) === baseAtkOf('obelisk-the-tormentor'),
+      'CONTROL: and never to the Divine-Beast sleeping in it',
+      String(effAtk(withGod, withGod.players[ME].monsters[1]!, ME)));
   }
 }
 

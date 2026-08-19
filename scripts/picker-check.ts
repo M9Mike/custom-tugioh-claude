@@ -132,16 +132,27 @@ function stocked(): DuelState {
 /**
  * A card in the game that satisfies this filter, if one exists.
  *
- * `self` is excluded on purpose. Alpha The Magnet Warrior searches on
- * `nameIncludes: 'Magnet Warrior'` and is itself the first card in the database
- * that matches — so an earlier version of this picked Alpha, declined to place
- * a card on top of the one being tested, and then reported the empty Deck it
- * had built itself as a bug in the card. A harness must not fail a position it
- * failed to set up.
+ * `self` is avoided where there is any alternative. Alpha The Magnet Warrior
+ * searches on `nameIncludes: 'Magnet Warrior'` and is itself the first card in
+ * the database that matches — so an earlier version picked Alpha, declined to
+ * place a card on top of the one being tested, and then reported the empty Deck
+ * it had built itself as a bug in the card. A harness must not fail a position
+ * it failed to set up.
+ *
+ * Avoided, not forbidden: a filter that names one slug and that slug is the
+ * card itself is a card looking for another copy of itself, which is a real
+ * pattern rather than a mistake. See the fallback below.
  */
 function cardMatching(f: CardFilter | undefined, self: string): string | null {
   if (!f) return PLAIN_MONSTERS.find((sl) => sl !== self) ?? null;
-  if (f.slugs?.length) return f.slugs.find((sl) => sl !== self) ?? null;
+  /* Prefer something that is not the card itself, but fall back to it when the
+     filter names nothing else. A card that searches the Deck for *another copy
+     of itself* is an ordinary pattern — Newdoria replaces itself when it dies,
+     Pharaoh's Servant fetches the next Servant — and refusing to stock one left
+     the Deck empty, the picker correctly offering nothing, and the harness
+     reporting the card as broken. The instance being tested is on the field;
+     the one this stocks is in the Deck, so they were never the same card. */
+  if (f.slugs?.length) return f.slugs.find((sl) => sl !== self) ?? f.slugs[0] ?? null;
   /* The engine's own filter, not a third copy of it. This was a copy, and like
      the client's it did not know about `toon` — so for Toon World's "add 1 Toon
      monster" it seeded the Deck with something that was not a Toon, the picker

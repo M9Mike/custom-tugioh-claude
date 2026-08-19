@@ -173,6 +173,22 @@ export function targetSpecFor(slug: string, trigger: Trigger): TargetSpec | null
 }
 
 /**
+ * The spec for one *named* effect on a card, rather than the first with a
+ * matching trigger.
+ *
+ * Obelisk carries two ignitions, and the Fist of Fate's two-Tribute picker is
+ * not the question the other one asks. `targetSpecFor` takes the first match,
+ * which is right for every card that has one of a thing and silently wrong for
+ * the first card that has two.
+ */
+export function targetSpecForEffect(slug: string, index: number): TargetSpec | null {
+  const def: CardDef | undefined = CARDS[slug];
+  const eff = def?.effects[index];
+  if (!def || !eff) return null;
+  return specFromEffect(eff, slug);
+}
+
+/**
  * Every card a target spec can legally reach, from the picking player's side.
  *
  * Lives here rather than inside the board so it can be asked a question
