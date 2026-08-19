@@ -1403,6 +1403,18 @@ function shrugsOffDestruction(
   return byBattle ? !!f.indestructibleByBattle : !!f.indestructibleByEffect;
 }
 
+/**
+ * Destroys a card, and says whether it actually died.
+ *
+ * The return value is the whole point. Half a dozen things in here answer a
+ * destruction without the monster leaving the field — a God shrugging, the
+ * Sphinx sinking back into the sand, Thousand-Eyes paying out of its stomach,
+ * Slot Machine rolling a seven — and every one of them used to be invisible to
+ * the caller, which went on believing it had made a kill. Garoozis attacked a
+ * Guardian Sphinx, the Sphinx only turned face-down, and Garoozis rolled its
+ * dice anyway. Reported by the owner. A caller that pays out for a kill must
+ * ask whether there was one.
+ */
 function destroyCard(
   state: DuelState,
   c: CardInstance,
@@ -1412,9 +1424,9 @@ function destroyCard(
      single effect destroys is judged against the board as it stood when that
      effect resolved, so the order they fall in cannot change who survives. */
   preJudged?: boolean
-) {
+): boolean {
   const found = findOnField(state, c.uid);
-  if (!found) return;
+  if (!found) return false;
   const flags = effFlags(state, c, found.controller);
   const shielded = preJudged ?? shrugsOffDestruction(state, c, found.controller, byBattle);
   /* Every battle call and every effect call hands this function a ctx whose
@@ -1428,7 +1440,7 @@ function destroyCard(
      it. Another God is still above this one. */
   if (!byBattle && isDivine(c.slug) && !divine) {
     log(state, `${displayName(state, c)} is a God — no card effect may destroy it.`, 'effect', found.controller, logSlug(c));
-    return;
+    return false;
   }
   /* Paid for out of the stomach. Thousand-Eyes Restrict does not die while it
      is still holding something: the destruction takes what it swallowed
@@ -1451,7 +1463,7 @@ function destroyCard(
     c.position = 'def';
     log(state, `${displayName(state, c)} sinks back into the sand rather than falling.`, 'effect', found.controller, logSlug(c));
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
-    return;
+    return false;
   }
   /* The narrower bargain: a card *effect* takes everything this monster has
      swallowed instead of the monster. Battle is not covered — Serket is meant
@@ -1468,7 +1480,7 @@ function destroyCard(
       logSlug(c)
     );
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
-    return;
+    return false;
   }
   if (flags.shedsAbsorbedInstead && c.absorbed.length) {
     const shed = c.absorbed;
@@ -1485,7 +1497,7 @@ function destroyCard(
       logSlug(c)
     );
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
-    return;
+    return false;
   }
   /* Paid for rather than suffered, and paid from the Graveyard: while your
      pile still holds one of this card's own kind, being destroyed banishes one
@@ -1501,7 +1513,7 @@ function destroyCard(
       log(state, `${displayName(state, c)} feeds on ${displayName(state, paid)} and will not fall.`,
         'effect', found.controller, logSlug(c));
       anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
-      return;
+      return false;
     }
   }
   /* The reels again, and this time they are the card's life. Placed with the
@@ -1518,15 +1530,15 @@ function destroyCard(
       logSlug(c)
     );
     anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: found.controller, reports: true, text: `${dice.join(' ')} ${made ? '= 7' : '✗'}` });
-    if (made) return;
+    if (made) return false;
   }
   if (byBattle && shielded && !divine) {
     log(state, `${displayName(state, c)} cannot be destroyed by battle.`, 'effect', found.controller, logSlug(c));
-    return;
+    return false;
   }
   if (!byBattle && shielded && !divine) {
     log(state, `${displayName(state, c)} is immune to that effect.`, 'effect', found.controller, logSlug(c));
-    return;
+    return false;
   }
   if (divine && (shielded || flags.untargetable)) {
     /* Its own beat, rather than riding on the destroy below. A beat carries one
@@ -1554,6 +1566,7 @@ function destroyCard(
     fireTriggers(state, c, found.controller, 'onDestroyedByBattle', ctx?.trig ?? {});
   }
   queueDestroyWindow(state, found.controller);
+  return true;
 }
 
 /** Records that this player just lost a monster, so Michizure-style traps can respond. */
@@ -1702,8 +1715,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              Soldier fires its own monster at them for exactly its ATK, and a
              card in the Graveyard has no effective stats left to read. */
           const worth = before ? effAtk(state, t, before.controller) : 0;
-          destroyCard(state, t, false, ctx, shielded.get(t.uid));
-          if (before && !findOnField(state, t.uid)) {
+          /* `destroyCard` answers this itself now. It was worked out here from
+             the board — correct, but a rule every future caller would have had
+             to rediscover, and the battle path never did. */
+          if (destroyCard(state, t, false, ctx, shielded.get(t.uid))) {
             ctx.destroyedCount = (ctx.destroyedCount ?? 0) + 1;
             ctx.destroyedAtk = (ctx.destroyedAtk ?? 0) + worth;
           }
@@ -3358,35 +3373,54 @@ function resolveBattle(state: DuelState) {
     log(state, `${displayName(state, eater)} feeds on ${displayName(state, eaten)}.`, 'effect', side, logSlug(eater));
   };
 
+  /* Everything a kill pays out is owed to a kill that happened. `destroyCard`
+     answers that now — a Guardian Sphinx that sinks back into the sand rather
+     than falling is still standing, and Garoozis rolling its dice over it was
+     the board reporting a death that never took place. Reported.
+
+     Read off the instance after the blow rather than before it: the slug and
+     the owner are all the eater needs and they survive the trip to the
+     Graveyard, so Serket can be fed from the same answer that says whether
+     there was anything to feed on. */
+  const strikeDown = (victim: CardInstance, killer: CardInstance, side: PlayerId): boolean =>
+    destroyCard(state, victim, true, {
+      state, controller: side, source: killer, targets: [], cursor: 0, trig: { attackerUid: killer.uid },
+    });
+
   if (target.position === 'atk') {
     const tAtk = effAtk(state, target, defender);
     if (atk > tAtk) {
       // Same rule as the direct swing: the trigger is about damage that landed.
       const before = state.players[defender].lp;
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
-      devour(attacker, target, controller);
-      destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
+      const killed = strikeDown(target, attacker, controller);
+      if (killed) devour(attacker, target, controller);
       if (!state.winner) {
-        fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
+        if (killed) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
+        /* Damage is its own question. The blow landed on the Life Points
+           whatever the monster did about dying, so this one is not gated. */
         if (state.players[defender].lp < before) {
           fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
         }
       }
     } else if (atk < tAtk) {
       battleHit(controller, tAtk - atk, attacker);
-      destroyCard(state, attacker, true, { state, controller: defender, source: target, targets: [], cursor: 0, trig: { attackerUid: target.uid } });
+      strikeDown(attacker, target, defender);
     } else {
-      log(state, 'Both monsters are destroyed!', 'attack');
-      destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
-      destroyCard(state, attacker, true, { state, controller: defender, source: target, targets: [], cursor: 0, trig: { attackerUid: target.uid } });
+      /* Announced only if it is what happens. Said up front, the line was
+         flatly contradicted by the very next one when a Sphinx sank instead of
+         falling — and each `destroyCard` says its own piece, so nothing is lost
+         by waiting to find out. */
+      const bothFell = [strikeDown(target, attacker, controller), strikeDown(attacker, target, defender)];
+      if (bothFell.every(Boolean)) log(state, 'Both monsters are destroyed!', 'attack');
     }
   } else {
     const tDef = effDef(state, target, defender);
     if (atk > tDef) {
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
-      devour(attacker, target, controller);
-      destroyCard(state, target, true, { state, controller, source: attacker, targets: [], cursor: 0, trig: { attackerUid: attacker.uid } });
-      if (!state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
+      const killed = strikeDown(target, attacker, controller);
+      if (killed) devour(attacker, target, controller);
+      if (killed && !state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
     } else if (atk < tDef) {
       battleHit(controller, tDef - atk, attacker);
       log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));

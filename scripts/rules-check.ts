@@ -9441,6 +9441,204 @@ console.log('\nThe Inferno Fire Blast is worth what the dragon has burned');
   }
 }
 
+console.log('\nA kill is paid for only when there was a kill');
+{
+  const ring = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].monsters = [null, null, null];
+      s.players[pid].hand = [];
+      s.players[pid].grave = [];
+      s.players[pid].spellTrap = null;
+      s.players[pid].field = null;
+    }
+    s.phase = 'battle';
+    return s;
+  };
+  const swing = (s: DuelState, mine: CardInstance, theirs: CardInstance) =>
+    act(s, ME, { type: 'attack', uid: mine.uid, targetUid: theirs.uid });
+
+  /* --- Garoozis over a Sphinx that sinks instead of falling --- */
+  {
+    /* 1800 into 1700: the Sphinx would die, and turns face-down instead. It is
+       still standing, so nothing was killed and nothing is owed. Reported by
+       the owner as "it still counted as destroyed and Garoozis rolled a dice". */
+    const s = ring();
+    const gar = card(ME, 'garoozis');
+    gar.summonedOnTurn = 0;
+    s.players[ME].monsters = [gar, null, null];
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.summonedOnTurn = 0;
+    s.players[FOE].monsters = [sphinx, null, null];
+    const held = swing(s, gar, sphinx);
+
+    const sank = held.players[FOE].monsters.find((m) => m?.uid === sphinx.uid);
+    ok(!!sank && sank.face === 'down', 'the Sphinx sinks back into the sand rather than falling',
+      sank ? sank.face : '(gone)');
+    ok(!held.log.some((l) => /rolls|die|dice/i.test(l.text)),
+      'so Garoozis rolls nothing — there was no kill to be paid for',
+      held.log.slice(-4).map((l) => l.text).join(' | '));
+    const stillGar = held.players[ME].monsters.find((m) => m?.uid === gar.uid)!;
+    ok(stillGar.atkMod === 0, 'and gains no ATK off a monster that is still standing', String(stillGar.atkMod));
+    ok(held.players[ME].hand.length === 0, 'and draws no card', String(held.players[ME].hand.length));
+
+    /* CONTROL: over a body that really dies, everything it is owed still
+       arrives. Without this the pin above passes on a Garoozis that has simply
+       stopped working. */
+    const real = ring();
+    const gar2 = card(ME, 'garoozis');
+    gar2.summonedOnTurn = 0;
+    real.players[ME].monsters = [gar2, null, null];
+    const prey = card(FOE, 'kuriboh');
+    prey.summonedOnTurn = 0;
+    real.players[FOE].monsters = [prey, null, null];
+    const killed = swing(real, gar2, prey);
+    ok(!killed.players[FOE].monsters.some((m) => m?.uid === prey.uid), 'CONTROL: an ordinary body does die');
+    ok(killed.players[ME].monsters.find((m) => m?.uid === gar2.uid)!.atkMod > 0,
+      'CONTROL: and Garoozis is paid for that one',
+      String(killed.players[ME].monsters.find((m) => m?.uid === gar2.uid)!.atkMod));
+
+    /* And the escape is spent. The second blow lands like any other, so the
+       payout comes back with it — the gate is "did it die", not "is it a
+       Sphinx". */
+    const again = { ...held, phase: 'battle' as const };
+    const risenSphinx = again.players[FOE].monsters.find((m) => m?.uid === sphinx.uid)!;
+    risenSphinx.face = 'up';
+    risenSphinx.position = 'atk';
+    const g3 = again.players[ME].monsters.find((m) => m?.uid === gar.uid)!;
+    g3.attacksUsed = 0;
+    const second = swing(again, g3, risenSphinx);
+    ok(!second.players[FOE].monsters.some((m) => m?.uid === sphinx.uid),
+      'the second blow kills the Sphinx outright, its one life spent',
+      second.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(second.players[ME].monsters.find((m) => m?.uid === gar.uid)!.atkMod > 0,
+      'and that one is paid for', String(second.players[ME].monsters.find((m) => m?.uid === gar.uid)!.atkMod));
+  }
+
+  /* --- And the same over a monster crouching in Defence --- */
+  {
+    /* A separate branch of the battle code, and it had a separate copy of the
+       same mistake. 2500 into 2400 DEF: the Sphinx would die, and sinks. */
+    const s = ring();
+    const gar = card(ME, 'garoozis');
+    gar.summonedOnTurn = 0;
+    gar.atkMod = 700; // 2500, enough to break 2400 DEF
+    s.players[ME].monsters = [gar, null, null];
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.summonedOnTurn = 0;
+    sphinx.position = 'def';
+    s.players[FOE].monsters = [sphinx, null, null];
+    const held = swing(s, gar, sphinx);
+    const sank = held.players[FOE].monsters.find((m) => m?.uid === sphinx.uid);
+    ok(!!sank && sank.face === 'down', 'a Sphinx broken in Defence sinks the same way', sank ? sank.face : '(gone)');
+    ok(held.players[ME].monsters.find((m) => m?.uid === gar.uid)!.atkMod === 700,
+      'and Garoozis is paid nothing for it either',
+      String(held.players[ME].monsters.find((m) => m?.uid === gar.uid)!.atkMod));
+
+    /* CONTROL: over a Defence body that really breaks, it is paid. */
+    const real = ring();
+    const gar2 = card(ME, 'garoozis');
+    gar2.summonedOnTurn = 0;
+    real.players[ME].monsters = [gar2, null, null];
+    const wall = card(FOE, 'kuriboh');
+    wall.summonedOnTurn = 0;
+    wall.position = 'def';
+    real.players[FOE].monsters = [wall, null, null];
+    const broke = swing(real, gar2, wall);
+    ok(broke.players[ME].monsters.find((m) => m?.uid === gar2.uid)!.atkMod > 0,
+      'CONTROL: a Defence body that really breaks still pays out',
+      String(broke.players[ME].monsters.find((m) => m?.uid === gar2.uid)!.atkMod));
+  }
+
+  /* --- Nor does Red-Eyes get hotter off a monster that lived --- */
+  {
+    const s = ring();
+    const red = card(ME, 'red-eyes-black-dragon');
+    red.summonedOnTurn = 0;
+    s.players[ME].monsters = [red, null, null];
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.summonedOnTurn = 0;
+    s.players[FOE].monsters = [sphinx, null, null];
+    const after = swing(s, red, sphinx);
+    const dragon = after.players[ME].monsters.find((m) => m?.uid === red.uid)!;
+    ok(dragon.counters === 0, 'the Blast counts kills, and that was not one', String(dragon.counters));
+    ok(dragon.atkMod === 0, 'and neither did the ATK', String(dragon.atkMod));
+  }
+
+  /* --- Nor does Serket eat one --- */
+  {
+    /* Summoned rather than placed. Serket's appetite is a flag its own arrival
+       sets, so a scorpion put straight into a Monster Zone by hand has no
+       appetite at all — and a pin written that way passes whatever the engine
+       does, which is how the first draft of this one came back green under
+       sabotage and proved nothing. */
+    const s = ring();
+    s.phase = 'main';
+    s.players[ME].field = { ...card(ME, 'temple-of-the-kings'), face: 'up' as const };
+    const beast = card(ME, 'mystical-beast-of-serket');
+    s.players[ME].hand = [beast];
+    const summoned = act(s, ME, {
+      type: 'normalSummon', uid: beast.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
+    });
+    const hungry = summoned.players[ME].monsters.find((m) => m?.uid === beast.uid)!;
+    ok(effFlags(summoned, hungry, ME).devoursOnBattleDestroy === true,
+      'a Summoned Serket is a hungry one — the position is real');
+
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.summonedOnTurn = 0;
+    summoned.players[FOE].monsters = [sphinx, null, null];
+    const battled = { ...act(summoned, ME, { type: 'toPhase', phase: 'battle' }) };
+    const after = swing(battled, hungry, sphinx);
+    const fed = after.players[ME].monsters.find((m) => m?.uid === beast.uid)!;
+    ok(fed.absorbed.length === 0, 'and it swallows what it kills, which was nothing',
+      fed.absorbed.map((a) => a.slug).join(',') || '(empty)');
+
+    /* CONTROL: a body that really dies really is eaten. */
+    const meal = card(FOE, 'kuriboh');
+    meal.summonedOnTurn = 0;
+    const laid = act(summoned, ME, { type: 'toPhase', phase: 'battle' });
+    laid.players[FOE].monsters = [meal, null, null];
+    const ate = swing(laid, hungry, meal);
+    const full = ate.players[ME].monsters.find((m) => m?.uid === beast.uid)!;
+    ok(full.absorbed.some((a) => a.slug === 'kuriboh'),
+      'CONTROL: and one that does die is swallowed', full.absorbed.map((a) => a.slug).join(',') || '(empty)');
+  }
+
+  /* --- And the board does not announce a death that did not happen --- */
+  {
+    /* An even trade against a Sphinx: the attacker falls, the Sphinx sinks.
+       "Both monsters are destroyed!" said up front was flatly contradicted by
+       the very next line. */
+    const s = ring();
+    const even = card(ME, 'garoozis');
+    even.summonedOnTurn = 0;
+    even.atkMod = -100; // 1700, the Sphinx's own ATK
+    s.players[ME].monsters = [even, null, null];
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.summonedOnTurn = 0;
+    s.players[FOE].monsters = [sphinx, null, null];
+    const traded = swing(s, even, sphinx);
+    ok(!traded.log.some((l) => /Both monsters are destroyed/.test(l.text)),
+      'no "both monsters are destroyed" when only one of them was',
+      traded.log.slice(-4).map((l) => l.text).join(' | '));
+    ok(!traded.players[ME].monsters.some((m) => m?.uid === even.uid), 'the attacker really did fall');
+    ok(traded.players[FOE].monsters.some((m) => m?.uid === sphinx.uid), 'and the Sphinx really did not');
+
+    /* CONTROL: two ordinary bodies still get the line. */
+    const fair = ring();
+    const a = card(ME, 'battle-ox');
+    a.summonedOnTurn = 0;
+    fair.players[ME].monsters = [a, null, null];
+    const b = card(FOE, 'battle-ox');
+    b.summonedOnTurn = 0;
+    fair.players[FOE].monsters = [b, null, null];
+    const both = swing(fair, a, b);
+    ok(both.log.some((l) => /Both monsters are destroyed/.test(l.text)),
+      'CONTROL: and an even trade that really is even still says so',
+      both.log.slice(-3).map((l) => l.text).join(' | '));
+  }
+}
+
 /* The summary goes LAST, and there is nothing after it.
  *
  * Appending a batch of new tests below this line is the easy mistake — and it
