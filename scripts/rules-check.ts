@@ -4809,15 +4809,15 @@ console.log('\nThe valley guards every guardian; only Mudora counts the dead');
     `${effAtk(theirs, theirs.players[ME].monsters[0]!, ME)}`);
 
   const m2 = buried.players[ME].monsters[1]!;
-  ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 400 + 600,
-    'Mudora alone counts the dead: the valley\'s flat 400 and her own 300 a body',
+  ok(effAtk(buried, m2, ME) === baseAtkOf('mudora') + 400 + 200,
+    'Mudora alone counts the dead: the valley\'s flat 400 and her own 100 a body',
     `${effAtk(buried, m2, ME)}`);
   /* And the count is hers, so it keeps moving — the half that makes the theme
      visible to an AI that scores stats and is blind to Graveyards. */
   const deeper = structuredClone(buried);
   deeper.players[ME].grave.push(card(ME, 'summoned-skull'));
-  ok(effAtk(deeper, deeper.players[ME].monsters[1]!, ME) === effAtk(buried, m2, ME) + 300,
-    'one more body in the tomb is exactly 300 more on her',
+  ok(effAtk(deeper, deeper.players[ME].monsters[1]!, ME) === effAtk(buried, m2, ME) + 100,
+    'one more body in the tomb is exactly 100 more on her',
     `${effAtk(deeper, deeper.players[ME].monsters[1]!, ME)}`);
 }
 

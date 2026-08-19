@@ -3905,7 +3905,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        stored value — which is the one thing that makes this theme visible to
        an AI that scores stats and is blind to Graveyards. */
     text:
-      'This monster gains 300 ATK for each monster in your Graveyard. ' +
+      'This monster gains 100 ATK for each monster in your Graveyard. ' +
       'When this monster is Summoned: send the top 2 cards of your Deck to the Graveyard. ' +
       'When this monster is sent to the Graveyard, however it gets there: Special Summon 1 "Mudora" from your Deck or hand in Attack Position.',
     cry: 'The dead are counted, and they answer to me.',
@@ -3913,7 +3913,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 300 } },
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { kind: 'monster' }, atk: 100 } },
       },
       {
         /* However she arrives, so the copy that stands up out of the pile
