@@ -8511,9 +8511,20 @@ console.log('\nPriest Seto: three Tributes, and everything that pays them');
     aw.active = FOE;
     const bolt = card(FOE, 'dark-hole');
     aw.players[FOE].hand = [bolt];
+    aw.players[ME].deck = [card(ME, 'aswan-apparition')];
     const tolled = act(aw, FOE, { type: 'activateSpell', uid: bolt.uid, targets: [] });
     ok(4000 - tolled.players[FOE].lp >= 400, 'Aswan costs them 400 on the way out',
       String(4000 - tolled.players[FOE].lp));
+
+    /* And what it leaves behind lies down. Two bodies standing up are two free
+       kills and two hits of damage; the same two in Defence are two walls and
+       two Tributes still breathing when your turn comes round. */
+    const risen = tolled.players[ME].monsters.filter(Boolean);
+    ok(risen.length === 2, 'and leaves two bodies behind',
+      risen.map((m) => m!.tokenName ?? m!.slug).join(',') || '(none)');
+    ok(risen.every((m) => m!.position === 'def' && m!.face === 'up'),
+      'both of them face-up in Defence',
+      risen.map((m) => `${m!.tokenName ?? m!.slug}:${m!.position}/${m!.face}`).join(','));
   }
 
   /* --- The Mound --- */

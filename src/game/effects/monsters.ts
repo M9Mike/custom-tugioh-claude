@@ -3753,8 +3753,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        rather than relying on the engine's depth backstop. */
     text:
       'When this monster is destroyed: inflict 400 damage to your opponent. ' +
-      'Once per turn, when this monster is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard, ' +
-      'then Special Summon 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800).',
+      'Once per turn, when this monster is destroyed: Special Summon 1 "Aswan Apparition" from your Deck or Graveyard ' +
+      'and 1 "Ka Token" (Fiend/DARK/Level 1/ATK 800/DEF 800), both in face-up Defense Position.',
     cry: 'The tomb is not empty yet.',
     effects: [
       {
@@ -3770,20 +3770,21 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onDestroyed',
         oncePerTurn: true,
         ops: [
-          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['aswan-apparition'] }, count: 1, position: 'atk' },
+          /* Face-up in Defence, both of them. A 500 body and an 800 body
+             standing up are two free kills and two hits of damage; the same
+             two lying down are two walls and, more to the point, two Tributes
+             still breathing when your turn comes round. This deck spends
+             bodies — it does not race with them. */
+          { op: 'specialSummon', from: ['deck', 'grave'], side: 'own', filter: { slugs: ['aswan-apparition'] }, count: 1, position: 'def', face: 'up' },
           /* The token is the guarantee. Two Apparitions in the deck means the
              revival can come up empty late, and a card whose whole job is to
              refill the board must never answer a destruction with nothing —
              that is the difference between a resilient deck and a deck that
              only looks resilient in the opening hand. */
-          { op: 'summonToken', name: 'Ka Token', atk: 800, def: 800, count: 1, artSlug: 'aswan-apparition', position: 'atk' },
+          { op: 'summonToken', name: 'Ka Token', atk: 800, def: 800, count: 1, artSlug: 'aswan-apparition', position: 'def' },
         ],
       },
     ],
-    /* Once per turn, so the Fist cannot be fed from an infinite well — the same
-       limit Revival Jam carries, and for the same reason: a card that answers
-       its own destruction needs its own ceiling rather than relying on the
-       engine's depth backstop. */
   },
 
   'possessed-dark-soul': {
