@@ -416,6 +416,9 @@ function matchesLoosely(slug: string, filter: CardFilter | undefined) {
   if (filter?.toon && !isToon(slug)) return false;
   if (filter?.slugs && !filter.slugs.includes(slug)) return false;
   if (filter?.maxAtk != null && (x.atk ?? 0) > filter.maxAtk) return false;
+  // Fortress Whale hunts upward now: a victim for `minAtk: 2900` has to BE a
+  // giant, or the destroy fires at nothing and reads as a card doing nothing.
+  if (filter?.minAtk != null && (x.atk ?? 0) < filter.minAtk) return false;
   return true;
 }
 

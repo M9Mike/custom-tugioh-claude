@@ -296,10 +296,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
 
   'enemy-controller': {
     /* Quick-Play: seizing the attacker mid-swing is the card's signature
-       moment, so the Set copy joins the attack window like a trap does. */
+       moment, so the Set copy joins the attack window like a trap does — and
+       it takes the ATTACKER, no choosing: the monster is already standing in
+       Attack Position, and changing its allegiance is what cancels the blow. */
     text:
       'Take control of 1 monster your opponent controls until the end of the turn, and force it into Attack Position. ' +
-      'Quick-Play: you may Set this card and activate it when your opponent declares an attack.',
+      'Quick-Play: you may Set this card and activate it when your opponent declares an attack, to take control of the attacking monster.',
     effects: [
       {
         trigger: 'activate',
@@ -312,11 +314,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
-        targets: 1,
-        ops: [
-          { op: 'takeControl', target: OPP_PICK, duration: 'turn' },
-          { op: 'forceAttackPosition', target: sel('own', 'chosen') },
-        ],
+        ops: [{ op: 'takeControl', target: sel('opp', 'attacker'), duration: 'turn' }],
       },
     ],
   },
