@@ -828,10 +828,19 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
     ...hiddenMonsters.map((c) => c.slug),
   ].sort();
   shuffleWith(pool, rnd);
+  /* A face-down card in a Monster Zone IS a monster — the rules put it there,
+     and a world that deals it a Spell mis-prices every flip and battle played
+     out inside it. The monsters among the unseen pool go to the face-down
+     zones first; everything else falls where it may. Conditioning on what a
+     zone announces is not peeking. */
+  const monsters = pool.filter((s) => CARDS[s]?.kind === 'monster');
+  const rest = pool.filter((s) => CARDS[s]?.kind !== 'monster');
+  for (const m of hiddenMonsters) reidentify(m, monsters.pop() ?? rest.pop()!);
+  const remain = [...monsters, ...rest];
+  shuffleWith(remain, rnd);
   let at = 0;
-  for (const m of hiddenMonsters) reidentify(m, pool[at++]);
-  for (const h of foe.hand) reidentify(h, pool[at++]);
-  for (const d of foe.deck) reidentify(d, pool[at++]);
+  for (const h of foe.hand) reidentify(h, remain[at++]);
+  for (const d of foe.deck) reidentify(d, remain[at++]);
   return view;
 }
 
