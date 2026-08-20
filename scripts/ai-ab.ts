@@ -21,7 +21,7 @@
  * artefact of the comparison and goes stale the moment it is written.
  */
 import { fork, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { applyAction, createDuel } from '../src/game/engine';
 import * as WORKING from '../src/game/ai';
@@ -142,14 +142,47 @@ async function main() {
   console.log(`working copy vs src/game/ai-baseline.ts — ${jobs.length} games, ${workers} workers\n`);
 
   const tally: Record<Res, number> = { working: 0, baseline: 0, draw: 0, none: 0 };
-  let next = 0;
   let done = 0;
+
+  /* A thousand-game run needs hours, and the machine this runs on does not
+     owe anybody hours in a row. AB_JOURNAL names a file where every finished
+     game is appended as `index result`; a rerun with the same journal replays
+     the tally from it and only plays the games that never reported. The job
+     list is a pure function of the game count, so indices stay meaningful
+     across runs — as long as the two runs compare the same two brains, which
+     the journal cannot check and the caller must. */
+  const journal = process.env.AB_JOURNAL || '';
+  const played = new Set<number>();
+  if (journal && existsSync(journal)) {
+    for (const line of readFileSync(journal, 'utf8').split('\n')) {
+      const m = line.match(/^(\d+) (working|baseline|draw|none)$/);
+      if (!m) continue;
+      const idx = Number(m[1]);
+      if (idx >= jobs.length || played.has(idx)) continue;
+      played.add(idx);
+      tally[m[2] as Res] += 1;
+      done += 1;
+    }
+    if (done) console.log(`  resumed: ${done} games from ${journal}\n`);
+  }
+
+  const pendingIdx = jobs.map((_, i) => i).filter((i) => !played.has(i));
+  let next = 0;
   const every = Math.max(20, Math.round(jobs.length / 10));
 
   await new Promise<void>((resolve, reject) => {
     const kids: ChildProcess[] = [];
+    const kidJob = new Map<ChildProcess, number>();
     let alive = 0;
-    const feed = (kid: ChildProcess) => (next < jobs.length ? kid.send(jobs[next++]) : kid.send('stop'));
+    const feed = (kid: ChildProcess) => {
+      if (next < pendingIdx.length) {
+        const idx = pendingIdx[next++];
+        kidJob.set(kid, idx);
+        kid.send(jobs[idx]);
+      } else {
+        kid.send('stop');
+      }
+    };
 
     for (let i = 0; i < workers; i++) {
       const kid = fork(SELF, [], {
@@ -163,6 +196,7 @@ async function main() {
         if (msg === 'ready') return feed(kid);
         tally[msg] += 1;
         done += 1;
+        if (journal) appendFileSync(journal, `${kidJob.get(kid)} ${msg}\n`);
         if (done % every === 0 || done === jobs.length) process.stderr.write(`  ${done}/${jobs.length} games\n`);
         feed(kid);
       });
