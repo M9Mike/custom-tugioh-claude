@@ -295,10 +295,23 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'enemy-controller': {
-    text: 'Take control of 1 monster your opponent controls until the end of the turn, and force it into Attack Position.',
+    /* Quick-Play: seizing the attacker mid-swing is the card's signature
+       moment, so the Set copy joins the attack window like a trap does. */
+    text:
+      'Take control of 1 monster your opponent controls until the end of the turn, and force it into Attack Position. ' +
+      'Quick-Play: you may Set this card and activate it when your opponent declares an attack.',
     effects: [
       {
         trigger: 'activate',
+        targets: 1,
+        ops: [
+          { op: 'takeControl', target: OPP_PICK, duration: 'turn' },
+          { op: 'forceAttackPosition', target: sel('own', 'chosen') },
+        ],
+      },
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
         targets: 1,
         ops: [
           { op: 'takeControl', target: OPP_PICK, duration: 'turn' },
@@ -351,10 +364,19 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   scapegoat: {
-    text: 'Special Summon 3 Sheep Tokens (0/500) in Defense Position.',
+    /* Quick-Play, like Graceful Dice: the Set copy answers an attack with a
+       wall of wool, which is the whole reason the card exists. */
+    text:
+      'Special Summon 3 Sheep Tokens (0/500) in Defense Position. ' +
+      'Quick-Play: you may Set this card and activate it when your opponent declares an attack.',
     effects: [
       {
         trigger: 'activate',
+        ops: [{ op: 'summonToken', name: 'Sheep Token', atk: 0, def: 500, count: 3, artSlug: 'scapegoat' }],
+      },
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
         ops: [{ op: 'summonToken', name: 'Sheep Token', atk: 0, def: 500, count: 3, artSlug: 'scapegoat' }],
       },
     ],
@@ -453,10 +475,25 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'graceful-dice': {
-    text: 'Roll a die: every monster you control gains 200 ATK for each pip until the end of the turn.',
+    /* A Quick-Play: the same roll wears two triggers. `activate` is the card
+       cast from hand on your own turn; the `trap`-trigger twin is what lets a
+       SET copy answer an attack on the opponent's turn, riding the exact
+       window machinery traps use — same set-turn wait, same prompt, same
+       resolution. One card, two doors, identical dice. */
+    text:
+      'Roll a die: every monster you control gains 200 ATK for each pip until the end of the turn. ' +
+      'Quick-Play: you may Set this card and activate it when your opponent declares an attack.',
     effects: [
       {
         trigger: 'activate',
+        ops: [
+          { op: 'diceRoll', perPip: [] },
+          { op: 'gainAtk', amount: 200, scale: 'dicePips', target: sel('own', 'all'), duration: 'turn' },
+        ],
+      },
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
         ops: [
           { op: 'diceRoll', perPip: [] },
           { op: 'gainAtk', amount: 200, scale: 'dicePips', target: sel('own', 'all'), duration: 'turn' },

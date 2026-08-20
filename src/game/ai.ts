@@ -598,12 +598,15 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
         acts.push({ type: 'activateSetCard', uid: p.spellTrap.uid, targets: t });
       }
     }
-    // Setting a trap is worth considering, but only cards that actually do
-    // something from face-down.
+    // Setting is worth considering for any card that can act from face-down:
+    // every trap, and a Quick-Play Spell whose trap-trigger twin answers a
+    // window on the opponent's turn.
     if (!p.spellTrap) {
       for (const h of p.hand) {
         const def = CARDS[h.slug];
-        if (def && def.kind === 'trap') acts.push({ type: 'setSpellTrap', uid: h.uid });
+        if (def && (def.kind === 'trap' || def.effects.some((e) => e.trigger === 'trap'))) {
+          acts.push({ type: 'setSpellTrap', uid: h.uid });
+        }
       }
     }
     for (const m of ownMonsters) {

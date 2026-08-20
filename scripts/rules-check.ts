@@ -7091,9 +7091,12 @@ console.log('\nMako: the sea and everything that lives in it');
   const taller = card(FOE, 'blue-eyes-white-dragon'); // 3000
   wave.players[FOE].monsters = [tall, taller, null];
   const swept = act(wave, ME, { type: 'activateSpell', uid: oath2.uid, targets: [fodder2.uid] });
-  ok(!swept.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'), 'Fortress Whale now drowns a 2500',
+  /* Re-ruled by the owner: the Whale hunts GIANTS now — 2900 or more — so the
+     old assertions flipped with the card. The batch-of-six section holds the
+     paired pin; this one keeps the ritual path honest under the new rule. */
+  ok(swept.players[FOE].monsters.some((m) => m?.slug === 'summoned-skull'), 'Fortress Whale leaves a 2500 swimming',
     swept.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
-  ok(swept.players[FOE].monsters.some((m) => m?.slug === 'blue-eyes-white-dragon'), 'and still not a 3000',
+  ok(!swept.players[FOE].monsters.some((m) => m?.slug === 'blue-eyes-white-dragon'), 'and drowns the 3000',
     swept.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
 
   /* Flying Fish leaves a card behind. */
@@ -10258,6 +10261,157 @@ console.log('\nThe fast clone is the slow clone, only fast');
  * screen, hiding a half-finished fix. A check that cannot fail is worse than
  * no check; a suite that cannot report failure is worse still. `checks` is
  * asserted too, so deleting tests cannot quietly turn the battery green. */
+console.log('\nSix corrections from the table');
+{
+  /* A Quick-Play Spell's Set copy answers the attack window like a trap. */
+  let s = fresh('battle');
+  s.active = FOE;
+  const dice = card(ME, 'graceful-dice');
+  dice.face = 'down';
+  dice.summonedOnTurn = 2; // set on an earlier turn — ready
+  s.players[ME].spellTrap = dice;
+  s.players[ME].monsters[0] = card(ME, 'megazowler');
+  const ox = card(FOE, 'battle-ox');
+  s.players[FOE].monsters[0] = ox;
+  s = act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: s.players[ME].monsters[0]!.uid });
+  ok(
+    !!s.pending && s.pending.kind === 'trap' && s.pending.options.includes(dice.uid),
+    'a Set Graceful Dice is offered when the opponent declares an attack',
+    'the Quick-Play twin never joined the trap window'
+  );
+  if (s.pending) {
+    s = act(s, ME, { type: 'respondTrap', uid: dice.uid });
+    const buffed = (s.players[ME].monsters[0]?.turnAtkMod ?? 0) > 0;
+    ok(buffed, 'and the dice actually roll — the defenders gain their pips', 'no turn ATK arrived');
+    ok(
+      s.players[ME].grave.some((c) => c.uid === dice.uid),
+      'the spent Quick-Play goes to the Graveyard like any resolved Spell'
+    );
+  }
+  /* Set THIS turn, it must wait like a trap does. */
+  let w = fresh('battle');
+  w.active = FOE;
+  const late = card(ME, 'graceful-dice');
+  late.face = 'down';
+  late.summonedOnTurn = w.turn;
+  w.players[ME].spellTrap = late;
+  w.players[ME].monsters[0] = card(ME, 'megazowler');
+  const ox2 = card(FOE, 'battle-ox');
+  w.players[FOE].monsters[0] = ox2;
+  w = act(w, FOE, { type: 'attack', uid: ox2.uid, targetUid: w.players[ME].monsters[0]!.uid });
+  ok(!w.pending, 'CONTROL: a Quick-Play Set this very turn is not offered yet');
+  ok(
+    CARDS['scapegoat'].effects.some((e) => e.trigger === 'trap') &&
+      CARDS['enemy-controller'].effects.some((e) => e.trigger === 'trap'),
+    'Scapegoat and Enemy Controller carry the same Quick-Play window'
+  );
+}
+
+{
+  /* Possessed Dark Soul reaches everything now — a Blue-Eyes is not too big. */
+  let s = fresh();
+  const soul = card(ME, 'possessed-dark-soul');
+  s.players[ME].monsters[0] = soul;
+  const bewd = card(FOE, 'blue-eyes-white-dragon');
+  s.players[FOE].monsters[0] = bewd;
+  const opts = ignitionOptions(s, ME, soul);
+  ok(opts.length > 0, 'Possessed Dark Soul offers its theft with only a 3000 across the table');
+  s = act(s, ME, { type: 'ignition', uid: soul.uid, targets: [bewd.uid], effectIndex: opts[0]?.index });
+  ok(
+    s.players[ME].monsters.some((m) => m?.uid === bewd.uid),
+    'and the Blue-Eyes changes sides — no ATK ceiling on the ka',
+    'the 2000 limit is still being enforced'
+  );
+}
+
+{
+  /* The Dark Door holds what the card face SAYS it holds: a King Rex standing
+     at 2500 off his Graveyard is a 2000-or-more monster, whatever his printed
+     1600 claims — and the door's own 300 drain must not open its own gate. */
+  const s = fresh('battle');
+  s.active = FOE;
+  s.players[ME].spellTrap = card(ME, 'the-dark-door');
+  s.players[ME].monsters[0] = card(ME, 'mystical-elf');
+  const rex = card(FOE, 'two-headed-king-rex');
+  s.players[FOE].monsters[0] = rex;
+  for (const slug of ['uraby', 'trakodon', 'megazowler']) s.players[FOE].grave.push(card(FOE, slug));
+  s.players[FOE].hand = [card(FOE, 'uraby')]; // Rex discards a card per swing
+  const oxD = card(FOE, 'battle-ox');
+  s.players[FOE].monsters[1] = oxD;
+  ok(!canAttackWith(s, FOE, rex), 'The Dark Door holds a grave-grown King Rex', 'a monster standing at 2500 attacked through the door');
+  ok(canAttackWith(s, FOE, oxD), 'CONTROL: a 1700 Battle Ox still walks through it');
+}
+
+{
+  /* Fortress Whale hunts giants now: 2900 or MORE. Summoned the way the deck
+     actually summons it — through its Oath, off a Tribute. */
+  let s = fresh();
+  s.players[ME].monsters[0] = card(ME, 'battle-ox');
+  const whale = card(ME, 'fortress-whale');
+  const oath = card(ME, 'fortress-whale-s-oath');
+  s.players[ME].hand = [oath, whale];
+  const bewd = card(FOE, 'blue-eyes-white-dragon');
+  const small = card(FOE, 'aqua-madoor');
+  s.players[FOE].monsters[0] = bewd;
+  s.players[FOE].monsters[1] = small;
+  s = act(s, ME, { type: 'activateSpell', uid: oath.uid, targets: [whale.uid] });
+  if (s.pending?.kind === 'choose') s = act(s, ME, { type: 'chooseCard', uids: [whale.uid] });
+  ok(
+    s.players[ME].monsters.some((m) => m?.uid === whale.uid),
+    'the Oath raises the Whale off one Tribute'
+  );
+  ok(
+    !s.players[FOE].monsters.some((m) => m?.uid === bewd.uid),
+    'Fortress Whale sinks the 3000 on arrival'
+  );
+  ok(
+    s.players[FOE].monsters.some((m) => m?.uid === small.uid),
+    'and leaves the 1200 standing — 2900 or MORE, not less',
+    'the old comparator is still destroying small monsters'
+  );
+}
+
+{
+  /* Two Kelbeks are two monsters: the second bounce is not silenced because
+     the first one spoke. Once per turn is per CARD, not per name. */
+  let s = fresh('battle');
+  s.active = FOE;
+  const k1 = card(ME, 'kelbek');
+  const k2 = card(ME, 'kelbek');
+  s.players[ME].monsters[0] = k1;
+  s.players[ME].monsters[1] = k2;
+  const a1 = card(FOE, 'battle-ox');
+  const a2 = card(FOE, 'garoozis');
+  s.players[FOE].monsters[0] = a1;
+  s.players[FOE].monsters[1] = a2;
+  s = act(s, FOE, { type: 'attack', uid: a1.uid, targetUid: k1.uid });
+  const firstBounced = s.players[FOE].hand.some((c) => c.uid === a1.uid);
+  s = act(s, FOE, { type: 'attack', uid: a2.uid, targetUid: k2.uid });
+  const secondBounced = s.players[FOE].hand.some((c) => c.uid === a2.uid);
+  ok(firstBounced, 'the first Kelbek returns her attacker to hand');
+  ok(secondBounced, 'and the SECOND Kelbek returns hers too — a name is not a shared fuse', 'the once-per-turn gate is still keyed by name');
+}
+
+{
+  /* Two Revival Jams broken by one Mirror Force both come back. */
+  let s = fresh('battle');
+  const j1 = card(ME, 'revival-jam');
+  const j2 = card(ME, 'revival-jam');
+  s.players[ME].monsters[0] = j1;
+  s.players[ME].monsters[1] = j2;
+  s.players[ME].grave.push(card(ME, 'kuriboh'), card(ME, 'kuriboh'));
+  const mf = card(FOE, 'mirror-force');
+  mf.face = 'down';
+  mf.summonedOnTurn = 2;
+  s.players[FOE].spellTrap = mf;
+  s.players[FOE].monsters[0] = card(FOE, 'mystical-elf');
+  s = act(s, ME, { type: 'attack', uid: j1.uid, targetUid: s.players[FOE].monsters[0]!.uid });
+  if (s.pending?.kind === 'trap') s = act(s, FOE, { type: 'respondTrap', uid: mf.uid });
+  const back1 = s.players[ME].monsters.some((m) => m?.uid === j1.uid);
+  const back2 = s.players[ME].monsters.some((m) => m?.uid === j2.uid);
+  ok(back1 && back2, 'both Jams revive from the same Mirror Force', `only ${[back1, back2].filter(Boolean).length} of 2 returned`);
+}
+
 const EXPECTED_AT_LEAST = 120;
 if (checks < EXPECTED_AT_LEAST) {
   console.log(`\n❌ only ${checks} assertions ran, expected at least ${EXPECTED_AT_LEAST} — did something stop early?`);

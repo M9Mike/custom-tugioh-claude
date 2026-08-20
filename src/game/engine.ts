@@ -404,6 +404,48 @@ function auraCount(
   return n;
 }
 
+/**
+ * A monster's ATK as it itself carries it: printed stats, its permanent and
+ * turn modifiers, everything it has absorbed, its own continuous auras (a
+ * Two-Headed King Rex counting its Graveyard) and the Equips bolted onto it —
+ * but no OTHER card's weather.
+ *
+ * This is what an ATK bound in an aura's filter means, and the only reading
+ * that terminates. The Dark Door says monsters with 2000 or more ATK cannot
+ * attack, and it also drains 300: a filter reading fully-effective ATK would
+ * need the door's auras to decide whether the door's aura applies, and one
+ * reading printed data let a King Rex standing at 2500 walk through a gate
+ * his card face says holds him — reported from a real duel as "monsters with
+ * 2000 or more attack could still attack". Nothing here reads another card's
+ * aura, so nothing here can recurse.
+ */
+function selfAtk(state: DuelState, target: CardInstance, ctrl: PlayerId): number {
+  if (target.flags.infiniteAtk || target.turnFlags.infiniteAtk) return INFINITE_ATK;
+  const base = target.isToken ? (target.tokenAtk ?? 0) : baseAtk(target.slug);
+  const rate = target.flags.absorbHalved || target.turnFlags.absorbHalved ? 0.5 : 1;
+  const absorbed = Math.floor(target.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0) * rate);
+  let bonus = tokenScaleOf(state, target, ctrl).atk;
+  if (!target.isToken && !target.flags.negated) {
+    for (const eff of CARDS[target.slug]?.effects ?? []) {
+      if (eff.trigger !== 'continuous' || !eff.aura) continue;
+      if (eff.condition && !conditionMet(state, eff, target, ctrl)) continue;
+      const s = eff.aura.target;
+      if (s.side !== 'own' || s.excludeSelf) continue;
+      if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
+      bonus += eff.aura.atk ?? 0;
+      if (eff.aura.perCounter) bonus += (eff.aura.perCounter.atk ?? 0) * target.counters;
+      if (eff.aura.per) bonus += auraCount(state, ctrl, eff.aura.per, target.uid) * (eff.aura.per.atk ?? 0);
+    }
+  }
+  for (const { c: source } of fieldCards(state)) {
+    if (source.equippedTo === target.uid) {
+      const eq = equipOpOf(source.slug);
+      if (eq) bonus += eq.atk;
+    }
+  }
+  return Math.max(0, base + absorbed + target.atkMod + target.turnAtkMod + bonus);
+}
+
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
   const bonus: AuraBonus = { atk: 0, def: 0, grants: new Set(), bonusVsDefense: 0 };
   /* An aura is weather over the field, and a card in your hand is indoors.
@@ -448,7 +490,14 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (wantSide === 'opp' && sameSide) continue;
       if (s.pick === 'self' && source.uid !== target.uid) continue;
       if (s.excludeSelf && source.uid === target.uid) continue;
-      if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
+      /* ATK bounds in an aura's filter ask about the monster as IT stands —
+         see `selfAtk` above. The rest of the filter stays printed data. */
+      if (s.pick !== 'self') {
+        if (!matchesFilter(target, stripAtkBounds(s.filter))) continue;
+        const f = s.filter;
+        if (f?.minAtk != null && selfAtk(state, target, targetController) < f.minAtk) continue;
+        if (f?.maxAtk != null && selfAtk(state, target, targetController) > f.maxAtk) continue;
+      }
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
       if (eff.aura.perCounter) {
@@ -2943,11 +2992,14 @@ function fireTriggersInner(
     /* "Once per turn" used to mean it only for an ignition, where the count
        lives on the card instance — which is no use to a card that dies and
        comes back, because `resetInstance` clears the marker on the way in.
-       Kept on the state and keyed by controller and name, so Revival Jam
-       revives once a turn however many times it is broken. Cleared at every
-       turn start, so it really is per turn and not per duel. */
+       Kept on the state instead — and keyed by INSTANCE, not by name. The
+       first cut keyed on the slug, and the second Kelbek stood silent because
+       the first one had spoken: two copies are two monsters, and a name is
+       not a fuse they share. The uid survives every zone change, so Revival
+       Jam still revives only once a turn however many times it is broken.
+       Cleared at every turn start, so it really is per turn, not per duel. */
     if (eff.oncePerTurn && trigger !== 'ignition') {
-      const key = `${controller}:${c.slug}:${trigger}`;
+      const key = `${controller}:${c.uid}:${trigger}`;
       const used = state.oncePerTurnUsed ?? (state.oncePerTurnUsed = []);
       if (used.includes(key)) continue;
       used.push(key);
@@ -3154,7 +3206,11 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
      offered, rather than refused after the window has already been fired. */
   const live = (c: CardInstance) => (e: CardEffect) => !e.condition || conditionMet(state, e, c, pid);
   const st = p.spellTrap;
-  if (st && CARDS[st.slug]?.kind === 'trap') {
+  /* Not only Traps: a Quick-Play Spell carries a `trap`-trigger twin exactly
+     so its Set copy can answer a window — Graceful Dice thrown across an
+     incoming attack. The effs filter below narrows to trap-trigger effects,
+     so an ordinary Set Spell, which has none, still answers nothing here. */
+  if (st && CARDS[st.slug] && CARDS[st.slug].kind !== 'monster') {
     const effs = CARDS[st.slug].effects.filter((e) => e.trigger === 'trap' && windowMatches(e.window, window)).filter(live(st));
     // A face-down trap cannot be activated on the turn it was set. A face-up
     // Continuous Trap has already served that wait, and one flagged `reusable`

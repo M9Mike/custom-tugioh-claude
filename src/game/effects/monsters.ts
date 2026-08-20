@@ -1652,9 +1652,9 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'fortress-whale': {
-    text: 'When this monster is summoned: destroy every monster your opponent controls with 2900 or less ATK.',
+    text: 'When this monster is summoned: destroy every monster your opponent controls with 2900 or more ATK.',
     cry: 'Rise from the depths!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { maxAtk: 2900 } }) }] }],
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { minAtk: 2900 } }) }] }],
   },
 
   'kairyu-shin': {
@@ -3828,7 +3828,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        vacates is the zone the stolen monster lands in — on a full board every
        other theft in the deck silently fizzles, and this one cannot. */
     text:
-      'Tribute this monster: take control of 1 monster your opponent controls with 2000 or less ATK. ' +
+      'Tribute this monster: take control of 1 monster your opponent controls. ' +
       'The possessed monster cannot attack, and it is destroyed after 3 of your End Phases.',
     cry: 'Your ka answers to me now.',
     effects: [
@@ -3841,14 +3841,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
            Three of *your* End Phases, not three turns: the clock only runs
            while the thief holds it, so a stolen body is three of your own turns
            of Tribute fodder and a blocker, which is exactly what this deck
-           wants a stolen body for. 2000 or less reaches almost everything on
-           the roster that is not a God or a Fusion. */
+           wants a stolen body for. No ATK ceiling, by the owner's ruling: the
+           price is the Tribute and the timer, not the size of the catch. */
         label: 'Tear out their ka',
         cost: { tributeSelf: true },
         ops: [
           {
             op: 'possess',
-            target: sel('opp', 'chosen', { filter: { kind: 'monster', maxAtk: 2000 } }),
+            target: sel('opp', 'chosen', { filter: { kind: 'monster' } }),
             endPhases: 3,
           },
         ],
