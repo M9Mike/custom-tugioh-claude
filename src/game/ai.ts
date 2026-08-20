@@ -1187,21 +1187,44 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
   const merged = new Map<string, Line>();
   let width = Math.max(1, cfg.beam);
   for (let round = 0; round < 4; round++) {
+    const before = merged.size;
     const found = beamSearch(base, pid, { ...cfg, beam: width, branch: cfg.branch + round * 6 }, clock, beamFloor, w);
     for (const line of found) {
       const key = line.actions.map(actionKey).join('|');
       if (!merged.has(key)) merged.set(key, line);
     }
     if (clock.left <= beamFloor + Math.round(total * beamShare * 0.2) || Date.now() > clock.wallCap) break;
+    /* A wider pass that wrote down nothing new is a position the narrow pass
+       had already exhausted — a forced line, an empty board, one legal play.
+       Widening again re-derives the same turns at four times the price, and
+       the saved nodes flow to the judging, or simply to answering sooner.
+       Only after the second pass: the first widening is the cheap one that
+       most often finds the extra summon orders, and it always gets its turn. */
+    if (round >= 1 && merged.size === before) break;
     width *= 2;
   }
   const all = [...merged.values()].sort((a, b) => b.score - a.score);
   if (!all.length) return [{ type: 'endTurn' }];
 
-  if (worlds > 0 && all.length > 1) {
+  /* The judging can move a line's score by at most one bounded vote and one
+     bounded rollout blend — ROLLOUT_AUTHORITY each way, each. When the beam's
+     top two UNDECIDED lines sit further apart than both bounds combined, no
+     count of sampled worlds can reorder them: the verdict is proven before
+     the trial, and eight seconds of reassurance is eight seconds of a human
+     waiting. Decided lines are exempt — a WIN-scored gamble needs the worlds
+     to price the coin. */
+  const UNFLIPPABLE = 4 * ROLLOUT_AUTHORITY;
+  const settled =
+    all.length > 1 &&
+    Math.abs(all[0].score) < WIN / 2 &&
+    Math.abs(all[1].score) < WIN / 2 &&
+    all[0].score - all[1].score > UNFLIPPABLE;
+
+  if (!settled && worlds > 0 && all.length > 1) {
     const judged = judgeAcrossWorlds(state, pid, all, cfg, w, clock, worlds);
     if (judged) return pickWithSlack(judged, cfg);
   }
+  if (settled) return pickWithSlack(all, cfg);
 
   /* No worlds (tiny budget or a response window): the beam's own ranking,
      deepened by rollouts where the budget allows, exactly as before. */
@@ -1335,7 +1358,25 @@ function judgeAcrossWorlds(
     if (ranked[0] === prevLeader && margin > 800) leaderStable += 1;
     else leaderStable = 0;
     prevLeader = ranked[0];
-    if (round + 1 >= worlds && leaderStable >= 2) break;
+    /* Two quiet rounds is a verdict; ONE quiet round already is when the
+       margin exceeds a full adverse swing of the bounded vote — the next
+       round mathematically cannot close a gap that size. */
+    if (round + 1 >= worlds && (leaderStable >= 2 || (leaderStable >= 1 && margin > 2 * ROLLOUT_AUTHORITY))) break;
+    /* A checked win does not need eight seconds of reassurance. When the
+       leader is a DECIDED line whose every sampled future so far ended in the
+       win — the beam says lethal, and no redealt hand or re-thrown coin has
+       contradicted it — further rounds can only re-confirm. Gambling plans
+       wait one extra round so the rethrown dice get their say; everything
+       else plays the kill now. */
+    const lead = ranked[0];
+    if (
+      round + 1 >= (planGambles(examine[lead].actions, state) ? 2 : 1) &&
+      score(lead) >= WIN / 2 &&
+      ends[lead].length > 0 &&
+      ends[lead].every((e) => e.winner === pid)
+    ) {
+      break;
+    }
   }
 
   const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) }));
