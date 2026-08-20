@@ -38,8 +38,8 @@
  * passed every case. Ten boards separate them cleanly — the buggy AI scores
  * 7/10 and 9/10 where this insists on 10/10.
  */
-import { applyAction, createDuel } from '../src/game/engine';
-import { AI_LEVELS, planTurn } from '../src/game/ai';
+import { applyAction, cloneState, createDuel } from '../src/game/engine';
+import { AI_LEVELS, chooseTrapResponse, planTurn } from '../src/game/ai';
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -106,6 +106,10 @@ interface Case {
 }
 
 const did = (plan: DuelAction[], type: string) => plan.some((a) => a.type === type);
+
+/* Shared between a case's `build` and its `want`, for pins about a specific card. */
+let elfUid = '';
+let twUid = '';
 
 const CASES: Case[] = [
   {
@@ -268,6 +272,79 @@ const CASES: Case[] = [
     want: (plan) => did(plan, 'attack'),
   },
   {
+    /* The assignment problem every pro solves without noticing: the big body
+       breaks the wall, the small one goes to the face. Backwards, Battle Ox
+       bounces off the 2000-DEF Elf and the lethal is gone. */
+    name: 'sends the big attacker into the wall and the small one to the face',
+    because: 'Dark Magician must break the 2000-DEF Elf so Battle Ox can land exactly 1700 on their 1700',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'dark-magician');
+      s.players[ME].monsters[1] = card(ME, 'battle-ox');
+      s.players[FOE].monsters[0] = card(FOE, 'mystical-elf', 'def');
+      s.players[FOE].lp = 1700;
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* Standing in front of lethal, the only move that lives is a wall. A
+       Sonic Maid summoned to attack hands them the duel; the Elf in Defence
+       takes the piercing 500 and holds. */
+    name: 'walls up in front of lethal instead of feeding it',
+    because: 'at 1200 Life Points under a piercing 2500, only the 2000-DEF Elf in Defence (or face-down) survives the turn',
+    build: (s) => {
+      s.players[ME].lp = 1200;
+      elfUid = '';
+      const elf = card(ME, 'mystical-elf');
+      elfUid = elf.uid;
+      s.players[ME].hand = [elf, card(ME, 'sonic-maid')];
+      s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+    },
+    want: (plan) =>
+      plan.some(
+        (a) => a.type === 'normalSummon' && a.uid === elfUid && (a.face === 'down' || a.position === 'def')
+      ),
+  },
+  {
+    /* Two bodies already add up past their Life Points; a Blue-Eyes needs both
+       of them as Tribute and arrives short of the kill. Greed loses the win. */
+    name: 'takes lethal with the board rather than tributing it away for a dragon',
+    because: 'Summoned Skull and Garoozis together land 4300 on 4000; a tributed Blue-Eyes lands 3000 and the duel goes on',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'summoned-skull');
+      s.players[ME].monsters[1] = card(ME, 'garoozis');
+      s.players[ME].hand = [card(ME, 'blue-eyes-white-dragon')];
+      s.players[FOE].lp = 4000;
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    name: 'CONTROL: pays two useless bodies for the dragon that breaks the wall',
+    because: 'two aura-drained Kuriboh cannot touch a 2000-DEF Aqua Madoor; Blue-Eyes clears it on arrival and swings 2600',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'kuriboh');
+      s.players[ME].monsters[1] = card(ME, 'kuriboh');
+      s.players[ME].hand = [card(ME, 'blue-eyes-white-dragon')];
+      s.players[FOE].monsters[0] = card(FOE, 'aqua-madoor', 'def');
+    },
+    want: (plan) => plan.some((a) => a.type === 'normalSummon' && (a.tributes?.length ?? 0) === 2),
+  },
+  {
+    /* Gamble arithmetic: with the duel already won on the board, the coin can
+       only give back what is taken. Tails destroys the whole board, and with
+       it the win. */
+    name: 'takes the certain win instead of spinning Time Wizard first',
+    because: 'Red-Eyes wins the duel outright; Time Wizard on tails destroys it and the win with it',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'red-eyes-black-dragon');
+      const tw = card(ME, 'time-wizard');
+      twUid = tw.uid;
+      s.players[ME].monsters[1] = tw;
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+      s.players[FOE].lp = 700;
+    },
+    want: (plan, end) => end.winner === ME && !plan.some((a) => a.type === 'ignition' && a.uid === twUid),
+  },
+  {
     name: 'never leaves a turn half-played',
     because: 'a plan must run the turn out, end the duel, or hand a decision to the other seat',
     build: (s) => {
@@ -313,9 +390,60 @@ for (const c of CASES) {
   }
 }
 
+/* --- Trap windows: the fire/hold discipline --------------------------- */
+/* The window responder is its own decision path, so the suite pins it too:
+   a one-shot answer is held through a probe and spent on the real threat. */
+const windowCase = (name: string, because: string, attackerSlug: string, wantFire: boolean, myLp = 4000) => {
+  const bad: string[] = [];
+  for (const seed of SEEDS) {
+    const s = fresh(seed, 'kaiba');
+    s.active = FOE;
+    s.phase = 'battle';
+    s.players[ME].lp = myLp;
+    s.players[ME].monsters[0] = card(ME, 'battle-ox');
+    const trap = card(ME, 'spellbinding-circle');
+    trap.face = 'down';
+    s.players[ME].spellTrap = trap;
+    const attacker = card(FOE, attackerSlug);
+    s.players[FOE].monsters[0] = attacker;
+    if (attackerSlug === 'kuriboh') s.players[FOE].monsters[1] = card(FOE, 'dark-magician');
+    s.pending = {
+      kind: 'trap',
+      player: ME,
+      options: [trap.uid],
+      reason: 'Foe attacks!',
+      context: { attackerUid: attacker.uid },
+    } as DuelState['pending'];
+    const answer = chooseTrapResponse(cloneState(s), ME, 'champion', 2000) as { type: string; uid?: string | null };
+    const fired = answer.type === 'respondTrap' && !!answer.uid;
+    if (fired !== wantFire) bad.push(`seed ${seed}: ${fired ? 'fired' : 'held'}`);
+  }
+  const pass = bad.length === 0;
+  if (!pass) failures += 1;
+  console.log(`  ${pass ? '✅' : '❌'} ${name}  ${SEEDS.length - bad.length}/${SEEDS.length}`);
+  if (!pass) {
+    console.log(`       expected: ${because}`);
+    for (const line of bad.slice(0, 4)) console.log(`       ${line}`);
+  }
+};
+windowCase(
+  'holds Spellbinding Circle against a 300 ATK probe',
+  'the Circle spent on a Kuriboh is gone when the Dark Magician behind it swings',
+  'kuriboh',
+  false
+);
+windowCase(
+  'CONTROL: fires the Circle when the attack on the board is lethal',
+  'at 800 Life Points, the Magician killing Battle Ox is the duel — the negate is survival, not value',
+  'dark-magician',
+  true,
+  800
+);
+
+const TOTAL = CASES.length + 2;
 console.log(
   failures
-    ? `\n❌ ${failures} of ${CASES.length} positions played wrong.`
-    : `\n✅ all ${CASES.length} positions played correctly, on every deck order.`
+    ? `\n❌ ${failures} of ${TOTAL} positions played wrong.`
+    : `\n✅ all ${TOTAL} positions played correctly, on every deck order.`
 );
 process.exitCode = failures ? 1 : 0;
