@@ -356,7 +356,12 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   // Card advantage. A card in hand is a future threat; a set Spell/Trap is a
   // live one — ours priced by what it actually does, theirs by not knowing.
   score += (my.hand.length - their.hand.length) * w.hand;
-  if (my.spellTrap) score += my.spellTrap.face === 'down' ? 140 + trapWorth(my.spellTrap.slug) * 0.35 : 180;
+  /* A set trap must outscore the same trap sitting in hand, or the search
+     never sets it. At 140 + 0.35x, a mid trap priced below the 220 a hand
+     card is worth, and the disagreement probe caught the AI holding
+     Spellbinding Circle in hand all game — armed answers beat stored ones,
+     and the backrow slot has no other use. */
+  if (my.spellTrap) score += my.spellTrap.face === 'down' ? 260 + trapWorth(my.spellTrap.slug) * 0.4 : 180;
   if (their.spellTrap) score -= their.spellTrap.face === 'down' ? 300 : 180;
   if (my.field) score += 120;
   if (their.field) score -= 120;
