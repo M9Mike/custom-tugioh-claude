@@ -248,12 +248,6 @@ export interface EvalWeights {
   hand: number;
   /** Points per turn of race advantage. 0 disables the race term entirely. */
   clock: number;
-  /**
-   * What each seat should fear the OTHER seat's face-down backrow to be,
-   * priced off the unseen multiset once per decision — see `setFears`.
-   * Absent, a flat 300.
-   */
-  setFear?: Record<PlayerId, number>;
 }
 
 /**
@@ -363,7 +357,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   // live one — ours priced by what it actually does, theirs by not knowing.
   score += (my.hand.length - their.hand.length) * w.hand;
   if (my.spellTrap) score += my.spellTrap.face === 'down' ? 140 + trapWorth(my.spellTrap.slug) * 0.35 : 180;
-  if (their.spellTrap) score -= their.spellTrap.face === 'down' ? (w.setFear?.[me] ?? 300) : 180;
+  if (their.spellTrap) score -= their.spellTrap.face === 'down' ? 300 : 180;
   if (my.field) score += 120;
   if (their.field) score -= 120;
 
@@ -734,73 +728,6 @@ function visibleHash(state: DuelState, viewer: PlayerId): number {
   return h >>> 0;
 }
 
-/** The most punishing trap the opponent's unseen cards could put in that zone. */
-function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[] }): string | null {
-  let best: string | null = null;
-  let bestWorth = 0;
-  for (const c of [...foe.hand, ...foe.deck]) {
-    if (CARDS[c.slug]?.kind !== 'trap') continue;
-    const worth = trapWorth(c.slug);
-    if (worth > bestWorth) {
-      bestWorth = worth;
-      best = c.slug;
-    }
-  }
-  return best;
-}
-
-/**
- * How much of a vote the paranoid world gets.
- *
- * The honest base rate is "what share of their unseen cards are traps",
- * scaled up because a card somebody CHOSE to set face-down is not a uniform
- * draw — Set cards are answers far more often than chance — and capped well
- * below one so doctrine still rules: fear is a tax on overcommitting, never
- * a veto on attacking.
- */
-function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
-  const foe = state.players[other(viewer)];
-  if (!foe.spellTrap || foe.spellTrap.face !== 'down') return 0;
-  const pool = [...foe.hand, ...foe.deck];
-  if (!pool.length) return 0;
-  const traps = pool.filter((c) => CARDS[c.slug]?.kind === 'trap').length;
-  return Math.min(0.45, (2.5 * traps) / pool.length);
-}
-
-/**
- * The share of the opponent's unseen cards that are traps — hand, deck and
- * face-down monsters together, as a multiset. This is public inference: the
- * deck lists are known and the Graveyard is open, so what remains unseen is
- * countable without reading where any single card sits.
- */
-function unseenTrapShare(state: DuelState, viewer: PlayerId): number {
-  const foe = state.players[other(viewer)];
-  const pool = [
-    ...foe.hand,
-    ...foe.deck,
-    ...foe.monsters.filter((m): m is CardInstance => !!m && m.face === 'down'),
-  ];
-  if (!pool.length) return 0;
-  return pool.filter((c) => CARDS[c.slug]?.kind === 'trap').length / pool.length;
-}
-
-/**
- * What a face-down backrow is worth fearing, per seat, computed ONCE per
- * decision from the real position and carried through every simulated state.
- *
- * The evaluation used to price the opponent's Set card at a flat 300 forever.
- * But the pool it is drawn from drains as the duel goes: with every trap of
- * theirs already burned and visible in the Graveyard, the card behind that
- * back gets closer to a bluff — and an AI that kept paying full respect to an
- * empty threat was leaving late-game attacks on the table. Multiset
- * arithmetic only, so the honesty invariants hold: permuting WHERE the unseen
- * cards sit cannot move this number.
- */
-function setFears(state: DuelState): Record<PlayerId, number> {
-  const fear = (viewer: PlayerId) => 120 + 800 * Math.min(0.5, 2.0 * unseenTrapShare(state, viewer));
-  return { p1: fear('p1'), p2: fear('p2') };
-}
-
 /** A deterministic RNG keyed off the visible position and a salt. */
 function saltedRng(state: DuelState, viewer: PlayerId, salt: number): () => number {
   let s = (visibleHash(state, viewer) ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0;
@@ -843,7 +770,7 @@ function shuffleWith<T>(arr: T[], rnd: () => number): void {
  * real one rather than a preview of it. Card counts in every zone are public
  * information and are preserved exactly.
  */
-function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean, paranoid = false): DuelState {
+function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean): DuelState {
   const view = cloneState(state);
   view.log = [];
   view.logShown = 0;
@@ -865,27 +792,16 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
   const foe = view.players[other(viewer)];
   const hiddenMonsters = foe.monsters.filter((m): m is CardInstance => !!m && m.face === 'down');
 
-  /* Their Set backrow becomes an inert stand-in in EVERY ordinary world,
-     sampled or not. This is doctrine, and it is pinned in `ai-check`: a Set
+  /* Their Set backrow becomes an inert stand-in in EVERY world, sampled or
+     not. This is doctrine, not laziness, and it is pinned in `ai-check`: a Set
      card the AI has not been shown must neither be read nor feared. Sampling
      it from the unseen pool priced "maybe it is Mirror Force" at one-in-seven
      per world, and the AI stopped attacking through face-down cards it had no
      evidence about — trap-shy exactly the way the owner's checks forbid. The
      stand-in is a monster slug, so no trap window ever opens off it; the
-     evaluation still counts the zone as an unknown threat.
-
-     `paranoid` is the exception, and it exists because pure doctrine lost
-     real duels the other way: an AI that prices every Set card at zero
-     commits its whole board through one, and the card it refused to fear
-     eats the whole battle phase. The paranoid world deals the backrow the
-     STRONGEST trap their unseen pool could hold, and the judging folds it in
-     at a fractional weight — see `paranoiaPrior` — so a lone profitable
-     attack still goes in while an all-in overcommit gets charged for the
-     wipe it risks. */
-  if (foe.spellTrap && foe.spellTrap.face === 'down') {
-    const trap = paranoid ? scariestUnseenTrap(foe) : null;
-    reidentify(foe.spellTrap, trap ?? UNKNOWN_PROXY);
-  }
+     evaluation still counts the zone as an unknown threat, and the real card
+     gets its say in the real duel, where it belongs. */
+  if (foe.spellTrap && foe.spellTrap.face === 'down') reidentify(foe.spellTrap, UNKNOWN_PROXY);
 
   if (!sample) {
     for (const m of hiddenMonsters) reidentify(m, UNKNOWN_PROXY);
@@ -1163,10 +1079,7 @@ function worldsFor(cfg: AiConfig, clock: Clock): number {
   if (cfg.worlds !== undefined) return Math.max(0, cfg.worlds);
   if (cfg.depth <= 0) return 0;
   if (clock.left < 400 * NODES_PER_MS) return 0;
-  /* Two, whatever the budget. Extra worlds bought variance reduction the
-     bounded vote had already bounded; the same nodes spent on the opponent's
-     reply turn buy information no amount of averaging can. */
-  return 2;
+  return clock.left < 2500 * NODES_PER_MS ? 2 : 3;
 }
 
 /**
@@ -1194,10 +1107,7 @@ function playOutPlan(clock: Clock, world: DuelState, pid: PlayerId, actions: Due
 }
 
 function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock): DuelAction[] {
-  /* The fear prices are computed once at the top-level decision and inherited
-     by every model config below it (they arrive inside `cfg.weights`), so the
-     lookahead's thousands of evaluations share one multiset count. */
-  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
+  const w = cfg.weights ?? WEIGHTS;
   const total = clock.left;
 
   /* When a window is open the only decisions are responses; the beam handles
@@ -1325,12 +1235,7 @@ function judgeAcrossWorlds(
     if (round > 0 && (clock.left <= 300 || Date.now() > clock.wallCap)) break;
     const world = buildWorld(state, pid, salt, true);
     salt += 1;
-    /* Successive halving: every line gets the first two worlds, then the
-       field narrows to the contenders. A line still ranked seventh after two
-       redeals is not coming back, and its replays belong to the leaders. */
-    const cut = round <= 1 ? M : round === 2 ? Math.min(6, M) : Math.min(4, M);
-    const alive = examine.map((_, i) => i).sort((a, b) => score(b) - score(a)).slice(0, cut);
-    for (const i of alive) {
+    for (let i = 0; i < M; i++) {
       if (round > 0 && drained(clock)) break;
       const end = playOutPlan(clock, world, pid, examine[i].actions, w);
       ends[i].push(end);
@@ -1338,72 +1243,32 @@ function judgeAcrossWorlds(
       imm[i].n += 1;
     }
 
-    /* The paranoid vote, once, on the first round: the same plans replayed in
-       a world where their Set card is the strongest trap they could be
-       holding, folded in at the honest prior. This is what stops the AI
-       committing three attackers through one card back — the wipe it risks is
-       finally on the bill — while a lone profitable attack keeps its margin
-       and goes in, which is what the doctrine checks demand. */
-    if (round === 0 && !drained(clock)) {
-      const prior = paranoiaPrior(state, pid);
-      if (prior > 0) {
-        const nightmare = buildWorld(state, pid, 999, true, true);
-        for (let i = 0; i < M; i++) {
-          if (drained(clock)) break;
-          const end = playOutPlan(clock, nightmare, pid, examine[i].actions, w);
-          const normal = ends[i][0] ? evaluate(ends[i][0], pid, w) : examine[i].score;
-          /* A fractional observation: prior-weighted mix of the nightmare and
-             the ordinary sample, counted as ONE extra sample so it shifts the
-             average rather than owning it. */
-          imm[i].sum += prior * evaluate(end, pid, w) + (1 - prior) * normal;
-          imm[i].n += 1;
-        }
-      }
-    }
-
     /* Gambling plans get a second throw of the same world's dice: identical
        opponent, re-salted RNG, so the coin is resampled while everything else
        is held constant. */
     if (gambling && !drained(clock)) {
-      /* Two extra throws, not one: a 50/50 effect read off two samples is a
-         coin judged on two flips. Four-plus samples a round is where the
-         estimate stops being the loudest gamble's press agent. */
-      for (const extra of [100, 200]) {
-        const rethrow = buildWorld(state, pid, salt + extra, true);
-        for (let i = 0; i < M; i++) {
-          if (!planGambles(examine[i].actions, state)) continue;
-          if (drained(clock)) break;
-          const end = playOutPlan(clock, rethrow, pid, examine[i].actions, w);
-          imm[i].sum += evaluate(end, pid, w);
-          imm[i].n += 1;
-        }
+      const rethrow = buildWorld(state, pid, salt + 100, true);
+      for (let i = 0; i < M; i++) {
+        if (!planGambles(examine[i].actions, state)) continue;
+        if (drained(clock)) break;
+        const end = playOutPlan(clock, rethrow, pid, examine[i].actions, w);
+        imm[i].sum += evaluate(end, pid, w);
+        imm[i].n += 1;
       }
     }
 
-    /* The reply turn, leaders-first by the current estimate. ONE opponent
-       turn at real width beats three thin alternating turns: the deep
-       playout's extra plies were sampled-hand noise stacked on sampled-hand
-       noise, while a single well-fed reply is the question that actually
-       catches blunders — "and what do they do back?". */
+    /* Rollouts, leaders-first by the current estimate, while the round's
+       share of the clock lasts. */
     if (cfg.depth > 0) {
       const order = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
-      /* The reply budget is spent where the verdict lives: nearly a third on
-         the current leader, tapering down the order. Equal slices bought six
-         replies none of which was wide enough to mean anything; the weighted
-         split buys the leader a reply at real width on every budget this AI
-         is actually served at, and the also-rans exactly the scrutiny their
-         standing has earned. */
-      const SHARE = [0.3, 0.2, 0.14, 0.1, 0.07, 0.05];
-      const pot = clock.left;
-      for (let k = 0; k < order.length && k < SHARE.length; k++) {
-        const i = order[k];
+      for (const i of order.slice(0, 4)) {
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
-        const slice = Math.max(ROLLOUT_FLOOR, Math.round(pot * SHARE[k]));
+        const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 6));
         roll[i].sum += end.winner
           ? evaluate(end, pid, w)
-          : rollout(clock, slice, end, pid, 1, w, true);
+          : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);
         roll[i].n += 1;
       }
     }
@@ -1556,11 +1421,9 @@ function rollout(clock: Clock, nodes: number, state: DuelState, me: PlayerId, tu
      nearly as well as the opponent would play it, which is what the defensive
      half of every decision is resting on. */
   const model: AiConfig =
-    nodes >= 2400
-      ? { beam: 8, branch: 18, slack: 0, depth: 0, weights: w }
-      : nodes >= 1000
-        ? { beam: 6, branch: 16, slack: 0, depth: 0, weights: w }
-        : { ...MODEL_CFG, weights: w };
+    nodes >= 2000
+      ? { beam: 6, branch: 16, slack: 0, depth: 0, weights: w }
+      : { ...MODEL_CFG, weights: w };
   const perTurn = Math.max(70, Math.round(nodes / Math.max(1, turns)));
 
   for (let t = 0; t < turns; t++) {
@@ -1594,7 +1457,7 @@ function rollout(clock: Clock, nodes: number, state: DuelState, me: PlayerId, tu
  */
 export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 400): DuelAction {
   const cfg = cfgOf(level);
-  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
+  const w = cfg.weights ?? WEIGHTS;
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'chooseCard', uids: [] };
@@ -1639,9 +1502,9 @@ export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSet
  * the turn actually ends — as a bounded vote against the settled reading,
  * because it is one modelled turn in one sampled world.
  */
-export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 1500): DuelAction {
+export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 900): DuelAction {
   const cfg = cfgOf(level);
-  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
+  const w = cfg.weights ?? WEIGHTS;
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'respondTrap', uid: null };
@@ -1649,9 +1512,9 @@ export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSet
 
   /* Below the floor there is no room to play anything out — one-step greedy,
      which is what the search's own window-settling uses. */
-  if (clock.left < 1000) return greedyResponse(clock, state, pid, { ...cfg, weights: w });
+  if (clock.left < 1000) return greedyResponse(clock, state, pid, cfg);
 
-  const K = clock.left >= 4000 ? 2 : 1;
+  const K = clock.left >= 5000 ? 2 : 1;
   const worlds: DuelState[] = [];
   for (let k = 0; k < K; k++) worlds.push(buildWorld(state, pid, k + 53, true));
 
@@ -1721,7 +1584,7 @@ export function aiNext(
     if (state.pending.player !== pid) return null;
     return state.pending.kind === 'choose'
       ? chooseCardResponse(state, pid, level, Math.min(300, budgetMs * 0.4))
-      : chooseTrapResponse(state, pid, level, Math.min(2000, budgetMs * 0.8));
+      : chooseTrapResponse(state, pid, level, Math.min(800, budgetMs * 0.8));
   }
   if (state.active !== pid) {
     invalidatePlan(rt);
