@@ -39,7 +39,7 @@
  * 7/10 and 9/10 where this insists on 10/10.
  */
 import { applyAction, cloneState, createDuel } from '../src/game/engine';
-import { AI_LEVELS, chooseTrapResponse, planTurn } from '../src/game/ai';
+import { AI_LEVELS, chooseTrapResponse, evaluate, planTurn } from '../src/game/ai';
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -110,6 +110,7 @@ const did = (plan: DuelAction[], type: string) => plan.some((a) => a.type === ty
 /* Shared between a case's `build` and its `want`, for pins about a specific card. */
 let elfUid = '';
 let twUid = '';
+let swordsUid = '';
 
 const CASES: Case[] = [
   {
@@ -345,6 +346,36 @@ const CASES: Case[] = [
     want: (plan, end) => end.winner === ME && !plan.some((a) => a.type === 'ignition' && a.uid === twUid),
   },
   {
+    /* Straight out of the disagreement probe, refereed 4/4 against 0/4: at
+       2900 Life Points against three bodies and a seven-card hand, the lock
+       is the whole turn. The evaluation used to be blind to freezeMonsters —
+       the engine refused the frozen attacks, but the threat model kept
+       counting them, so Swords read as a card spent on nothing and the beam
+       pruned it before the lookahead could ever say otherwise. */
+    name: 'casts Swords of Revealing Light with the duel on the line',
+    duelist: 'yami',
+    because: 'three turns of their board standing still is worth more than any card in hand — the eval must see a frozen board as toothless',
+    build: (s) => {
+      s.players[ME].lp = 2900;
+      s.players[ME].monsters[0] = card(ME, 'buster-blader');
+      const swords = card(ME, 'swords-of-revealing-light');
+      swordsUid = swords.uid;
+      s.players[ME].hand = [card(ME, 'catapult-turtle'), swords, card(ME, 'dark-magician')];
+      s.players[FOE].lp = 1300;
+      s.players[FOE].monsters[0] = card(FOE, 'guardian-sphinx', 'def');
+      s.players[FOE].monsters[1] = card(FOE, 'wall-of-illusion');
+      s.players[FOE].monsters[2] = card(FOE, 'beta-the-magnet-warrior');
+      s.players[FOE].hand = [
+        'wall-of-illusion', 'mask-of-darkness', 'ra-s-disciple', 'mystical-beast-of-serket',
+        'pot-of-greed', 'judgment-of-anubis', 'embodiment-of-apophis',
+      ].map((slug) => card(FOE, slug));
+      const set = card(FOE, 'fake-trap');
+      set.face = 'down';
+      s.players[FOE].spellTrap = set;
+    },
+    want: (plan) => plan.some((a) => a.type === 'activateSpell' && a.uid === swordsUid),
+  },
+  {
     name: 'never leaves a turn half-played',
     because: 'a plan must run the turn out, end the duel, or hand a decision to the other seat',
     build: (s) => {
@@ -440,7 +471,27 @@ windowCase(
   800
 );
 
-const TOTAL = CASES.length + 2;
+/* --- The evaluation must see what the engine enforces ------------------ */
+/* `canAttackWith` refuses every frozen attack, so a threat model that keeps
+   counting them prices Swords of Revealing Light as a card spent on nothing.
+   This is the mechanism behind the Swords position above, pinned at the level
+   where it cannot be rescued by a lucky rollout: freezing their board must
+   move the score by more than a rounding nudge. */
+{
+  const s = fresh(3, 'kaiba');
+  s.players[ME].lp = 2000;
+  s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+  s.players[FOE].monsters[1] = card(FOE, 'garoozis');
+  const before = evaluate(s, ME);
+  s.ongoing.push({ id: 'oT', source: 'swords-of-revealing-light', kind: 'freezeMonsters', target: FOE, turns: 3 } as DuelState['ongoing'][number]);
+  const after = evaluate(s, ME);
+  const pass = after - before > 2000;
+  if (!pass) failures += 1;
+  console.log(`  ${pass ? '✅' : '❌'} the evaluation reads a frozen board as toothless  (${Math.round(before)} → ${Math.round(after)})`);
+  if (!pass) console.log('       expected: with their attacks refused by the engine, the threat and the race must both swing hard');
+}
+
+const TOTAL = CASES.length + 3;
 console.log(
   failures
     ? `\n❌ ${failures} of ${TOTAL} positions played wrong.`

@@ -39,6 +39,7 @@ import {
   fusionOptions,
   legalAttackTargets,
   maxAttacks,
+  monstersFrozen,
   other,
   summonBlocked,
   tributableBodies,
@@ -134,12 +135,20 @@ function bodyOf(state: DuelState, m: CardInstance, ctrl: PlayerId, viewer: Playe
   const f = effFlags(state, m, ctrl);
   const atk = hidden ? UNKNOWN_ATK : effAtk(state, m, ctrl);
   const def = hidden ? UNKNOWN_DEF : effDef(state, m, ctrl);
+  /* The engine refuses a frozen or held-down attack, and only a Divine-Beast
+     walks through the lock — `canAttackWith`'s exact rule, mirrored. Without
+     this, the threat model kept counting attacks the engine would never
+     allow, and Swords of Revealing Light read as a card spent on nothing:
+     the three quiet turns it buys were invisible to every threat and race
+     term, so the beam pruned the lock before the lookahead could speak. */
+  const divine = CARDS[m.slug]?.type === 'Divine-Beast';
+  const locked = !divine && (monstersFrozen(state, ctrl) || (!hidden && !!f.cannotAttack));
   return {
     atk,
     def,
     wall: m.face === 'up' && m.position === 'atk' ? atk : def,
     atkPos: m.face === 'up' && m.position === 'atk',
-    attacks: hidden ? 1 : maxAttacks(state, m, ctrl),
+    attacks: locked ? 0 : hidden ? 1 : maxAttacks(state, m, ctrl),
     pierce: !hidden && !!f.pierce,
     direct: !hidden && !!f.directAttack,
     wallProof: !hidden && !!f.indestructibleByBattle,
@@ -222,7 +231,7 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
      and have somewhere to put one; it makes the AI keep a real blocker or a
      Life Point buffer where it used to end the turn naked. */
   const p = state.players[att];
-  if (p.hand.length > 0 && p.monsters.some((m) => !m)) {
+  if (p.hand.length > 0 && p.monsters.some((m) => !m) && !monstersFrozen(state, att)) {
     attackers.push({
       atk: 1600,
       def: 0,
