@@ -10412,6 +10412,46 @@ console.log('\nSix corrections from the table');
   ok(back1 && back2, 'both Jams revive from the same Mirror Force', `only ${[back1, back2].filter(Boolean).length} of 2 returned`);
 }
 
+console.log("\nThe invariant fuzzer's first catch");
+{
+  /* A Set Giant Trunade swept ITSELF back to hand mid-resolution, then the
+     cleanup graved it too — one card instance in two zones at once, and a
+     spell that could be Set and recast forever. Two fixes, both pinned: the
+     sweep excludes the resolving card, and the cleanup only graves a card
+     still sitting where it resolved from. */
+  let s = fresh();
+  const tru = card(ME, 'giant-trunade');
+  tru.face = 'down';
+  tru.summonedOnTurn = 2;
+  s.players[ME].spellTrap = tru;
+  const mf = card(FOE, 'mirror-force');
+  mf.face = 'down';
+  s.players[FOE].spellTrap = mf;
+  s.players[FOE].hand = [card(FOE, 'kuriboh')];
+  s = act(s, ME, { type: 'activateSetCard', uid: tru.uid, targets: [] });
+  const places = [
+    s.players[ME].hand.some((c) => c.uid === tru.uid) ? 'hand' : '',
+    s.players[ME].grave.filter((c) => c.uid === tru.uid).length ? `grave×${s.players[ME].grave.filter((c) => c.uid === tru.uid).length}` : '',
+    s.players[ME].spellTrap?.uid === tru.uid ? 'zone' : '',
+  ].filter(Boolean);
+  ok(
+    places.join(',') === 'grave×1',
+    'a Set Giant Trunade ends in the Graveyard, once, and nowhere else',
+    `found in: ${places.join(' + ') || 'nowhere'}`
+  );
+  /* The rider discards 1 at random from the hand the bounce just filled, so
+     the Force may legitimately continue to the Graveyard — what the pin owns
+     is that it LEFT the zone through the hand and exists exactly once. */
+  const mfPlaces =
+    (s.players[FOE].hand.some((c) => c.uid === mf.uid) ? 1 : 0) +
+    s.players[FOE].grave.filter((c) => c.uid === mf.uid).length;
+  ok(
+    !s.players[FOE].spellTrap && mfPlaces === 1,
+    "and the other Set card leaves the zone for its owner's side, exactly once",
+    `zone ${s.players[FOE].spellTrap ? 'occupied' : 'empty'}, copies found: ${mfPlaces}`
+  );
+}
+
 const EXPECTED_AT_LEAST = 120;
 if (checks < EXPECTED_AT_LEAST) {
   console.log(`\n❌ only ${checks} assertions ran, expected at least ${EXPECTED_AT_LEAST} — did something stop early?`);

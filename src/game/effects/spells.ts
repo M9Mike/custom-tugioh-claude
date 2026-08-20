@@ -395,7 +395,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'activate',
         ops: [
-          { op: 'bounce', target: sel('both', 'all', { zone: 'backrow' }) },
+          /* Not itself: the resolving card is mid-flight, not "on the field",
+             and a Trunade that swept itself back to hand was a spell that
+             could be Set and recast forever. It finishes in the Graveyard
+             like any other resolved Spell. */
+          { op: 'bounce', target: sel('both', 'all', { zone: 'backrow', excludeSelf: true }) },
           { op: 'discard', count: 1, who: 'opp' },
         ],
       },

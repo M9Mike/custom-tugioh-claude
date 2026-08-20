@@ -11,6 +11,7 @@
     "art": "node scripts/prepare-art.mjs",
     "cards": "node scripts/fetch-cards.mjs",
     "sim": "tsx scripts/simulate.ts",
+    "invariants": "tsx scripts/invariant-check.ts",
     "e2e": "tsx scripts/e2e.ts",
     "e2e-ai": "tsx scripts/e2e-ai.ts",
     "ai-arena": "tsx scripts/ai-arena.ts",

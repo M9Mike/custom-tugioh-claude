@@ -4886,11 +4886,19 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const setTargets = (action.targets ?? []).filter((u) => !setPaid.paidForCost.includes(u));
       const ctx: EffectCtx = { state, controller: pid, source: c, targets: setTargets, cursor: 0, trig: {} };
       runOps(ctx, eff.ops);
-      if (def.subKind !== 'Continuous') {
-        p.spellTrap = null;
-        landInGrave(state, c, pid);
-      } else {
-        c.face = 'up';
+      /* Only if the card is still sitting where it resolved from. An effect
+         can move its own card mid-resolution — a backrow sweep reaches the
+         zone the sweeper is standing in — and force-graving it from wherever
+         it landed put ONE instance in TWO zones at once. Found by the
+         invariant fuzzer: a Set Giant Trunade ended the turn in its owner's
+         hand and Graveyard simultaneously. The card moved; let it lie. */
+      if (p.spellTrap?.uid === c.uid) {
+        if (def.subKind !== 'Continuous') {
+          p.spellTrap = null;
+          landInGrave(state, c, pid);
+        } else {
+          c.face = 'up';
+        }
       }
       return { state };
     }
