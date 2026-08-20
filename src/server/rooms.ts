@@ -404,15 +404,19 @@ export async function stepAI(room: Room): Promise<boolean> {
     // and drop whatever was left of the turn plan, since the board is about to
     // change underneath it.
     room.aiPlan = undefined;
-    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI) : chooseTrapResponse(s, pid, GAME_AI);
+    /* The window that decides whether Mirror Force fires is worth real time:
+       two seconds buys two sampled worlds with a full playout per option. */
+    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI, 800) : chooseTrapResponse(s, pid, GAME_AI, 2000);
   } else {
     const key = turnKey;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
-      /* Four seconds to plan the whole turn, once per turn. The board narrates
-         every beat for over a second anyway, so the think overlaps the tail of
-         the previous action far more often than it is felt — and the function
-         has a 30s ceiling, so there is no platform pressure to hurry. */
-      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 4000) };
+      /* Eight seconds to plan the whole turn, once per turn. The board
+         narrates every beat for over a second anyway, so the think overlaps
+         the tail of the previous action far more often than it is felt — and
+         the function has a 30s ceiling with a 12.8s emergency wall inside the
+         search, so there is no platform pressure to hurry. Nodes are the
+         strength of this AI; time is the one honest thing to spend. */
+      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 8000) };
     }
     action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
   }
@@ -422,7 +426,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // The plan went stale against the real position. Search again from here.
     room.aiPlan = undefined;
     const rt = createAiRuntime();
-    const retry = aiNext(s, pid, GAME_AI, rt, 4000);
+    const retry = aiNext(s, pid, GAME_AI, rt, 8000);
     res = retry ? applyAction(s, pid, retry) : res;
   }
   if (res.error) {

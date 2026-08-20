@@ -131,13 +131,24 @@ async function main() {
   await loadBaseline(); // fail fast, before forking anything
 
   const jobs: Job[] = [];
-  for (let i = 0; i < Math.round(games / 2); i++) {
+  /* AB_SWAP_PILOTS plays every (seed, pair, seat order) with BOTH brains in
+     both chairs — four games per seed instead of two. Deck strength then
+     cancels exactly instead of on average: a lopsided matchup contributes the
+     same lopsidedness to each brain, so the difference is all brain. Costs
+     half the seed diversity at a given game count; worth it for a verdict. */
+  const swapPilots = process.env.AB_SWAP_PILOTS === '1';
+  const perSeed = swapPilots ? 4 : 2;
+  for (let i = 0; i < Math.round(games / perSeed); i++) {
     const d1 = DUELISTS[i % DUELISTS.length].id;
     const d2 = DUELISTS[(i * 7 + 4) % DUELISTS.length].id;
     const seed = 70000 + i * 131;
     jobs.push({ seed, d1, d2, workingIsP1: true });
     // Same seed and deck pair, seats swapped, so neither brain gets the better half.
     jobs.push({ seed, d1: d2, d2: d1, workingIsP1: false });
+    if (swapPilots) {
+      jobs.push({ seed, d1, d2, workingIsP1: false });
+      jobs.push({ seed, d1: d2, d2: d1, workingIsP1: true });
+    }
   }
   console.log(`working copy vs src/game/ai-baseline.ts — ${jobs.length} games, ${workers} workers\n`);
 

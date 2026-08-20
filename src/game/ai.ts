@@ -1556,13 +1556,18 @@ export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSet
      which is what the search's own window-settling uses. */
   if (clock.left < 1000) return greedyResponse(clock, state, pid, cfg);
 
-  const K = clock.left >= 5000 ? 2 : 1;
+  /* A second world halves what each option's playout gets, and a rollout below
+     ~800 nodes is the thin model the deep-window rework exists to avoid. So the
+     depth is fixed first and the second world is bought only when both worlds
+     can still afford a real playout per option. */
+  const per1 = Math.max(400, Math.round((clock.left * 0.8) / options.length));
+  const K = per1 >= 1600 ? 2 : 1;
   const worlds: DuelState[] = [];
   for (let k = 0; k < K; k++) worlds.push(buildWorld(state, pid, k + 53, true));
 
   let best: DuelAction = { type: 'respondTrap', uid: null };
   let bestScore = -Infinity;
-  const per = Math.max(400, Math.round((clock.left * 0.8) / (options.length * K)));
+  const per = Math.round(per1 / K);
   for (const action of options) {
     let sum = 0;
     let taken = 0;
@@ -1626,7 +1631,7 @@ export function aiNext(
     if (state.pending.player !== pid) return null;
     return state.pending.kind === 'choose'
       ? chooseCardResponse(state, pid, level, Math.min(300, budgetMs * 0.4))
-      : chooseTrapResponse(state, pid, level, Math.min(800, budgetMs * 0.8));
+      : chooseTrapResponse(state, pid, level, Math.min(2000, budgetMs * 0.8));
   }
   if (state.active !== pid) {
     invalidatePlan(rt);
