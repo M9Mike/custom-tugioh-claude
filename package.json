@@ -54,7 +54,8 @@
     "import-rip": "node scripts/import-rip.mjs",
     "sculpt": "node --max-old-space-size=8192 scripts/import-sculpt.mjs",
     "glb": "node scripts/glb-info.mjs",
-    "rigged": "node --max-old-space-size=8192 scripts/import-rigged.mjs"
+    "rigged": "node --max-old-space-size=8192 scripts/import-rigged.mjs",
+    "ai-honesty": "tsx scripts/ai-honesty-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

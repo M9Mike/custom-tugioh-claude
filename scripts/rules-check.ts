@@ -8,10 +8,11 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { applyAction, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
+import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
+import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
 import { canDiscardForEffect, ignitionOptions, summonAffordable, tributableBodies } from '../src/game/engine';
 import { isFinalRound, type Tournament } from '../src/server/tournament';
@@ -10200,6 +10201,53 @@ console.log('\nWhat the board must let you spend, and who it must ask');
       'every turn, for as long as it is kept',
       `${round.players[FOE].lp} -> ${twice.players[FOE].lp}`);
   }
+}
+
+console.log('\nThe fast clone is the slow clone, only fast');
+{
+  /* `cloneState` replaced `structuredClone` at the head of every action the
+     engine applies — a 7x saving that is the computer opponent's entire node
+     budget. It is only correct while a DuelState stays plain data, so this
+     drives a real duel deep enough to touch every zone, then insists the two
+     clones are indistinguishable and share nothing. */
+  let rng = 991;
+  const rnd = () => {
+    rng = (rng * 1664525 + 1013904223) >>> 0;
+    return rng / 4294967296;
+  };
+  let s = createDuel({ seed: 77, p1: { duelistId: 'yamimarik', name: 'A' }, p2: { duelistId: 'odion', name: 'B' } });
+  let identical = true;
+  let independent = true;
+  let looked = 0;
+  let firstBad = '';
+  for (let i = 0; i < 900 && !s.winner; i++) {
+    const actor = s.pending ? s.pending.player : s.active;
+    const acts = autoLegal(s, actor, rnd);
+    if (!acts.length) break;
+    const r = applyAction(s, actor, autoChoose(acts, rnd));
+    if (!r.error) s = r.state;
+    if ((i & 7) !== 0) continue;
+    looked += 1;
+    const fast = cloneState(s);
+    if (JSON.stringify(fast) !== JSON.stringify(structuredClone(s))) {
+      identical = false;
+      firstBad = firstBad || `diverged at step ${i}`;
+    }
+    fast.players.p1.lp = -12345;
+    if (fast.players.p1.monsters[0]) fast.players.p1.monsters[0]!.atkMod = 777;
+    fast.ongoing.push({ id: 'probe', source: 'probe', kind: 'skipDraw', target: 'p1', turns: 1 });
+    if (
+      s.players.p1.lp === -12345 ||
+      (s.players.p1.monsters[0] && s.players.p1.monsters[0].atkMod === 777) ||
+      s.ongoing.some((o) => o.id === 'probe')
+    ) {
+      independent = false;
+      firstBad = firstBad || `shared reference at step ${i}`;
+    }
+  }
+  ok(looked >= 5, 'the drive reached deep enough to mean anything', String(looked));
+  ok(identical, 'the fast clone is byte-identical to structuredClone across a driven duel', firstBad);
+  ok(independent, 'and shares nothing — mutating the copy never touches the original', firstBad);
 }
 
 /* The summary goes LAST, and there is nothing after it.
