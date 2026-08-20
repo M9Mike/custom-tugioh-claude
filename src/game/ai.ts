@@ -1099,10 +1099,38 @@ function playOutPlan(clock: Clock, world: DuelState, pid: PlayerId, actions: Due
     if (cur.pending) cur = settleWindows(clock, cur, pid, w, true);
     if (cur.winner || cur.active !== pid) break;
     const res = sim(clock, cur, pid, action);
-    if (res.error) continue;
+    if (res.error) {
+      /* The plan does not fit this world — the tribute it counted on is a
+         different card here, the attack's target never existed. Skipping the
+         step and stumbling on played out a nonsense turn: attacks without the
+         summon they were built on, a Set that never happened, and the world
+         score charged the PLAN for the incoherence of its corpse. The room
+         re-plans when reality disagrees, so the judge does too: the rest of
+         the turn is finished by the cheap model, from what this world really
+         holds. Once per playout — a plan that keeps failing has been priced. */
+      return finishTurnInWorld(clock, cur, pid, w);
+    }
     cur = res.state;
   }
   if (cur.pending && !cur.winner) cur = settleWindows(clock, cur, pid, w, true);
+  return cur;
+}
+
+/** Finishes the mover's turn inside a sampled world with the cheap model. */
+function finishTurnInWorld(clock: Clock, state: DuelState, pid: PlayerId, w: EvalWeights): DuelState {
+  const budget = Math.min(180, Math.max(0, clock.left));
+  const share: Clock = { left: budget, wallCap: clock.wallCap };
+  const plan = planWith(state, pid, { ...MODEL_CFG, weights: w }, share);
+  clock.left -= budget - Math.max(0, share.left);
+  let cur = state;
+  for (const action of plan) {
+    const res = sim(clock, cur, pid, action);
+    if (res.error) break;
+    cur = res.state;
+    if (cur.winner) break;
+    if (cur.pending) cur = settleWindows(clock, cur, pid, w, true);
+    if (cur.winner || cur.active !== pid) break;
+  }
   return cur;
 }
 
