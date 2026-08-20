@@ -248,6 +248,12 @@ export interface EvalWeights {
   hand: number;
   /** Points per turn of race advantage. 0 disables the race term entirely. */
   clock: number;
+  /**
+   * What each seat should fear the OTHER seat's face-down backrow to be,
+   * priced off the unseen multiset once per decision — see `setFears`.
+   * Absent, a flat 300.
+   */
+  setFear?: Record<PlayerId, number>;
 }
 
 /**
@@ -357,7 +363,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   // live one — ours priced by what it actually does, theirs by not knowing.
   score += (my.hand.length - their.hand.length) * w.hand;
   if (my.spellTrap) score += my.spellTrap.face === 'down' ? 140 + trapWorth(my.spellTrap.slug) * 0.35 : 180;
-  if (their.spellTrap) score -= their.spellTrap.face === 'down' ? 300 : 180;
+  if (their.spellTrap) score -= their.spellTrap.face === 'down' ? (w.setFear?.[me] ?? 300) : 180;
   if (my.field) score += 120;
   if (their.field) score -= 120;
 
@@ -761,6 +767,40 @@ function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
   return Math.min(0.45, (2.5 * traps) / pool.length);
 }
 
+/**
+ * The share of the opponent's unseen cards that are traps — hand, deck and
+ * face-down monsters together, as a multiset. This is public inference: the
+ * deck lists are known and the Graveyard is open, so what remains unseen is
+ * countable without reading where any single card sits.
+ */
+function unseenTrapShare(state: DuelState, viewer: PlayerId): number {
+  const foe = state.players[other(viewer)];
+  const pool = [
+    ...foe.hand,
+    ...foe.deck,
+    ...foe.monsters.filter((m): m is CardInstance => !!m && m.face === 'down'),
+  ];
+  if (!pool.length) return 0;
+  return pool.filter((c) => CARDS[c.slug]?.kind === 'trap').length / pool.length;
+}
+
+/**
+ * What a face-down backrow is worth fearing, per seat, computed ONCE per
+ * decision from the real position and carried through every simulated state.
+ *
+ * The evaluation used to price the opponent's Set card at a flat 300 forever.
+ * But the pool it is drawn from drains as the duel goes: with every trap of
+ * theirs already burned and visible in the Graveyard, the card behind that
+ * back gets closer to a bluff — and an AI that kept paying full respect to an
+ * empty threat was leaving late-game attacks on the table. Multiset
+ * arithmetic only, so the honesty invariants hold: permuting WHERE the unseen
+ * cards sit cannot move this number.
+ */
+function setFears(state: DuelState): Record<PlayerId, number> {
+  const fear = (viewer: PlayerId) => 120 + 800 * Math.min(0.5, 2.0 * unseenTrapShare(state, viewer));
+  return { p1: fear('p1'), p2: fear('p2') };
+}
+
 /** A deterministic RNG keyed off the visible position and a salt. */
 function saltedRng(state: DuelState, viewer: PlayerId, salt: number): () => number {
   let s = (visibleHash(state, viewer) ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0;
@@ -1154,7 +1194,10 @@ function playOutPlan(clock: Clock, world: DuelState, pid: PlayerId, actions: Due
 }
 
 function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock): DuelAction[] {
-  const w = cfg.weights ?? WEIGHTS;
+  /* The fear prices are computed once at the top-level decision and inherited
+     by every model config below it (they arrive inside `cfg.weights`), so the
+     lookahead's thousands of evaluations share one multiset count. */
+  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
   const total = clock.left;
 
   /* When a window is open the only decisions are responses; the beam handles
@@ -1282,7 +1325,12 @@ function judgeAcrossWorlds(
     if (round > 0 && (clock.left <= 300 || Date.now() > clock.wallCap)) break;
     const world = buildWorld(state, pid, salt, true);
     salt += 1;
-    for (let i = 0; i < M; i++) {
+    /* Successive halving: every line gets the first two worlds, then the
+       field narrows to the contenders. A line still ranked seventh after two
+       redeals is not coming back, and its replays belong to the leaders. */
+    const cut = round <= 1 ? M : round === 2 ? Math.min(6, M) : Math.min(4, M);
+    const alive = examine.map((_, i) => i).sort((a, b) => score(b) - score(a)).slice(0, cut);
+    for (const i of alive) {
       if (round > 0 && drained(clock)) break;
       const end = playOutPlan(clock, world, pid, examine[i].actions, w);
       ends[i].push(end);
@@ -1317,13 +1365,18 @@ function judgeAcrossWorlds(
        opponent, re-salted RNG, so the coin is resampled while everything else
        is held constant. */
     if (gambling && !drained(clock)) {
-      const rethrow = buildWorld(state, pid, salt + 100, true);
-      for (let i = 0; i < M; i++) {
-        if (!planGambles(examine[i].actions, state)) continue;
-        if (drained(clock)) break;
-        const end = playOutPlan(clock, rethrow, pid, examine[i].actions, w);
-        imm[i].sum += evaluate(end, pid, w);
-        imm[i].n += 1;
+      /* Two extra throws, not one: a 50/50 effect read off two samples is a
+         coin judged on two flips. Four-plus samples a round is where the
+         estimate stops being the loudest gamble's press agent. */
+      for (const extra of [100, 200]) {
+        const rethrow = buildWorld(state, pid, salt + extra, true);
+        for (let i = 0; i < M; i++) {
+          if (!planGambles(examine[i].actions, state)) continue;
+          if (drained(clock)) break;
+          const end = playOutPlan(clock, rethrow, pid, examine[i].actions, w);
+          imm[i].sum += evaluate(end, pid, w);
+          imm[i].n += 1;
+        }
       }
     }
 
@@ -1334,11 +1387,20 @@ function judgeAcrossWorlds(
        catches blunders — "and what do they do back?". */
     if (cfg.depth > 0) {
       const order = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
-      for (const i of order.slice(0, 6)) {
+      /* The reply budget is spent where the verdict lives: nearly a third on
+         the current leader, tapering down the order. Equal slices bought six
+         replies none of which was wide enough to mean anything; the weighted
+         split buys the leader a reply at real width on every budget this AI
+         is actually served at, and the also-rans exactly the scrutiny their
+         standing has earned. */
+      const SHARE = [0.3, 0.2, 0.14, 0.1, 0.07, 0.05];
+      const pot = clock.left;
+      for (let k = 0; k < order.length && k < SHARE.length; k++) {
+        const i = order[k];
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
-        const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 5));
+        const slice = Math.max(ROLLOUT_FLOOR, Math.round(pot * SHARE[k]));
         roll[i].sum += end.winner
           ? evaluate(end, pid, w)
           : rollout(clock, slice, end, pid, 1, w, true);
@@ -1532,7 +1594,7 @@ function rollout(clock: Clock, nodes: number, state: DuelState, me: PlayerId, tu
  */
 export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 400): DuelAction {
   const cfg = cfgOf(level);
-  const w = cfg.weights ?? WEIGHTS;
+  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'chooseCard', uids: [] };
@@ -1577,9 +1639,9 @@ export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSet
  * the turn actually ends — as a bounded vote against the settled reading,
  * because it is one modelled turn in one sampled world.
  */
-export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 900): DuelAction {
+export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 1500): DuelAction {
   const cfg = cfgOf(level);
-  const w = cfg.weights ?? WEIGHTS;
+  const w: EvalWeights = cfg.weights?.setFear ? cfg.weights : { ...(cfg.weights ?? WEIGHTS), setFear: setFears(state) };
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'respondTrap', uid: null };
@@ -1587,9 +1649,9 @@ export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSet
 
   /* Below the floor there is no room to play anything out — one-step greedy,
      which is what the search's own window-settling uses. */
-  if (clock.left < 1000) return greedyResponse(clock, state, pid, cfg);
+  if (clock.left < 1000) return greedyResponse(clock, state, pid, { ...cfg, weights: w });
 
-  const K = clock.left >= 5000 ? 2 : 1;
+  const K = clock.left >= 4000 ? 2 : 1;
   const worlds: DuelState[] = [];
   for (let k = 0; k < K; k++) worlds.push(buildWorld(state, pid, k + 53, true));
 
@@ -1659,7 +1721,7 @@ export function aiNext(
     if (state.pending.player !== pid) return null;
     return state.pending.kind === 'choose'
       ? chooseCardResponse(state, pid, level, Math.min(300, budgetMs * 0.4))
-      : chooseTrapResponse(state, pid, level, Math.min(800, budgetMs * 0.8));
+      : chooseTrapResponse(state, pid, level, Math.min(2000, budgetMs * 0.8));
   }
   if (state.active !== pid) {
     invalidatePlan(rt);
