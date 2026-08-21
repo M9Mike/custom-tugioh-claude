@@ -9,9 +9,10 @@
  *   npx tsx scripts/rules-check.ts
  */
 import { KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
+import { revivable } from '../src/game/targeting';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
+import { pickerSides, summonChoiceSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
@@ -10708,6 +10709,108 @@ console.log('\nA body needs somewhere to stand');
   ok(summoned.state.players[ME].monsters.filter((m) => m?.isToken).length === 0, 'and its Token has nowhere to go');
   ok(!lines.some((t) => /Special Summons .*Kuriboh Token/.test(t)), 'so the board never claims the Token arrived');
   ok(lines.some((t) => /has no room for Kuriboh Tokens/.test(t)), 'and says out loud that there was no room', lines.slice(-2).join(' | '));
+}
+
+/** A fresh board holding one named card in hand, for the posture pins. */
+function fresh2(c: CardInstance): DuelState {
+  const s = fresh();
+  s.players[ME].hand = [c];
+  return s;
+}
+
+console.log('\nThe road back for a God, and the two postures out of a hand');
+{
+  /* Reported: "Sangan special summons slifer." Sangan dies, reaches into the
+     Deck for the weakest monster it can find, and stands a God up — because a
+     God's printed ATK is nothing at all, its strength being the hand or the
+     Tribute behind it. Every "cheapest body" route in the game therefore leads
+     straight to one. A God is called back by Monster Reborn and by nothing
+     else, and no card says so on purpose: the owner asked for the rule without
+     the sentence. */
+  const gods = ['slifer-the-sky-dragon', 'obelisk-the-tormentor', 'the-winged-dragon-of-ra'];
+  const bare = fresh();
+  for (const g of gods) {
+    ok(!revivable(bare, ME, g, 'sangan'), `Sangan cannot call ${g}`);
+    ok(!revivable(bare, ME, g, 'witch-of-the-black-forest'), `nor can the Witch`);
+    ok(!revivable(bare, ME, g), 'nor can an anonymous Special Summon');
+    ok(revivable(bare, ME, g, 'monster-reborn'), `Monster Reborn still can`);
+  }
+
+  /* End to end, because the rule is only worth what the Deck search does with
+     it: Sangan takes the Kuriboh and leaves the God where it was. */
+  {
+    const s = fresh();
+    s.players[ME].monsters[0] = card(ME, 'sangan');
+    s.players[ME].deck = [card(ME, 'slifer-the-sky-dragon'), card(ME, 'kuriboh')];
+    s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+    const hole = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [hole];
+    s.active = FOE;
+    const after = act(s, FOE, { type: 'activateSpell', uid: hole.uid });
+    ok(!on(after, ME).some((m) => m.slug === 'slifer-the-sky-dragon'), 'Sangan does not stand a God up out of the Deck', on(after, ME).map((m) => m.slug).join(',') || 'nothing');
+    /* Nor does its other half hand one over. Sangan's search takes a monster
+       of "1500 ATK or less", and a God is printed with no ATK at all — read as
+       a number, that is -1, which is very much 1500 or less. */
+    ok(!after.players[ME].hand.some((c) => c.slug === 'slifer-the-sky-dragon'), 'nor does its search put one in the hand', after.players[ME].hand.map((c) => c.slug).join(',') || 'nothing');
+    ok(after.players[ME].deck.some((c) => c.slug === 'slifer-the-sky-dragon'), 'the God is still in the Deck where it belongs');
+  }
+
+  /* And the two roads that must stay open. */
+  {
+    const s = fresh();
+    s.players[ME].grave = [card(ME, 'obelisk-the-tormentor')];
+    const reborn = card(ME, 'monster-reborn');
+    s.players[ME].hand = [reborn];
+    const raised = act(s, ME, { type: 'activateSpell', uid: reborn.uid, targets: [s.players[ME].grave[0].uid] });
+    ok(on(raised, ME).some((m) => m.slug === 'obelisk-the-tormentor'), 'Monster Reborn raises a God from the Graveyard');
+
+    const t = fresh();
+    const god = card(ME, 'slifer-the-sky-dragon');
+    t.players[ME].hand = [god];
+    for (let i = 0; i < 3; i++) t.players[ME].monsters[i] = card(ME, 'kuriboh');
+    const paid = t.players[ME].monsters.map((m) => m!.uid);
+    const summoned = act(t, ME, { type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up', tributes: paid });
+    ok(on(summoned, ME).some((m) => m.slug === 'slifer-the-sky-dragon'), 'and three Tributes still summon one the ordinary way');
+  }
+
+  /* Two postures out of the hand and no third. The board has always offered
+     exactly two buttons — Normal Summon and Set — and the search was offering
+     itself a wall summoned AS a wall, which is a move no player can answer
+     with. Asked at the engine so no seat can have a third option. */
+  {
+    const s = fresh();
+    const wall = card(ME, 'mystical-elf'); // 800/2000, the shape that wanted it
+    s.players[ME].hand = [wall];
+    const upright = applyAction(s, ME, { type: 'normalSummon', uid: wall.uid, zone: 0, position: 'def', face: 'up' });
+    ok(!!upright.error, 'a monster cannot arrive from the hand in face-up Defence', upright.error ?? '(allowed)');
+    ok(upright.state.players[ME].hand.some((h) => h.uid === wall.uid), 'and stays in hand when it is tried');
+
+    const set = act(fresh2(wall), ME, { type: 'normalSummon', uid: wall.uid, zone: 0, position: 'def', face: 'down' });
+    const laid = on(set, ME)[0];
+    ok(laid?.face === 'down' && laid?.position === 'def', 'Setting lays it face-down in Defence', `${laid?.face}/${laid?.position}`);
+    const stood = act(fresh2(wall), ME, { type: 'normalSummon', uid: wall.uid, zone: 0, position: 'atk', face: 'up' });
+    ok(on(stood, ME)[0]?.position === 'atk', 'and a Normal Summon stands it up to fight');
+    /* Face-up Defence is still reached the way everyone reaches it — a turn
+       later, because a monster cannot turn on the turn it arrived. */
+    const later = cloneState(stood);
+    later.turn += 2;
+    const turned = act(later, ME, { type: 'changePosition', uid: on(later, ME)[0]!.uid });
+    ok(on(turned, ME)[0]?.position === 'def' && on(turned, ME)[0]?.face === 'up', 'by turning a monster that is already standing');
+  }
+
+  /* And a card is never among its own answers — the rule the picker owns and
+     the modal had stopped asking for. Gamma the Magnet Warrior laid itself out
+     as a Magnet Warrior to Special Summon, while it was the card being
+     Summoned. Reported. */
+  {
+    const s = fresh();
+    const gamma = card(ME, 'gamma-the-magnet-warrior');
+    s.players[ME].hand = [gamma, card(ME, 'beta-the-magnet-warrior')];
+    const spec = summonTargetSpec('gamma-the-magnet-warrior')!;
+    const shown = targetCandidates(s, ME, spec, () => false, gamma.uid).map((c) => c.uid);
+    ok(!shown.includes(gamma.uid), 'the Magnet Warrior being Summoned is not one of its own answers');
+    ok(shown.length > 0, 'while its brothers still are', String(shown.length));
+  }
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

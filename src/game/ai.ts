@@ -677,17 +677,14 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
             acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', targets: t });
           }
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'def', face: 'down' });
-          /* A wall summoned AS a wall. Face-up Defence was a move the search
-             could not even consider — a 2000-DEF body arrived either swinging
-             its 800 ATK or hiding as a guess for the opponent to poke. Only
-             offered where the DEF is the better half, which is the only time
-             the option differs from the two above in its favour. */
-          const def = CARDS[h.slug];
-          if ((def.def ?? 0) > (def.atk ?? 0)) {
-            for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
-              acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'def', face: 'up', targets: t });
-            }
-          }
+          /* A wall summoned AS a wall used to be offered here, for a 2000-DEF
+             body that would rather not arrive swinging its 800 ATK. It was good
+             reasoning about a move that does not exist: out of the hand a
+             monster stands up to fight or is Set face-down, and the board only
+             ever showed those two buttons. The search was the one seat at the
+             table with a third option, which is a cheat however sound it was.
+             Face-up Defence is still reached the way everyone reaches it — by
+             turning a monster that is already standing. */
         } else if (need > 0 && fodder.length >= need) {
           const tributes = fodder.slice(0, need).map((m) => m.uid);
           const zone = freeZone >= 0 ? freeZone : p.monsters.findIndex((m) => m && tributes.includes(m.uid));
@@ -1574,7 +1571,7 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
       }
       const slice = Math.max(80, Math.round(clock.left / (examine.length - i)));
       const seen = rollout(clock, slice, line.state, pid, cfg.depth, w);
-      line.score = blendRollout(line.score, seen, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX);
+      line.score = blendRollout(line.score, seen, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(slice));
       judged.push(line);
     }
     judged.sort((a, b) => b.score - a.score);
@@ -1611,7 +1608,7 @@ function judgeAcrossWorlds(
      `roll` is where the following turns take it — kept apart because the
      rollout is a noisier instrument and gets a bounded vote at the end. */
   const imm = examine.map(() => ({ sum: 0, n: 0 }));
-  const roll = examine.map(() => ({ sum: 0, n: 0 }));
+  const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0 }));
   const dark = examine.map(() => ({ sum: 0, n: 0 }));
   const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
   /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
@@ -1662,7 +1659,9 @@ function judgeAcrossWorlds(
     const anchor = Math.abs(beamScore) >= WIN / 2 && brokenWin ? Math.sign(beamScore) * 14_000 : beamScore;
     const immA = Math.abs(anchor) >= WIN / 2 ? immAvg : Math.min(immAvg, Math.abs(anchor) + 2_000);
     const base = Math.abs(anchor) >= WIN / 2 ? immAvg : blendRollout(anchor, immA, cfg.voteMix ?? 0.6);
-    const bright = roll[i].n ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX) : base;
+    const bright = roll[i].n
+      ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(roll[i].nodes / roll[i].n))
+      : base;
     /* The nightmare is not a vote, it is a BRANCH: with probability `prior`
        their Set card is the answer they chose it to be, and the plan lives in
        that world at full weight. A clamped vote could never overturn a line
@@ -1751,6 +1750,10 @@ function judgeAcrossWorlds(
           ? evaluate(end, pid, w)
           : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);
         roll[i].n += 1;
+        /* A line whose playouts were all run at the floor has seen less than
+           one that was fed, and says less. Averaged rather than summed: what
+           earns authority is how well EACH playout was run. */
+        roll[i].nodes += end.winner ? ROLLOUT_TRUSTED : slice;
       }
     }
 
@@ -1953,11 +1956,30 @@ const ROLLOUT_AUTHORITY = 3600;
  * The playout can re-rank lines the evaluation rates closely, which is its
  * job, and cannot overturn a reading that is decisive on its face.
  */
-function blendRollout(immediate: number, seen: number, mix: number): number {
+function blendRollout(immediate: number, seen: number, mix: number, confidence = 1): number {
   const k = Math.max(0, Math.min(1, mix));
+  const cap = ROLLOUT_AUTHORITY * Math.max(0, Math.min(1, confidence));
   const shift = (seen - immediate) * k;
-  return immediate + Math.max(-ROLLOUT_AUTHORITY, Math.min(ROLLOUT_AUTHORITY, shift));
+  return immediate + Math.max(-cap, Math.min(cap, shift));
 }
+
+/**
+ * The node count at which a playout has earned its full say.
+ *
+ * `rollout` already knows this number: below it the opponent's reply model is
+ * the narrow one, above it the model plays their turn nearly as well as they
+ * would. A playout that thin was still allowed to move a line by the whole
+ * ±3600 — and it did. Axe Raider 1700 with a clear swing at a Feral Imp 1300
+ * and an empty backrow: the board rated the attack 1267 points above passing,
+ * a 550-node playout — the floor this file itself calls noise — disagreed, and
+ * the AI ended its turn. It attacked again at a smaller budget and at a larger
+ * one, which is the tell: more thinking must never buy a worse move.
+ *
+ * So authority is earned rather than granted. A starved playout nudges; a fed
+ * one can still overturn anything the evaluation has not already decided.
+ */
+const ROLLOUT_TRUSTED = 2000;
+const rolloutTrust = (nodes: number) => Math.max(0, Math.min(1, nodes / ROLLOUT_TRUSTED));
 
 /**
  * Plays the next `turns` whole turns out — both sides, alternating — with the

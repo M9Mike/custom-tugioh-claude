@@ -103,6 +103,11 @@ interface Case {
   build: (s: DuelState) => void;
   want: (plan: DuelAction[], end: DuelState) => boolean;
   because: string;
+  /* Most positions are judged at the serving budget. A few are about the
+     SHAPE of the budget curve — a plan that is right at 300ms and right at
+     8000ms and wrong in between is a search pathology, and the only way to pin
+     it is to ask at the budget where it bit. */
+  budgetMs?: number;
 }
 
 const did = (plan: DuelAction[], type: string) => plan.some((a) => a.type === type);
@@ -523,6 +528,25 @@ const CASES: Case[] = [
       (end.players[ME].hand.some((h) => h.uid === goatUid) || end.players[ME].spellTrap?.uid === goatUid),
   },
   {
+    name: 'swings at a weaker monster with nothing lurking, at the budget the brackets run on',
+    because: 'Axe Raider 1700 over Feral Imp 1300 with an empty backrow kills a body and cannot lose one',
+    /* Reported: "the ai had a clear attack on a weaker monster with no trap
+       card of the opponent and it did not attack." The board rated the swing
+       1267 points above passing; a 550-node playout — the floor this search
+       calls noise — was allowed to move a line by the full ±3600 and talked it
+       out of the attack. It attacked at 300ms and at 8000ms and passed at 900,
+       which is the tell. Pinned at 900 because that is what the bracket's side
+       duels are given per action. */
+    budgetMs: 900,
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'axe-raider');
+      s.players[ME].normalSummonUsed = true;
+      s.players[FOE].monsters[0] = card(FOE, 'feral-imp');
+      s.players[FOE].hand = Array.from({ length: 4 }, () => card(FOE, 'kuriboh'));
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
     name: 'points Stop Defense at the monster that is actually kneeling',
     duelist: 'keith',
     because: 'dragging a monster into Attack Position that is standing there already spends the card and changes nothing',
@@ -555,7 +579,7 @@ for (const c of CASES) {
   for (const seed of SEEDS) {
     const start = fresh(seed, c.duelist ?? 'kaiba');
     c.build(start);
-    const plan = planTurn(start, ME, AI_LEVELS.champion, 2500);
+    const plan = planTurn(start, ME, AI_LEVELS.champion, c.budgetMs ?? 2500);
     let end = start;
     const shown: string[] = [];
     for (const a of plan) {

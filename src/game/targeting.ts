@@ -61,8 +61,14 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (f.attribute && def.attribute !== f.attribute) return false;
   if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
   if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
-  if (f.minAtk != null && (def.atk ?? 0) < f.minAtk) return false;
-  if (f.maxAtk != null && (def.atk ?? 0) > f.maxAtk) return false;
+  /* "?" is not a number. Slifer and Ra are printed with -1 for an ATK that is
+     whatever the hand or the Tributes behind them are worth, and a filter
+     reading that printed value straight counted it as "1500 or less" — which
+     is how Sangan came to hand somebody a God on its way to the Graveyard. An
+     unknown stat satisfies no numeric bound, in either direction. */
+  const printedAtk = def.atk ?? 0;
+  if (f.minAtk != null && (printedAtk < 0 || printedAtk < f.minAtk)) return false;
+  if (f.maxAtk != null && (printedAtk < 0 || printedAtk > f.maxAtk)) return false;
   if (f.nameIncludes && !def.name.toLowerCase().includes(f.nameIncludes.toLowerCase())) return false;
   if (f.toon && !isToon(c.slug)) return false;
   /* "A monster worth setting face-down" asked of the card itself, rather than
@@ -105,5 +111,17 @@ export function revivable(state: DuelState, pid: PlayerId, slug: string, by?: st
      refused — an anonymous Special Summon is exactly the shortcut this bars. */
   const only = CARDS[slug]?.summonOnlyBy;
   if (only?.length && (!by || !only.includes(by))) return false;
+  /* A God is called back by one card in the game and by nothing else.
+     Sangan died, reached into the Deck for the weakest monster it could find,
+     and stood Slifer up — whose printed ATK is nothing, because Slifer's
+     strength is the hand behind it. That is the shape of every route in: a
+     God is the cheapest body in the Deck by any measure a card can read.
+
+     A rule rather than three lines of card data, deliberately. Nothing on the
+     three cards says it and nothing should: a player who works out that
+     Monster Reborn is the one road back has found something, and a player who
+     reads it off the card has merely been told. Tribute Summoning a God is
+     untouched — that is not a Special Summon and does not come through here. */
+  if (CARDS[slug]?.type === 'Divine-Beast' && by !== 'monster-reborn') return false;
   return true;
 }

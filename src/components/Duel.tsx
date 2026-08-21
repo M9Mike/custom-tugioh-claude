@@ -926,8 +926,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      bug it is meant to catch. */
   const pickableUids = useCallback(
     /* `exclude` is the card doing the asking — see `targetCandidates`, which
-       owns that rule now rather than the engine keeping it to itself. */
-    (spec: TargetSpec, exclude?: string): string[] =>
+       owns that rule now rather than the engine keeping it to itself. Required
+       rather than optional: seven of the eight callers passed it and the eighth
+       was `targetableSet`, the one every picker on screen draws from, so Gamma
+       the Magnet Warrior offered itself as a Magnet Warrior to Special Summon.
+       A rule that can be forgotten at one call site will be. */
+    (spec: TargetSpec, exclude: string): string[] =>
       targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true, exclude).map(
         (c) => c.uid
       ),
@@ -984,7 +988,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       /* No question of its own, but the monster it summons may have one. */
       const rider = source === 'spell' ? summonRiderSpec(slug, 'activate') : null;
       if (rider) {
-        const riderOptions = pickableUids(rider);
+        const riderOptions = pickableUids(rider, uid);
         const riderWant = rider.count ?? 1;
         if (riderOptions.length > riderWant) {
           setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: [], effectIndex });
@@ -996,7 +1000,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       send(source, uid, [], effectIndex);
       return;
     }
-    const options = pickableUids(spec);
+    const options = pickableUids(spec, uid);
     const want = spec.count ?? 1;
 
     /* Nothing it can legally point at. That is a reason to refuse only when the
@@ -1059,7 +1063,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
       const choice = !carry ? summonChoiceSpec(slug, 'activate') : null;
       if (choice) {
-        const options = pickableUids(choice);
+        const options = pickableUids(choice, uid);
         if (options.length > 1) {
           setMode({ kind: 'target', source, uid, spec: choice, picked: [], carry: answers });
           return;
@@ -1068,7 +1072,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           const chosen = [...answers, options[0]];
           const solo = chosenSummonRider(options[0]);
           if (solo) {
-            const riderOptions = pickableUids(solo);
+            const riderOptions = pickableUids(solo, uid);
             if (riderOptions.length > (solo.count ?? 1)) {
               setMode({ kind: 'target', source, uid, spec: solo, picked: [], carry: chosen });
               return;
@@ -1085,7 +1089,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       if (carry) {
         const rider2 = picked.length === 1 ? chosenSummonRider(picked[0]) : null;
         if (rider2) {
-          const riderOptions = pickableUids(rider2);
+          const riderOptions = pickableUids(rider2, uid);
           if (riderOptions.length > (rider2.count ?? 1)) {
             setMode({ kind: 'target', source, uid, spec: rider2, picked: [], carry: answers, effectIndex });
             return;
@@ -1099,7 +1103,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
       const rider = summonRiderSpec(slug, 'activate');
       if (rider) {
-        const options = pickableUids(rider);
+        const options = pickableUids(rider, uid);
         const want = rider.count ?? 1;
         if (options.length > want) {
           setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: answers, effectIndex });
@@ -1127,7 +1131,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   };
 
   const targetableSet = useMemo(() => {
-    if (mode.kind === 'target') return new Set(pickableUids(mode.spec).filter((u) => !mode.picked.includes(u)));
+    /* `mode.uid` is the card doing the asking, and it is never one of its own
+       answers — the rule `targetCandidates` owns. The gate that decides whether
+       to open this modal at all has always passed it; the modal itself did not,
+       so Gamma the Magnet Warrior laid itself out as a Magnet Warrior to
+       Special Summon while it was the card being Summoned. Reported. Every
+       other picker on screen filters through this set, so saying it here says
+       it everywhere. */
+    if (mode.kind === 'target') return new Set(pickableUids(mode.spec, mode.uid).filter((u) => !mode.picked.includes(u)));
     if (mode.kind === 'attack') {
       const c = mine.monsters.find((m) => m?.uid === mode.uid);
       if (!c) return new Set<string>();

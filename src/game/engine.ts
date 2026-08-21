@@ -4778,6 +4778,17 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       if (!def || def.kind !== 'monster') return { state: prev, error: 'That is not a monster.' };
       const blocked = summonBlocked(state, pid, c.slug);
       if (blocked) return { state: prev, error: blocked };
+      /* Two postures out of the hand and no third: standing up to fight, or
+         Set face-down, which is what "Set" means and why the line below forces
+         Defence on it. Face-up Defence is reached by turning a monster that is
+         already on the field, never by arriving in it.
+         Asked here because the board offers exactly those two buttons and the
+         search was offering itself a third — a wall summoned AS a wall, which
+         no player could answer with. An AI move the rules do not have is a
+         cheat however good the reasoning behind it was. */
+      if (action.face === 'up' && action.position === 'def') {
+        return { state: prev, error: 'A monster arrives attacking, or Set face-down.' };
+      }
       // `Number.isInteger` first, and it is not belt-and-braces: an action
       // arriving with no zone at all sailed through `undefined < 0 ||
       // undefined >= 3` — both false — and the summon then wrote to
