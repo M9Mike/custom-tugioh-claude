@@ -401,7 +401,11 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   else score -= threat * 0.55;
 
   const pressure = threatAgainst(state, foe, me);
-  if (pressure >= their.lp) score += 20_000;
+  /* "Lethal next turn" is not a fact while a Set card could erase the board
+     that delivers it. The cliff was what made every all-in line tower over
+     every careful one by more than any risk term could claw back — the
+     mechanism, measured move for move, behind "I win 100% of the games". */
+  if (pressure >= their.lp && !(their.spellTrap && their.spellTrap.face === 'down')) score += 20_000;
   else score += pressure * 0.4;
 
   return score;
@@ -787,7 +791,46 @@ function shuffleWith<T>(arr: T[], rnd: () => number): void {
  * real one rather than a preview of it. Card counts in every zone are public
  * information and are preserved exactly.
  */
-function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean): DuelState {
+/** The most punishing trap the opponent's unseen cards could put in that zone. */
+function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[] }): string | null {
+  let best: string | null = null;
+  let bestWorth = 0;
+  for (const c of [...foe.hand, ...foe.deck]) {
+    if (CARDS[c.slug]?.kind !== 'trap') continue;
+    const worth = trapWorth(c.slug);
+    if (worth > bestWorth) {
+      bestWorth = worth;
+      best = c.slug;
+    }
+  }
+  return best;
+}
+
+/**
+ * How much of a vote the paranoid world gets.
+ *
+ * The honest base is "what share of their unseen cards are traps", scaled up
+ * because a card somebody CHOSE to set face-down is not a uniform draw, and
+ * floored well above zero for the same reason: a human's Set card is an
+ * answer more often than chance ever says. Capped below one so doctrine still
+ * rules — fear is a tax on overcommitting, never a veto on attacking. The
+ * owner's report priced the old zero-floor version exactly: "I win 100% of
+ * the games", by setting a wipe and watching the whole board walk into it.
+ */
+function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
+  const foe = state.players[other(viewer)];
+  if (!foe.spellTrap || foe.spellTrap.face !== 'down') return 0;
+  const pool = [...foe.hand, ...foe.deck];
+  if (!pool.length) return 0;
+  const traps = pool.filter((c) => CARDS[c.slug]?.kind === 'trap').length;
+  /* The floor is high because the commitment scaling protects doctrine for
+     it: a lone attack or first summon carries zero fear whatever this says,
+     so the prior only prices what it should — a human who CHOSE to set a
+     card, answered with a whole board. */
+  return Math.max(0.4, Math.min(0.55, (2.5 * traps) / pool.length));
+}
+
+function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean, paranoid = false): DuelState {
   const view = cloneState(state);
   view.log = [];
   view.logShown = 0;
@@ -818,7 +861,10 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      stand-in is a monster slug, so no trap window ever opens off it; the
      evaluation still counts the zone as an unknown threat, and the real card
      gets its say in the real duel, where it belongs. */
-  if (foe.spellTrap && foe.spellTrap.face === 'down') reidentify(foe.spellTrap, UNKNOWN_PROXY);
+  if (foe.spellTrap && foe.spellTrap.face === 'down') {
+    const trap = paranoid ? scariestUnseenTrap(foe) : null;
+    reidentify(foe.spellTrap, trap ?? UNKNOWN_PROXY);
+  }
 
   if (!sample) {
     for (const m of hiddenMonsters) reidentify(m, UNKNOWN_PROXY);
@@ -1206,6 +1252,36 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
   const all = [...merged.values()].sort((a, b) => b.score - a.score);
   if (!all.length) return [{ type: 'endTurn' }];
 
+  /* When a Set card lurks, the judged pool must contain the held-back
+     versions of the leading attack — or the paranoid world has nothing to
+     acquit. The beam never writes them down: every top slot goes to another
+     ordering of the same all-in turn, because in the expectation world the
+     extra attacks are free. Synthesized here: the leader cut short after
+     each attack, replayed in the same world for an honest anchor score. */
+  if (worlds > 0 && all.length > 1 && paranoiaPrior(state, pid) > 0) {
+    const leader = all[0];
+    const attackAt = leader.actions.map((a, i) => (a.type === 'attack' ? i : -1)).filter((i) => i >= 0);
+    for (let cut = 1; cut < attackAt.length; cut++) {
+      const trimmed: DuelAction[] = [...leader.actions.slice(0, attackAt[cut]), { type: 'endTurn' }];
+      const tkey = trimmed.map(actionKey).join('|');
+      if (merged.has(tkey)) continue;
+      let cur = cloneState(base);
+      let okLine = true;
+      for (const a of trimmed) {
+        const r = sim(clock, cur, pid, a);
+        if (r.error) {
+          okLine = false;
+          break;
+        }
+        cur = r.state;
+      }
+      if (!okLine) continue;
+      merged.set(tkey, { state: cur, actions: trimmed, score: evaluate(cur, pid, w), done: true });
+    }
+    all.length = 0;
+    all.push(...[...merged.values()].sort((a, b) => b.score - a.score));
+  }
+
   /* The judging can move a line's score by at most one bounded vote and one
      bounded rollout blend — ROLLOUT_AUTHORITY each way, each. When the beam's
      top two UNDECIDED lines sit further apart than both bounds combined, no
@@ -1214,7 +1290,11 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
      waiting. Decided lines are exempt — a WIN-scored gamble needs the worlds
      to price the coin. */
   const UNFLIPPABLE = 4 * ROLLOUT_AUTHORITY;
+  /* No proven verdict while a Set card lurks: the bound only covers the
+     bounded votes, and the paranoid world's testimony is exactly the part
+     of the trial an attack-heavy leader most needs to hear. */
   const settled =
+    paranoiaPrior(state, pid) === 0 &&
     all.length > 1 &&
     Math.abs(all[0].score) < WIN / 2 &&
     Math.abs(all[1].score) < WIN / 2 &&
@@ -1282,6 +1362,24 @@ function judgeAcrossWorlds(
      rollout is a noisier instrument and gets a bounded vote at the end. */
   const imm = examine.map(() => ({ sum: 0, n: 0 }));
   const roll = examine.map(() => ({ sum: 0, n: 0 }));
+  const dark = examine.map(() => ({ sum: 0, n: 0 }));
+  const prior = paranoiaPrior(state, pid);
+  /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
+     the first attack and the first summon go in whatever is face-down, or the
+     computer stops duelling. The nightmare's weight therefore scales with the
+     line's COMMITMENT: nothing for the first body risked, half for the
+     second, full from the third — a tax on stacking the whole board behind
+     one card, never a veto on playing the game. */
+  const commitsOf = (actions: DuelAction[]): number => {
+    const attackers = new Set<string>();
+    let summons = 0;
+    for (const a of actions) {
+      if (a.type === 'attack') attackers.add(a.uid);
+      else if (a.type === 'normalSummon' || a.type === 'handSummon' || a.type === 'fusionSummon') summons += 1;
+    }
+    return attackers.size + summons;
+  };
+  const darkWeight = examine.map((l) => prior * Math.min(1, Math.max(0, (commitsOf(l.actions) - 1) / 2)));
   const ends: DuelState[][] = examine.map(() => []);
 
   const ROLLOUT_FLOOR = 550; // nodes — a rollout thinner than this is noise
@@ -1295,9 +1393,25 @@ function judgeAcrossWorlds(
        it a bounded amount; the first cut of this function let a three-sample
        average replace the anchor outright and lost five points of win rate to
        its own variance. */
-    const base = Math.abs(beamScore) >= WIN / 2 ? immAvg : blendRollout(beamScore, immAvg, cfg.voteMix ?? 0.6);
-    if (!roll[i].n) return base;
-    return blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX);
+    /* A decided line is only decided if it survives the nightmare too. A
+       lethal that a Set card erases is a plan, not a verdict: it is demoted
+       to mortal scale and weighed like everything else, where the dark
+       branch can speak. When nothing is Set (prior 0), the pure decided
+       path is untouched — the Ra coin-lethal pricing depends on it. */
+    const wDark = darkWeight[i];
+    const brokenWin = wDark > 0 && dark[i].n > 0 && dark[i].sum / dark[i].n < WIN / 2;
+    const anchor = Math.abs(beamScore) >= WIN / 2 && brokenWin ? Math.sign(beamScore) * 14_000 : beamScore;
+    const immA = Math.abs(anchor) >= WIN / 2 ? immAvg : Math.min(immAvg, Math.abs(anchor) + 2_000);
+    const base = Math.abs(anchor) >= WIN / 2 ? immAvg : blendRollout(anchor, immA, cfg.voteMix ?? 0.6);
+    const bright = roll[i].n ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX) : base;
+    /* The nightmare is not a vote, it is a BRANCH: with probability `prior`
+       their Set card is the answer they chose it to be, and the plan lives in
+       that world at full weight. A clamped vote could never overturn a line
+       towering on optimism — the owner's 100% win rate was the proof — so
+       the two worlds are mixed as probabilities, the way a player actually
+       weighs a face-down card. */
+    if (!dark[i].n || wDark <= 0) return bright;
+    return (1 - wDark) * bright + wDark * (dark[i].sum / dark[i].n);
   };
 
   /* One round = one fresh sampled world, every candidate replayed in it, and
@@ -1318,6 +1432,37 @@ function judgeAcrossWorlds(
       ends[i].push(end);
       imm[i].sum += evaluate(end, pid, w);
       imm[i].n += 1;
+    }
+
+    /* The paranoid vote, every round: the same plans replayed in a world
+       where their Set card is the strongest trap their unseen cards could
+       be, folded in at the honest prior. This is what stops the computer
+       committing three attackers through one card back — the wipe it risks
+       is finally on the bill — while a lone profitable attack keeps its
+       margin and goes in, which is what the doctrine checks demand. It was
+       shipped once, removed on mirror-match evidence, and the owner priced
+       that removal precisely: "I win 100% of the games."  Mirrors cannot
+       see this term because both seats share the blindness; a human never
+       shares it. */
+    if (!drained(clock) && prior > 0) {
+      const nightmare = buildWorld(state, pid, 990 + round, true, true);
+      for (let i = 0; i < M; i++) {
+        if (drained(clock)) break;
+        const end = playOutPlan(clock, nightmare, pid, examine[i].actions, w);
+        /* The nightmare deserves the same look-ahead the bright world gets,
+           UNCLAMPED: a wiped board reads as a mild setback the moment the
+           turn ends, and as the near-loss it actually is one reply later,
+           when their counterattack stands over it and the evaluation's own
+           cliffs finally see it. Clamped, that testimony could never outbid
+           a tower of optimism — which is how the all-in kept winning the
+           argument and losing the duel. */
+        let seen = evaluate(end, pid, w);
+        if (!end.winner && clock.left > ROLLOUT_FLOOR) {
+          seen = (seen + rollout(clock, ROLLOUT_FLOOR, end, pid, 1, w, true)) / 2;
+        }
+        dark[i].sum += seen;
+        dark[i].n += 1;
+      }
     }
 
     /* Gambling plans get a second throw of the same world's dice: identical
@@ -1379,6 +1524,16 @@ function judgeAcrossWorlds(
     }
   }
 
+  if (process.env.DEBUG_AI === '1') {
+    for (let i = 0; i < M; i++) {
+      const atk = examine[i].actions.filter((a) => a.type === 'attack').length;
+      const pos = examine[i].actions.filter((a) => a.type === 'changePosition').length;
+      console.log(
+        `    [judge] line ${i}: attacks=${atk} defswitch=${pos} beam=${Math.round(examine[i].score)} imm=${imm[i].n ? Math.round(imm[i].sum / imm[i].n) : '-'} dark=${dark[i].n ? Math.round(dark[i].sum / dark[i].n) : '-'} final=${Math.round(score(i))}`
+      );
+    }
+    console.log(`    [judge] prior=${prior.toFixed(2)}`);
+  }
   const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) }));
   out.sort((a, b) => b.score - a.score);
   out.push(...all.slice(examine.length));

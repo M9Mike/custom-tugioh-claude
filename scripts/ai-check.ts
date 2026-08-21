@@ -376,6 +376,32 @@ const CASES: Case[] = [
     want: (plan) => plan.some((a) => a.type === 'activateSpell' && a.uid === swordsUid),
   },
   {
+    /* The owner's exploit, reported as "I win 100% of the games": set a wipe
+       behind a weak monster, and the computer commits every attacker it has.
+       The fix is the paranoid branch with commitment scaling — the first
+       attack is never feared (the doctrine controls above insist), but the
+       whole board is never bet on one face-down card either. */
+    name: 'attacks in waves through an unread Set card, never all-in',
+    duelist: 'kaiba',
+    because: 'one card back can be a board wipe; a professional probes with one or two attackers and keeps the rest',
+    build: (s) => {
+      s.players[ME].lp = 6000;
+      s.players[FOE].lp = 6000;
+      s.players[ME].monsters[0] = card(ME, 'summoned-skull');
+      s.players[ME].monsters[1] = card(ME, 'garoozis');
+      s.players[ME].monsters[2] = card(ME, 'battle-ox');
+      s.players[FOE].monsters[0] = card(FOE, 'kuriboh');
+      const set = card(FOE, 'mirror-force');
+      set.face = 'down';
+      s.players[FOE].spellTrap = set;
+      s.players[FOE].hand = [card(FOE, 'dark-magician'), card(FOE, 'curse-of-dragon'), card(FOE, 'mystical-elf')];
+    },
+    want: (plan) => {
+      const attackers = new Set(plan.filter((a) => a.type === 'attack').map((a) => (a as { uid: string }).uid));
+      return attackers.size >= 1 && attackers.size <= 2;
+    },
+  },
+  {
     name: 'never leaves a turn half-played',
     because: 'a plan must run the turn out, end the duel, or hand a decision to the other seat',
     build: (s) => {
