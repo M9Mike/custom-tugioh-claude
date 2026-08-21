@@ -321,6 +321,46 @@ function trapWorth(slug: string): number {
 }
 
 /**
+ * What a monster threatens beyond its printed numbers, read off its effects.
+ *
+ * A Red-Eyes that burns for 800 a turn and grows with every kill, a Zoa about
+ * to shed into Metalzoa, a scorpion that eats what it kills — all of them
+ * read as "just a number" to an evaluation that stops at ATK and DEF, and the
+ * owner watched the computer ignore every boss on the table because a plain
+ * 2500 stood beside it. Derived from the card's own ops, cached, and honest:
+ * face-up monsters only, because a face-down one has not been shown.
+ */
+const MENACE = new Map<string, number>();
+function menace(slug: string): number {
+  const cached = MENACE.get(slug);
+  if (cached !== undefined) return cached;
+  let worth = 0;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.trigger === 'ignition') {
+      for (const op of eff.ops) {
+        if (op.op === 'damage') worth += Math.min(600, ('amount' in op ? (op.amount ?? 0) : 0) * 0.5 + ('plusPerCounter' in op && op.plusPerCounter ? 200 : 0));
+        else if (op.op === 'destroy') worth += 400;
+        else if (op.op === 'possess' || op.op === 'takeControl') worth += 500;
+        else worth += 60;
+      }
+    } else if (eff.trigger === 'onBattleDestroy') {
+      for (const op of eff.ops) {
+        if (op.op === 'gainAtk') worth += Math.min(500, 'amount' in op ? (op.amount ?? 0) : 0);
+        else if (op.op === 'damage') worth += Math.min(400, ('amount' in op ? (op.amount ?? 0) : 0) * 0.4);
+        else if (op.op === 'absorb') worth += 600;
+        else worth += 80;
+      }
+    } else if (eff.trigger === 'onDestroyed') {
+      // It dies into another body — killing it is only half a kill.
+      if (eff.ops.some((op) => op.op === 'specialSummon' || op.op === 'summonToken')) worth += 250;
+    }
+  }
+  const clamped = Math.min(1200, worth);
+  MENACE.set(slug, clamped);
+  return clamped;
+}
+
+/**
  * Scores a position from `me`'s point of view, in Life-Point-ish units. Only
  * information this player could legitimately see is used: face-down cards on
  * the other side of the field count as an average body, never their real stats.
@@ -344,6 +384,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     if (!m) continue;
     const b = bodyOf(state, m, me, me);
     score += b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
+    if (m.face === 'up') score += menace(m.slug) * 0.6;
     if (m.face === 'down') score += 120; // unknown to the opponent
     if (b.pierce) score += 120;
     if (b.direct) score += 260;
@@ -358,6 +399,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     if (!m) continue;
     const b = bodyOf(state, m, foe, me);
     score -= b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
+    if (m.face === 'up') score -= menace(m.slug) * 0.6;
     if (m.face === 'down') score -= 120;
     if (m.rentPerTurn && m.owner !== foe) score += m.rentPerTurn * 0.8;
   }
@@ -400,7 +442,14 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   if (threat >= my.lp) score -= 25_000;
   else score -= threat * 0.55;
 
+  /* Life Points are a cushion, not a score: the closer their board comes to
+     covering what is left, the more every further point costs. Linear LP made
+     the 800th point worth the 8000th, and the computer donated its cushion to
+     bad trades all game. */
+  if (threat > 0 && threat < my.lp && my.lp < threat * 2) score -= (threat * 2 - my.lp) * 0.4;
+
   const pressure = threatAgainst(state, foe, me);
+  if (pressure > 0 && pressure < their.lp && their.lp < pressure * 2) score += (pressure * 2 - their.lp) * 0.3;
   /* "Lethal next turn" is not a fact while a Set card could erase the board
      that delivers it. The cliff was what made every all-in line tower over
      every careful one by more than any risk term could claw back — the
@@ -449,9 +498,9 @@ function targetsFor(
      the AI kept pointing its removal at the wrong monster. */
   const worth = (c: CardInstance): number => {
     for (const id of ['p1', 'p2'] as PlayerId[]) {
-      if (state.players[id].monsters.some((m) => m?.uid === c.uid)) return effAtk(state, c, id);
+      if (state.players[id].monsters.some((m) => m?.uid === c.uid)) return effAtk(state, c, id) + menace(c.slug) * 0.8;
     }
-    return CARDS[c.slug]?.atk ?? 0;
+    return (CARDS[c.slug]?.atk ?? 0) + menace(c.slug) * 0.8;
   };
   const ranked = [...pool].sort((a, b) => worth(b) - worth(a));
   const out: string[][] = [];
@@ -647,7 +696,10 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
           const bv = b.position === 'atk' ? effAtk(state, b, foe) : effDef(state, b, foe);
           const aKill = av < atk ? 0 : 1;
           const bKill = bv < atk ? 0 : 1;
-          return aKill - bKill || bv - av;
+          // Among kills, the monster that threatens the most goes down first.
+          const am = a.face === 'up' ? menace(a.slug) * 0.8 : 0;
+          const bm = b.face === 'up' ? menace(b.slug) * 0.8 : 0;
+          return aKill - bKill || bv + bm - (av + am);
         });
       for (const t of ranked) acts.push({ type: 'attack', uid: m.uid, targetUid: t.uid });
     }
@@ -1483,11 +1535,11 @@ function judgeAcrossWorlds(
        share of the clock lasts. */
     if (cfg.depth > 0) {
       const order = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
-      for (const i of order.slice(0, 4)) {
+      for (const i of order.slice(0, 5)) {
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
-        const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 6));
+        const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 5));
         roll[i].sum += end.winner
           ? evaluate(end, pid, w)
           : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);

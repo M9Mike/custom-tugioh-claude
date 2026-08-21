@@ -111,6 +111,8 @@ const did = (plan: DuelAction[], type: string) => plan.some((a) => a.type === ty
 let elfUid = '';
 let twUid = '';
 let swordsUid = '';
+let doomUid = '';
+let redEyesUid = '';
 
 const CASES: Case[] = [
   {
@@ -400,6 +402,35 @@ const CASES: Case[] = [
       const attackers = new Set(plan.filter((a) => a.type === 'attack').map((a) => (a as { uid: string }).uid));
       return attackers.size >= 1 && attackers.size <= 2;
     },
+  },
+  {
+    /* "It has no idea to go for their boss monsters" — the owner, correctly.
+       By printed numbers the plain 2500 outranks the 2400 Red-Eyes, and the
+       removal always took the bigger number while the dragon burned 800 a
+       turn and grew with every kill. Menace, derived from the card's own
+       ops, is what flips this: the monster that threatens the most goes
+       down first. */
+    name: 'spends its removal on the boss, not the biggest number',
+    duelist: 'yami',
+    because: 'the 2600 Zoa dies into a 3000 Metalzoa if destroyed by effect; the Red-Eyes burns and grows every turn it lives — the removal belongs on the boss',
+    build: (s) => {
+      const doom = card(ME, 'tribute-to-the-doomed');
+      doomUid = doom.uid;
+      s.players[ME].hand = [doom, card(ME, 'kuriboh'), card(ME, 'big-shield-gardna')];
+      s.players[ME].monsters[0] = card(ME, 'battle-ox'); // beats neither by battle
+      redEyesUid = '';
+      const boss = card(FOE, 'red-eyes-black-dragon');
+      redEyesUid = boss.uid;
+      s.players[FOE].monsters[0] = boss;
+      s.players[FOE].monsters[1] = card(FOE, 'zoa');
+      // The trap inside the pin: Zoa's replacement is really in their deck,
+      // so the search can SEE that dooming it hands them a 3000 Metalzoa.
+      s.players[FOE].deck.push(card(FOE, 'metalzoa'));
+      s.players[FOE].lp = 8000;
+      s.players[ME].lp = 8000;
+    },
+    want: (plan) =>
+      plan.some((a) => a.type === 'activateSpell' && a.uid === doomUid && (a.targets ?? []).includes(redEyesUid)),
   },
   {
     name: 'never leaves a turn half-played',
