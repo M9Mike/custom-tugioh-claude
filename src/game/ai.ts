@@ -513,7 +513,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
         /* Capped per body and in total: the charge is for standing wrong,
            and it must never grow past the point where dying starts to look
            like relief. */
-        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.5);
+        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.65);
       }
       score -= Math.min(800, leak);
     }
@@ -559,6 +559,13 @@ function targetsFor(
     } else if (spec.zone === 'grave') {
       pool.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster'));
     } else if (spec.zone === 'hand' && id === pid) pool.push(...p.hand);
+    else if (spec.zone === 'deck' && id === pid) {
+      /* Your own Deck's CONTENTS are yours to know — only its order is
+         hidden, and picking the best card by worth reads none of it. This is
+         what lets Temple of the Kings actually choose the next draw instead
+         of shrugging and taking whatever falls. */
+      pool.push(...p.deck);
+    }
   }
   if (!pool.length) return [[]];
 
@@ -610,7 +617,14 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
   if (state.phase === 'main') {
     // Fusions first — they are usually the strongest play available.
     for (const f of fusionOptions(state, pid)) {
-      const zone = p.monsters.findIndex((m) => !m);
+      /* The engine sends the materials to the Graveyard BEFORE it resolves
+         the zone, so a board filled by its own materials is a legal fusion —
+         and the audit caught the old free-zone check silently deleting
+         Valkyrion's whole primary line: three magnets on the field is, by
+         definition, a full board. If no zone is free now, aim at the slot a
+         field material is about to vacate. */
+      let zone = p.monsters.findIndex((m) => !m);
+      if (zone < 0) zone = p.monsters.findIndex((m) => m && f.materials.includes(m.uid));
       if (zone >= 0) acts.push({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone, position: 'atk' });
     }
 
@@ -685,12 +699,26 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     for (const h of p.hand) {
       const offer = handSummonOffer(state, pid, h);
       if (!offer?.ok) continue;
-      const spare = p.hand
-        .filter((x) => x.uid !== h.uid)
+      /* The price of the summon is a card, and WHICH card is a real decision
+         the old single pick by printed ATK got exactly backwards: every
+         Spell prices at zero, so the equip that was the only kill got fed
+         first. Offer the cheapest monster AND the cheapest spell as separate
+         candidates and let the search compare what each future is worth. */
+      const others = p.hand.filter((x) => x.uid !== h.uid);
+      const spares: CardInstance[] = [];
+      const cheapMonster = others
+        .filter((x) => CARDS[x.slug]?.kind === 'monster')
         .sort((a, b) => (CARDS[a.slug]?.atk ?? 0) - (CARDS[b.slug]?.atk ?? 0))[0];
-      if (offer.discard && !spare) continue;
-      for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
-        acts.push({ type: 'handSummon', uid: h.uid, discardUid: offer.discard ? spare!.uid : undefined, targets: t });
+      const cheapSpell = others
+        .filter((x) => CARDS[x.slug]?.kind !== 'monster')
+        .sort((a, b) => trapWorth(a.slug) - trapWorth(b.slug))[0];
+      if (cheapMonster) spares.push(cheapMonster);
+      if (cheapSpell) spares.push(cheapSpell);
+      if (offer.discard && !spares.length) continue;
+      for (const spare of offer.discard ? spares : [undefined]) {
+        for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
+          acts.push({ type: 'handSummon', uid: h.uid, discardUid: spare?.uid, targets: t });
+        }
       }
     }
 
@@ -754,6 +782,27 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
 
   if (state.phase === 'battle') {
     const attackers = ownMonsters.filter((m) => canAttackWith(state, pid, m)).sort(byAtkDesc(state, pid));
+    /* What the monster swings WITH, not what it stands at: Metalzoa doubles
+       when attacking, Pendulum Machine hits Defence 1250 harder, and a
+       declare-rider pumps on the way in. The audit caught the plain-ATK
+       filter deleting on-board lethals through every one of these. */
+    const declareRider = (slug: string): number => {
+      let bonus = 0;
+      for (const eff of CARDS[slug]?.effects ?? []) {
+        if (eff.trigger !== 'onDeclareAttack') continue;
+        for (const op of eff.ops) {
+          if (op.op === 'gainAtk' && 'amount' in op) bonus += op.amount ?? 0;
+        }
+      }
+      return bonus;
+    };
+    const swingAtk = (m: CardInstance, vsDefense: boolean): number => {
+      const f = effFlags(state, m, pid);
+      let atk = effAtk(state, m, pid) + declareRider(m.slug);
+      if (f.doublesWhenAttacking) atk *= 2;
+      if (vsDefense) atk += f.bonusVsDefense ?? 0;
+      return atk;
+    };
     for (const m of attackers) {
       const { uids, direct } = legalAttackTargets(state, pid, m);
       if (direct) acts.push({ type: 'attack', uid: m.uid, targetUid: null });
@@ -769,7 +818,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
            used to pick one. Not offered at all: kills and even trades only. */
         .filter((t) => {
           const wall = t.face === 'down' ? UNKNOWN_DEF : t.position === 'atk' ? effAtk(state, t, foe) : effDef(state, t, foe);
-          return atk >= wall;
+          return swingAtk(m, t.face === 'down' || t.position === 'def') >= wall;
         })
         .sort((a, b) => {
           const av = a.position === 'atk' ? effAtk(state, a, foe) : effDef(state, a, foe);
@@ -1384,6 +1433,40 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
   const all = [...merged.values()].sort((a, b) => b.score - a.score);
   if (!all.length) return [{ type: 'endTurn' }];
 
+  /* A gambling leader is judged against its own sober twin: the same turn
+     with the coin and dice actions removed. The beam never writes the twin
+     down — in the one expectation world the throw came up good, so spinning
+     first is free — and with nothing to compare against, the judge could
+     only rank shades of the same gamble. The audit's Time Wizard spun a
+     dominant board because of exactly this. */
+  if (worlds > 0 && all.length > 0 && planGambles(all[0].actions, state)) {
+    const sober = all[0].actions.filter((a) => {
+      if (a.type !== 'ignition' && a.type !== 'activateSpell' && a.type !== 'activateSetCard') return true;
+      return !planGambles([a], state);
+    });
+    if (sober.length < all[0].actions.length) {
+      const key = sober.map(actionKey).join('|');
+      if (!merged.has(key)) {
+        let cur = cloneState(base);
+        let okLine = true;
+        for (const a of sober) {
+          const r = sim(clock, cur, pid, a);
+          if (r.error) {
+            okLine = false;
+            break;
+          }
+          cur = r.state;
+        }
+        if (okLine) {
+          const line: Line = { state: cur, actions: sober, score: evaluate(cur, pid, w), done: true };
+          merged.set(key, line);
+          all.push(line);
+          all.sort((a, b) => b.score - a.score);
+        }
+      }
+    }
+  }
+
   /* When a Set card lurks, the judged pool must contain the held-back
      versions of the leading attack — or the paranoid world has nothing to
      acquit. The beam never writes them down: every top slot goes to another
@@ -1531,7 +1614,16 @@ function judgeAcrossWorlds(
        branch can speak. When nothing is Set (prior 0), the pure decided
        path is untouched — the Ra coin-lethal pricing depends on it. */
     const wDark = darkWeight[i];
-    const brokenWin = wDark > 0 && dark[i].n > 0 && dark[i].sum / dark[i].n < WIN / 2;
+    /* A gambling line whose sampled worlds do not ALL land the win is a coin,
+       not a verdict — the audit caught Time Wizard betting a dominant board
+       because the one expectation world happened to flip heads into the
+       lethal cliff. Its anchor demotes to mortal scale and the samples price
+       the coin at its real odds. */
+    const gambleBroken =
+      planGambles(examine[i].actions, state) &&
+      ends[i].length > 0 &&
+      ends[i].some((e) => e.winner !== pid);
+    const brokenWin = gambleBroken || (wDark > 0 && dark[i].n > 0 && dark[i].sum / dark[i].n < WIN / 2);
     const anchor = Math.abs(beamScore) >= WIN / 2 && brokenWin ? Math.sign(beamScore) * 14_000 : beamScore;
     const immA = Math.abs(anchor) >= WIN / 2 ? immAvg : Math.min(immAvg, Math.abs(anchor) + 2_000);
     const base = Math.abs(anchor) >= WIN / 2 ? immAvg : blendRollout(anchor, immA, cfg.voteMix ?? 0.6);
@@ -1668,6 +1760,52 @@ function judgeAcrossWorlds(
   }
   const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) }));
   out.sort((a, b) => b.score - a.score);
+  /* A certain win outranks a coin-flip win whatever the sampled throws said:
+     with few samples a fair coin can land heads every time, and the audit
+     caught Time Wizard spinning a dominant board it could simply have swung.
+     If the leader gambles and a non-gambling line is also decided, the sure
+     thing leads. */
+  if (out.length > 1 && out[0].score >= WIN / 2 && planGambles(out[0].actions, state)) {
+    const sure = out.findIndex((l) => l.score >= WIN / 2 && !planGambles(l.actions, state));
+    if (sure > 0) out.unshift(out.splice(sure, 1)[0]);
+  }
+  /* Near-ties are settled by the board, not by the noise. Two lines within a
+     few hundred points are inside the sampling's own error bar, and which one
+     the votes favoured is weather; what is NOT weather is Life Points kept
+     and bodies left standing in the line of fire. Ordered: keep more Life
+     Points first, then fewer outgunned bodies in Attack Position. */
+  const exposure = (s: DuelState): number => {
+    const mine = s.players[pid];
+    const foeP = s.players[other(pid)];
+    let bestFoe = 0;
+    for (const fm of foeP.monsters) {
+      if (fm && fm.face === 'up' && fm.position === 'atk') bestFoe = Math.max(bestFoe, effAtk(s, fm, other(pid)));
+    }
+    if (!bestFoe) return 0;
+    return mine.monsters.filter((m) => m && m.face === 'up' && m.position === 'atk' && effAtk(s, m, pid) < bestFoe).length;
+  };
+  if (out.length > 1 && out[0].score - out[1].score < 3000 && Math.abs(out[0].score) < WIN / 2) {
+    const band = out.filter((l) => out[0].score - l.score < 3000 && Math.abs(l.score) < WIN / 2);
+    band.sort((a, b) => b.state.players[pid].lp - a.state.players[pid].lp || exposure(a.state) - exposure(b.state));
+    if (band[0] !== out[0]) {
+      out.splice(out.indexOf(band[0]), 1);
+      out.unshift(band[0]);
+    }
+  }
+
+  /* And below the certain-win line: a winning board is never gambled. The
+     evaluation's cliff terms price a heads outcome far above what the tails
+     side really costs, so a comfortable position kept reading spin-first as
+     profit. If the best sober line is already clearly winning, the coin only
+     has downside that matters — take the sure road and keep the dice for the
+     days the board is losing, which is what they are for. */
+  if (out.length > 1 && out[0].score < WIN / 2 && planGambles(out[0].actions, state)) {
+    const sober = out.find((l) => !planGambles(l.actions, state));
+    if (sober && sober.score >= 8000) {
+      out.splice(out.indexOf(sober), 1);
+      out.unshift(sober);
+    }
+  }
   out.push(...all.slice(examine.length));
   return out;
 }
