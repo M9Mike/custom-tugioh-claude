@@ -114,6 +114,7 @@ let swordsUid = '';
 let doomUid = '';
 let redEyesUid = '';
 let mofUid = '';
+let goatUid = '';
 
 const CASES: Case[] = [
   {
@@ -494,6 +495,30 @@ const CASES: Case[] = [
     // `aiNext` searches again from what is left. Only stopping with the turn
     // still ours and nothing owed is a plan that gave up.
     want: (_plan, end) => end.active !== ME || !!end.winner || !!end.pending,
+  },
+  {
+    name: 'does not spend Scapegoat with no room for a single Sheep',
+    duelist: 'joey',
+    because: 'three Sheep Tokens over three occupied zones is three Tokens that never arrive, and the card is gone',
+    /* The position is not invented: a sweep of full-board Joey boards found
+       the search throwing the card away in hundreds of them, and this is one
+       of the ones it threw. Reported from a real duel first — "Joey ai
+       activated scape gotes when he had full monster field already". */
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'flame-swordsman');
+      s.players[ME].monsters[1] = card(ME, 'baby-dragon');
+      s.players[ME].monsters[2] = card(ME, 'axe-raider', 'def');
+      goatUid = (s.players[ME].hand = [card(ME, 'scapegoat'), card(ME, 'shield-sword')])[0].uid;
+      s.players[ME].normalSummonUsed = true;
+      s.players[FOE].monsters[0] = card(FOE, 'dark-magician');
+    },
+    /* Setting it is not the misplay — a Set Quick-Play is a wall held for
+       their turn, and it is what the AI does here now. Only spending it into
+       three occupied zones is forbidden, and the card must still be somewhere
+       it can be spent later. */
+    want: (plan, end) =>
+      !plan.some((a) => a.type === 'activateSpell' && (a as { uid?: string }).uid === goatUid) &&
+      (end.players[ME].hand.some((h) => h.uid === goatUid) || end.players[ME].spellTrap?.uid === goatUid),
   },
 ];
 

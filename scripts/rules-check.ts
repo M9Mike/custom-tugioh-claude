@@ -1966,8 +1966,15 @@ console.log('\nThe Ultimate is only ever reached by climbing');
   const spec = targetSpecFor('monster-reborn', 'activate');
   const offered = spec ? targetCandidates(g, ME, spec).map((c) => c.slug) : [];
   ok(!offered.includes('perfectly-ultimate-great-moth'), 'Monster Reborn is not even offered it', offered.join(',') || '(nothing)');
-  const raised = act(g, ME, { type: 'activateSpell', uid: reborn.uid, targets: [g.players[ME].grave[0].uid] });
-  ok(!on(raised, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'and cannot raise it even when pointed straight at it');
+  /* Pointed straight at it, the Reborn is now refused rather than announced
+     and wasted — a Graveyard holding nothing this card may raise is a Special
+     Summon with an empty pool, and those stopped being activatable when the
+     Scapegoat report was generalised. The card stays in hand for a target it
+     can actually reach. */
+  const raised = applyAction(g, ME, { type: 'activateSpell', uid: reborn.uid, targets: [g.players[ME].grave[0].uid] });
+  ok(!!raised.error, 'and the Reborn is refused rather than spent on it', raised.error ?? '(allowed)');
+  ok(!on(raised.state, ME).some((m) => m.slug === 'perfectly-ultimate-great-moth'), 'so it never reaches the field that way');
+  ok(raised.state.players[ME].hand.some((h) => h.uid === reborn.uid), 'and the Reborn is still in hand');
 
   /* The two roads that do work. */
   const relay = fresh();
@@ -10486,6 +10493,196 @@ console.log('\nThe deck that remembers losing');
     `aggression ${leaning.aggression} -> ${consolidated.aggression}`
   );
   ok(consolidated.games === leaning.games + 1, 'and every game is counted', `games ${consolidated.games}`);
+}
+
+console.log('\nA body needs somewhere to stand');
+{
+  /* Reported: "Joey ai activated scape gotes when he had full monster field
+     already." Three Sheep Tokens over three occupied Monster Zones is three
+     Tokens that never arrive — the loop that places them gives up on the first
+     one and the card goes to the Graveyard regardless. Nothing said why; the
+     log jumped straight from "activates Scapegoat!" to the next line.
+
+     The gate that already refuses a card with nothing to point at is the gate
+     that should have refused this, so no room is now asked in the same breath
+     as no target. That covers all four doors at once, because every one of
+     them — the hand, a Set card flipped up, a trap window, a hand discard —
+     asks the same function. */
+  const filled = (n: number) => {
+    const s = fresh();
+    const bodies = ['dark-magician', 'feral-imp', 'mystical-elf'];
+    for (let i = 0; i < n; i++) s.players[ME].monsters[i] = card(ME, bodies[i]);
+    return s;
+  };
+
+  const full = filled(3);
+  const goat = card(ME, 'scapegoat');
+  full.players[ME].hand = [goat];
+  ok(wastedWithoutTarget(full, ME, goat, 'activate'), 'Scapegoat over three occupied zones is a card spent for nothing');
+  ok(!canActivateFromHand(full, ME, goat), 'so the hand does not offer it');
+  const refused = applyAction(full, ME, { type: 'activateSpell', uid: goat.uid });
+  ok(!!refused.error, 'and the engine refuses it if it is sent anyway', refused.error ?? '(allowed)');
+  ok(refused.error === 'Your Monster Zones are full.',
+    'saying which of the two reasons it was', refused.error ?? '');
+  ok(refused.state.players[ME].hand.some((h) => h.uid === goat.uid), 'the card is still in hand');
+  ok(refused.state.players[ME].grave.length === 0, 'and nothing went to the Graveyard');
+
+  /* A Set copy is the same card asked through a different door. */
+  const setGoat = card(ME, 'scapegoat');
+  setGoat.face = 'down';
+  setGoat.summonedOnTurn = 0;
+  const withSet = filled(3);
+  withSet.players[ME].spellTrap = setGoat;
+  ok(!canActivateSetCard(withSet, ME, setGoat), 'a Set Scapegoat cannot be flipped up over a full board either');
+
+  /* One zone open is one Sheep, and one Sheep is a wall. The gate must stop at
+     "nothing at all" — deciding that one Token is not *worth* it is the
+     search's judgement to make, not the rulebook's. */
+  const room = filled(2);
+  const goat2 = card(ME, 'scapegoat');
+  room.players[ME].hand = [goat2];
+  ok(canActivateFromHand(room, ME, goat2), 'with one zone open it is playable');
+  const landed = applyAction(room, ME, { type: 'activateSpell', uid: goat2.uid });
+  ok(!landed.error, 'and resolves', landed.error ?? '');
+  ok(landed.state.players[ME].monsters.filter((m) => m?.isToken).length === 1, 'putting the one Sheep that fits on the board');
+
+  /* Every other card that stands a body up answers the same way. */
+  for (const slug of ['multiply', 'monster-reborn', 'change-of-heart', 'snatch-steal', 'brain-control', 'elegant-egotist']) {
+    const s = filled(3);
+    s.players[ME].grave = [card(ME, 'gaia-the-fierce-knight')];
+    s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+    s.players[ME].hand = [card(ME, 'harpie-lady')];
+    const c = card(ME, slug);
+    ok(wastedWithoutTarget(s, ME, c, 'activate'), `${slug} is refused over a full board too`);
+  }
+
+  /* And the two that must NOT be: a Ritual pays a Tribute before its monster
+     arrives, so it makes its own room. Refusing these would have been the fix
+     breaking two cards to mend one. */
+  for (const [slug, monster] of [['black-illusion-ritual', 'relinquished'], ['fortress-whale-s-oath', 'fortress-whale']]) {
+    const s = filled(3);
+    s.players[ME].hand = [card(ME, monster)]; // the monster it came to call
+    ok(!wastedWithoutTarget(s, ME, card(ME, slug), 'activate'),
+      `${slug} still activates over a full board — its Tribute opens the zone`);
+    /* And the other half of the same rule: with nobody to call, the Tribute
+       buys nothing and the Ritual is refused however much room there is. */
+    const bare = filled(0);
+    ok(wastedWithoutTarget(bare, ME, card(ME, slug), 'activate'),
+      `${slug} is refused with an empty board and no ${monster} anywhere`);
+  }
+
+  /* A rider that points at "the monster this card just summoned" must not keep
+     a dead revival looking alive. Call of the Haunted is a revival with +400
+     ATK stapled on; without that rule it would have been announced, revived
+     nobody, and gone to the Graveyard for the ATK boost it could not give. */
+  const haunted = filled(3);
+  haunted.players[ME].grave = [card(ME, 'gaia-the-fierce-knight')];
+  ok(wastedWithoutTarget(haunted, ME, card(ME, 'call-of-the-haunted'), 'trap'),
+    'Call of the Haunted is refused over a full board despite its ATK rider');
+
+  /* Magical Hats negates the attack whether or not anything hides behind it,
+     so a full board does not make it dead. */
+  ok(!wastedWithoutTarget(filled(3), ME, card(ME, 'magical-hats'), 'trap'),
+    'Magical Hats still answers an attack over a full board');
+
+  /* --- and the two neighbours the same sweep turned up --- */
+  /* Watching real duels for cards that left a hand without moving anything on
+     the table found two more shapes of the same fault: a Special Summon with
+     nobody to call, and a position change aimed at a monster already standing
+     that way. */
+  {
+    const empty = filled(0);
+    empty.players[ME].grave = [card(ME, 'monster-reborn')]; // a Spell, not a body
+    empty.players[FOE].grave = [card(FOE, 'de-spell')];
+    ok(wastedWithoutTarget(empty, ME, card(ME, 'monster-reborn'), 'activate'),
+      'Monster Reborn over two Graveyards holding no monster is refused');
+    empty.players[FOE].grave.push(card(FOE, 'battle-ox'));
+    ok(!wastedWithoutTarget(empty, ME, card(ME, 'monster-reborn'), 'activate'),
+      'and allowed the moment one of them holds a body — either side of the table');
+
+    const factory = filled(0);
+    factory.players[ME].hand = [card(ME, 'dark-magician')]; // a Spellcaster, not a Machine
+    ok(wastedWithoutTarget(factory, ME, card(ME, 'machine-conversion-factory'), 'activate'),
+      'Machine Conversion Factory with no Machine in hand is refused');
+    factory.players[ME].hand.push(card(ME, 'giant-soldier-of-stone'));
+    ok(wastedWithoutTarget(factory, ME, card(ME, 'machine-conversion-factory'), 'activate'),
+      'and a Rock is still not a Machine');
+
+    const standing = filled(0);
+    standing.players[FOE].monsters[0] = card(FOE, 'summoned-skull'); // face-up attack
+    standing.players[FOE].monsters[1] = card(FOE, 'battle-ox');
+    ok(wastedWithoutTarget(standing, ME, card(ME, 'stop-defense'), 'activate'),
+      'Stop Defense against a board that is already attacking is refused');
+    /* Swords of Revealing Light points at the same board and must NOT be:
+       its flip is the rider and the three-turn freeze is the card. */
+    ok(!wastedWithoutTarget(standing, ME, card(ME, 'swords-of-revealing-light'), 'activate'),
+      'while Swords of Revealing Light still freezes that same board');
+    const kneeling = filled(0);
+    const ox = card(FOE, 'battle-ox');
+    ox.position = 'def';
+    kneeling.players[FOE].monsters[0] = ox;
+    ok(!wastedWithoutTarget(kneeling, ME, card(ME, 'stop-defense'), 'activate'),
+      'and one monster kneeling is enough to make Stop Defense worth playing');
+    const hidden = filled(0);
+    const face = card(FOE, 'battle-ox');
+    face.face = 'down';
+    face.position = 'def';
+    hidden.players[FOE].monsters[0] = face;
+    ok(!wastedWithoutTarget(hidden, ME, card(ME, 'stop-defense'), 'activate'),
+      'a face-down monster counts too — dragging it up is a flip');
+  }
+
+  /* --- and the two doors that never asked the question at all --- */
+  {
+    /* A Set Trap flipped up on your own turn went through a branch that asked
+       neither the condition, nor the cost, nor whether anything would happen.
+       Metalmorph was turned over above an empty board, equipped nothing, and —
+       an Equip Trap does not go to the Graveyard — sat face-up in the one
+       Spell/Trap Zone for the rest of the duel. */
+    const alone = filled(0);
+    const morph = card(ME, 'metalmorph');
+    morph.face = 'down';
+    morph.summonedOnTurn = 0;
+    alone.players[ME].spellTrap = morph;
+    ok(!canActivateSetCard(alone, ME, morph), 'Metalmorph cannot be flipped up with nothing of yours to bolt it onto');
+    const hosted = filled(1);
+    const morph2 = card(ME, 'metalmorph');
+    morph2.face = 'down';
+    morph2.summonedOnTurn = 0;
+    hosted.players[ME].spellTrap = morph2;
+    ok(canActivateSetCard(hosted, ME, morph2), 'and can the moment one body is standing');
+
+    /* And a die roll is a wrapper: Skull Dice's roll carries no branch of its
+       own, so a scan that stopped at it called the card substantive and let it
+       be thrown at an empty board. The drain that reads the pips is the card. */
+    const nobody = filled(0);
+    const dice = card(ME, 'skull-dice');
+    dice.face = 'down';
+    dice.summonedOnTurn = 0;
+    nobody.players[ME].spellTrap = dice;
+    ok(!canActivateSetCard(nobody, ME, dice), 'Skull Dice is not rolled at a board with nothing on it');
+    const somebody = filled(0);
+    somebody.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+    const dice2 = card(ME, 'skull-dice');
+    dice2.face = 'down';
+    dice2.summonedOnTurn = 0;
+    somebody.players[ME].spellTrap = dice2;
+    ok(canActivateSetCard(somebody, ME, dice2), 'and is rolled the moment there is something to shrink');
+  }
+
+  /* A trigger nobody chose to fire is the one case that still reaches a full
+     board — Kuriboh's Token wants the zone Kuriboh just took. It cannot be
+     refused, so it must at least be admitted: the line "Special Summons a
+     Kuriboh Token" must not appear, and neither must silence. */
+  const squeezed = filled(2);
+  const kuriboh = card(ME, 'kuriboh');
+  squeezed.players[ME].hand = [kuriboh];
+  const summoned = applyAction(squeezed, ME, { type: 'normalSummon', uid: kuriboh.uid, zone: 2, position: 'atk', face: 'up' });
+  ok(!summoned.error, 'Kuriboh fills the last zone', summoned.error ?? '');
+  const lines = summoned.state.log.map((l) => (typeof l === 'string' ? l : (l as { text: string }).text));
+  ok(summoned.state.players[ME].monsters.filter((m) => m?.isToken).length === 0, 'and its Token has nowhere to go');
+  ok(!lines.some((t) => /Special Summons .*Kuriboh Token/.test(t)), 'so the board never claims the Token arrived');
+  ok(lines.some((t) => /has no room for Kuriboh Tokens/.test(t)), 'and says out loud that there was no room', lines.slice(-2).join(' | '));
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

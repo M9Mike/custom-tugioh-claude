@@ -41,6 +41,43 @@ function hostFor(slug: string): string | null {
 }
 
 /**
+ * A monster this card's Special Summon would accept, and the pile to put it in.
+ *
+ * Same shape and same reason as `hostFor` above: once a Spell that summons
+ * nothing stopped being activatable — the Scapegoat report generalised — six
+ * cards read as dead because the probe held no Dragon for the Flute, no
+ * Machine for the Conversion Factory and no Relinquished for its Ritual. That
+ * is a fault in the probe, not the cards.
+ *
+ * Read off the card, so the next one to name a requirement is stocked for
+ * without anybody editing this. Monsters that answer to a ladder of their own
+ * are skipped — the engine refuses those to every summon but their own rung,
+ * so putting one in the pile would prove nothing.
+ */
+function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave'; slug: string }[] {
+  const out: { zone: 'hand' | 'deck' | 'grave'; slug: string }[] = [];
+  const PILES = ['hand', 'deck', 'grave'] as const;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) {
+      if (op.op !== 'specialSummon') continue;
+      const from = Array.isArray(op.from) ? op.from : [op.from];
+      const zones = PILES.filter((z) => from.includes(z));
+      if (!zones.length) continue;
+      const match = Object.values(CARDS).find(
+        (d) =>
+          d.kind === 'monster' &&
+          !isExtraDeckCard(d.slug) &&
+          !d.summonRequires &&
+          !d.summonOnlyBy?.length &&
+          matchesFilter({ slug: d.slug } as CardInstance, op.filter)
+      );
+      if (match) out.push({ zone: zones[0], slug: match.slug });
+    }
+  }
+  return out;
+}
+
+/**
  * A duel parked in Main Phase holding the card, with a board and a hand behind
  * it. The board matters: several cards cost a tribute or a discard, and probing
  * from an empty field reports them unplayable when they are merely unaffordable
@@ -67,6 +104,13 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   p.spellTrap = null;
   p.field = null;
   const spare = (n: number, s = 'kuriboh'): CardInstance => ({ ...p.deck[0], uid: `spare${n}`, slug: s, face: 'up' });
+  /* The Field Spell a card insists on standing beside. Tornado Wall says
+     "activate only while Umi is on the field" and means it — once the door
+     that flips a Set Trap up on your own turn started asking the condition,
+     an empty Field Zone read as a card nobody could ever use. Read off the
+     card, like the equip host and the summon fodder below it. */
+  const needsField = (CARDS[slug]?.effects ?? []).find((e) => e.condition?.requiresField)?.condition?.requiresField;
+  if (needsField) p.field = spare(8, needsField);
   /* Two bodies to tribute, and spare cards to discard. One of the bodies is a
      Winged Beast: a card may be gated on controlling a type — Phoenix
      Formation wants a Harpie flying it — and a probe that owns only Kuriboh
@@ -94,13 +138,26 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
      tend to want more than one. */
   p.grave = [spare(5, 'summoned-skull'), spare(6, 'battle-ox')];
 
+  /* And whoever the card came to call. */
+  fodderFor(slug).forEach((f, i) => {
+    const body = spare(20 + i, f.slug);
+    if (f.zone === 'hand') p.hand.push(body);
+    else if (f.zone === 'grave') p.grave.push(body);
+    else p.deck.push(body);
+  });
+
   /* Something to aim at. Two monsters rather than one because a couple of
      cards want a choice, and an Insect among them because Weevil's Eradicating
      Aerosol only destroys those. The face-up Spell is what De-Spell and
-     Harpie's Feather Duster are for. */
+     Harpie's Feather Duster are for.
+
+     One of each posture, because a card that changes a monster's position is
+     dead against a board already standing that way: Stop Defense read as
+     unplayable against two attackers, which is exactly what the card would do
+     in a real duel — nothing. */
   const o = state.players.p2;
   const theirs = (n: number, s: string): CardInstance => ({ ...o.deck[0], uid: `theirs${n}`, slug: s, face: 'up', position: 'atk' });
-  o.monsters = [theirs(1, 'hitotsu-me-giant'), theirs(2, 'basic-insect'), null];
+  o.monsters = [theirs(1, 'hitotsu-me-giant'), { ...theirs(2, 'basic-insect'), position: 'def' }, null];
   o.spellTrap = { ...theirs(3, 'de-spell'), face: 'up' };
   o.field = null;
   return { state, card, me: 'p1' };

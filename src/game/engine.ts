@@ -2473,6 +2473,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
                likeness and never a claim about which card this is. */
             op.artSlug ?? ctx.source.slug
           );
+        } else {
+          /* Nowhere to put one. An activation that would end here is refused
+             outright now, so what reaches this line is a trigger nobody chose
+             to fire — Statue of the Wicked turned over by a destruction, with
+             three bodies already standing. The board said nothing at all about
+             it, which reads as the game losing the effect rather than the
+             field being full. */
+          emptyHanded(state, ctx, `${state.players[ctx.controller].name} has no room for ${op.name}s.`);
         }
         break;
       }
@@ -4238,11 +4246,97 @@ const POOL_PICKS = new Set(['chosen', 'all', 'strongest', 'weakest', 'random']);
  */
 const RIDER_OPS = new Set(['draw', 'mill', 'search', 'revealHand']);
 
+/**
+ * Ops whose whole job is to stand a body in one of your three Monster Zones.
+ *
+ * A full board makes every one of them a no-op, and each already knows it —
+ * they find their zone with `findIndex((m) => !m)` and give up when it comes
+ * back -1. What none of them could do is un-spend the card that asked. Joey
+ * activated Scapegoat over three occupied zones: no Sheep arrived, the card
+ * went to the Graveyard anyway, and the log did not even say why. Reported.
+ */
+const NEEDS_A_ZONE = new Set(['summonToken', 'specialSummon', 'summonSelf', 'millUntilSummon', 'possess', 'takeControl']);
+
+/** How many of the controller's three Monster Zones stand empty. */
+const freeZones = (state: DuelState, pid: PlayerId) => state.players[pid].monsters.filter((m) => !m).length;
+
+/**
+ * Ops that reach a monster which is already the way they would put it.
+ *
+ * Having a target is not the same as having something to do with it: Stop
+ * Defense names a monster that is standing in Attack Position already, kneels
+ * nobody, and is gone. Found by watching real duels for cards that left a hand
+ * without moving anything on the table.
+ */
+const USEFUL_ON: Record<string, (c: CardInstance) => boolean> = {
+  forceAttackPosition: (c) => c.position !== 'atk' || c.face === 'down',
+  forceDefense: (c) => c.position !== 'def' || c.face === 'down',
+  flipFaceUp: (c) => c.face === 'down',
+};
+
+/**
+ * Is there a monster this Special Summon could actually call?
+ *
+ * A deliberate mirror of the op's own pool filter a thousand lines up. Monster
+ * Reborn over two Graveyards holding nothing but Spells, and Machine
+ * Conversion Factory with no Machine in hand, both announced themselves and
+ * summoned air. Reading the controller's own Deck is fair: a player knows what
+ * they built, and the search's honesty rule is about ORDER, which this cannot
+ * see.
+ */
+function hasSummonablePool(
+  state: DuelState,
+  pid: PlayerId,
+  source: CardInstance,
+  op: Extract<Op, { op: 'specialSummon' }>
+): boolean {
+  const owners: PlayerId[] = op.side === 'both' ? [pid, other(pid)] : [pid];
+  const zones = Array.isArray(op.from) ? op.from : [op.from];
+  return owners.some((owner) =>
+    zones
+      .flatMap((z) => zoneCards(state, owner, z))
+      .some(
+        (c) =>
+          CARDS[c.slug]?.kind === 'monster' &&
+          revivable(state, pid, c.slug, source.slug) &&
+          matchesFilter(c, op.filter) &&
+          (op.includeSelf || c.uid !== source.uid)
+      )
+  );
+}
+
+/**
+ * Wrappers opened out, so the scan below judges what a card can really do.
+ *
+ * A die roll, a coin flip, a counter tier and a cascade are all containers:
+ * what might happen lives in their branches. Skull Dice's roll carries no
+ * branch at all — its worth is the ATK drain that reads the pips afterwards —
+ * and a scan that stopped at the wrapper called that substantive, so the card
+ * was thrown across an empty board. Every branch is opened, not only the one
+ * that will fire, because refusing an activation must always be the cautious
+ * answer.
+ */
+function flattenOps(ops: Op[]): Op[] {
+  return ops.flatMap((op) =>
+    op.op === 'diceRoll'
+      ? flattenOps(op.perPip)
+      : op.op === 'coinFlip'
+        ? [...flattenOps(op.heads), ...flattenOps(op.tails)]
+        : op.op === 'byCounters'
+          ? op.tiers.flatMap((t) => flattenOps(t.ops))
+          : op.op === 'cascade'
+            ? op.branches.flatMap((b) => flattenOps(b.ops))
+            : [op]
+  );
+}
+
 /** Is there anything this selector could legally reach right now? */
-function hasLegalTarget(ctx: EffectCtx, s: Selector): boolean {
+function hasLegalTarget(ctx: EffectCtx, s: Selector, useful: (c: CardInstance) => boolean = () => true): boolean {
   if (!POOL_PICKS.has(s.pick)) return true; // the context supplies it, not a pool
   const zone = s.zone ?? 'monster';
-  return targetPool(ctx, s).some((c) => zone !== 'monster' || !isProtectedTarget(ctx.state, c, ctx.controller, ctx));
+  return targetPool(ctx, s).some(
+    (c) => (zone !== 'monster' || !isProtectedTarget(ctx.state, c, ctx.controller, ctx)) && useful(c)
+  );
 }
 
 /**
@@ -4269,11 +4363,49 @@ function hasLegalTarget(ctx: EffectCtx, s: Selector): boolean {
  * and made seven Spells unplayable for the rest of the duel.
  */
 function activationIsDead(state: DuelState, pid: PlayerId, c: CardInstance, def: CardDef, eff: CardEffect): boolean {
+  return deadActivationReason(state, pid, c, def, eff) !== null;
+}
+
+/**
+ * The same question, answering *why* — so the refusal can say something true.
+ *
+ * "There is nothing for that card to affect" is the wrong sentence for a
+ * Scapegoat held over three occupied zones: the card affects plenty, there is
+ * simply nowhere to put it. One function still decides, and the message is
+ * read off the reason rather than guessed at the call site.
+ */
+function deadActivationReason(
+  state: DuelState,
+  pid: PlayerId,
+  c: CardInstance,
+  def: CardDef,
+  eff: CardEffect
+): 'room' | 'pool' | 'target' | null {
   const ctx: EffectCtx = { state, controller: pid, source: c, targets: [], cursor: 0, trig: {} };
-  let sawTargeting = false;
-  for (const op of eff.ops) {
+  /* A Ritual's tribute is paid before its monster arrives, so the board it
+     lands on is not the board being looked at here: Black Illusion Ritual over
+     three occupied zones tributes one of them and stands Relinquished in the
+     gap it just made. The cost counts as room. */
+  const room = freeZones(state, pid) + (eff.cost?.tribute ?? 0);
+  let sawDeadEnd: 'room' | 'pool' | 'target' | null = null;
+  let bodyBlocked = false;
+  for (const op of flattenOps(eff.ops)) {
+    /* Asked before the target question, because Change of Heart both picks a
+       monster and needs a zone to stand it in, and no room is as dead as no
+       target. */
+    if (NEEDS_A_ZONE.has(op.op) && room === 0) {
+      sawDeadEnd ??= 'room';
+      bodyBlocked = true;
+      continue;
+    }
+    /* And a zone to stand it in is no use with nobody to stand there. */
+    if (op.op === 'specialSummon' && !hasSummonablePool(state, pid, c, op)) {
+      sawDeadEnd ??= 'pool';
+      bodyBlocked = true;
+      continue;
+    }
     if (!NEEDS_A_TARGET.has(op.op)) {
-      if (!RIDER_OPS.has(op.op)) return false; // something substantive happens regardless
+      if (!RIDER_OPS.has(op.op)) return null; // something substantive happens regardless
       continue;
     }
     /* An equip with no selector of its own attaches to one of the controller's
@@ -4285,13 +4417,22 @@ function activationIsDead(state: DuelState, pid: PlayerId, c: CardInstance, def:
       'target' in op && op.target
         ? op.target
         : { side: 'own', pick: 'all', filter: op.op === 'equipTo' ? op.filter : undefined };
-    sawTargeting = true;
-    if (hasLegalTarget(ctx, sel)) return false;
+    /* "The monster this card just summoned" is nobody when the summon had
+       nowhere to land. Call of the Haunted is a revival with a +400 ATK rider
+       stapled on, and without this the rider kept the whole card looking alive
+       over a full board — it would have been announced, revived nothing, and
+       gone to the Graveyard. */
+    if (bodyBlocked && sel.pick === 'summoned') {
+      sawDeadEnd ??= 'room';
+      continue;
+    }
+    sawDeadEnd ??= 'target';
+    if (hasLegalTarget(ctx, sel, USEFUL_ON[op.op])) return null;
   }
-  if (!sawTargeting) return false;
+  if (!sawDeadEnd) return null;
   // A card that stays on the field is never spent for nothing.
-  if (def.effects.some((e) => e.trigger === 'continuous' && e.aura)) return false;
-  return true;
+  if (def.effects.some((e) => e.trigger === 'continuous' && e.aura)) return null;
+  return sawDeadEnd;
 }
 
 /**
@@ -4372,7 +4513,20 @@ export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInsta
   if (!def) return false;
   if (def.kind === 'trap') {
     if (c.summonedOnTurn >= state.turn) return false;
-    return def.effects.some((e) => e.trigger === 'trap' && e.window === 'anyOpponentTurn');
+    /* The same three questions the hand has always asked, which this branch
+       asked none of. Metalmorph was flipped up over an empty board, equipped
+       nothing, and — an Equip Trap does not go to the Graveyard — stayed
+       face-up in the one Spell/Trap Zone for the rest of the duel. Found by
+       watching real duels for cards spent without moving anything, the same
+       sweep the Scapegoat report started. */
+    return def.effects.some(
+      (e) =>
+        e.trigger === 'trap' &&
+        e.window === 'anyOpponentTurn' &&
+        conditionMet(state, e, c, pid) &&
+        canPayCost(state, pid, e) &&
+        !activationIsDead(state, pid, c, def, e)
+    );
   }
   const eff = def.effects.find((e) => e.trigger === 'activate');
   if (!eff) return false;
@@ -5229,7 +5383,10 @@ function payActivation(
 ): { paidForCost: string[] } | { error: string } {
   const p = state.players[pid];
   if (eff?.condition && !conditionMet(state, eff, c, pid)) return { error: 'Its condition is not met.' };
-  if (eff && activationIsDead(state, pid, c, def, eff)) return { error: 'There is nothing for that card to affect.' };
+  const dead = eff ? deadActivationReason(state, pid, c, def, eff) : null;
+  if (dead === 'room') return { error: 'Your Monster Zones are full.' };
+  if (dead === 'pool') return { error: 'There is nothing to Special Summon.' };
+  if (dead) return { error: 'There is nothing for that card to affect.' };
 
   if (eff?.cost?.lp) {
     const due = lpCost(state, pid, eff);
