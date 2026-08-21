@@ -16,6 +16,32 @@
 import { CARDS, isToon } from './cards';
 import type { CardFilter, CardInstance, DuelState, PlayerId } from './types';
 
+/**
+ * Ops that would leave a monster exactly as they found it.
+ *
+ * Having a target is not the same as having something to do with it: Stop
+ * Defense names a monster that is standing in Attack Position already, kneels
+ * nobody, and is gone. Both the gate that decides whether the card may be
+ * played and the modal that lays out the choices ask this — the second time
+ * because the gate alone was not enough. With a kneeling monster beside a
+ * standing one the card was legal, and the picker still offered the one that
+ * was already attacking, so the AI aimed there and spent it for nothing.
+ *
+ * A face-down monster counts as neither posture: dragging it up is a flip, and
+ * a flip is very much something happening.
+ */
+const POSTURE: Record<string, (c: CardInstance) => boolean> = {
+  forceAttackPosition: (c) => c.position !== 'atk' || c.face === 'down',
+  forceDefense: (c) => c.position !== 'def' || c.face === 'down',
+  flipFaceUp: (c) => c.face === 'down',
+};
+
+/** Would this op actually change that card, or is it already that way? */
+export function changesAnything(opName: string | undefined, c: CardInstance): boolean {
+  const rule = opName ? POSTURE[opName] : undefined;
+  return rule ? rule(c) : true;
+}
+
 export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (!f) return true;
   if (c.isToken) {

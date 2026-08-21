@@ -10630,6 +10630,31 @@ console.log('\nA body needs somewhere to stand');
     hidden.players[FOE].monsters[0] = face;
     ok(!wastedWithoutTarget(hidden, ME, card(ME, 'stop-defense'), 'activate'),
       'a face-down monster counts too — dragging it up is a flip');
+
+    /* And the picker must offer the same set the gate is judging. One kneeling
+       monster beside one already attacking makes the card legal, and the modal
+       laid out both — so the pick landed on the standing one and Stop Defense
+       was spent changing nothing. Watched happening in a real duel. */
+    const mixed = filled(0);
+    const kneels = card(FOE, 'battle-ox');
+    kneels.position = 'def';
+    mixed.players[FOE].monsters[0] = card(FOE, 'summoned-skull'); // already attacking
+    mixed.players[FOE].monsters[1] = kneels;
+    const sdSpec = targetSpecFor('stop-defense', 'activate');
+    const offeredSd = sdSpec ? targetCandidates(mixed, ME, sdSpec).map((c) => c.slug) : [];
+    ok(offeredSd.length === 1 && offeredSd[0] === 'battle-ox',
+      'Stop Defense is only ever offered the monster it would actually stand up', offeredSd.join(',') || '(nothing)');
+
+    /* An amount billed per monster destroyed is nothing when the destroy found
+       nobody. Phoenix Formation is "destroy up to 2, then 500 damage for each",
+       and the damage kept the whole card looking alive over an empty board. */
+    const noBoard = filled(1); // it needs a monster of its own to be activated at all
+    ok(wastedWithoutTarget(noBoard, ME, card(ME, 'harpie-lady-phoenix-formation'), 'activate'),
+      'Phoenix Formation across an empty board is refused, damage rider and all');
+    const theirBoard = filled(1);
+    theirBoard.players[FOE].monsters[0] = card(FOE, 'dark-magician');
+    ok(!wastedWithoutTarget(theirBoard, ME, card(ME, 'harpie-lady-phoenix-formation'), 'activate'),
+      'and allowed the moment there is something to burn down');
   }
 
   /* --- and the two doors that never asked the question at all --- */

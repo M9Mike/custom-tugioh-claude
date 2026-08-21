@@ -7,7 +7,7 @@
  * what its buttons should do.
  */
 import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
-import { faceUpOnSide, matchesFilter, revivable } from './targeting';
+import { changesAnything, faceUpOnSide, matchesFilter, revivable } from './targeting';
 /* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
    targeting rules from `targeting.ts` now, not from here. */
 import { targetCandidates, targetSpecFor } from './ui';
@@ -4261,20 +4261,6 @@ const NEEDS_A_ZONE = new Set(['summonToken', 'specialSummon', 'summonSelf', 'mil
 const freeZones = (state: DuelState, pid: PlayerId) => state.players[pid].monsters.filter((m) => !m).length;
 
 /**
- * Ops that reach a monster which is already the way they would put it.
- *
- * Having a target is not the same as having something to do with it: Stop
- * Defense names a monster that is standing in Attack Position already, kneels
- * nobody, and is gone. Found by watching real duels for cards that left a hand
- * without moving anything on the table.
- */
-const USEFUL_ON: Record<string, (c: CardInstance) => boolean> = {
-  forceAttackPosition: (c) => c.position !== 'atk' || c.face === 'down',
-  forceDefense: (c) => c.position !== 'def' || c.face === 'down',
-  flipFaceUp: (c) => c.face === 'down',
-};
-
-/**
  * Is there a monster this Special Summon could actually call?
  *
  * A deliberate mirror of the op's own pool filter a thousand lines up. Monster
@@ -4389,6 +4375,7 @@ function deadActivationReason(
   const room = freeZones(state, pid) + (eff.cost?.tribute ?? 0);
   let sawDeadEnd: 'room' | 'pool' | 'target' | null = null;
   let bodyBlocked = false;
+  let destroyedNothing = false;
   for (const op of flattenOps(eff.ops)) {
     /* Asked before the target question, because Change of Heart both picks a
        monster and needs a zone to stand it in, and no room is as dead as no
@@ -4403,6 +4390,21 @@ function deadActivationReason(
       sawDeadEnd ??= 'pool';
       bodyBlocked = true;
       continue;
+    }
+    /* An amount that counts something the effect has not managed to do. Phoenix
+       Formation is "destroy up to 2 monsters, then 500 damage for each": across
+       an empty board the destroy finds nobody and the damage, billed per
+       destroyed monster, is 500 × 0. The damage read as substantive and kept
+       the whole card alive, so it was played at boards with nothing on them. */
+    if ('scale' in op && op.scale && !('plusPerCounter' in op && op.plusPerCounter)) {
+      if ((op.scale === 'perDestroyed' || op.scale === 'destroyedAtk') && destroyedNothing) {
+        sawDeadEnd ??= 'target';
+        continue;
+      }
+      if (op.scale === 'perOppMonster' && !state.players[other(pid)].monsters.some(Boolean)) {
+        sawDeadEnd ??= 'target';
+        continue;
+      }
     }
     if (!NEEDS_A_TARGET.has(op.op)) {
       if (!RIDER_OPS.has(op.op)) return null; // something substantive happens regardless
@@ -4427,7 +4429,8 @@ function deadActivationReason(
       continue;
     }
     sawDeadEnd ??= 'target';
-    if (hasLegalTarget(ctx, sel, USEFUL_ON[op.op])) return null;
+    if (hasLegalTarget(ctx, sel, (t) => changesAnything(op.op, t))) return null;
+    if (op.op === 'destroy') destroyedNothing = true;
   }
   if (!sawDeadEnd) return null;
   // A card that stays on the field is never spent for nothing.

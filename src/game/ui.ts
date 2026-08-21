@@ -4,7 +4,7 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
-import { matchesFilter, revivable } from './targeting';
+import { changesAnything, matchesFilter, revivable } from './targeting';
 import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
 export interface TargetSpec {
@@ -49,6 +49,15 @@ export interface TargetSpec {
    * time.
    */
   revivableBy?: string;
+  /**
+   * The op doing the asking, when what it does depends on how the target is
+   * already standing. Stop Defense cannot drag a monster into Attack Position
+   * that is standing there, so that monster is not one of its answers.
+   * State-dependent, like `revivableOnly`, so it cannot be a `CardFilter`
+   * either — and the rule itself lives in `targeting.ts`, where the engine's
+   * own gate reads it.
+   */
+  changing?: string;
 }
 
 function scanOps(ops: Op[], owner: string): TargetSpec | null {
@@ -154,7 +163,13 @@ function scanOps(ops: Op[], owner: string): TargetSpec | null {
               : op.op === 'bounce'
                 ? 'Choose a card to return'
                 : 'Choose a target';
-      return { side: op.target.side, zone, count: op.target.count ?? 1, prompt: verb };
+      /* Which op is asking, so the picker can drop the monsters it would
+         leave exactly as it found them. Stop Defense beside one kneeling
+         monster and one already attacking is a legal card with one real
+         answer, and the modal offered both — so the pick landed on the
+         standing one and the card was spent changing nothing. The gate reads
+         the same rule; the two must not disagree about which targets exist. */
+      return { side: op.target.side, zone, count: op.target.count ?? 1, prompt: verb, changing: op.op };
     }
   }
   return null;
@@ -314,6 +329,8 @@ export function targetCandidates(
              targeted by the opponent's effects and was still offered — Ring of
              Destruction pointed at it destroyed nothing. */
           .filter((m) => pid === viewer || !isUntargetable(m, pid))
+          /* And the monsters this op would leave exactly as it found them. */
+          .filter((m) => changesAnything(spec.changing, m))
       );
     } else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
       if (p.spellTrap) out.push(p.spellTrap);
