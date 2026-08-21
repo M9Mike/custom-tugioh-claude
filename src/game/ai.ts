@@ -45,6 +45,7 @@ import {
   tributableBodies,
   tributesRequired,
 } from './engine';
+import { changesAnything, matchesFilter } from './targeting';
 import { summonTargetSpec, targetSpecFor } from './ui';
 import { type AiLevel } from './ai-levels';
 import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
@@ -561,7 +562,17 @@ function targetsFor(
   const pool: CardInstance[] = [];
   for (const id of sides) {
     const p = state.players[id];
-    if (spec.zone === 'monster') pool.push(...p.monsters.filter((m): m is CardInstance => !!m));
+    /* The same two narrowings the board's own picker applies. Without them the
+       search had a wider pool than the interface and ranked it by ATK, so Stop
+       Defense beside a kneeling 800 and a standing 1300 aimed at the 1300 —
+       which was already attacking — and the card was spent changing nothing.
+       Watched happening in a real duel. */
+    if (spec.zone === 'monster')
+      pool.push(
+        ...p.monsters.filter(
+          (m): m is CardInstance => !!m && matchesFilter(m, spec.filter) && changesAnything(spec.changing, m)
+        )
+      );
     else if (spec.zone === 'spellTrap' || spec.zone === 'backrow') {
       if (p.spellTrap) pool.push(p.spellTrap);
       if (spec.zone === 'backrow' && p.field) pool.push(p.field);

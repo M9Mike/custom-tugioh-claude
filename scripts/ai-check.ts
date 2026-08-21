@@ -115,6 +115,8 @@ let doomUid = '';
 let redEyesUid = '';
 let mofUid = '';
 let goatUid = '';
+let sdUid = '';
+let kneelUid = '';
 
 const CASES: Case[] = [
   {
@@ -519,6 +521,30 @@ const CASES: Case[] = [
     want: (plan, end) =>
       !plan.some((a) => a.type === 'activateSpell' && (a as { uid?: string }).uid === goatUid) &&
       (end.players[ME].hand.some((h) => h.uid === goatUid) || end.players[ME].spellTrap?.uid === goatUid),
+  },
+  {
+    name: 'points Stop Defense at the monster that is actually kneeling',
+    duelist: 'keith',
+    because: 'dragging a monster into Attack Position that is standing there already spends the card and changes nothing',
+    /* Watched in a real duel: the search ranked the pool by ATK, so with a
+       kneeling 800 beside a standing 1300 it aimed at the 1300. The card was
+       legal — there WAS a defender — which is why the activation gate alone
+       could not catch it. */
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'mechanicalchaser');
+      s.players[ME].monsters[1] = card(ME, 'robotic-knight');
+      s.players[ME].normalSummonUsed = true;
+      sdUid = (s.players[ME].hand = [card(ME, 'stop-defense')])[0].uid;
+      kneelUid = (s.players[FOE].monsters[0] = card(FOE, 'happy-lover', 'def')).uid;
+      s.players[FOE].monsters[1] = card(FOE, 'harpie-lady'); // stronger, and already attacking
+    },
+    want: (plan) => {
+      const cast = plan.find((a) => a.type === 'activateSpell' && (a as { uid?: string }).uid === sdUid) as
+        | { targets?: string[] }
+        | undefined;
+      // Playing it at all is optional; aiming it at the standing monster is not.
+      return !cast || cast.targets?.includes(kneelUid) === true;
+    },
   },
 ];
 
