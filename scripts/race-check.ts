@@ -227,6 +227,16 @@ console.log('Room concurrency\n');
   ok(still.winner === settled.winner, 'nor un-decide a settled match', `${settled.winner} -> ${still.winner ?? '(none)'}`);
 }
 
+/* 5. Two duels ending at once both teach the deck — neither lesson is lost. */
+{
+  const { loadBrain, recordGame } = await import('../src/server/learning');
+  const summary = { won: false, myLp: 3000, theirLp: 6000, myHandLeft: 4, myBoardLeft: 1, turns: 18 };
+  await Promise.all([recordGame('race-test-deck', summary), recordGame('race-test-deck', summary)]);
+  const brain = await loadBrain('race-test-deck');
+  ok(brain.games === 2, 'two simultaneous lessons both count', `games ${brain.games}`);
+  ok(brain.aggression > 0 && brain.aggression <= 0.6, 'and the leaning stays inside its clamp', `${brain.aggression}`);
+}
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nRooms cannot be raced into an earlier state. ✅');
 process.exitCode = failures ? 1 : 0;
 }

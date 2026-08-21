@@ -7,7 +7,8 @@
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
 import { applyAction, createDuel, other, viewFor, viewForSpectator } from '@/game/engine';
-import { aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, planTurn } from '@/game/ai';
+import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, planTurn, type AiConfig } from '@/game/ai';
+import { loadBrain, recordGame } from './learning';
 import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import {
@@ -460,15 +461,25 @@ export async function stepAI(room: Room): Promise<boolean> {
   const turnKey = `${s.duelId ?? 'legacy'}:${s.turn}:${pid}`;
   if (room.aiActions?.key !== turnKey) room.aiActions = { key: turnKey, count: 0 };
   room.aiActions.count += 1;
+  const hadWinner = !!s.winner;
   if (room.aiActions.count > 60 && !s.pending) {
     room.aiPlan = undefined;
     const bail = applyAction(s, pid, { type: 'endTurn' });
     if (!bail.error) {
       room.state = bail.state;
       await saveRoom(room);
+      if (!hadWinner && room.state.winner) await learnFromEnd(room);
       return true;
     }
   }
+
+  /* The deck's learned style, folded into the search config. Neutral (a new
+     deck, or the store unreachable) is exactly the shipped search. */
+  const deckId = room.seats[pid]?.duelistId;
+  const brain = deckId ? await loadBrain(deckId).catch(() => null) : null;
+  const cfg: AiConfig = brain
+    ? { ...AI_LEVELS[GAME_AI], style: { aggression: brain.aggression, caution: brain.caution } }
+    : { ...AI_LEVELS[GAME_AI] };
 
   let action: DuelAction;
   if (s.pending) {
@@ -476,15 +487,16 @@ export async function stepAI(room: Room): Promise<boolean> {
     // and drop whatever was left of the turn plan, since the board is about to
     // change underneath it.
     room.aiPlan = undefined;
-    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI) : chooseTrapResponse(s, pid, GAME_AI);
+    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, cfg, 800) : chooseTrapResponse(s, pid, cfg, 2000);
   } else {
     const key = turnKey;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
-      /* Four seconds to plan the whole turn, once per turn. The board narrates
-         every beat for over a second anyway, so the think overlaps the tail of
-         the previous action far more often than it is felt — and the function
-         has a 30s ceiling, so there is no platform pressure to hurry. */
-      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 4000) };
+      /* Eight seconds to plan the whole turn, once per turn. The board
+         narrates every beat for over a second anyway, so the think overlaps
+         the tail of the previous action far more often than it is felt — and
+         the function has a 30s ceiling with a hard wall inside the search,
+         so there is no platform pressure to hurry. */
+      room.aiPlan = { key, actions: planTurn(s, pid, cfg, 8000) };
     }
     action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
   }
@@ -494,7 +506,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // The plan went stale against the real position. Search again from here.
     room.aiPlan = undefined;
     const rt = createAiRuntime();
-    const retry = aiNext(s, pid, GAME_AI, rt, 4000);
+    const retry = aiNext(s, pid, cfg, rt, 8000);
     res = retry ? applyAction(s, pid, retry) : res;
   }
   if (res.error) {
@@ -512,6 +524,7 @@ export async function stepAI(room: Room): Promise<boolean> {
   }
   room.state = res.state;
   await saveRoom(room);
+  if (!hadWinner && room.state.winner) await learnFromEnd(room);
   return true;
 }
 
@@ -707,17 +720,47 @@ export async function leaveToLobby(room: Room): Promise<void> {
 
 export async function performAction(room: Room, pid: PlayerId, action: DuelAction): Promise<string | null> {
   if (!room.state) return 'The duel has not started.';
+  const hadWinner = !!room.state.winner;
   const res = applyAction(room.state, pid, action);
   if (res.error) return res.error;
   room.state = res.state;
   // Anything the human does can invalidate a half-played computer turn.
   room.aiPlan = undefined;
   await saveRoom(room);
+  if (!hadWinner && room.state.winner) await learnFromEnd(room);
   return null;
 }
 
 export function opponentOf(pid: PlayerId): PlayerId {
   return other(pid);
+}
+
+/**
+ * A finished duel teaches the deck that played it — see `server/learning.ts`.
+ *
+ * Human-versus-computer only: exhibitions and headless bracket matches are
+ * the same brain playing itself, and a brain grading its own homework learns
+ * style drift, not duelling. Failures are swallowed: a lost lesson costs one
+ * game of learning, a thrown error here would cost the player their sync.
+ */
+async function learnFromEnd(room: Room): Promise<void> {
+  const s = room.state;
+  if (!s?.winner || s.winner === 'draw' || room.spectate) return;
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const seat = room.seats[pid];
+    const foeSeat = room.seats[other(pid)];
+    if (!seat?.ai || !seat.duelistId || foeSeat?.ai) continue;
+    const me = s.players[pid];
+    const them = s.players[other(pid)];
+    await recordGame(seat.duelistId, {
+      won: s.winner === pid,
+      myLp: me.lp,
+      theirLp: them.lp,
+      myHandLeft: me.hand.length,
+      myBoardLeft: me.monsters.filter(Boolean).length,
+      turns: s.turn,
+    }).catch(() => {});
+  }
 }
 
 export type { DuelState };

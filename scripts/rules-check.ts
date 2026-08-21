@@ -8,6 +8,7 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
+import { KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
@@ -10457,5 +10458,35 @@ if (checks < EXPECTED_AT_LEAST) {
   console.log(`\n❌ only ${checks} assertions ran, expected at least ${EXPECTED_AT_LEAST} — did something stop early?`);
   failures += 1;
 }
+/* ------------------------------------------------------------------ */
+console.log('\nThe deck that remembers losing');
+{
+  const passiveLoss = { won: false, myLp: 4000, theirLp: 6000, myHandLeft: 4, myBoardLeft: 1, turns: 20 };
+  const fedLoss = { won: false, myLp: 800, theirLp: 6000, myHandLeft: 0, myBoardLeft: 0, turns: 9 };
+  const cleanWin = { won: true, myLp: 6500, theirLp: 0, myHandLeft: 2, myBoardLeft: 2, turns: 14 };
+
+  const afterPassive = updateBrain({ ...NEUTRAL }, passiveLoss);
+  ok(afterPassive.aggression > 0, 'a loss with a full hand teaches the deck to press', `aggression ${afterPassive.aggression}`);
+
+  const afterFed = updateBrain({ ...NEUTRAL }, fedLoss);
+  ok(afterFed.caution > 0, 'a fast loss with an empty board teaches it respect', `caution ${afterFed.caution}`);
+
+  let leaning = { ...NEUTRAL };
+  for (let i = 0; i < 200; i++) leaning = updateBrain(leaning, passiveLoss);
+  ok(
+    leaning.aggression <= KNOB_LIMIT && leaning.caution >= -KNOB_LIMIT,
+    'two hundred identical losses can only lean it to the clamp, never past',
+    `aggression ${leaning.aggression}`
+  );
+
+  const consolidated = updateBrain({ ...leaning }, cleanWin);
+  ok(
+    Math.abs(consolidated.aggression) < Math.abs(leaning.aggression) + 1e-9 && consolidated.wins === leaning.wins + 1,
+    'a clean win consolidates instead of leaning further',
+    `aggression ${leaning.aggression} -> ${consolidated.aggression}`
+  );
+  ok(consolidated.games === leaning.games + 1, 'and every game is counted', `games ${consolidated.games}`);
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

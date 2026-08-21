@@ -85,6 +85,12 @@ export interface AiConfig {
   voteMix?: number;
   /** Evaluation weights; defaults to the tuned set. */
   weights?: EvalWeights;
+  /**
+   * The deck's learned style, from `src/server/learning.ts`. Bounded small:
+   * neutral is exactly the shipped search, and the clamps keep every leaning
+   * inside the range the check suite was validated against.
+   */
+  style?: { aggression: number; caution: number };
 }
 
 export const AI_LEVELS: Record<AiLevel, AiConfig> = {
@@ -264,6 +270,9 @@ export interface EvalWeights {
   hand: number;
   /** Points per turn of race advantage. 0 disables the race term entirely. */
   clock: number;
+  /** Learned style leanings, threaded so evaluate stays a pure function. */
+  styleAggression?: number;
+  styleCaution?: number;
 }
 
 /**
@@ -513,14 +522,14 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
         /* Capped per body and in total: the charge is for standing wrong,
            and it must never grow past the point where dying starts to look
            like relief. */
-        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.65);
+        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.65 * (1 + 0.4 * (w.styleCaution ?? 0)));
       }
       score -= Math.min(800, leak);
     }
   }
 
   const pressure = threatAgainst(state, foe, me);
-  if (pressure > 0 && pressure < their.lp && their.lp < pressure * 2) score += (pressure * 2 - their.lp) * 0.3;
+  if (pressure > 0 && pressure < their.lp && their.lp < pressure * 2) score += (pressure * 2 - their.lp) * 0.3 * (1 + 0.3 * (w.styleAggression ?? 0));
   /* "Lethal next turn" is not a fact while a Set card could erase the board
      that delivers it. The cliff was what made every all-in line tower over
      every careful one by more than any risk term could claw back — the
@@ -723,6 +732,11 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     }
 
     for (const h of p.hand) {
+      /* A Field Spell replacing an identical Field Spell buys nothing and
+         pays a card — the owner watched Necrovalley land on Necrovalley.
+         The spare copy is worth more in hand, as insurance for the day the
+         first one is destroyed. */
+      if (CARDS[h.slug]?.subKind === 'Field' && p.field?.slug === h.slug) continue;
       if (canActivateFromHand(state, pid, h)) {
         for (const t of targetsFor(state, pid, h.slug, 'activate')) {
           acts.push({ type: 'activateSpell', uid: h.uid, targets: t });
@@ -1153,6 +1167,16 @@ export function planTurn(state: DuelState, pid: PlayerId, level: AiSetting = 'ch
 export type AiSetting = AiLevel | AiConfig;
 const cfgOf = (s: AiSetting): AiConfig => (typeof s === 'string' ? AI_LEVELS[s] : s);
 
+/** The weight bundle with the deck's learned style folded in. Neutral style
+ *  reproduces the base weights exactly, byte for byte of behaviour. */
+function styledWeights(cfg: AiConfig): EvalWeights {
+  const base = cfg.weights ?? WEIGHTS;
+  const a = cfg.style?.aggression ?? 0;
+  const c = cfg.style?.caution ?? 0;
+  if (!a && !c) return base;
+  return { ...base, clock: base.clock * (1 + 0.25 * a), styleAggression: a, styleCaution: c };
+}
+
 /** Cheap, deterministic settings used to model a reply turn or a trap window. */
 const MODEL_CFG: AiConfig = { beam: 3, branch: 12, slack: 0, depth: 0 };
 
@@ -1388,7 +1412,7 @@ function finishTurnInWorld(clock: Clock, state: DuelState, pid: PlayerId, w: Eva
 }
 
 function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock): DuelAction[] {
-  const w = cfg.weights ?? WEIGHTS;
+  const w = styledWeights(cfg);
   const total = clock.left;
 
   /* When a window is open the only decisions are responses; the beam handles
@@ -1578,7 +1602,7 @@ function judgeAcrossWorlds(
   const imm = examine.map(() => ({ sum: 0, n: 0 }));
   const roll = examine.map(() => ({ sum: 0, n: 0 }));
   const dark = examine.map(() => ({ sum: 0, n: 0 }));
-  const prior = paranoiaPrior(state, pid);
+  const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
   /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
      the first attack and the first summon go in whatever is face-down, or the
      computer stops duelling. The nightmare's weight therefore scales with the
@@ -1977,7 +2001,7 @@ function rollout(clock: Clock, nodes: number, state: DuelState, me: PlayerId, tu
  */
 export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 400): DuelAction {
   const cfg = cfgOf(level);
-  const w = cfg.weights ?? WEIGHTS;
+  const w = styledWeights(cfg);
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'chooseCard', uids: [] };
@@ -2024,7 +2048,7 @@ export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSet
  */
 export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSetting = 'champion', budgetMs = 900): DuelAction {
   const cfg = cfgOf(level);
-  const w = cfg.weights ?? WEIGHTS;
+  const w = styledWeights(cfg);
   const clock = clockFor(budgetMs);
   const options = candidates(state, pid, cfg.branch);
   if (!options.length) return { type: 'respondTrap', uid: null };
