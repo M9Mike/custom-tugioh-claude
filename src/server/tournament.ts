@@ -188,35 +188,84 @@ export function nextSideMatch(t: Tournament): TourMatch | undefined {
  * Life Points takes it, because a bracket cannot have a draw.
  */
 export function simulateDuel(d1: string, d2: string, seed: number): string {
-  let state: DuelState = createDuel({
+  const state = createSideDuel(d1, d2, seed);
+  let cur = state;
+  for (;;) {
+    const step = stepSideDuel(cur, 60_000);
+    cur = step.state;
+    if (step.done) return sideWinner(cur, d1, d2);
+  }
+}
+
+/** A fresh board for a computer-versus-computer bracket match. */
+export function createSideDuel(d1: string, d2: string, seed: number): DuelState {
+  return createDuel({
     seed,
     p1: { duelistId: d1, name: DUELIST_BY_ID[d1]?.name ?? 'P1' },
     p2: { duelistId: d2, name: DUELIST_BY_ID[d2]?.name ?? 'P2' },
   });
-  const rt = { p1: createAiRuntime(), p2: createAiRuntime() };
+}
 
+/**
+ * Advances a side duel by one budgeted slice and says whether it finished.
+ *
+ * A whole duel between two full-strength computers is ten-plus seconds of CPU
+ * — too long for one request, and the reason the bracket used to wait for the
+ * human before playing anything out. Sliced, the same duel fits in whatever
+ * budget the caller holds, resumes from a stored board, and can be nudged
+ * along in the background while the human plays their own match. Every action
+ * within a slice is deterministic, so a slice lost to a race replays
+ * identically.
+ */
+export function stepSideDuel(start: DuelState, budgetMs: number, actionMs = 900): { state: DuelState; done: boolean } {
+  let state = start;
+  const deadline = Date.now() + budgetMs;
+  const rt = { p1: createAiRuntime(), p2: createAiRuntime() };
   for (let step = 0; step < 3000 && !state.winner && state.turn <= 60; step++) {
+    if (Date.now() > deadline) return { state, done: false };
     const actor: PlayerId = state.pending ? state.pending.player : state.active;
     // A tighter budget than a live duel gets: nobody is watching this one, and
     // three of them may need to resolve while a player waits on the bracket.
-    const action = aiNext(state, actor, GAME_AI, rt[actor], 900);
+    const action = aiNext(state, actor, GAME_AI, rt[actor], actionMs);
     if (!action) break;
     let res = applyAction(state, actor, action);
     if (res.error) {
       invalidatePlan(rt[actor]);
-      const retry = aiNext(state, actor, GAME_AI, rt[actor], 900);
+      const retry = aiNext(state, actor, GAME_AI, rt[actor], actionMs);
       res = retry ? applyAction(state, actor, retry) : res;
     }
     if (res.error) break;
     state = res.state;
   }
+  return { state, done: true };
+}
 
+/** Who a finished (or stalled) side duel goes to — a bracket cannot draw. */
+export function sideWinner(state: DuelState, d1: string, d2: string): string {
   if (state.winner === 'p1') return d1;
   if (state.winner === 'p2') return d2;
-  if (state.winner === 'draw' || !state.winner) {
-    return state.players.p1.lp >= state.players.p2.lp ? d1 : d2;
+  return state.players.p1.lp >= state.players.p2.lp ? d1 : d2;
+}
+
+/** The deterministic seed for a bracket match, shared by every resolver. */
+export function sideSeed(t: Tournament, m: TourMatch): number {
+  return (t.seed + m.round * 977 + m.slot * 31) >>> 0;
+}
+
+/**
+ * Settles every bye in the current round at once: they cost nothing, and
+ * stepping through them one request at a time would leave the player watching
+ * a spinner for no reason.
+ */
+export function settleByes(t: Tournament): boolean {
+  let settled = false;
+  const out = t.status === 'eliminated';
+  for (const m of t.matches) {
+    if (m.round !== t.round || m.winner || (m.human && !out)) continue;
+    if (m.a && !m.b) { m.winner = m.a; settled = true; }
+    else if (m.b && !m.a) { m.winner = m.b; settled = true; }
   }
-  return d2;
+  return settled;
 }
 
 /** Records the human's result and, if they won, whether the round can advance. */
@@ -234,23 +283,12 @@ export function recordHumanResult(t: Tournament, won: boolean) {
 
 /** Resolves one outstanding computer match. Returns false when none are left. */
 export function resolveOneSideMatch(t: Tournament): boolean {
-  /* Byes first, and all of them at once: they cost nothing to settle, and
-     stepping through six of them one request at a time would leave the player
-     watching a spinner for no reason. */
-  let settled = false;
-  const out = t.status === 'eliminated';
-  for (const m of t.matches) {
-    if (m.round !== t.round || m.winner || (m.human && !out)) continue;
-    if (m.a && !m.b) { m.winner = m.a; settled = true; }
-    else if (m.b && !m.a) { m.winner = m.b; settled = true; }
-  }
-  if (settled) return true;
-
+  if (settleByes(t)) return true;
   const m = nextSideMatch(t);
   if (!m || !m.a || !m.b) return false;
   // The seed folds in the round and slot so every match is its own duel, and so
   // a retried request replays the same one rather than rolling again.
-  m.winner = simulateDuel(m.a, m.b, (t.seed + m.round * 977 + m.slot * 31) >>> 0);
+  m.winner = simulateDuel(m.a, m.b, sideSeed(t, m));
   return true;
 }
 

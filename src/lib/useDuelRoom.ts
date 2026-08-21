@@ -362,6 +362,50 @@ export function useDuelRoom(code: string | null) {
        `paused` for the same reason in the other direction. */
   }, [code, view, applyView, animating, paused, watching]);
 
+  /* The bracket's other matches, played while you play yours.
+     A quiet second heartbeat: while a tournament duel is in progress and side
+     matches are still open, the server is asked every few seconds to advance
+     one of them by a slice. Fire-and-forget — the response carries no view,
+     because the poll loop owns the view and a stale copy would roll the board
+     back. By the time the human's duel ends, the bracket has usually already
+     filled itself in, which is the whole point: nobody waits on a robot. */
+  const bracketTour = view?.tournament;
+  /* A primitive, not the view object: the view is rebuilt on every poll, and
+     an effect keyed on it would reset its timer each time — the heartbeat
+     would starve exactly when the board is busiest. */
+  const sideOpen =
+    !!bracketTour &&
+    bracketTour.status === 'duelling' &&
+    view?.stage === 'duel' &&
+    bracketTour.matches.some((m) => m.round === bracketTour.round && !m.human && !m.winner);
+  useEffect(() => {
+    if (!code || paused || !sideOpen) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const nudge = async () => {
+      if (cancelled) return;
+      const token = tokenRef.current;
+      if (token) {
+        try {
+          await fetch(`/api/room/${code}/ai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, bracket: true }),
+            cache: 'no-store',
+          });
+        } catch {
+          /* A dropped nudge costs nothing: the next one replays the slice. */
+        }
+      }
+      if (!cancelled) timer = setTimeout(nudge, 5000);
+    };
+    timer = setTimeout(nudge, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [code, paused, sideOpen]);
+
   const act = useCallback((action: DuelAction) => send({ kind: 'duel', action }), [send]);
   const chooseDuelist = useCallback((duelistId: string) => send({ kind: 'chooseDuelist', duelistId }), [send]);
   const setPlayerName = useCallback((name: string) => send({ kind: 'setName', name }), [send]);

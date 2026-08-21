@@ -12,10 +12,15 @@ import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import {
   advanceRound,
+  createSideDuel,
   createTournament,
   humanOpponent,
+  nextSideMatch,
   recordHumanResult,
-  resolveOneSideMatch,
+  settleByes,
+  sideSeed,
+  sideWinner,
+  stepSideDuel,
   type Tournament,
 } from './tournament';
 import { claim, readJson, writeJsonIf } from './store';
@@ -319,11 +324,10 @@ export async function stepTournament(room: Room): Promise<boolean> {
   const spectating = t.status === 'eliminated' && !t.champion;
   if (t.status !== 'resolving' && !spectating) return false;
 
-  // 2. Play out one outstanding computer match.
-  if (resolveOneSideMatch(t)) {
-    await saveRoom(room);
-    return true;
-  }
+  // 2. Advance one outstanding computer match by a slice. Usually the duel is
+  // already finished or nearly so — the background nudges played it while the
+  // human was still fighting their own — and this is only the tail.
+  if (await stepSideDuels(room)) return true;
 
   // 3. Round complete: either crown a champion or set up the next duel.
   if (advanceRound(t)) {
@@ -340,6 +344,74 @@ export async function stepTournament(room: Room): Promise<boolean> {
   await saveRoom(room);
   return true;
 }
+
+/** Where a bracket match's in-progress board lives between slices. */
+const sideDuelKey = (code: string, round: number, slot: number) =>
+  `duel:tour:${code.toUpperCase()}:r${round}s${slot}`;
+
+interface HeldSideDuel {
+  revision: number;
+  state: DuelState;
+}
+
+/**
+ * Advances the bracket's computer matches by one budgeted slice.
+ *
+ * This is what lets the side matches play out WHILE the human plays their own
+ * — the client nudges it quietly in the background, and by the time the
+ * human's duel ends the bracket is usually already filled in. The in-progress
+ * board lives under its own store key, not on the room: a slice then never
+ * contends with the human's duel for the room object, and two racing nudges
+ * settle by compare-and-swap — the loser's slice is discarded and replayed,
+ * identically, because every action in it is deterministic.
+ *
+ * Only the finished RESULT touches the room, and that write reloads the room
+ * fresh first: this function's copy may be minutes stale against a live duel,
+ * and writing it back would hand the player an old board.
+ */
+export async function stepSideDuels(room: Room, budgetMs = 3500, actionMs = 900): Promise<boolean> {
+  const t = room.tournament;
+  if (!t || t.champion) return false;
+  if (settleByes(t)) {
+    await saveRoom(room);
+    return true;
+  }
+  const m = nextSideMatch(t);
+  if (!m || !m.a || !m.b) return false;
+
+  const key = sideDuelKey(room.code, m.round, m.slot);
+  let held = await readJson<HeldSideDuel>(key);
+  if (!held) {
+    const fresh: HeldSideDuel = { revision: 1, state: createSideDuel(m.a, m.b, sideSeed(t, m)) };
+    // Claimed atomically so two simultaneous nudges cannot both deal the
+    // opening hand; the loser reads whatever the winner wrote.
+    held = (await claim(key, JSON.stringify(fresh))) ? fresh : await readJson<HeldSideDuel>(key);
+    if (!held) return false;
+  }
+
+  const from = held.revision;
+  const res = stepSideDuel(held.state, budgetMs, actionMs);
+  if (!res.done) {
+    await writeJsonIf(key, { revision: from + 1, state: res.state }, from, from + 1);
+    return true;
+  }
+
+  const winner = sideWinner(res.state, m.a, m.b);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cur = await loadRoom(room.code);
+    const cm = cur?.tournament?.matches.find((x) => x.round === m.round && x.slot === m.slot);
+    if (!cur || !cm || cm.winner) return true;
+    cm.winner = winner;
+    try {
+      await saveRoom(cur);
+      return true;
+    } catch (err) {
+      if (!(err instanceof StaleRoom)) throw err;
+    }
+  }
+  return true;
+}
+
 
 /** True while the bracket has work to do that the client should nudge along. */
 export function tournamentPending(room: Room): boolean {
@@ -404,19 +476,15 @@ export async function stepAI(room: Room): Promise<boolean> {
     // and drop whatever was left of the turn plan, since the board is about to
     // change underneath it.
     room.aiPlan = undefined;
-    /* The window that decides whether Mirror Force fires is worth real time:
-       two seconds buys two sampled worlds with a full playout per option. */
-    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI, 800) : chooseTrapResponse(s, pid, GAME_AI, 2000);
+    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, GAME_AI) : chooseTrapResponse(s, pid, GAME_AI);
   } else {
     const key = turnKey;
     if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
-      /* Eight seconds to plan the whole turn, once per turn. The board
-         narrates every beat for over a second anyway, so the think overlaps
-         the tail of the previous action far more often than it is felt — and
-         the function has a 30s ceiling with a 12.8s emergency wall inside the
-         search, so there is no platform pressure to hurry. Nodes are the
-         strength of this AI; time is the one honest thing to spend. */
-      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 8000) };
+      /* Four seconds to plan the whole turn, once per turn. The board narrates
+         every beat for over a second anyway, so the think overlaps the tail of
+         the previous action far more often than it is felt — and the function
+         has a 30s ceiling, so there is no platform pressure to hurry. */
+      room.aiPlan = { key, actions: planTurn(s, pid, GAME_AI, 4000) };
     }
     action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
   }
@@ -426,7 +494,7 @@ export async function stepAI(room: Room): Promise<boolean> {
     // The plan went stale against the real position. Search again from here.
     room.aiPlan = undefined;
     const rt = createAiRuntime();
-    const retry = aiNext(s, pid, GAME_AI, rt, 8000);
+    const retry = aiNext(s, pid, GAME_AI, rt, 4000);
     res = retry ? applyAction(s, pid, retry) : res;
   }
   if (res.error) {

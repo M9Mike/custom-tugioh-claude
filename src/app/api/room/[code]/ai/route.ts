@@ -1,4 +1,14 @@
-import { StaleRoom, aiSeatToMove, loadRoom, seatFor, stepAI, stepTournament, tournamentPending, viewOf } from '@/server/rooms';
+import {
+  StaleRoom,
+  aiSeatToMove,
+  loadRoom,
+  seatFor,
+  stepAI,
+  stepSideDuels,
+  stepTournament,
+  tournamentPending,
+  viewOf,
+} from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,26 +26,26 @@ export const maxDuration = 30;
  */
 export async function POST(req: Request, ctx: { params: Promise<{ code: string }> }) {
   const { code } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as { token?: string };
+  const body = (await req.json().catch(() => ({}))) as { token?: string; bracket?: boolean };
 
   /* One retry only. A lost race here just means somebody else already moved
      the duel along, and the search is four seconds of CPU — far better to
      report "nothing moved" and let the poll loop pick it up than to spend it
      twice. */
   try {
-    return await handle(code, body.token ?? '');
+    return await handle(code, body.token ?? '', !!body.bracket);
   } catch (err) {
     if (!(err instanceof StaleRoom)) throw err;
   }
   try {
-    return await handle(code, body.token ?? '');
+    return await handle(code, body.token ?? '', !!body.bracket);
   } catch (err) {
     if (err instanceof StaleRoom) return Response.json({ ok: true, moved: false });
     throw err;
   }
 }
 
-async function handle(code: string, token: string) {
+async function handle(code: string, token: string, bracket = false) {
   const room = await loadRoom(code);
   if (!room) return Response.json({ ok: false, error: 'Room not found.' }, { status: 404 });
   /* An exhibition is nudged by its audience, who hold no seat. The nudge is
@@ -47,6 +57,15 @@ async function handle(code: string, token: string) {
   }
   const pid = seatFor(room, token);
   if (!pid) return Response.json({ ok: false, error: 'You are not in this duel.' }, { status: 403 });
+
+  /* A background bracket nudge: it advances a side duel stored off the room,
+     while the human plays their own match undisturbed. Deliberately no view
+     in the response — the poll loop owns the view, and a copy from before
+     the human's latest action would roll their board back. */
+  if (bracket) {
+    const moved = room.tournament ? await stepSideDuels(room) : false;
+    return Response.json({ ok: true, moved });
+  }
 
   // The bracket takes priority: once a tournament duel is decided there is no
   // AI move left to make, only a result to record and side matches to play out.
