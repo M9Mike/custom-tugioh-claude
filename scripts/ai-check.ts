@@ -113,6 +113,7 @@ let twUid = '';
 let swordsUid = '';
 let doomUid = '';
 let redEyesUid = '';
+let mofUid = '';
 
 const CASES: Case[] = [
   {
@@ -431,6 +432,30 @@ const CASES: Case[] = [
     },
     want: (plan) =>
       plan.some((a) => a.type === 'activateSpell' && a.uid === doomUid && (a.targets ?? []).includes(redEyesUid)),
+  },
+  {
+    /* "How can it be a strategical benefit to summon Magician of Faith,
+       ever" — the owner. It cannot: her card IS the flip, and face-up she is
+       a 300 ATK body that hands the opponent free damage. Set, she is a
+       spell recovered, a card drawn, and a surprise. */
+    name: 'sets Magician of Faith instead of summoning her face-up',
+    duelist: 'yami',
+    because: 'her effect only exists on the way from face-down to face-up; summoning her face-up throws the card away',
+    build: (s) => {
+      mofUid = '';
+      const mof = card(ME, 'magician-of-faith');
+      mofUid = mof.uid;
+      s.players[ME].hand = [mof, card(ME, 'mirror-force')];
+      s.players[ME].grave.push(card(ME, 'pot-of-greed'));
+      s.players[ME].monsters[0] = card(ME, 'summoned-skull');
+      s.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
+    },
+    want: (plan) => {
+      for (const a of plan) {
+        if (a.type === 'normalSummon' && a.uid === mofUid) return a.face === 'down';
+      }
+      return true;
+    },
   },
   {
     name: 'never leaves a turn half-played',

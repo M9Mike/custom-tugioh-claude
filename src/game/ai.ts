@@ -330,6 +330,35 @@ function trapWorth(slug: string): number {
  * 2500 stood beside it. Derived from the card's own ops, cached, and honest:
  * face-up monsters only, because a face-down one has not been shown.
  */
+/**
+ * What a face-down monster of OURS is worth beyond its body: the flip effect
+ * waiting inside it. Summoning Magician of Faith face-up throws her whole
+ * card away — the effect only exists on the way from face-down to face-up —
+ * and the evaluation priced every face-down at the same flat token, so the
+ * search saw no reason not to. Own monsters only: reading the opponent's
+ * face-down would be reading the card.
+ */
+const FLIP_WORTH = new Map<string, number>();
+function flipWorth(slug: string): number {
+  const cached = FLIP_WORTH.get(slug);
+  if (cached !== undefined) return cached;
+  let worth = 0;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.trigger !== 'onFlip') continue;
+    for (const op of eff.ops) {
+      if (op.op === 'destroy') worth += 'target' in op && op.target?.pick === 'all' ? 600 : 350;
+      else if (op.op === 'bounce') worth += 300;
+      else if (op.op === 'damage') worth += Math.min(400, ('amount' in op ? (op.amount ?? 0) : 0) * 0.4);
+      else if (op.op === 'draw' || op.op === 'stealFromGrave' || op.op === 'search') worth += 240;
+      else if (op.op === 'specialSummon' || op.op === 'summonToken') worth += 260;
+      else worth += 80;
+    }
+  }
+  const clamped = Math.min(700, worth);
+  FLIP_WORTH.set(slug, clamped);
+  return clamped;
+}
+
 const MENACE = new Map<string, number>();
 function menace(slug: string): number {
   const cached = MENACE.get(slug);
@@ -385,7 +414,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     const b = bodyOf(state, m, me, me);
     score += b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
     if (m.face === 'up') score += menace(m.slug) * 0.6;
-    if (m.face === 'down') score += 120; // unknown to the opponent
+    if (m.face === 'down') score += 120 + flipWorth(m.slug) * 0.5; // unknown to them, loaded for us
     if (b.pierce) score += 120;
     if (b.direct) score += 260;
     if (b.wallProof) score += 220;
