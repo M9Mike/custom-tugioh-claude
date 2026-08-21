@@ -1811,7 +1811,38 @@ function judgeAcrossWorlds(
      few hundred points are inside the sampling's own error bar, and which one
      the votes favoured is weather; what is NOT weather is Life Points kept
      and bodies left standing in the line of fire. Ordered: keep more Life
-     Points first, then fewer outgunned bodies in Attack Position. */
+     Points first, then fewer outgunned bodies in Attack Position.
+     "Kept" means after the blow already queued up on the other side of the
+     table, not as they stand when we hand the turn over. Mystical Elf heals
+     800 as it arrives face-up and is then run over by a piercing 2500 for
+     1700; Set, it heals nothing and costs 500. Reading the number before the
+     swing, the tie-break took the heal and was 400 Life Points worse for it —
+     and the search stood an 800 ATK body in front of lethal to get it. */
+  const lpAfterBlow = (s: DuelState): number => {
+    const mineP = s.players[pid];
+    const foeP = s.players[other(pid)];
+    let best = 0;
+    let pierces = false;
+    for (const fm of foeP.monsters) {
+      if (!fm || fm.face !== 'up' || fm.position !== 'atk') continue;
+      const fb = bodyOf(s, fm, other(pid), pid);
+      if (fb.atk > best) {
+        best = fb.atk;
+        pierces = fb.pierce;
+      }
+    }
+    if (!best) return mineP.lp;
+    const bodies = mineP.monsters.filter((m): m is CardInstance => !!m);
+    if (!bodies.length) return mineP.lp - best; // nothing in the way at all
+    /* They pick the target, so price the worst one they could pick. */
+    let worst = 0;
+    for (const m of bodies) {
+      const b = bodyOf(s, m, pid, pid);
+      const taken = b.atkPos ? Math.max(0, best - b.atk) : pierces ? Math.max(0, best - b.def) : 0;
+      worst = Math.max(worst, taken);
+    }
+    return mineP.lp - worst;
+  };
   const exposure = (s: DuelState): number => {
     const mine = s.players[pid];
     const foeP = s.players[other(pid)];
@@ -1824,7 +1855,7 @@ function judgeAcrossWorlds(
   };
   if (out.length > 1 && out[0].score - out[1].score < 3000 && Math.abs(out[0].score) < WIN / 2) {
     const band = out.filter((l) => out[0].score - l.score < 3000 && Math.abs(l.score) < WIN / 2);
-    band.sort((a, b) => b.state.players[pid].lp - a.state.players[pid].lp || exposure(a.state) - exposure(b.state));
+    band.sort((a, b) => lpAfterBlow(b.state) - lpAfterBlow(a.state) || exposure(a.state) - exposure(b.state));
     if (band[0] !== out[0]) {
       out.splice(out.indexOf(band[0]), 1);
       out.unshift(band[0]);
