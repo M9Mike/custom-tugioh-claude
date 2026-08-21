@@ -10,6 +10,7 @@
  */
 import { KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
 import { revivable } from '../src/game/targeting';
+import { choiceResponses } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
@@ -10811,6 +10812,48 @@ console.log('\nThe road back for a God, and the two postures out of a hand');
     ok(!shown.includes(gamma.uid), 'the Magnet Warrior being Summoned is not one of its own answers');
     ok(shown.length > 0, 'while its brothers still are', String(shown.length));
   }
+}
+
+console.log('\nA question about a card nobody can find any more');
+{
+  /* The A/B harness reports a crashed game rather than hiding it, and one duel
+     in sixty-five died here: `choiceResponses` ranked its options by ATK, and
+     for an option it could not find it looked up `card('')` — which throws, and
+     took the duel with it. In a room that is a duel that simply stops.
+
+     Two faults in one line. The pile search walked past `banished` and the
+     Extra Deck, so a card banished mid-resolution was named by a window and
+     then unfindable; and the `?? ''` that was meant to be a safe default was
+     the opposite of one. */
+  const s = fresh();
+  const ghost = card(ME, 'kuriboh');
+  s.players[ME].grave = [card(ME, 'summoned-skull'), card(ME, 'battle-ox')];
+  s.pending = {
+    kind: 'choose',
+    player: ME,
+    options: [s.players[ME].grave[0].uid, ghost.uid, s.players[ME].grave[1].uid],
+    want: 1,
+    reason: 'probe',
+  } as DuelState['pending'];
+
+  let threw: string | null = null;
+  let answers: string[][] = [];
+  try {
+    answers = choiceResponses(s, ME).map((a) => (a as { uids: string[] }).uids);
+  } catch (e) {
+    threw = e instanceof Error ? e.message : String(e);
+  }
+  ok(!threw, 'an option nothing can find does not throw the duel away', threw ?? '');
+  ok(answers.length > 0, 'and the window still offers its real answers', String(answers.length));
+  ok(answers[0]?.[0] === s.players[ME].grave[0].uid, 'strongest first, with the ghost ranked at nothing');
+
+  /* And the pile search reaches the two piles it used to miss. */
+  const banished = fresh();
+  const gone = card(ME, 'dark-magician');
+  banished.players[ME].banished = [gone];
+  banished.pending = { kind: 'choose', player: ME, options: [gone.uid], want: 1, reason: 'probe' } as DuelState['pending'];
+  const found = choiceResponses(banished, ME);
+  ok(found.length === 1 && found[0].type === 'chooseCard', 'a banished card is still an answer it can rank', String(found.length));
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

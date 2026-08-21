@@ -3055,7 +3055,16 @@ function findAnywhere(state: DuelState, uid: string): CardInstance | null {
   if (onField) return onField.c;
   for (const pid of ['p1', 'p2'] as PlayerId[]) {
     const p = state.players[pid];
-    const hit = p.grave.find((c) => c.uid === uid) ?? p.hand.find((c) => c.uid === uid) ?? p.deck.find((c) => c.uid === uid);
+    /* Every pile, including the two this used to walk past. A card banished
+       mid-resolution, or one sitting in an Extra Deck, was "anywhere" enough
+       to be named by an open choice window and not anywhere enough to be
+       found again — see `choiceResponses`, which crashed a duel over it. */
+    const hit =
+      p.grave.find((c) => c.uid === uid) ??
+      p.hand.find((c) => c.uid === uid) ??
+      p.deck.find((c) => c.uid === uid) ??
+      p.banished?.find((c) => c.uid === uid) ??
+      p.extra.find((c) => c.uid === uid);
     if (hit) return hit;
   }
   return null;
@@ -3153,9 +3162,16 @@ function raiseChoice(
 export function choiceResponses(state: DuelState, pid: PlayerId): DuelAction[] {
   const pending = state.pending;
   if (pending?.kind !== 'choose' || pending.player !== pid) return [];
-  const ranked = [...pending.options].sort(
-    (a, b) => baseAtk(findAnywhere(state, b)?.slug ?? '') - baseAtk(findAnywhere(state, a)?.slug ?? '')
-  );
+  /* A card the window named and nothing can find any more is worth nothing —
+     it is NOT worth `card('')`, which throws and takes the whole duel with it.
+     Found by the A/B harness, which reports a crashed game instead of hiding
+     it: one duel in sixty-five died here, in a room this would be a duel that
+     simply stopped. The `?? ''` read as a safe default and was the opposite. */
+  const worth = (uid: string): number => {
+    const c = findAnywhere(state, uid);
+    return c ? (c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug)) : 0;
+  };
+  const ranked = [...pending.options].sort((a, b) => worth(b) - worth(a));
   const out: DuelAction[] = [];
   const take = Math.min(3, Math.max(1, ranked.length - pending.want + 1));
   for (let i = 0; i < take; i++) out.push({ type: 'chooseCard', uids: ranked.slice(i, i + pending.want) });
