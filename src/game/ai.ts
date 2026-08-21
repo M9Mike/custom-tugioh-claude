@@ -176,6 +176,7 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
   const walls = blockers.map((b) => ({ ...b }));
   let damage = 0;
 
+  let cleared = 0;
   for (const a of live) {
     if (a.direct || !walls.length) {
       damage += a.atk;
@@ -188,14 +189,20 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
       if (t.atkPos) damage += a.atk - t.wall;
       else if (a.pierce) damage += a.atk - t.wall;
       walls.splice(walls.indexOf(t), 1);
+      cleared += 1;
       continue;
     }
     // Nothing it beats: a sensible attacker simply does not swing.
   }
 
-  // Attack power available *per turn from next turn on*, which is what `clock`
-  // divides the remaining Life Points by.
-  const freeAtk = attackers.reduce((sum, a) => sum + a.atk * a.attacks, 0);
+  /* Attack power available *per turn from next turn on*, which is what `clock`
+     divides the remaining Life Points by — but ONLY if these attackers can
+     ever actually connect. An army that cannot break a single blocker has no
+     clock at all, and pretending otherwise made the race term claim a
+     two-turn win for two monsters permanently walled behind a Dark Magician
+     — which then out-voted every defensive truth on the table. */
+  const walled = walls.length > 0 && cleared === 0 && !attackers.some((a) => a.direct);
+  const freeAtk = walled ? 0 : attackers.reduce((sum, a) => sum + a.atk * a.attacks, 0);
   return { damage, freeAtk };
 }
 
@@ -477,6 +484,41 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
      bad trades all game. */
   if (threat > 0 && threat < my.lp && my.lp < threat * 2) score -= (threat * 2 - my.lp) * 0.4;
 
+  /* A body standing in Attack Position it cannot justify is a Life-Point
+     leak: whatever kneeling would save is charged for standing. The aggregate
+     threat term already knows this, but at a weight the search's sampling
+     noise drowns — the owner watched two outgunned monsters stand at
+     attention while a 2500 queued up behind them, and the computer end its
+     turn. Charged per body, against their best visible attacker, and only
+     when Defence genuinely takes less. */
+  {
+    let bestFoe = 0;
+    let foePierces = false;
+    for (const fm of their.monsters) {
+      if (!fm || fm.face !== 'up' || fm.position !== 'atk') continue;
+      const fb = bodyOf(state, fm, foe, me);
+      if (fb.atk > bestFoe) {
+        bestFoe = fb.atk;
+        foePierces = fb.pierce;
+      }
+    }
+    if (bestFoe > 0) {
+      let leak = 0;
+      for (const m of my.monsters) {
+        if (!m || m.face !== 'up' || m.position !== 'atk') continue;
+        const b = bodyOf(state, m, me, me);
+        if (b.atk >= bestFoe) continue;
+        const standing = bestFoe - b.atk;
+        const kneeling = foePierces ? Math.max(0, bestFoe - b.def) : 0;
+        /* Capped per body and in total: the charge is for standing wrong,
+           and it must never grow past the point where dying starts to look
+           like relief. */
+        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.5);
+      }
+      score -= Math.min(800, leak);
+    }
+  }
+
   const pressure = threatAgainst(state, foe, me);
   if (pressure > 0 && pressure < their.lp && their.lp < pressure * 2) score += (pressure * 2 - their.lp) * 0.3;
   /* "Lethal next turn" is not a fact while a Set card could erase the board
@@ -720,6 +762,15 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
       const ranked = uids
         .map((u) => state.players[foe].monsters.find((x) => x?.uid === u)!)
         .filter(Boolean)
+        /* A losing attack in this game does not even trade — the attacker
+           survives and its controller simply pays the difference in Life
+           Points. Pure donation, never once the right line in this pool, and
+           the knife-edge scoring around it is exactly where sampling noise
+           used to pick one. Not offered at all: kills and even trades only. */
+        .filter((t) => {
+          const wall = t.face === 'down' ? UNKNOWN_DEF : t.position === 'atk' ? effAtk(state, t, foe) : effDef(state, t, foe);
+          return atk >= wall;
+        })
         .sort((a, b) => {
           const av = a.position === 'atk' ? effAtk(state, a, foe) : effDef(state, a, foe);
           const bv = b.position === 'atk' ? effAtk(state, b, foe) : effDef(state, b, foe);

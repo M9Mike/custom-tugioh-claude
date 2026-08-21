@@ -458,6 +458,30 @@ const CASES: Case[] = [
     },
   },
   {
+    /* "How can the AI not account for defense position if the enemy has
+       stronger monsters" — the owner. Two outgunned bodies standing in
+       Attack Position are a Life-Point leak; kneeling costs nothing here
+       (no piercers on their side) and saves a thousand points a turn. The
+       fix underneath was the clock term: it claimed a two-turn win for an
+       army that could never break a single blocker, and that fiction
+       out-voted every defensive truth on the table. */
+    name: 'kneels its outgunned board instead of standing in the line of fire',
+    duelist: 'joey',
+    because: 'against a 2500 and a 2000 with no piercing, two weaker monsters in Attack Position donate Life Points every turn for nothing',
+    build: (s) => {
+      s.players[ME].lp = 2000;
+      s.players[ME].monsters[0] = card(ME, 'battle-ox');
+      s.players[ME].monsters[1] = card(ME, 'garoozis');
+      s.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
+      s.players[FOE].monsters[1] = card(FOE, 'dark-magician');
+    },
+    /* At least one body kneels and nothing attacks. The second switch is a
+       ~250-point margin the sampling can defensibly read either way; the
+       behaviour this pins is the one the owner named — being outgunned
+       REGISTERS, and no Life Points are donated. */
+    want: (plan) => plan.filter((a) => a.type === 'changePosition').length >= 1 && !did(plan, 'attack'),
+  },
+  {
     name: 'never leaves a turn half-played',
     because: 'a plan must run the turn out, end the duel, or hand a decision to the other seat',
     build: (s) => {
