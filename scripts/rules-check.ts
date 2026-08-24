@@ -2271,9 +2271,17 @@ console.log('\nSetting a monster is not summoning one');
   ok(up.pending?.kind === 'trap', 'CONTROL: a face-up Normal Summon still opens it');
 }
 
-console.log('\nTrap Hole says "Normal Summons", so a Fusion Summon is not its business');
+console.log('\nTrap Hole answers any kind of Summon, and a Set is still not one');
 {
-  /* Gaia the Dragon Champion, not the Blue-Eyes Ultimate Dragon. Written with
+  /* It used to say "Normal Summons" and mean only that, and this section
+     pinned the narrowness. The owner asked for the wider card — "change from
+     normal summon to just summon (so any kind)" — so the pin now records the
+     rule that replaced it. Torrential Tribute and Apophis ride along: both
+     have said "when your opponent Summons" since the day they were written,
+     and only ever caught Normal and Fusion Summons because no Special Summon
+     opened the window for anybody.
+
+     Gaia the Dragon Champion, not the Blue-Eyes Ultimate Dragon. Written with
      the Ultimate Dragon first, this assertion passed on the *unfixed* engine
      too — its Fusion effect destroys every Spell and Trap the opponent
      controls, so the Trap Hole was gone before the window could open and the
@@ -2297,7 +2305,55 @@ console.log('\nTrap Hole says "Normal Summons", so a Fusion Summon is not its bu
     zone: 0,
     position: 'atk',
   });
-  ok(!fused.pending, 'Trap Hole sits out a Fusion Summon', fused.pending ? fused.pending.reason : '');
+  ok(!!fused.pending, 'Trap Hole answers a Fusion Summon', fused.pending ? fused.pending.reason : '(no window)');
+
+  /* The roads it used to walk past. A monster revived out of the Graveyard is
+     a Summon, and so is a Token — and neither opened a window for anybody. */
+  {
+    const g = fresh();
+    const hole2 = card(FOE, 'trap-hole');
+    hole2.face = 'down';
+    hole2.summonedOnTurn = g.turn - 1;
+    g.players[FOE].spellTrap = hole2;
+    const skull = card(ME, 'summoned-skull');
+    g.players[ME].grave = [skull];
+    const reborn = card(ME, 'monster-reborn');
+    g.players[ME].hand = [reborn];
+    const raised = applyAction(g, ME, { type: 'activateSpell', uid: reborn.uid, targets: [skull.uid] });
+    ok(!!raised.state.pending, 'and a Special Summon out of the Graveyard', raised.state.pending ? '' : '(no window)');
+
+    /* Firing it destroys what arrived and charges the 400. */
+    const fired = act(raised.state, FOE, { type: 'respondTrap', uid: hole2.uid });
+    ok(!on(fired, ME).some((m) => m.slug === 'summoned-skull'), 'the monster it caught is destroyed', on(fired, ME).map((m) => m.slug).join(',') || 'nothing');
+    ok(fired.players[ME].lp === g.players[ME].lp - 400, 'and its owner pays 400', `${fired.players[ME].lp}`);
+
+    const tk = fresh();
+    const hole3 = card(FOE, 'trap-hole');
+    hole3.face = 'down';
+    hole3.summonedOnTurn = tk.turn - 1;
+    tk.players[FOE].spellTrap = hole3;
+    const goat = card(ME, 'scapegoat');
+    tk.players[ME].hand = [goat];
+    const tokens = applyAction(tk, ME, { type: 'activateSpell', uid: goat.uid });
+    ok(!!tokens.state.pending, 'and a Token arriving', tokens.state.pending ? '' : '(no window)');
+  }
+
+  /* And the line that must not move: Setting a monster is not a Summon. It
+     opens no window, and the reason matters as much as the rule — the prompt
+     names the card, which would give away what was just Set. */
+  {
+    const q = fresh();
+    const hole4 = card(FOE, 'trap-hole');
+    hole4.face = 'down';
+    hole4.summonedOnTurn = q.turn - 1;
+    q.players[FOE].spellTrap = hole4;
+    const bug = card(ME, 'man-eater-bug');
+    q.players[ME].hand = [bug];
+    const setDown = applyAction(q, ME, { type: 'normalSummon', uid: bug.uid, zone: 0, position: 'def', face: 'down' });
+    ok(!setDown.state.pending, 'Setting a monster still opens nothing', setDown.state.pending ? setDown.state.pending.reason : '');
+    const said = setDown.state.log.map((l) => (typeof l === 'string' ? l : (l as { text: string }).text)).join(' | ');
+    ok(!said.includes('Man-Eater'), 'and the board never names what was Set', said.slice(-80));
+  }
 
   /* Torrential Tribute says "when your opponent summons", and means it.
      Gaia the Dragon Champion rather than the Ultimate Dragon, because the

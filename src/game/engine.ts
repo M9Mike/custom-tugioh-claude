@@ -2155,10 +2155,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         landSpecialSummon(state, found, ctx.controller, zone, op.position ?? 'atk', 'up', ctx.source.slug);
         ctx.summoned = [...(ctx.summoned ?? []), found.uid];
         fireTriggers(state, found, ctx.controller, 'onSummon', {});
-        if (!state.winner) {
-          fireOpponentSummon(state, ctx.controller, found.uid);
-          fireAllySummon(state, ctx.controller, found.uid);
-        }
+        announceSummon(state, ctx.controller, found.uid, `${state.players[ctx.controller].name} Special Summoned ${displayName(state, found)}.`);
         break;
       }
       case 'drawUntil': {
@@ -2212,10 +2209,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         ctx.summoned = [...(ctx.summoned ?? []), ctx.source.uid];
         if (ctx.source.face === 'up') {
           fireTriggers(state, ctx.source, ctx.controller, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
-          if (!state.winner) {
-            fireOpponentSummon(state, ctx.controller, ctx.source.uid);
-            fireAllySummon(state, ctx.controller, ctx.source.uid);
-          }
+          announceSummon(state, ctx.controller, ctx.source.uid, `${state.players[ctx.controller].name} Special Summoned ${displayName(state, ctx.source)}.`);
         }
         break;
       }
@@ -2394,12 +2388,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              walked past the God untouched. That is most of the summons in this
              game, and the card's signature quietly did nothing about them.
 
-             Only the *monster* trigger fires here, never a trap window: making
-             Special Summons open `opponentSummon` would hand Torrential Tribute
-             to the whole roster, which is a different change than this one. */
-          if (!state.winner && picked.face === 'up') {
-            fireOpponentSummon(state, ctx.controller, picked.uid);
-            fireAllySummon(state, ctx.controller, picked.uid);
+             The trap window opens here too now. It did not, and the note that
+             used to sit here called that "a different change than this one" —
+             which it was, until the owner asked for Trap Hole to answer any
+             kind of Summon. Torrential Tribute and Apophis come along, and
+             both of them have said "when your opponent Summons" the whole
+             time. */
+          if (picked.face === 'up') {
+            announceSummon(state, ctx.controller, picked.uid, `${state.players[ctx.controller].name} Special Summoned ${displayName(state, picked)}.`);
           }
         }
         if (!arrived && blocked) {
@@ -2447,10 +2443,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           // A Token is a monster being Summoned, so the second mouth sees it
           // too. Anything else would be a carve-out the card's text does not
           // have, and three 300 ATK bodies are exactly what a God is for.
-          if (!state.winner) {
-            fireOpponentSummon(state, ctx.controller, t.uid);
-            fireAllySummon(state, ctx.controller, t.uid);
-          }
+          announceSummon(state, ctx.controller, t.uid, `${state.players[ctx.controller].name} Special Summoned ${op.name}.`);
         }
         /* What actually landed, not what was asked for. The loop breaks when
            the board is full, and this line sat outside it reading `op.count` —
@@ -3293,6 +3286,33 @@ function windowMatches(wants: TrapWindow | undefined, opened: TrapWindow): boole
  * windows follow: iterated over a copy, because an effect here can destroy the
  * very monster that just arrived — or the one reacting to it.
  */
+/**
+ * Everything the rest of the table is told when a monster arrives face-up.
+ *
+ * The Normal Summon and the Fusion Summon each did all three of these —
+ * the watchers on the board, the watchers off it, and the window a Trap
+ * answers in. Every *Special* Summon did only the first two, so a monster
+ * revived, fetched or called from a hand walked past Trap Hole, Torrential
+ * Tribute and Apophis alike. All three cards say "when your opponent
+ * Summons"; two of them had been saying it since the day they were written.
+ *
+ * Setting a monster face-down is not a Summon and must never come through
+ * here: it opens no window, and the reason is the message — naming the card
+ * would give away what was just Set.
+ */
+function announceSummon(
+  state: DuelState,
+  summoner: PlayerId,
+  uid: string,
+  reason: string,
+  window: TrapWindow = 'opponentSummon'
+) {
+  if (state.winner) return;
+  fireOpponentSummon(state, summoner, uid);
+  fireAllySummon(state, summoner, uid);
+  if (!state.winner) openTrapWindow(state, other(summoner), window, reason, { attackerUid: uid });
+}
+
 function fireOpponentSummon(state: DuelState, summoner: PlayerId, summonedUid: string) {
   const watcher = other(summoner);
   const watching = state.players[watcher].monsters.filter((m): m is CardInstance => !!m && m.face === 'up');
@@ -4929,11 +4949,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          anyway — so Trap Hole went off on a Set, and the prompt announced the
          card by name while it was still face-down, which is the opposite of
          what setting one is for. */
-      if (!state.winner && c.face === 'up') {
-        fireOpponentSummon(state, pid, c.uid);
-        fireAllySummon(state, pid, c.uid);
-        openTrapWindow(state, other(pid), 'opponentNormalSummon', `${p.name} summoned ${def.name}.`, { attackerUid: c.uid });
-      }
+      if (c.face === 'up') announceSummon(state, pid, c.uid, `${p.name} summoned ${def.name}.`, 'opponentNormalSummon');
       return { state };
     }
 
@@ -5293,11 +5309,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         text: CARDS[ex.slug].cry ?? 'Fusion Summon!',
       });
       fireTriggers(state, ex, pid, 'onSummon', {}, action.targets ?? []);
-      if (!state.winner) {
-        fireOpponentSummon(state, pid, ex.uid);
-        fireAllySummon(state, pid, ex.uid);
-      }
-      if (!state.winner) openTrapWindow(state, other(pid), 'opponentSummon', `${p.name} Fusion Summoned.`, { attackerUid: ex.uid });
+      announceSummon(state, pid, ex.uid, `${p.name} Fusion Summoned.`);
       return { state };
     }
 

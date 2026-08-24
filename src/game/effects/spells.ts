@@ -84,14 +84,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'trap-hole': {
-    text: 'When your opponent Normal Summons a monster: destroy it and inflict 400 damage to your opponent.',
+    text: 'When your opponent Summons a monster: destroy it and inflict 400 damage to your opponent.',
     effects: [
       {
         trigger: 'trap',
         // "Normal Summons", and it means it: a Fusion Summon is a Special
         // Summon and opens the wider `opponentSummon` window, which Torrential
         // Tribute watches and this card does not.
-        window: 'opponentNormalSummon',
+        window: 'opponentSummon',
         label: 'Trap Hole — destroy the summoned monster',
         ops: [
           { op: 'destroy', target: sel('opp', 'attacker') },
