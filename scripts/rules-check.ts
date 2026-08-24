@@ -10856,5 +10856,60 @@ console.log('\nA question about a card nobody can find any more');
   ok(found.length === 1 && found[0].type === 'chooseCard', 'a banished card is still an answer it can rank', String(found.length));
 }
 
+console.log('\nThe Dinosaur that comes back is the one you point at');
+{
+  /* Reported: "Crawling Dragon should allow the player to choose."
+
+     A card opts into being asked by declaring `targets` — `raiseChoice`
+     refuses to raise a question no effect wanted. The board's own summon
+     button worked the choice out for itself from the effect data, so summoning
+     Crawling Dragon by hand looked right; every other road onto the field goes
+     through the engine, which had nothing to ask with and quietly took the
+     biggest Dinosaur in the pile. */
+  const s = fresh();
+  const dragon = card(ME, 'crawling-dragon'); // Level 5 — one Tribute
+  s.players[ME].hand = [dragon];
+  s.players[ME].monsters[0] = card(ME, 'kuriboh');
+  const small = card(ME, 'uraby');
+  const big = card(ME, 'megazowler');
+  s.players[ME].grave = [small, big];
+
+  const summoned = applyAction(s, ME, {
+    type: 'normalSummon',
+    uid: dragon.uid,
+    zone: 1,
+    position: 'atk',
+    face: 'up',
+    tributes: [s.players[ME].monsters[0]!.uid],
+  });
+  ok(!summoned.error, 'Crawling Dragon is Tribute Summoned', summoned.error ?? '');
+  ok(summoned.state.pending?.kind === 'choose', 'and stops to ask which Dinosaur comes back', summoned.state.pending?.kind ?? '(nothing)');
+  const offered = summoned.state.pending?.options ?? [];
+  ok(offered.includes(small.uid) && offered.includes(big.uid), 'offering both of them', `${offered.length} option(s)`);
+
+  /* The whole point: the smaller one, chosen, is the one that arrives. Left to
+     itself the engine takes Megazowler every time. */
+  const chosen = act(summoned.state, ME, { type: 'chooseCard', uids: [small.uid] });
+  ok(on(chosen, ME).some((m) => m.slug === 'uraby'), 'and the one that was pointed at is the one that arrives', on(chosen, ME).map((m) => m.slug).join(','));
+  ok(!on(chosen, ME).some((m) => m.slug === 'megazowler'), 'not the biggest body in the pile');
+
+  /* One Dinosaur is not a choice — it must not stop to ask about it. */
+  const lone = fresh();
+  const d2 = card(ME, 'crawling-dragon');
+  lone.players[ME].hand = [d2];
+  lone.players[ME].monsters[0] = card(ME, 'kuriboh');
+  lone.players[ME].grave = [card(ME, 'uraby')];
+  const solo = applyAction(lone, ME, {
+    type: 'normalSummon',
+    uid: d2.uid,
+    zone: 1,
+    position: 'atk',
+    face: 'up',
+    tributes: [lone.players[ME].monsters[0]!.uid],
+  });
+  ok(!solo.state.pending, 'with one Dinosaur in the pile it asks nothing', solo.state.pending?.kind ?? '');
+  ok(on(solo.state, ME).some((m) => m.slug === 'uraby'), 'and brings it back anyway');
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

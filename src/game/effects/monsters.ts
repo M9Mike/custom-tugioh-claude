@@ -2702,7 +2702,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'When this monster is summoned: Special Summon 1 Dinosaur monster from your Graveyard in Attack Position. ' +
       'When this monster is destroyed by battle: Special Summon it at the start of your next turn with 200 more ATK and DEF.',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
+      /* `targets` is how a card opts into being ASKED — see `raiseChoice`,
+         which refuses to raise a question no effect declared. The board's own
+         summon button worked the choice out for itself and offered it, so a
+         Dinosaur picked while summoning Crawling Dragon by hand looked right;
+         every other road onto the field goes through the engine, which had
+         nothing to ask with and took the biggest body in the pile. Reported as
+         "Crawling Dragon should allow the player to choose" — the same
+         one-word opt-in Gravekeeper's Spy needed for the same complaint. */
+      { trigger: 'onSummon', targets: 1, ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dinosaur' }, count: 1, position: 'atk' }] },
       { trigger: 'onDestroyedByBattle', ops: [{ op: 'reviveSelfNextTurn', atk: 200, def: 200 }] },
     ],
   },
