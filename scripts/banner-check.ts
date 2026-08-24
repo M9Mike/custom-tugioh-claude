@@ -218,9 +218,48 @@ for (const file of ['src/components/Duel.tsx', 'src/components/CardDetail.tsx'])
   }
 }
 
-if (!artless.size && !nameless.length) {
+
+/**
+ * And every figure it paints must be the figure the card fights with.
+ *
+ * Our versions of some cards do not carry the printed numbers: Uraby is a 400
+ * ATK mine whose whole worth is what it does from the Graveyard, and the card
+ * database still says 1500. `atkOverride` is where that difference lives and
+ * `baseAtk` is the one function that reads it — so anything reaching for `.atk`
+ * on a card definition shows the number from the scrape rather than the number
+ * on the field. Reported: "Uraby shows different atk def in hand and different
+ * when summoned", with nothing on the board to explain the change.
+ *
+ * The tell in the original bug is worth remembering: the *tint* beside the
+ * figure already asked `atkOverride ?? atk`, so the number rendered untinted —
+ * announcing itself as the plain printed stat — while being neither.
+ *
+ * The search is scanned too, and that is where this first paid: two places
+ * ranked a card in a pile by its printed ATK, so the computer valued Uraby as
+ * a 1500 prize worth reviving and never as the cheapest thing to throw away.
+ */
+const printed: string[] = [];
+for (const file of [
+  'src/components/GameCard.tsx',
+  'src/components/CardDetail.tsx',
+  'src/components/Duel.tsx',
+  'src/game/ai.ts',
+]) {
+  const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  src.split('\n').forEach((line, i) => {
+    /* The tint legitimately names both halves, and `atkMod`, `tokenAtk` and
+       `effAtk` are all something else entirely. */
+    if (/\batkOverride\b|\bdefOverride\b/.test(line)) return;
+    if (/\b(?:d|def0|cardDef|CARDS\[[^\]]+\])\??\.(?:atk|def)\b/.test(line)) {
+      printed.push(`${file}:${i + 1}  ${line.trim()}`);
+    }
+  });
+}
+
+if (!artless.size && !nameless.length && !printed.length) {
   console.log(`\n✅ every banner outside the ${ALLOWED.size} declared shapes carries card art.`);
   console.log('✅ every card the duel screen names asks the board what to call it.');
+  console.log('✅ and every figure it paints is the one the card fights with.');
   process.exit(0);
 }
 
@@ -242,6 +281,16 @@ if (nameless.length) {
   console.log(
     '\nPass displayName={shownName(c)} — or mark it compact if it shows no name.\n' +
       'A card on the board answers to what the board calls it, not to what is printed on it.'
+  );
+}
+
+if (printed.length) {
+  console.log(`\n❌ ${printed.length} place(s) read a stat off the printed card:`);
+  for (const where of printed) console.log(`   ${where}`);
+  console.log(
+    '\nUse baseAtk(slug) / baseDef(slug), which read `atkOverride` where our version\n' +
+      'differs from the database. Uraby is 400 on the field and 1500 in the scrape;\n' +
+      'a player shown both numbers has no way to tell which one is real.'
   );
 }
 process.exit(1);

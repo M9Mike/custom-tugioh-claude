@@ -1,7 +1,7 @@
 'use client';
 
 import GameCard from './GameCard';
-import { CARDS } from '@/game/cards';
+import { CARDS, baseAtk, baseDef } from '@/game/cards';
 import type { CardInstance } from '@/game/types';
 
 interface Props {
@@ -51,7 +51,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
               </p>
               {d.kind === 'monster' && (
                 <p className="text-[9px] uppercase tracking-wide text-brass">
-                  ATK {atk ?? d.atk} / DEF {def ?? d.def}
+                  ATK {atk ?? baseAtk(card.slug)} / DEF {def ?? baseDef(card.slug)}
                 </p>
               )}
               <p className="mt-0.5 max-h-[54px] overflow-y-auto thin-scroll pr-1 text-[10px] leading-snug text-ptext/90">
@@ -108,7 +108,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
             </p>
             {def0.kind === 'monster' && (
               <p className="mt-1 font-display text-sm text-parchment">
-                ATK {atk ?? def0.atk} <span className="text-ptextdim">/</span> DEF {def ?? def0.def}
+                ATK {atk ?? baseAtk(card.slug)} <span className="text-ptextdim">/</span> DEF {def ?? baseDef(card.slug)}
               </p>
             )}
             <div className="brass-rule my-2" />

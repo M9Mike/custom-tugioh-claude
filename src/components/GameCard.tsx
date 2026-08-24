@@ -1,6 +1,6 @@
 'use client';
 
-import { CARDS, artUrl } from '@/game/cards';
+import { CARDS, artUrl, baseAtk, baseDef } from '@/game/cards';
 import { INFINITE_ATK, type CardInstance } from '@/game/types';
 
 export function frameClass(slug: string, isToken?: boolean): string {
@@ -169,14 +169,14 @@ export default function GameCard({
                   bug — the Fist of Fate is meant to look like the end of the
                   argument, not like an overflow. */}
               <span style={statTint(atk, isToken ? card.tokenAtk : (cardDef?.atkOverride ?? cardDef?.atk))}>
-                {atk === INFINITE_ATK ? '∞' : (atk ?? (isToken ? card.tokenAtk : cardDef?.atk) ?? 0)}
+                {atk === INFINITE_ATK ? '∞' : (atk ?? (isToken ? card.tokenAtk : baseAtk(card.slug)) ?? 0)}
               </span>
               <span className="card-level opacity-70">
                 {isToken ? '★' : '★'.repeat(Math.min(cardDef?.level ?? 0, 4))}
                 {!isToken && (cardDef?.level ?? 0) > 4 ? `+${(cardDef?.level ?? 0) - 4}` : ''}
               </span>
               <span style={statTint(def, isToken ? card.tokenDef : (cardDef?.defOverride ?? cardDef?.def))}>
-                {def ?? (isToken ? card.tokenDef : cardDef?.def) ?? 0}
+                {def ?? (isToken ? card.tokenDef : baseDef(card.slug)) ?? 0}
               </span>
             </div>
           )}

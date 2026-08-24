@@ -21,7 +21,7 @@
  *    sampled world their hand is dealt from the pool of cards the AI has not
  *    seen, so the model plays a *plausible* opponent, never the actual one.
  */
-import { CARDS } from './cards';
+import { CARDS, baseAtk } from './cards';
 import {
   applyAction,
   canActivateFromHand,
@@ -591,14 +591,15 @@ function targetsFor(
 
   /* Strongest first: for removal that is the opponent's best body, for equips
      and revival it is the best body to invest in. EFFECTIVE strength for cards
-     on a field, printed for cards in piles — a Two-Headed King Rex standing at
+     on a field, base strength for cards in piles — base, not printed, because
+     our Uraby is a 400 ATK mine and the database still says 1500 — a Two-Headed King Rex standing at
      2500 must outrank the 1700 beside it, and by printed ATK it never did, so
      the AI kept pointing its removal at the wrong monster. */
   const worth = (c: CardInstance): number => {
     for (const id of ['p1', 'p2'] as PlayerId[]) {
       if (state.players[id].monsters.some((m) => m?.uid === c.uid)) return effAtk(state, c, id) + menace(c.slug) * 0.8;
     }
-    return (CARDS[c.slug]?.atk ?? 0) + menace(c.slug) * 0.8;
+    return baseAtk(c.slug) + menace(c.slug) * 0.8;
   };
   const ranked = [...pool].sort((a, b) => worth(b) - worth(a));
   const out: string[][] = [];
@@ -655,7 +656,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
         .filter((h) => !summonBlocked(state, pid, h.slug))
         // Holding the Forbidden One is worth more than summoning it.
         .filter((h) => !EXODIA.has(h.slug))
-        .sort((a, b) => (CARDS[b.slug].atk ?? 0) - (CARDS[a.slug].atk ?? 0));
+        .sort((a, b) => baseAtk(b.slug) - baseAtk(a.slug));
 
       for (const h of summonable) {
         const need = tributesRequired(h.slug, state, pid);
@@ -725,7 +726,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
       const spares: CardInstance[] = [];
       const cheapMonster = others
         .filter((x) => CARDS[x.slug]?.kind === 'monster')
-        .sort((a, b) => (CARDS[a.slug]?.atk ?? 0) - (CARDS[b.slug]?.atk ?? 0))[0];
+        .sort((a, b) => baseAtk(a.slug) - baseAtk(b.slug))[0];
       const cheapSpell = others
         .filter((x) => CARDS[x.slug]?.kind !== 'monster')
         .sort((a, b) => trapWorth(a.slug) - trapWorth(b.slug))[0];
