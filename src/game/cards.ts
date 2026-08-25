@@ -3,6 +3,20 @@
  * database, merged with the custom anime-inspired effects we wrote.
  */
 import generated from './generated/cards.json';
+/**
+ * The decklists, imported rather than fetched.
+ *
+ * **Editing these needs `rm -rf .next` before a local build.** Next caches the
+ * parsed JSON of an imported module and will happily serve the previous decks
+ * from a warm `.next` — which cost an afternoon once: Sarah and Tony were added,
+ * every file on disk was correct, and challenging either of them still seated
+ * Mai, because `DUELIST_BY_ID` in the running server was built from the cached
+ * copy. `npm run build` reported success each time.
+ *
+ * Vercel builds from clean, so production is never affected. It is only ever a
+ * local ghost, and only for the JSON — a change to this file invalidates
+ * normally.
+ */
 import decklistsJson from './generated/decklists.json';
 import { MONSTER_EFFECTS, type EffectDef } from './effects/monsters';
 import { SPELL_EFFECTS, OWN_TARGET_CARDS } from './effects/spells';

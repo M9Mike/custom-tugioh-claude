@@ -211,6 +211,20 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * would not be vandalism, so the booth asks for a name and stops.     *
    * ---------------------------------------------------------------- */
   {
+    id: 'sandra-afrika',
+    label: 'Sandra Afrika',
+    note: 'Red dress, street duelist',
+    file: '/models/players/sandra-afrika.glb',
+    height: 1.72,
+    /* Her own, measured by `scripts/blender/gait.py` at the height she is
+       rendered at. Never copied from another character: the bundles are
+       authored at whatever cadence they were authored at, and an inherited
+       number is exactly how feet start sliding. */
+    walkSpeed: 2.16,
+    runSpeed: 4.33,
+    tintSlots: [],
+  },
+  {
     /*
      * A second duelist, and the reason the booth is a list rather than a label.
      *
@@ -226,20 +240,6 @@ export const DUELIST_MODELS: DuelistModel[] = [
     height: 1.9,
     walkSpeed: 2.34,
     runSpeed: 5.4,
-    tintSlots: [],
-  },
-  {
-    id: 'sandra-afrika',
-    label: 'Sandra Afrika',
-    note: 'Red dress, street duelist',
-    file: '/models/players/sandra-afrika.glb',
-    height: 1.72,
-    /* Her own, measured by `scripts/blender/gait.py` at the height she is
-       rendered at. Never copied from another character: the bundles are
-       authored at whatever cadence they were authored at, and an inherited
-       number is exactly how feet start sliding. */
-    walkSpeed: 2.16,
-    runSpeed: 4.33,
     tintSlots: [],
   },
 
@@ -387,6 +387,18 @@ export const DUELIST_MODELS: DuelistModel[] = [
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */
+/**
+ * What the booth offers, in the order it offers them.
+ *
+ * The order is this array's order, which makes it a decision rather than an
+ * accident of who was added last — and `BOOTH_MODELS[0]` is load-bearing twice
+ * over: it is the duelist a new player starts on, and the fallback for a save
+ * naming a model that no longer exists.
+ *
+ * Sandra Afrika is first because she was the first playable character and is the
+ * one every save so far was built on. Robert came in after her and sits after
+ * her here.
+ */
 export const BOOTH_MODELS: DuelistModel[] = DUELIST_MODELS.filter((m) => !m.npcOnly);
 
 /**

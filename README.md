@@ -387,6 +387,18 @@ node scripts/fake-redis.mjs   # Upstash REST stand-in on :6390, then KV_REST_API
 `data/decklists.json` is the source of truth for the decks. `npm run cards` resolves the
 card names, pulls real stats, and writes `src/game/generated/`.
 
+### Editing decks
+
+`data/decklists.json` and `src/game/generated/decklists.json` are imported
+modules, and Next caches their parsed contents. After changing either, run
+
+```
+rm -rf .next && npm run build
+```
+
+or the running server keeps serving the previous decks — silently, with a
+successful build. Vercel builds from clean, so this is a local ghost only.
+
 ## Legal
 
 A private, non-commercial fan project made for two people to play together. Yu-Gi-Oh!,
