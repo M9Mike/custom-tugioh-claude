@@ -479,7 +479,17 @@ export const WORLD_NPCS: WorldNpc[] = [
      * counter is solid — so the conversation happens over it, at about a metre
      * and a half, which is exactly the distance you talk to a shopkeeper at.
      */
-    x: -1.0,
+    /*
+     * Nearly in line with the door, not off to one side.
+     *
+     * He stood at x −1.0 while the door is at x 2.6, so walking straight in —
+     * which is what anybody does first — took you past him with three and a half
+     * metres of counter between you, and his talk range is 3.4. Verified on
+     * production: approaching head-on produced no prompt at all, and only a
+     * deliberate diagonal found him. A shopkeeper you have to go looking for is
+     * a shopkeeper most players will not meet.
+     */
+    x: 0.9,
     /*
      * Behind the counter, not in it. The counter runs from z −3.15 to −2.05, and
      * he was at −2.95 — inside its own volume, so he read as a head sitting on
