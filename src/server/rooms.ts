@@ -55,6 +55,14 @@ export interface Room {
   rematch: PlayerId[];
   /** Entered from a conversation in Story Mode, so the way out is back to it. */
   story?: boolean;
+  /**
+   * Set once the winner has taken the pack this duel owed them.
+   *
+   * On the room rather than the profile because the room is the thing that can
+   * only be won once. A finished room sticks around for ninety minutes, so
+   * without this a refresh of the win screen is another pack, and another.
+   */
+  packClaimed?: boolean;
   /** Bumped on every change so pollers can tell whether they are behind. */
   revision: number;
   /**
@@ -107,6 +115,53 @@ function randomCode(len = 4): string {
 
 function randomToken(): string {
   return Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
+}
+
+/**
+ * Decides whether a finished Story Mode duel owes its caller a pack, and if so
+ * marks it paid.
+ *
+ * Lives here rather than in the route because it is the only thing outside this
+ * file that needs to reason about seats, tokens and winners, and handing those
+ * out is how a room's rules end up enforced in two places. The route gets back
+ * a verdict and a duelist id.
+ *
+ * The write is a compare-and-set through `saveRoom`, so two tabs claiming at
+ * once cannot both win it: the loser reloads and sees `packClaimed`.
+ */
+export async function claimStoryPack(
+  code: string,
+  token: string
+): Promise<
+  | { ok: true; duelistId: string }
+  | { ok: false; already: true }
+  | { ok: false; lost: true }
+  | { ok: false; status: number; error: string }
+> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const room = await loadRoom(code);
+    if (!room || !room.story) return { ok: false, status: 404, error: 'No such duel.' };
+    if (room.packClaimed) return { ok: false, already: true };
+
+    const mine = (['p1', 'p2'] as const).find((p) => room.seats[p]?.token === token);
+    if (!mine) return { ok: false, status: 403, error: 'That is not your duel.' };
+    if (!room.state?.winner) return { ok: false, status: 409, error: 'That duel is not over.' };
+    if (room.state.winner !== mine) return { ok: false, lost: true };
+
+    const foe = mine === 'p1' ? 'p2' : 'p1';
+    const duelistId = room.seats[foe]?.duelistId;
+    if (!duelistId) return { ok: false, status: 409, error: 'That duel has no opponent.' };
+
+    room.packClaimed = true;
+    try {
+      await saveRoom(room);
+      return { ok: true, duelistId };
+    } catch (err) {
+      if (!(err instanceof StaleRoom)) throw err;
+      /* Somebody else moved the room; read it again and re-decide. */
+    }
+  }
+  return { ok: false, status: 409, error: 'That duel is busy. Try again in a moment.' };
 }
 
 export async function loadRoom(code: string): Promise<Room | null> {

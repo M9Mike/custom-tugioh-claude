@@ -20,6 +20,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import DeckBuilder from '@/components/story/DeckBuilder';
+import PackOpening from '@/components/story/PackOpening';
+import type { PackResult } from '@/story/packs';
+import { DUELIST_BY_ID } from '@/game/cards';
 import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
 import { STARTER_POOL } from '@/story/roster';
 import type { PremadeCharacter } from '@/story/premade';
@@ -55,13 +58,45 @@ export default function StoryMode() {
    * should resume the conversation exactly once, and a note left in place would
    * reopen Mai every time the world mounted for the rest of the session.
    */
-  const [resume, setResume] = useState<{ npcId: string; node: string } | null>(() => {
+  /**
+   * The duel just returned from, read exactly once.
+   *
+   * One read, not three. The note is consumed — `writePendingDuel(null)` — by
+   * whoever looks at it first, so two `useState` initialisers both calling
+   * `readPendingDuel` meant the second always saw nothing: the conversation
+   * resumed and the pack was silently never claimed. Everything that needs the
+   * note is derived from this one value.
+   */
+  const [returned] = useState<PendingDuel | null>(() => {
     if (typeof window === 'undefined') return null;
     const pending = readPendingDuel();
     if (!pending?.outcome) return null;
     writePendingDuel(null);
-    return { npcId: pending.npcId, node: pending.outcome === 'won' ? pending.won : pending.lost };
+    return pending;
   });
+  /**
+   * A conversation to walk straight back into.
+   *
+   * Cleared once used: coming back from a duel should resume the conversation
+   * exactly once, and a note left in place would reopen the character every time
+   * the world mounted for the rest of the session.
+   */
+  const [resume] = useState<{ npcId: string; node: string } | null>(() =>
+    returned ? { npcId: returned.npcId, node: returned.outcome === 'won' ? returned.won : returned.lost } : null
+  );
+  /**
+   * The room a win still owes a pack for.
+   *
+   * Losing does not set this: for now a loss is just the rest of the
+   * conversation, which is what the brief asks for until penalties exist.
+   */
+  const [owed, setOwed] = useState<{ code: string; token: string } | null>(() =>
+    returned?.outcome === 'won' && returned.code && returned.token
+      ? { code: returned.code, token: returned.token }
+      : null
+  );
+  /** The pack being opened, and who it came off. */
+  const [pack, setPack] = useState<{ result: PackResult; from: string } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   /* Same trick as the home page: both fields are controlled, so React's first
@@ -139,6 +174,93 @@ export default function StoryMode() {
     return null;
   };
 
+  /**
+   * A win owes a pack: claim it, then open it.
+   *
+   * Two calls rather than one because they are two different promises. The claim
+   * is "this room owed me something" and is settled against the room itself, so
+   * it can only ever pay out once however many times this effect runs. The open
+   * is "give me what is in the next pack", and is a separate step so that a pack
+   * survives a tab closing between winning and pulling.
+   *
+   * Failure is deliberately quiet. The pack is already banked on the profile by
+   * the time opening can fail, so the worst case is that it opens the next time
+   * the world loads — and a red banner over a conversation the player is walking
+   * back into would be a worse trade than a silent retry later.
+   */
+  /**
+   * A win owes a pack: claim it.
+   *
+   * Only claims. Opening is the effect below, which runs on *any* unopened pack
+   * rather than only on one just claimed — the two were one effect at first and
+   * it stranded packs: claiming a room that had already paid out returns
+   * `awarded: false`, so a pack banked by an interrupted visit was never opened
+   * and there was no other code that would ever open it.
+   *
+   * A ref, and nothing cancels. The first version aborted its own work in the
+   * effect cleanup while depending on state it set itself, so it tore down
+   * between claiming and opening and the player saw nothing at all.
+   */
+  const claiming = useRef(false);
+  useEffect(() => {
+    if (!owed || !profile || claiming.current) return;
+    claiming.current = true;
+    const claim = owed;
+    const username = profile.username;
+    void (async () => {
+      try {
+        const res = await fetch('/api/story/pack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'claim', username, code: claim.code, token: claim.token }),
+          cache: 'no-store',
+        });
+        const got = (await res.json()) as { ok?: boolean; profile?: StoryProfile };
+        if (got.profile) setProfile(got.profile);
+      } catch {
+        /* Offline on the way back; the room keeps owing until it is asked again. */
+      } finally {
+        setOwed(null);
+      }
+    })();
+  }, [owed, profile]);
+
+  /**
+   * Any unopened pack opens as soon as the player is standing in the world.
+   *
+   * Independent of how it got there, which is the point: won just now, banked by
+   * a visit that was interrupted, or handed over by something that does not
+   * exist yet. A pack on the profile is a promise, and this is what keeps it.
+   */
+  const opening = useRef(false);
+  useEffect(() => {
+    if (!profile || pack || opening.current) return;
+    if (screen !== 'world' || !profile.packs.length) return;
+    opening.current = true;
+    const username = profile.username;
+    void (async () => {
+      try {
+        const res = await fetch('/api/story/pack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'open', username }),
+          cache: 'no-store',
+        });
+        const out = (await res.json()) as { ok?: boolean; pack?: PackResult; profile?: StoryProfile };
+        if (out.profile) setProfile(out.profile);
+        if (!out.ok || !out.pack) return;
+        setPack({
+          result: out.pack,
+          from: DUELIST_BY_ID[out.pack.duelistId]?.name ?? 'That duelist',
+        });
+      } catch {
+        /* It stays on the profile and opens next time. */
+      } finally {
+        opening.current = false;
+      }
+    })();
+  }, [profile, pack, screen]);
+
   const saveWorld = async (world: WorldPosition): Promise<string | null> => {
     const res = await post<{ profile: StoryProfile }>('/api/story/save', { username: profile?.username, world });
     if (!res.ok) return res.error;
@@ -188,13 +310,48 @@ export default function StoryMode() {
         return;
       }
       saveIdentity({ code: data.code, token: data.token });
-      writePendingDuel({ code: data.code, npcId: npc.id, won: npc.duel.won, lost: npc.duel.lost });
+      writePendingDuel({
+        code: data.code,
+        token: data.token,
+        npcId: npc.id,
+        won: npc.duel.won,
+        lost: npc.duel.lost,
+      });
       router.push(`/duel/${data.code}`);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
       setBusy(false);
     }
   };
+
+  /**
+   * Coming back from a duel goes straight into the world.
+   *
+   * The duel is a different page, so returning re-mounts this one from nothing
+   * and it showed the sign-in screen — asking a player who has been playing for
+   * an hour to type their name again, in the middle of a conversation they are
+   * halfway through. The name is already known and the note proves where they
+   * came from, so the sign-in is skipped rather than pre-filled.
+   *
+   * Only on a return. A cold visit still signs in by hand, because that is the
+   * one moment the name is a question rather than an answer.
+   */
+  const walkedBackIn = useRef(false);
+  useEffect(() => {
+    if (!ready || !returned || walkedBackIn.current) return;
+    if (profile || busy || !name) return;
+    walkedBackIn.current = true;
+    /* Deferred a tick rather than called straight out: `signIn` sets state on its
+       first line, and setting state synchronously inside an effect makes React
+       re-render before this one has finished committing. The same
+       `queueMicrotask` the world uses when it has to report a dead WebGL context
+       from inside setup.
+
+       `signIn` is not in the deps on purpose: it is re-created every render, and
+       the ref above already guarantees this fires once. */
+    queueMicrotask(() => void signIn());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, returned, profile, busy, name]);
 
   const toMenu = () => router.push('/');
 
@@ -284,7 +441,11 @@ export default function StoryMode() {
   }
 
   return (
-    <OpenWorld
+    <>
+      {pack && (
+        <PackOpening pack={pack.result} from={pack.from} onDone={() => setPack(null)} />
+      )}
+      <OpenWorld
       profile={profile}
       onEditDeck={() => setScreen('editDeck')}
       onSave={saveWorld}
@@ -293,6 +454,7 @@ export default function StoryMode() {
       onDuel={startDuel}
       resume={resume}
     />
+    </>
   );
 }
 
@@ -310,6 +472,13 @@ const PENDING = 'story:duel';
 export interface PendingDuel {
   /** The room the duel is being played in, so a stale note can be told apart. */
   code: string;
+  /**
+   * The seat token, carried so the pack can be claimed on the way back.
+   *
+   * The server will not award a pack on the client's word that it won — it
+   * reads the room and decides — so the claim has to prove which seat is asking.
+   */
+  token: string;
   npcId: string;
   /** Which node to resume on, per outcome. */
   won: string;

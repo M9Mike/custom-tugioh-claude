@@ -187,6 +187,15 @@ export async function loadProfile(username: string): Promise<StoryProfile | null
   if (profile.character) {
     profile.character = normalisePremade(profile.character, profile.username);
   }
+  /*
+   * Packs arrived after some saves were written, so they are absent on those and
+   * every reader would otherwise have to guard. Filled in here, once, on the way
+   * out of the store — the same belt-and-braces the character gets above, and
+   * for the same reason: nothing past this line should meet a shape it does not
+   * expect. The next write persists them.
+   */
+  if (!Array.isArray(profile.packs)) profile.packs = [];
+  if (!profile.pulled || typeof profile.pulled !== 'object') profile.pulled = {};
   return profile;
 }
 

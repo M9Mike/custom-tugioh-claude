@@ -51,6 +51,24 @@ export interface StoryProfile {
    * anywhere: choosing the deck *is* choosing the collection.
    */
   collection: string[];
+  /**
+   * Unopened packs, oldest first, each naming the duelist it came off.
+   *
+   * A pack is stored rather than opened on the spot because winning and opening
+   * are two moments: the duel ends, the win screen shows, and the pull happens
+   * back in the world. Anything in between — a closed tab, a flat battery, a
+   * refresh — must not lose the reward, and a list on the profile is the only
+   * place that survives all three.
+   */
+  packs: string[];
+  /**
+   * Which cards have already been pulled from each duelist, keyed by duelist id.
+   *
+   * The values are `slug#copy` entries — see `packs.ts` for why they are keyed
+   * that way and not by index. Absent on saves written before packs existed,
+   * which every reader treats as "nothing pulled yet".
+   */
+  pulled?: Record<string, string[]>;
   level: number;
   xp: number;
   world: WorldPosition;
@@ -83,6 +101,8 @@ export function newProfile(username: string, now: number): StoryProfile {
     character: null,
     deck: null,
     collection: [],
+    packs: [],
+    pulled: {},
     level: 1,
     xp: 0,
     world: { ...STARTING_POSITION },

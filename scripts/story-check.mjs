@@ -371,12 +371,20 @@ async function run(phoneName) {
       'twenty-five is twenty-five'
     );
 
-    /* One more must be refused rather than quietly swapped. */
-    await cards.nth(30).scrollIntoViewIfNeeded();
-    await cards.nth(30).dispatchEvent('click');
+    /*
+     * One more must be refused rather than quietly swapped.
+     *
+     * Taken from the Trunk by name rather than by index into the whole grid.
+     * The builder shows the Deck first and the Trunk under it now, so a fixed
+     * offset lands in the Deck — where a tap legitimately *removes* a card, so
+     * nothing was refused and the check failed on a screen that was working.
+     */
+    const spare = page.locator('[data-where="trunk"]').first();
+    await spare.scrollIntoViewIfNeeded();
+    await spare.dispatchEvent('click');
     await page.waitForTimeout(200);
     check(
-      await page.locator('text=Take one out').first().isVisible().catch(() => false),
+      await page.locator('text=Move one back to the Trunk').first().isVisible().catch(() => false),
       'a twenty-sixth card is refused'
     );
     await fs.writeFile(`${OUT}/${phoneName}-4-deck.png`, await page.screenshot());
@@ -589,10 +597,31 @@ async function run(phoneName) {
   const editing = await stage(page, 'editDeck');
   check(editing === 'editDeck', 'Edit Deck opens the builder', `landed on "${editing}"`);
   if (editing === 'editDeck') {
-    const owned = await page.locator('main button[aria-pressed]').count();
-    check(owned === 25, 'only the 25 that were chosen are still owned', `saw ${owned}`);
+    /*
+     * The Deck is 25 and the Trunk is whatever packs have added.
+     *
+     * This used to assert that the collection was *exactly* the 25 chosen, which
+     * was true when the only way to own a card was to pick it. Packs changed
+     * that: beating a duelist puts cards you did not choose into the Trunk, so
+     * the invariant is no longer "25 owned" but "25 sleeved, and everything else
+     * is in the Trunk waiting". Asserting the old number would fail the moment
+     * the game worked.
+     */
+    const inDeck = await page.locator('[data-where="deck"]').count();
+    const inTrunk = await page.locator('[data-where="trunk"]').count();
+    check(inDeck === 25, 'the deck holds exactly 25', `saw ${inDeck}`);
+    check(inTrunk >= 0, 'and the trunk holds the rest', `${inTrunk} in the trunk`);
+
+    /* An illegal deck cannot be saved, which is the whole of the rule. */
+    await page.locator('[data-where="deck"]').first().dispatchEvent('click');
+    await page.waitForTimeout(400);
+    const refused = !(await page.locator('[data-save-deck]').isEnabled());
+    check(refused, 'a deck of 24 cannot be saved');
+    await page.locator('[data-where="trunk"]').first().dispatchEvent('click');
+    await page.waitForTimeout(400);
+    check(await page.locator('[data-save-deck]').isEnabled(), 'and putting it back allows it again');
     await fs.writeFile(`${OUT}/${phoneName}-8-collection.png`, await page.screenshot());
-    await page.locator('button:has-text("Cancel")').first().dispatchEvent('click');
+    await page.locator('button:has-text("Discard")').first().dispatchEvent('click');
     await page.waitForTimeout(500);
   }
 
@@ -642,10 +671,25 @@ async function run(phoneName) {
       'and backing out of it keeps the save'
     );
 
+    /*
+     * It asks twice, and the second question is checked here.
+     *
+     * One dialogue is a thing you can dismiss by tapping where the button
+     * happens to be, and this is the only action in the game that cannot be
+     * undone — so the warning names what goes, and then a second panel makes you
+     * say it again. A check that clicked straight through to "Delete for ever"
+     * would pass while the second question quietly stopped existing.
+     */
     await fresh.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
     await fresh.waitForTimeout(250);
     await fresh.locator('button:has-text("Delete Character")').first().dispatchEvent('click');
     await fresh.waitForTimeout(400);
+    await fresh.locator('button:has-text("Delete Character")').last().dispatchEvent('click');
+    await fresh.waitForTimeout(400);
+    check(
+      await fresh.locator('text=Are you certain').first().isVisible().catch(() => false),
+      'and it asks a second time before it does it'
+    );
     await fresh.locator('button:has-text("Delete for ever")').first().dispatchEvent('click');
     const gone = await stage(fresh, 'signin');
     check(gone === 'signin', 'deleting lands back on the sign-in screen', `landed on "${gone}"`);

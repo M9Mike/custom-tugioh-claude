@@ -21,13 +21,14 @@ import type { StoryProfile } from '@/story/profile';
 import { WORLD_NPCS, type WorldNpc } from '@/story/npcs';
 import {
   areaById,
-  cameraReach,
   doorAt,
   landing,
   settle,
   PLAYER_RADIUS,
   type AreaId,
   type Door,
+  groundAt,
+  cameraReach,
 } from '@/story/areas';
 import { buildShop, type BuiltArea } from './world/shop';
 import { buildStreet } from './world/street';
@@ -97,7 +98,16 @@ interface Props {
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [askingDelete, setAskingDelete] = useState(false);
+  /**
+   * How far through deleting the player is: nothing, warned, or asked twice.
+   *
+   * Two steps rather than one because the two questions are different. The first
+   * says what is about to be destroyed; the second makes you say the word after
+   * you have read it. One dialogue is a thing you can dismiss by tapping where
+   * the button happens to be, and this is the only action in the game that
+   * cannot be undone.
+   */
+  const [askingDelete, setAskingDelete] = useState<null | 'warn' | 'sure'>(null);
   const [deleting, setDeleting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   /* Asked before the field is built; see `canDraw3d`. */
@@ -340,7 +350,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               fresh.dispose();
               return;
             }
-            fresh.root.position.set(npc.x, 0, npc.z);
+            fresh.root.position.set(npc.x, groundAt(areaById(npc.area), npc.x, npc.z), npc.z);
             fresh.root.rotation.y = npc.facing;
             scene.add(fresh.root);
             npcs.push({ npc, rig: fresh });
@@ -419,6 +429,15 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      */
     let crossing: { door: Door; t: number; swapped: boolean } | null = null;
     let stride = 0;
+    /**
+     * How high the ground is under the duelist right now.
+     *
+     * Eased rather than set, because the kerb is a 14 cm cliff: snapping to it
+     * makes the whole scene jump, camera included, every time you step on or off
+     * a pavement. Twelve per second covers the step in about a tenth of a second,
+     * which reads as stepping up rather than as a glitch.
+     */
+    let groundY = groundAt(areaById(areaRef.current), here.current.x, here.current.z);
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
@@ -549,8 +568,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         }
       }
 
+      const wantY = groundAt(areaById(areaRef.current), p.x, p.z);
+      groundY += (wantY - groundY) * Math.min(1, dt * 12);
+
       if (rig) {
-        rig.root.position.set(p.x, 0, p.z);
+        rig.root.position.set(p.x, groundY, p.z);
         rig.root.rotation.y = p.facing;
         /* The clips advance by `dt` and play at ground speed over clip speed —
            the same one-speed arithmetic that kept the old gait's feet from
@@ -654,7 +676,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       talkBlend += ((near ? 1 : 0) - talkBlend) * Math.min(1, dt * 4);
       let lookX = p.x;
       let lookZ = p.z;
-      let lookY = 1.15;
+      let lookY = groundY + 1.15;
       let dist = 4.6;
       if (talkBlend > 0.001 && near) {
         /* Behind the duelist (`+ π`) and a third of a radian to the side —
@@ -897,7 +919,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     /* The save itself has landed either way — only the reporting of it is
        skipped, because there is nobody left to report to. */
     if (!alive.current) return;
-    setNote(problem ?? 'Saved.');
+    setNote(problem ?? 'Progress saved.');
     if (!problem) sfx.heal();
     else sfx.error();
     if (noteTimer.current) clearTimeout(noteTimer.current);
@@ -933,7 +955,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     if (noteTimer.current) clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setNote(null), 2600);
     setDeleting(false);
-    setAskingDelete(false);
+    setAskingDelete(null);
     erasing.current = false;
   };
 
@@ -1037,7 +1059,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               onClick={() => {
                 sfx.click();
                 setMenuOpen(false);
-                setAskingDelete(true);
+                setAskingDelete('warn');
               }}
             >
               Delete Character
@@ -1046,26 +1068,61 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         )}
       </div>
 
-      {askingDelete && (
+      {askingDelete === 'warn' && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-5">
           <div className="panel grain w-full max-w-sm rounded p-5">
             <h2 className="font-display text-lg text-brassbright">Delete {character.name}?</h2>
             <div className="brass-rule my-3" />
             <p className="text-xs leading-relaxed text-ptext/85">
-              This erases the whole save for <span className="text-parchment">{profile.username}</span> — duelist,
-              deck, collection and progress — and starts the story over from the beginning. There is no way to bring
-              them back.
+              This erases everything saved for <span className="text-parchment">{profile.username}</span> — your
+              duelist, your deck, every card in your Trunk, every pack you have opened and every duelist you have
+              pulled from — and starts the story over from the beginning.
             </p>
             <div className="mt-4 flex gap-2">
               <button
                 className="btn flex-1 rounded px-4 py-2 text-xs"
                 onClick={() => {
                   sfx.click();
-                  setAskingDelete(false);
+                  setAskingDelete(null);
                 }}
                 disabled={deleting}
               >
                 Keep playing
+              </button>
+              <button
+                className="btn btn-danger flex-1 rounded px-4 py-2 text-xs"
+                onClick={() => {
+                  sfx.click();
+                  setAskingDelete('sure');
+                }}
+                disabled={deleting}
+              >
+                Delete Character
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {askingDelete === 'sure' && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-5">
+          <div className="panel grain w-full max-w-sm rounded border-oxblood p-5">
+            <h2 className="font-display text-lg text-[#f0c9cc]">Are you certain?</h2>
+            <div className="brass-rule my-3" />
+            <p className="text-xs leading-relaxed text-ptext/85">
+              There is no way to bring {character.name} back, and nothing you have collected survives this. Asked
+              twice because it cannot be asked again afterwards.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                className="btn flex-1 rounded px-4 py-2 text-xs"
+                onClick={() => {
+                  sfx.click();
+                  setAskingDelete(null);
+                }}
+                disabled={deleting}
+              >
+                No, keep playing
               </button>
               <button className="btn btn-danger flex-1 rounded px-4 py-2 text-xs" onClick={eraseSave} disabled={deleting}>
                 {deleting ? 'Deleting…' : 'Delete for ever'}
@@ -1129,7 +1186,24 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         <Conversation
           npc={talkingTo}
           openAt={resumeAt ?? undefined}
-          onDuel={() => onDuel?.(talkingTo)}
+          onDuel={() => {
+            /*
+             * Where you are standing is written down before the duel, not after.
+             *
+             * A duel is a different page: this component unmounts, and `here`
+             * goes with it. Without this the world reloaded on whatever position
+             * was last saved — which for most players is wherever they last
+             * pressed Save, so beating somebody in the street put them back
+             * inside the shop. Saving on the way out means you come back to the
+             * conversation you left, standing where you left it.
+             *
+             * Not awaited. The duel should not wait on a write, and the position
+             * is worth exactly as much as it costs: if it fails the player is
+             * where they last saved, which is what would have happened anyway.
+             */
+            void onSave({ ...here.current, area: areaRef.current }).catch(() => {});
+            onDuel?.(talkingTo);
+          }}
           playerName={character.name}
           onClose={() => {
             setTalkingTo(null);

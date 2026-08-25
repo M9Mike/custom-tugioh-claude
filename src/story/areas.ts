@@ -67,6 +67,16 @@ export interface Rect {
  * doorway you are standing in the middle of is a doorway you meant to use, and
  * a prompt would be one more thing between the player and the next room.
  */
+/** A flat area standing proud of the ground, and how far proud. */
+export interface Platform {
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  /** Height of its surface, in metres above the area's floor. */
+  y: number;
+}
+
 export interface Door {
   id: string;
   /** Walk into this and you leave. */
@@ -92,6 +102,29 @@ export interface Area {
   bounds: Rect;
   /** Everything you cannot walk through. */
   solids: Rect[];
+  /**
+   * Raised surfaces you can stand on, and how high they are.
+   *
+   * The pavements are 14 cm of kerb above the road, and the duelist was drawn at
+   * y = 0 everywhere — so walking onto one buried both feet to the ankle. The
+   * geometry was always right; nothing was reading it.
+   *
+   * Rectangles rather than a heightfield because that is what the world is: flat
+   * planes at two or three heights, with a kerb between them. A mesh sample per
+   * frame would be a raycast to answer a question the layout already knows.
+   */
+  platforms?: Platform[];
+  /**
+   * Rectangles the camera is stopped by but the player is not.
+   *
+   * A doorway is a hole in the collision on purpose — you have to be able to
+   * walk through it. The camera does not, and letting it treat the hole the same
+   * way is how stepping out of the shop and turning to face the street put the
+   * camera through the doorway and inside the terrace, looking at the unlit back
+   * of the shopfront. From the player's side a closed shopfront is a wall
+   * whether or not there is a door in it, and this is where that is said.
+   */
+  camSolids?: Rect[];
   doors: Door[];
   /** Where a player with no saved position starts. */
   spawn: { x: number; z: number; facing: number };
@@ -191,7 +224,20 @@ const GRANDPA_SHOP: Area = {
        * out of the door landed you in solid geometry and the collision pass
        * shoved you back out through whichever wall was nearest.
        */
-      spawn: { x: 2.6, z: -7.2, facing: Math.PI },
+      /*
+       * Facing along the street, not across it and not at the door.
+       *
+       * Three tries. Math.PI faced the door you had just walked out of, which is
+       * what this was reported for. Facing 0 turned you to the street but put the
+       * camera hard against the shopfront a metre and a half behind you — the
+       * squeeze traded all of it for height and you arrived looking at the top of
+       * your own head.
+       *
+       * A quarter turn east solves both: the street runs away in front of you,
+       * and the camera has the whole length of the pavement to sit back in. It is
+       * also the direction with something in it — Tony is down that end.
+       */
+      spawn: { x: 2.6, z: -7.2, facing: Math.PI / 2 },
       label: 'The Street',
     },
   ],
@@ -266,6 +312,21 @@ const STARTING_AREA: Area = {
     { x: 17.6, z: -4.0, hw: 0.5, hd: 0.85 },    // vending machine
     { x: -17.2, z: 2.5, hw: 0.55, hd: 0.55 },   // post box
   ],
+  /*
+   * Both pavements, which sit a kerb above the road. The numbers come from
+   * `world/street.ts`: it lays the paving at y 0.14 between the building faces
+   * (-9 and 10) and the kerbs (-6.5 and 7.5), and these are the same spans read
+   * back. If one moves, the other has to move with it — the check in
+   * `npm run areas` compares them.
+   */
+  platforms: [
+    { x: 0, z: -7.75, hw: 22, hd: 1.25, y: 0.14 },
+    { x: 0, z: 8.75, hw: 22, hd: 1.25, y: 0.14 },
+  ],
+  /* The shop's doorway, closed to the camera. Same span and depth as the two
+     terrace slabs it sits between, so the whole north side is solid to look at
+     even though 1.6 m of it is walkable. */
+  camSolids: [{ x: 2.6, z: -ST_D + 4, hw: 0.9, hd: 4 }],
   doors: [
     {
       id: 'street-to-shop',
@@ -280,8 +341,9 @@ const STARTING_AREA: Area = {
     },
   ],
   /* On the pavement outside the shop — the same place the shop's door lands
-     you, so arriving here by either route puts you in the same spot. */
-  spawn: { x: 2.6, z: -7.2, facing: Math.PI },
+     you, so arriving here by either route puts you in the same spot, looking
+     the same way: east, down the length of the street. */
+  spawn: { x: 2.6, z: -7.2, facing: Math.PI / 2 },
 };
 
 export const AREAS: Record<AreaId, Area> = {
@@ -357,11 +419,6 @@ export function settle(
   return { x: px, z: pz };
 }
 
-/** The door whose trigger contains this point, if any. */
-export function doorAt(area: Area, x: number, z: number): Door | null {
-  return area.doors.find((d) => inside(d.trigger, x, z)) ?? null;
-}
-
 /**
  * How far the camera may sit back along a ray before something tall is in the way.
  *
@@ -385,6 +442,7 @@ export function cameraReach(
   clearance = 0.35
 ): number {
   let best = want;
+  const blockers = area.camSolids ? [...area.solids, ...area.camSolids] : area.solids;
 
   const slab = (r: Rect) => {
     /* Grown by the clearance so the camera stops short of the surface rather
@@ -413,7 +471,9 @@ export function cameraReach(
     if (t0 > 0 && t0 < best) best = t0;
   };
 
-  for (const solid of area.solids) if (solid.tall) slab(solid);
+  /* Camera-only blockers are always tall — they exist precisely to stop the
+     camera passing through something a player may walk through. */
+  for (const solid of blockers) if (solid.tall || area.camSolids?.includes(solid)) slab(solid);
 
   /* The bounds are a box the camera must stay *inside*, which is the opposite
      test: find where the ray leaves it. */
@@ -429,6 +489,27 @@ export function cameraReach(
 
   return Math.max(0.9, best);
 }
+
+/**
+ * How high the ground is under a point.
+ *
+ * The tallest platform containing it, or the floor. Tallest rather than first so
+ * that overlapping rectangles — a step onto a terrace, say — behave the way a
+ * player expects rather than the way the list happens to be ordered.
+ */
+export function groundAt(area: Area, x: number, z: number): number {
+  let y = 0;
+  for (const p of area.platforms ?? []) {
+    if (Math.abs(x - p.x) <= p.hw && Math.abs(z - p.z) <= p.hd && p.y > y) y = p.y;
+  }
+  return y;
+}
+
+/** The door whose trigger contains this point, if any. */
+export function doorAt(area: Area, x: number, z: number): Door | null {
+  return area.doors.find((d) => inside(d.trigger, x, z)) ?? null;
+}
+
 
 /**
  * Where a saved position actually puts you, which is not always where it says.

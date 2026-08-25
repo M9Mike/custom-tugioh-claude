@@ -18,6 +18,11 @@ export interface StoryBody {
   character?: unknown;
   deck?: unknown;
   world?: unknown;
+  /** Packs: which half of the flow this is. */
+  action?: unknown;
+  /** Packs: the room a win is being claimed against. */
+  code?: unknown;
+  token?: unknown;
 }
 
 export async function readBody(req: Request): Promise<StoryBody> {
@@ -26,6 +31,9 @@ export async function readBody(req: Request): Promise<StoryBody> {
   return {
     username: typeof obj.username === 'string' ? obj.username : '',
     character: obj.character,
+    action: obj.action,
+    code: obj.code,
+    token: obj.token,
     deck: obj.deck,
     world: obj.world,
   };

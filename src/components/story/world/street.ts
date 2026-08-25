@@ -30,6 +30,21 @@
 import * as THREE from 'three';
 import { asphalt, paving, brick, render, darkWood, plaster, signBoard, tile } from './surfaces';
 import type { BuiltArea } from './shop';
+import { AREAS } from '@/story/areas';
+
+/**
+ * The pavements, taken from the area rather than restated here.
+ *
+ * They used to be two spans written in this file and, separately, nothing at all
+ * in `areas.ts` — which is why walking onto one buried the duelist's feet: the
+ * paving was drawn at 14 cm and the game had no idea it was there. Adding the
+ * heights to the area made two copies of the same rectangles, and two copies
+ * drift.
+ *
+ * So the area owns them and this draws what it is told. `areas.ts` stays free of
+ * three.js, which is the rule that made it the right place to put them.
+ */
+const PAVEMENTS = AREAS['starting-area'].platforms ?? [];
 
 const ST_W = 22;
 const ST_D = 17;
@@ -138,15 +153,20 @@ export function buildStreet(anisotropy: number): BuiltArea {
   root.add(road);
 
   const paveMat = matt(own, '#ffffff', surfaceOf(own, paving, 10, 1.6, anisotropy));
-  for (const [z0, z1] of [[NORTH_FACE, NORTH_KERB], [SOUTH_KERB, SOUTH_FACE]]) {
-    const pave = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(ST_W * 2, z1 - z0)), paveMat);
+  for (const slab of PAVEMENTS) {
+    const pave = new THREE.Mesh(
+      own.keep(new THREE.PlaneGeometry(slab.hw * 2, slab.hd * 2)),
+      paveMat
+    );
     pave.rotation.x = -Math.PI / 2;
-    pave.position.set(0, 0.14, (z0 + z1) / 2);
+    pave.position.set(slab.x, slab.y, slab.z);
     pave.receiveShadow = true;
     root.add(pave);
-    /* The kerb itself — a lip, not a painted line. */
-    const kerb = box(own, ST_W * 2, 0.16, 0.3, matt(own, '#8b8d90'), 0,
-                     0.07, z0 === NORTH_FACE ? z1 - 0.15 : z0 + 0.15);
+    /* The kerb itself — a lip, not a painted line. It faces the road, which is
+       whichever of the slab's two long edges is nearer the middle of the street. */
+    const roadside = slab.z < 0 ? slab.z + slab.hd : slab.z - slab.hd;
+    const kerb = box(own, slab.hw * 2, slab.y + 0.02, 0.3, matt(own, '#8b8d90'),
+                     slab.x, (slab.y + 0.02) / 2, roadside + (slab.z < 0 ? -0.15 : 0.15));
     root.add(kerb);
   }
 
