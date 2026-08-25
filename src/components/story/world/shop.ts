@@ -178,10 +178,20 @@ export function buildShop(anisotropy: number): BuiltArea {
   frontPiece(doorW, WALL_H - doorH, doorX, (WALL_H + doorH) / 2);
 
   /* Skirting, which is a two-centimetre detail that makes a room look built. */
+  /*
+   * Skirting, and it stands off the wall rather than flush against it.
+   *
+   * At 0.03 from a wall and 0.06 deep, its back face sat on exactly the wall's
+   * own plane. Every one of these near-misses was a surface pair at identical
+   * depth, and they all flickered.
+   */
   const skirtMat = matt(own, '#6b5638');
-  root.add(box(own, SHOP_W * 2, 0.16, 0.06, skirtMat, 0, 0.08, -SHOP_D + 0.03));
-  root.add(box(own, 0.06, 0.16, SHOP_D * 2, skirtMat, -SHOP_W + 0.03, 0.08, 0));
-  root.add(box(own, 0.06, 0.16, SHOP_D * 2, skirtMat, SHOP_W - 0.03, 0.08, 0));
+  /* Stopped short at both ends: run to the full width and the skirting's own end
+   faces land on the side walls' planes, and the two boards meet each other at
+   the corner sharing a top and a bottom. */
+  root.add(box(own, SHOP_W * 2 - 0.3, 0.16, 0.06, skirtMat, 0, 0.08, -SHOP_D + 0.06));
+  root.add(box(own, 0.06, 0.16, SHOP_D * 2 - 0.3, skirtMat, -SHOP_W + 0.06, 0.08, 0));
+  root.add(box(own, 0.06, 0.16, SHOP_D * 2 - 0.3, skirtMat, SHOP_W - 0.06, 0.08, 0));
 
   /* ---- the window onto the street ---- */
 
@@ -273,17 +283,17 @@ export function buildShop(anisotropy: number): BuiltArea {
   root.add(box(own, 8.05, 0.07, 1.3, counterTop, cx, 0.9, cz));
   /* A panelled front, three recessed panels. */
   for (let i = -1; i <= 1; i++) {
-    root.add(box(own, 2.1, 0.6, 0.04, matt(own, '#513722'), cx + i * 2.35, 0.46, cz + 0.57));
+    root.add(box(own, 2.1, 0.6, 0.04, matt(own, '#513722'), cx + i * 2.35, 0.46, cz + 0.59));
   }
 
   /* Till, a box of singles, a mug, and a stool behind. */
   root.add(box(own, 0.5, 0.34, 0.42, matt(own, '#d9d4c8'), cx + 2.2, 1.11, cz - 0.05));
   root.add(box(own, 0.42, 0.1, 0.3, matt(own, '#2b2b2b'), cx + 2.2, 1.33, cz + 0.05));
-  const singles = box(own, 0.62, 0.16, 0.4, matt(own, '#b4462f'), cx - 1.2, 1.02, cz + 0.1);
+  const singles = box(own, 0.62, 0.16, 0.4, matt(own, '#b4462f'), cx - 0.55, 1.02, cz + 0.1);
   root.add(singles);
   for (let i = 0; i < 7; i++) {
     root.add(box(own, 0.055, 0.13, 0.34, matt(own, i % 2 ? '#e8e2d2' : '#d8cfba'),
-                 cx - 1.45 + i * 0.075, 1.05, cz + 0.1));
+                 cx - 0.8 + i * 0.075, 1.05, cz + 0.1));
   }
   root.add(box(own, 0.1, 0.12, 0.1, matt(own, '#e4e0d6'), cx + 0.9, 1.0, cz - 0.1));
   root.add(box(own, 0.42, 0.06, 0.42, matt(own, '#6a4a2c'), cx + 0.2, 0.64, cz - 1.05));
@@ -316,18 +326,29 @@ export function buildShop(anisotropy: number): BuiltArea {
     for (let i = 0; i < 4; i++) {
       const y = 0.36 + i * 0.48;
       g.add(box(own, w, 0.05, d, shelfMat, 0, y, 0));
-      /* Boxes of product, in the muted colours a game shop actually stocks. */
-      /* Muted on purpose. The first pass used saturated primaries and the
-         shelves read as a sweet shop — stock is printed card in a dim room, not
-         boiled sweets. */
+      /*
+       * Boxes of product, on a fixed pitch.
+       *
+       * Muted on purpose: the first pass used saturated primaries and the
+       * shelves read as a sweet shop — stock is printed card in a dim room, not
+       * boiled sweets.
+       *
+       * Laid out by slot rather than by accumulating a running offset. The
+       * accumulating version derived each box's *size* from the offset it had
+       * reached, which on some shelves produced two boxes at the same place —
+       * four coincident pairs, one per shelf, found by `npm run coplanar`. A
+       * slot index cannot do that: each box owns a cell and is drawn inside it.
+       */
       const palette = ['#7a4638', '#3f566f', '#6b5f3c', '#47654f', '#5b3f5b', '#7d6840'];
-      let bx = -w / 2 + 0.16;
-      while (bx < w / 2 - 0.16) {
-        const bw = 0.16 + ((bx * 37) % 13) / 60;
-        const bh = 0.2 + ((bx * 53) % 11) / 55;
-        g.add(box(own, bw, bh, d * 0.72, matt(own, palette[Math.abs(Math.round(bx * 10 + i)) % palette.length]),
-                  bx + bw / 2, y + 0.025 + bh / 2, 0));
-        bx += bw + 0.035;
+      const slots = Math.max(3, Math.floor((w - 0.24) / 0.3));
+      const pitch = (w - 0.24) / slots;
+      for (let k = 0; k < slots; k++) {
+        const wobble = ((k * 37 + i * 53) % 11) / 11;
+        const bw = pitch * (0.62 + wobble * 0.24);
+        const bh = 0.2 + (((k * 29 + i * 17) % 9) / 9) * 0.18;
+        g.add(box(own, bw, bh, d * 0.72,
+                  matt(own, palette[(k + i * 2) % palette.length]),
+                  -w / 2 + 0.12 + pitch * (k + 0.5), y + 0.025 + bh / 2, 0));
       }
     }
     root.add(g);
@@ -372,7 +393,7 @@ export function buildShop(anisotropy: number): BuiltArea {
   }));
   const rug = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(3.2, 1.8)), rugMat);
   rug.rotation.x = -Math.PI / 2;
-  rug.position.set(-0.6, 0.006, -0.4);
+  rug.position.set(-0.6, 0.02, -0.4);
   rug.receiveShadow = true;
   root.add(rug);
 

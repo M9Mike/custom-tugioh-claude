@@ -56,7 +56,8 @@
     "sculpt": "node --max-old-space-size=8192 scripts/import-sculpt.mjs",
     "glb": "node scripts/glb-info.mjs",
     "rigged": "node --max-old-space-size=8192 scripts/import-rigged.mjs",
-    "ai-honesty": "tsx scripts/ai-honesty-check.ts"
+    "ai-honesty": "tsx scripts/ai-honesty-check.ts",
+    "coplanar": "node scripts/coplanar-check.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

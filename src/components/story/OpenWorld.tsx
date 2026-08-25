@@ -753,7 +753,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * Stripped from production builds: it is a debugging aid, not a feature.
        */
       if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
-        const w = window as unknown as { __probe?: unknown };
+        const w = window as unknown as { __probe?: unknown; __scene?: unknown };
+        /* The scene itself, so `npm run coplanar` can audit the geometry for
+           surfaces that sit at identical depth. See that script's header. */
+        w.__scene = scene;
         w.__probe = {
           area: area.id,
           player: [+p.x.toFixed(2), +p.z.toFixed(2)],

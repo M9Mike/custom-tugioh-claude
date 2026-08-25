@@ -159,8 +159,10 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(dash);
   }
   /* A couple of drain covers where the kerb meets the road. */
+  /* Drain covers, sitting a centimetre proud so their underside is not coplanar
+     with the road they are set into. */
   for (const [dx, dz] of [[-6, NORTH_KERB - 0.55], [7.5, SOUTH_KERB + 0.55]]) {
-    root.add(box(own, 0.6, 0.03, 0.44, matt(own, '#3f4247'), dx, 0.015, dz));
+    root.add(box(own, 0.6, 0.04, 0.44, decal(own, '#3f4247'), dx, 0.03, dz));
   }
 
   /* ---- the terraces ---- */
@@ -250,7 +252,14 @@ export function buildStreet(anisotropy: number): BuiltArea {
         root.add(box(own, 0.08, 1.86, 0.07, matt(own, '#33291f'),
                      cx - gw / 2 + (gw / bars) * m, 1.9, zf + out * 0.16));
       }
-      root.add(box(own, gw - 0.24, 0.09, 0.07, matt(own, '#33291f'), cx, 2.46, zf + out * 0.16));
+      /*
+       * The transom sits a centimetre proud of the uprights it crosses.
+       *
+       * At the same depth they share a face wherever they intersect, and each of
+       * those little crossings flickers — 68 of them across the two terraces,
+       * which `npm run coplanar` found and no screenshot ever would have.
+       */
+      root.add(box(own, gw - 0.24, 0.09, 0.07, matt(own, '#33291f'), cx, 2.46, zf + out * 0.175));
       /* Something on the other side of the glass, so it is not a light box. */
       for (let d2 = 0; d2 < Math.max(2, Math.floor(gw / 1.4)); d2++) {
         root.add(box(own, 0.34, 0.3, 0.22,
@@ -334,7 +343,8 @@ export function buildStreet(anisotropy: number): BuiltArea {
   for (const mx of [-0.8, 0, 0.8]) {
     root.add(box(own, 0.07, 1.5, 0.06, matt(own, '#3a2a1a'), winCx + mx, 1.95, zf + 0.1));
   }
-  root.add(box(own, 2.36, 0.06, 0.06, matt(own, '#3a2a1a'), winCx, 1.95, zf + 0.1));
+  /* Same again on the shop's own window: the crossbar clears its mullions. */
+  root.add(box(own, 2.36, 0.06, 0.06, matt(own, '#3a2a1a'), winCx, 1.95, zf + 0.115));
   /* A stepped display of boxes behind the glass. */
   for (let i = 0; i < 5; i++) {
     root.add(box(own, 0.3, 0.26, 0.2, matt(own, ['#8a4a3a', '#3f5f8a', '#7a6a3a', '#4a7a5a', '#6a3f6a'][i]),
@@ -346,32 +356,62 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   /* Sign board over the door, and a hanging turtle sign at right angles to it —
      the shop is "the little one with the turtle over the door". */
-  root.add(box(own, shopW - 0.3, 0.9, 0.22, matt(own, '#2f4a3a'), shopX, 3.3, zf + 0.08));
+  root.add(box(own, shopW - 0.3, 1.45, 0.22, matt(own, '#2f4a3a'), shopX, 3.42, zf + 0.08));
   /* The fascia, and it says what the shop is called. */
+  /*
+   * The board is taller, and the lettering is drawn at the shape it is shown at.
+   *
+   * The sign was a square 512 canvas stretched across six metres by 0.66 — a 9:1
+   * squash — so "KAME GAME SHOP" came out thin and short however large the
+   * letters were drawn. Drawing into a canvas of the same proportions as the
+   * plane is the whole fix: the type is now the size it looks.
+   */
+  const fasciaW = shopW - 0.9;
+  const fasciaH = 1.15;
   const fascia = own.keep(new THREE.MeshBasicMaterial({
-    map: surfaceOf(own, () => signBoard('KAME', '#f0e0b4', '#24402f', 'GAME SHOP'), 1, 1, anisotropy),
-    color: '#c8bda0',
+    map: surfaceOf(
+      own,
+      () => signBoard('KAME', '#f2e3ba', '#24402f', 'GAME SHOP', fasciaW / fasciaH),
+      1, 1, anisotropy
+    ),
+    color: '#cfc4a6',
   }));
-  const fasciaMesh = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(shopW - 1.0, 0.66)), fascia);
-  fasciaMesh.position.set(shopX, 3.3, zf + 0.2);
+  const fasciaMesh = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(fasciaW, fasciaH)), fascia);
+  fasciaMesh.position.set(shopX, 3.42, zf + 0.22);
   root.add(fasciaMesh);
   root.add(box(own, 0.1, 0.1, 0.9, matt(own, '#3a3630'), shopX + 2.4, 3.9, NORTH_FACE + 0.5));
   const turtle = box(own, 0.72, 0.62, 0.1, matt(own, '#2f4a3a'), shopX + 2.4, 3.42, NORTH_FACE + 0.9, Math.PI / 2);
   root.add(turtle);
   root.add(box(own, 0.46, 0.3, 0.12, matt(own, '#5f8a5a'), shopX + 2.4, 3.46, NORTH_FACE + 0.9, Math.PI / 2));
 
-  /* A step up to the door, so the threshold is a threshold. */
-  root.add(box(own, 2.0, 0.14, 0.7, matt(own, '#8b8d90'), shopX, 0.07, NORTH_FACE + 0.5));
+  /*
+   * A step up to the door — and its top has to be *above* the pavement.
+   *
+   * It was 0.14 tall standing on the ground, so its top face landed on exactly
+   * the same plane as the pavement at y 0.14. That is what was flickering
+   * underfoot at the shop door. Twenty-two centimetres tall now, which both
+   * fixes it and makes the threshold read as a step rather than a paving slab.
+   */
+  root.add(box(own, 2.0, 0.22, 0.7, matt(own, '#8b8d90'), shopX, 0.11, NORTH_FACE + 0.5));
 
   /* ---- the ends ---- */
 
   /* West: a hoarding round a building site, plastered with bills. */
   const hoard = matt(own, '#4a5a52');
   root.add(box(own, 4, 3.6, ST_D * 2, hoard, WEST_FACE - 2, 1.8, 0));
+  /*
+   * Bills pasted on the hoarding, and they sit *proud* of it.
+   *
+   * They were centred at `WEST_FACE - 0.03` with a depth of 0.06, which puts
+   * their outer face at exactly `WEST_FACE` — the same plane as the hoarding
+   * itself. Two surfaces at identical depth is the definition of z-fighting, and
+   * this is the one that showed as "rectangles flickering on the left wall".
+   * Five centimetres clear, and a decal material on top of that.
+   */
   for (let i = 0; i < 9; i++) {
     const z = -ST_D + 2 + i * 3.6;
-    root.add(box(own, 0.06, 1.1, 0.8, matt(own, ['#8a4a4a', '#4a5a8a', '#8a7a4a', '#5a8a5a'][i % 4]),
-                 WEST_FACE - 0.03, 1.5 + (i % 3) * 0.5, z));
+    root.add(box(own, 0.05, 1.1, 0.8, decal(own, ['#8a4a4a', '#4a5a8a', '#8a7a4a', '#5a8a5a'][i % 4]),
+                 WEST_FACE + 0.05, 1.5 + (i % 3) * 0.5, z));
   }
   /* Scaffolding poles above it, so something is clearly going on back there. */
   for (let i = 0; i < 6; i++) {
@@ -385,7 +425,10 @@ export function buildStreet(anisotropy: number): BuiltArea {
   for (let i = 0; i < 13; i++) {
     root.add(box(own, 0.06, 1.4, 0.06, railMat, EAST_FACE - 0.1, 0.85, -2.6 + i * 0.52));
   }
-  root.add(box(own, 0.14, 0.14, 6.4, railMat, EAST_FACE - 0.1, 1.58, 0.5));
+  /* The handrail sits above the panel rather than flush with it: at 1.58 its top
+     landed on exactly the panel's top at 1.65 and the two fought along the whole
+     six metres of it. */
+  root.add(box(own, 0.14, 0.14, 6.4, railMat, EAST_FACE - 0.1, 1.64, 0.5));
 
   /* ---- street furniture ---- */
 
@@ -434,8 +477,10 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(box(own, 1.5, 0.1, 1.5, matt(own, '#3a2f22'), px, 0.85, -7.5));
     for (let i = 0; i < 7; i++) {
       const s = 0.4 + rnd() * 0.45;
+      /* Clear of the soil's own top face at 0.9 — one of these used to land with
+         its underside exactly on it. */
       const b = box(own, s, s, s, matt(own, i % 2 ? '#3f6b3a' : '#4f7d46'),
-                    px + (rnd() - 0.5) * 0.9, 1.0 + rnd() * 0.55, -7.5 + (rnd() - 0.5) * 0.9);
+                    px + (rnd() - 0.5) * 0.9, 0.94 + s / 2 + rnd() * 0.4, -7.5 + (rnd() - 0.5) * 0.9);
       b.rotation.set(rnd(), rnd(), rnd());
       root.add(b);
     }

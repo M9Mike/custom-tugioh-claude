@@ -30,6 +30,23 @@ import * as THREE from 'three';
 
 type Ctx = CanvasRenderingContext2D;
 
+function surfaceRect(
+  w: number,
+  h: number,
+  draw: (ctx: Ctx, w: number, h: number) => void
+): THREE.CanvasTexture | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  draw(ctx, w, h);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 function surface(size: number, draw: (ctx: Ctx, s: number) => void): THREE.CanvasTexture | null {
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -421,32 +438,41 @@ export function signBoard(
   text: string,
   ink: string,
   ground: string,
-  sub?: string
+  sub?: string,
+  /**
+   * Width over height of the surface this will be shown on.
+   *
+   * A square canvas stretched across a 9:1 fascia squashes the type to a ninth
+   * of its height, which is exactly what happened to the shop's sign — the
+   * letters were drawn large and arrived thin. Drawing into a canvas of the
+   * same proportions as the plane means the type is the size it looks.
+   */
+  aspect = 1
 ): THREE.CanvasTexture | null {
-  return surface(512, (ctx, s) => {
+  return surfaceRect(1024, Math.max(64, Math.round(1024 / aspect)), (ctx, s, h) => {
     const rnd = seeded(0x516e);
     ctx.fillStyle = ground;
-    ctx.fillRect(0, 0, s, s);
+    ctx.fillRect(0, 0, s, h);
     /* Grain and wear on the board before anything is painted on it. */
     for (let i = 0; i < 2400; i++) {
       ctx.fillStyle = `rgba(0,0,0,${0.02 + rnd() * 0.05})`;
-      ctx.fillRect(rnd() * s, rnd() * s, 1.6, 1.6);
+      ctx.fillRect(rnd() * s, rnd() * h, 1.6, 1.6);
     }
     grime(ctx, s, rnd, 9, 0.14);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = ink;
-    ctx.font = `bold ${sub ? 96 : 118}px Georgia, "Times New Roman", serif`;
-    /* Painted by hand: every letter sits a pixel or two off the line. */
-    const mid = sub ? s * 0.38 : s * 0.5;
+    /* Sized off the *height* of the board, which is what the type has to fit. */
+    ctx.font = `bold ${Math.round(h * (sub ? 0.42 : 0.62))}px Georgia, "Times New Roman", serif`;
+    const mid = sub ? h * 0.36 : h * 0.5;
     const chars = [...text];
     const width = ctx.measureText(text).width;
     let x = s / 2 - width / 2;
     for (const ch of chars) {
       const w = ctx.measureText(ch).width;
       ctx.save();
-      ctx.translate(x + w / 2, mid + (rnd() - 0.5) * 5);
+      ctx.translate(x + w / 2, mid + (rnd() - 0.5) * (h * 0.02));
       ctx.rotate((rnd() - 0.5) * 0.035);
       ctx.fillText(ch, 0, 0);
       ctx.restore();
@@ -455,19 +481,19 @@ export function signBoard(
     if (sub) {
       ctx.fillStyle = ink;
       ctx.globalAlpha = 0.8;
-      ctx.font = '52px Georgia, "Times New Roman", serif';
-      ctx.fillText(sub, s / 2, s * 0.66);
+      ctx.font = `${Math.round(h * 0.26)}px Georgia, "Times New Roman", serif`;
+      ctx.fillText(sub, s / 2, h * 0.74);
       ctx.globalAlpha = 1;
     }
     /* A border, and a little flaking. */
     ctx.strokeStyle = ink;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = 7;
-    ctx.strokeRect(22, 22, s - 44, s - 44);
+    ctx.strokeRect(h * 0.06, h * 0.06, s - h * 0.12, h - h * 0.12);
     ctx.globalAlpha = 1;
     for (let i = 0; i < 40; i++) {
       ctx.fillStyle = `rgba(${parseInt(ground.slice(1, 3), 16)},${parseInt(ground.slice(3, 5), 16)},${parseInt(ground.slice(5, 7), 16)},${0.3 + rnd() * 0.5})`;
-      ctx.fillRect(rnd() * s, rnd() * s, 2 + rnd() * 7, 2 + rnd() * 5);
+      ctx.fillRect(rnd() * s, rnd() * h, 2 + rnd() * 7, 2 + rnd() * 5);
     }
   });
 }
