@@ -286,19 +286,28 @@ export function buildShop(anisotropy: number): BuiltArea {
     root.add(box(own, 2.1, 0.6, 0.04, matt(own, '#513722'), cx + i * 2.35, 0.46, cz + 0.59));
   }
 
-  /* Till, a box of singles, a mug, and a stool behind. */
-  root.add(box(own, 0.5, 0.34, 0.42, matt(own, '#d9d4c8'), cx + 2.2, 1.11, cz - 0.05));
-  root.add(box(own, 0.42, 0.1, 0.3, matt(own, '#2b2b2b'), cx + 2.2, 1.33, cz + 0.05));
+  /*
+   * Till, box of singles, mug and stool — all of them kept off Grandpa's line.
+   *
+   * The till used to stand at `cx + 2.2`, which is x 1.1, and Grandpa stands at
+   * x 0.9. So the first thing a player saw on walking in was a white box with
+   * the top of a head behind it. Everything on the counter is now pushed to the
+   * ends, leaving the middle — where he is, and where you meet him — clear.
+   */
+  root.add(box(own, 0.5, 0.34, 0.42, matt(own, '#d9d4c8'), cx + 3.5, 1.11, cz - 0.05));
+  root.add(box(own, 0.42, 0.1, 0.3, matt(own, '#2b2b2b'), cx + 3.5, 1.33, cz + 0.05));
   const singles = box(own, 0.62, 0.16, 0.4, matt(own, '#b4462f'), cx - 0.55, 1.02, cz + 0.1);
   root.add(singles);
   for (let i = 0; i < 7; i++) {
     root.add(box(own, 0.055, 0.13, 0.34, matt(own, i % 2 ? '#e8e2d2' : '#d8cfba'),
                  cx - 0.8 + i * 0.075, 1.05, cz + 0.1));
   }
-  root.add(box(own, 0.1, 0.12, 0.1, matt(own, '#e4e0d6'), cx + 0.9, 1.0, cz - 0.1));
-  root.add(box(own, 0.42, 0.06, 0.42, matt(own, '#6a4a2c'), cx + 0.2, 0.64, cz - 1.05));
+  root.add(box(own, 0.1, 0.12, 0.1, matt(own, '#e4e0d6'), cx + 3.0, 1.0, cz - 0.1));
+  /* His stool, pushed along the counter out of the way — he is standing, and a
+     stool directly behind him reads as furniture he is straddling. */
+  root.add(box(own, 0.42, 0.06, 0.42, matt(own, '#6a4a2c'), cx - 2.6, 0.64, cz - 1.05));
   for (const [sx, sz] of [[-0.16, -0.16], [0.16, -0.16], [-0.16, 0.16], [0.16, 0.16]]) {
-    root.add(box(own, 0.05, 0.62, 0.05, matt(own, '#4a3520'), cx + 0.2 + sx, 0.31, cz - 1.05 + sz));
+    root.add(box(own, 0.05, 0.62, 0.05, matt(own, '#4a3520'), cx - 2.6 + sx, 0.31, cz - 1.05 + sz));
   }
 
   /* A glass display case let into the counter — the good cards. */
