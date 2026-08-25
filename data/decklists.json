@@ -1463,6 +1463,152 @@
         ]
       ],
       "extra": []
+    },
+    {
+      "id": "tony",
+      "name": "Tony",
+      "epithet": "Forest Ambush",
+      "quote": "You will not see the third one coming.",
+      "accent": "#3f5f34",
+      "accent2": "#c7d6a8",
+      "emblem": "Curse of Dragon",
+      "strategy": "Cheap bodies in numbers, a dragon to finish, and a trap for the swing you commit to.",
+      "extra": [],
+      "deck": [
+        [
+          "Curse of Dragon",
+          1
+        ],
+        [
+          "Feral Imp",
+          3
+        ],
+        [
+          "Hitotsu-Me Giant",
+          3
+        ],
+        [
+          "Swordsman of Landstar",
+          3
+        ],
+        [
+          "Dragon Piper",
+          1
+        ],
+        [
+          "The Portrait's Secret",
+          1
+        ],
+        [
+          "Flying Fish",
+          3
+        ],
+        [
+          "Basic Insect",
+          2
+        ],
+        [
+          "Ground Attacker Bugroth",
+          1
+        ],
+        [
+          "King's Knight",
+          1
+        ],
+        [
+          "Pharaoh's Servant",
+          3
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Spellbinding Circle",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ]
+      ]
+    },
+    {
+      "id": "sarah",
+      "name": "Sarah",
+      "epithet": "Clockwork Vanguard",
+      "quote": "Come through me, then. I will wait.",
+      "accent": "#5b3f8f",
+      "accent2": "#e0c979",
+      "emblem": "Queen's Knight",
+      "strategy": "Walls that do not fall, a tribute that empties your hand, and a knight to walk through what is left.",
+      "extra": [],
+      "deck": [
+        [
+          "Mystical Elf",
+          3
+        ],
+        [
+          "Magician of Faith",
+          1
+        ],
+        [
+          "Baby Dragon",
+          2
+        ],
+        [
+          "Dunames Dark Witch",
+          1
+        ],
+        [
+          "Sonic Maid",
+          1
+        ],
+        [
+          "Happy Lover",
+          3
+        ],
+        [
+          "Lady of Faith",
+          2
+        ],
+        [
+          "Aqua Madoor",
+          1
+        ],
+        [
+          "Queen's Knight",
+          3
+        ],
+        [
+          "Millennium Seeker",
+          1
+        ],
+        [
+          "Gravekeeper's Spy",
+          1
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Royal Tribute",
+          1
+        ],
+        [
+          "Spellbinding Circle",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ]
+      ]
     }
   ]
 }

@@ -1463,6 +1463,152 @@
         ]
       ],
       "extra": []
+    },
+    {
+      "id": "tony",
+      "name": "Tony",
+      "epithet": "Forest Ambush",
+      "quote": "You will not see the third one coming.",
+      "accent": "#3f5f34",
+      "accent2": "#c7d6a8",
+      "emblem": "curse-of-dragon",
+      "strategy": "Cheap bodies in numbers, a dragon to finish, and a trap for the swing you commit to.",
+      "extra": [],
+      "deck": [
+        [
+          "curse-of-dragon",
+          1
+        ],
+        [
+          "feral-imp",
+          3
+        ],
+        [
+          "hitotsu-me-giant",
+          3
+        ],
+        [
+          "swordsman-of-landstar",
+          3
+        ],
+        [
+          "dragon-piper",
+          1
+        ],
+        [
+          "the-portrait-s-secret",
+          1
+        ],
+        [
+          "flying-fish",
+          3
+        ],
+        [
+          "basic-insect",
+          2
+        ],
+        [
+          "ground-attacker-bugroth",
+          1
+        ],
+        [
+          "king-s-knight",
+          1
+        ],
+        [
+          "pharaoh-s-servant",
+          3
+        ],
+        [
+          "stop-defense",
+          1
+        ],
+        [
+          "spellbinding-circle",
+          1
+        ],
+        [
+          "just-desserts",
+          1
+        ]
+      ]
+    },
+    {
+      "id": "sarah",
+      "name": "Sarah",
+      "epithet": "Clockwork Vanguard",
+      "quote": "Come through me, then. I will wait.",
+      "accent": "#5b3f8f",
+      "accent2": "#e0c979",
+      "emblem": "queen-s-knight",
+      "strategy": "Walls that do not fall, a tribute that empties your hand, and a knight to walk through what is left.",
+      "extra": [],
+      "deck": [
+        [
+          "mystical-elf",
+          3
+        ],
+        [
+          "magician-of-faith",
+          1
+        ],
+        [
+          "baby-dragon",
+          2
+        ],
+        [
+          "dunames-dark-witch",
+          1
+        ],
+        [
+          "sonic-maid",
+          1
+        ],
+        [
+          "happy-lover",
+          3
+        ],
+        [
+          "lady-of-faith",
+          2
+        ],
+        [
+          "aqua-madoor",
+          1
+        ],
+        [
+          "queen-s-knight",
+          3
+        ],
+        [
+          "millennium-seeker",
+          1
+        ],
+        [
+          "gravekeeper-s-spy",
+          1
+        ],
+        [
+          "stop-defense",
+          1
+        ],
+        [
+          "royal-tribute",
+          1
+        ],
+        [
+          "spellbinding-circle",
+          1
+        ],
+        [
+          "just-desserts",
+          1
+        ],
+        [
+          "negate-attack",
+          1
+        ]
+      ]
     }
   ]
 }

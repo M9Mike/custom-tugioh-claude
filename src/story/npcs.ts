@@ -448,15 +448,14 @@ const WAITING: WorldNpc[] = [
 /**
  * Sarah and Tony, who are the first people you meet who are not shopkeepers.
  *
+ * Both duel. Each has a deck of their own in `decklists.json` under their own
+ * id, and a `duel` record naming it, so walking up to either of them and saying
+ * yes seats a room with your twenty-five against theirs and starts it.
+ *
  * They are in the Starting Area rather than the shop because the street is
  * where the game is going to happen, and a street with nobody in it reads as
  * scenery. Two is the right number for now: enough that walking out of the door
  * finds somebody, few enough that the road is still a road.
- *
- * **Neither offers a duel yet.** Both are written as duelists you will play —
- * that is what they talk about — but the `duel` record and the deck behind it
- * come next. What they say now sets them up without promising a button that is
- * not there, which is the difference between a character and a broken link.
  *
  * ## Where they stand
  *
@@ -489,13 +488,56 @@ const STREET: WorldNpc[] = [
     facing: 1.7,
     range: 3.2,
     start: 'greet',
+    duel: { opponentId: 'sarah', won: 'beaten', lost: 'won' },
     script: {
       greet: {
         lines: [
           'You came out of the old man\u2019s shop, so you are new. That is not an insult, it is a schedule.',
-          'Sarah. I duel, and I am good at it. Come and find me when you have something worth putting on the table.',
+          'Sarah. I duel, and I am good at it. If you have twenty-five sleeved, we can find out where you are on it.',
         ],
-        choices: [],
+        choices: [
+          { label: 'Let\u2019s duel.', to: 'beaten', duel: true },
+          { label: 'What do you play?', to: 'style' },
+          { label: 'Maybe later.', to: null },
+        ],
+      },
+
+      /* She tells you exactly what she does. It is not a bluff — the deck is
+         walls and a Royal Tribute — and a duelist who warns you and is still
+         right is a better character than one who surprises you. */
+      style: {
+        lines: [
+          'Nothing you have not seen. Elves, a witch, a knight or three, and enough two-thousand defence that swinging into me is a decision rather than a habit.',
+          'And when your hand is full of monsters you are waiting to summon, I take all of them at once. That is the part people remember.',
+        ],
+        choices: [
+          { label: 'Let\u2019s duel.', to: 'beaten', duel: true },
+          { label: 'Noted. Later.', to: null },
+        ],
+      },
+
+      /* The player won. She is not gracious about it, she is precise about it. */
+      beaten: {
+        lines: [
+          'Hm. You went through the wall instead of round it.',
+          'That is the right answer, and I would rather you got there by knowing than by luck. I am not going to ask which it was.',
+        ],
+        choices: [
+          { label: 'Again?', to: 'beaten', duel: true },
+          { label: 'I will leave it there.', to: null },
+        ],
+      },
+
+      /* The player lost. The line that matters is the one that says what to fix. */
+      won: {
+        lines: [
+          'You attacked into two thousand defence twice. The second one was not bad luck.',
+          'Look at what is face-up on my side before you declare. If you cannot get through it, set something and make me come to you \u2014 I am in no hurry.',
+        ],
+        choices: [
+          { label: 'Run it back.', to: 'won', duel: true },
+          { label: 'Let me think.', to: null },
+        ],
       },
     },
   },
@@ -508,13 +550,62 @@ const STREET: WorldNpc[] = [
     facing: -1.45,
     range: 3.2,
     start: 'greet',
+    duel: { opponentId: 'tony', won: 'beaten', lost: 'won' },
     script: {
       greet: {
         lines: [
           'Tony. Do not let the vest fool you \u2014 I am out here for the cards, same as everybody.',
-          'Get a few duels under you first. Then come back and we will see what you have got.',
+          'You want a duel or you want directions? Either is fine. One of them is quicker.',
         ],
-        choices: [],
+        choices: [
+          { label: 'A duel.', to: 'beaten', duel: true },
+          { label: 'What am I walking into?', to: 'style' },
+          { label: 'Directions, then.', to: 'where' },
+        ],
+      },
+
+      style: {
+        lines: [
+          'Nothing clever. A lot of small things, all at once, and a dragon behind them for when you have run out of answers.',
+          'People lose to me because they spend their good card on my worst monster. Then there are four more.',
+        ],
+        choices: [
+          { label: 'Let\u2019s go.', to: 'beaten', duel: true },
+          { label: 'I will come back.', to: null },
+        ],
+      },
+
+      where: {
+        lines: [
+          'Street runs east to west. Shop behind you, the alley is railed off, and the building site at the far end is not going anywhere.',
+          'That is the whole tour. Told you it was quicker.',
+        ],
+        choices: [
+          { label: 'Duel, then.', to: 'beaten', duel: true },
+          { label: 'Thanks.', to: null },
+        ],
+      },
+
+      beaten: {
+        lines: [
+          'Well. That is what happens when you actually read the board.',
+          'Good. Most people out here swing first and count afterwards.',
+        ],
+        choices: [
+          { label: 'Again.', to: 'beaten', duel: true },
+          { label: 'That will do.', to: null },
+        ],
+      },
+
+      won: {
+        lines: [
+          'You ran out of monsters before I ran out of monsters. That is the whole story.',
+          'Three zones is three zones \u2014 do not fill them with things that trade down. Come back when you have something that stays on the field.',
+        ],
+        choices: [
+          { label: 'Again.', to: 'won', duel: true },
+          { label: 'Fair enough.', to: null },
+        ],
       },
     },
   },

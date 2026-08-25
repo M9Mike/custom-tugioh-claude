@@ -519,8 +519,19 @@ async function run(phoneName) {
         /* A reply has to actually move the conversation on — read off the
            speech line itself, not the first paragraph in the panel, which is
            the speaker's name and is the same on every node. */
+        /*
+         * A reply that does not start a duel.
+         *
+         * Some characters lead with one that does — Tony's first line is "A
+         * duel." — and pressing it leaves the world entirely, so the next four
+         * assertions were checking the world menu against a duel board. The
+         * duel path has its own coverage; what this step is about is whether an
+         * answer advances the script.
+         */
+        const talky = page.locator('[data-reply]:not([data-duel])');
+        const advancing = (await talky.count()) ? talky.first() : page.locator('[data-reply]').first();
         const before = await page.locator('[data-line]').first().textContent();
-        await page.locator('[data-reply]').first().dispatchEvent('click');
+        await advancing.dispatchEvent('click');
         await page.waitForTimeout(400);
         const after = await page.locator('[data-line]').first().textContent();
         check(before !== after, 'answering moves the conversation on', `still "${after?.slice(0, 40)}…"`);

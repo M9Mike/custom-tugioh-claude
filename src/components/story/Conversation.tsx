@@ -138,6 +138,11 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel 
               <button
                 key={c.label}
                 data-reply={c.label}
+                /* Marked so a reply that leaves for a duel can be told from one
+                   that advances the conversation. They look identical in the
+                   DOM otherwise, and the Story Mode check needs a reply it can
+                   press without being taken out of the world. */
+                data-duel={c.duel ? '' : undefined}
                 className="btn rounded px-3 py-2 text-left text-[11px]"
                 onClick={() => choose(c.to, c.duel)}
               >
