@@ -440,6 +440,86 @@ const WAITING: WorldNpc[] = [
   },
 ];
 
+
+/* ------------------------------------------------------------------ */
+/* The two in the street                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sarah and Tony, who are the first people you meet who are not shopkeepers.
+ *
+ * They are in the Starting Area rather than the shop because the street is
+ * where the game is going to happen, and a street with nobody in it reads as
+ * scenery. Two is the right number for now: enough that walking out of the door
+ * finds somebody, few enough that the road is still a road.
+ *
+ * **Neither offers a duel yet.** Both are written as duelists you will play —
+ * that is what they talk about — but the `duel` record and the deck behind it
+ * come next. What they say now sets them up without promising a button that is
+ * not there, which is the difference between a character and a broken link.
+ *
+ * ## Where they stand
+ *
+ * The walkable street runs x −18..18 and z −9..10, once the terraces, the
+ * hoarding and the alley rails are taken out. They are placed on opposite
+ * sides of it, both a real walk from the shop door at (2.6, −7.2):
+ *
+ *   Sarah  (−11.5, 1.5)  16.6 m from the door
+ *   Tony   ( 12.5, −1.5) 11.4 m from the door
+ *
+ * Twenty-four metres apart, against a talk range of 3.2, so their prompts
+ * cannot both be live and you never get a choice of two conversations at once.
+ * Both sit at least five metres clear of every lamp post, planter, bench, the
+ * vending machine and the post box, so neither is standing inside the street
+ * furniture and neither can be trapped against it.
+ *
+ * They face the middle of the road rather than the shop door. Facing the door
+ * would mean two strangers staring at it, which reads as an ambush; facing the
+ * centre reads as two people who happen to be standing about. The rig turns
+ * them to look at you when you get close either way.
+ */
+const STREET: WorldNpc[] = [
+  {
+    id: 'sarah',
+    area: 'starting-area',
+    character: { name: 'Sarah', model: 'sarah', tints: [], stature: 0.5 },
+    x: -11.5,
+    z: 1.5,
+    /* Looking at the middle of the road: atan2(0 − x, 0 − z). */
+    facing: 1.7,
+    range: 3.2,
+    start: 'greet',
+    script: {
+      greet: {
+        lines: [
+          'You came out of the old man\u2019s shop, so you are new. That is not an insult, it is a schedule.',
+          'Sarah. I duel, and I am good at it. Come and find me when you have something worth putting on the table.',
+        ],
+        choices: [],
+      },
+    },
+  },
+  {
+    id: 'tony',
+    area: 'starting-area',
+    character: { name: 'Tony', model: 'tony', tints: [], stature: 0.5 },
+    x: 12.5,
+    z: -1.5,
+    facing: -1.45,
+    range: 3.2,
+    start: 'greet',
+    script: {
+      greet: {
+        lines: [
+          'Tony. Do not let the vest fool you \u2014 I am out here for the cards, same as everybody.',
+          'Get a few duels under you first. Then come back and we will see what you have got.',
+        ],
+        choices: [],
+      },
+    },
+  },
+];
+
 /**
  * Everybody standing in the field.
  *
@@ -505,6 +585,7 @@ export const WORLD_NPCS: WorldNpc[] = [
     start: 'greet',
     script: GRANDPA_SCRIPT,
   },
+  ...STREET,
 ];
 
 /** Nobody is placed outside `WORLD_NPCS`; `WAITING` is the bench. */

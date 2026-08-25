@@ -88,6 +88,11 @@ STYLES = {
     # quicker, more head, more attitude
     'brisk':   dict(period=3.7, sway=1.05, bob=0.95, breath=0.95, nod=1.45, arm=1.10,
                     lean=0.9, drop=6.0),
+    # alert and light on the feet, arms held off the plate — someone in armour
+    # who expects to move. Its period is deliberately between `brisk` and
+    # `poise` so no two characters standing in one area breathe together.
+    'scout':   dict(period=4.1, sway=1.15, bob=1.05, breath=1.00, nod=1.30, arm=0.95,
+                    lean=0.85, drop=10.0),
 }
 
 STYLE = arg('style', 'default')

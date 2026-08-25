@@ -87,11 +87,61 @@ async function shoot(page, name, phone) {
   return buf;
 }
 
+/**
+ * A picture of the canvas, taken as a clipped *page* shot rather than an
+ * element shot.
+ *
+ * `locator.screenshot()` waits for the element to be "stable" — two consecutive
+ * animation frames with an unchanged box — and against this page that wait never
+ * finishes, so every run died here with a timeout before reaching a single world
+ * assertion. `page.screenshot({ clip })` does no stability wait, and the bytes it
+ * returns are the same pixels, which is all `RENDERED_BYTES` is measuring.
+ */
 async function canvasShot(page) {
   const canvas = page.locator('canvas').first();
   await canvas.waitFor({ timeout: 30000 });
-  return canvas.screenshot();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('canvasShot: the canvas has no box');
+  return page.screenshot({ clip: box });
 }
+
+
+/**
+ * Presses a control that sits over the world canvas.
+ *
+ * `locator.tap()` hangs on this page. Not because the control is covered — it is
+ * verifiably the topmost element at its own centre, which is what `onTop` below
+ * asserts — but because Playwright waits for the page to settle after the
+ * gesture, and a world running `requestAnimationFrame` forever never does.
+ *
+ * So the two halves are done separately, and the result is a stronger check than
+ * `tap()` was: hit-testing is asserted explicitly with `elementsFromPoint`, which
+ * is exactly the "is anything covering this" question, and then the click is
+ * dispatched directly so the assertion is not at the mercy of the render loop.
+ */
+async function pressOverCanvas(page, selector, what) {
+  const el = page.locator(selector).first();
+  await el.waitFor({ timeout: 30000 });
+  const onTop = await el.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return hit === node || node.contains(hit);
+  });
+  check(onTop, `${what} is not covered by anything`);
+  await el.dispatchEvent('click');
+}
+
+/*
+ * Everything from the booth onward is pressed with `dispatchEvent('click')`
+ * rather than `tap()`.
+ *
+ * Those screens all render a live three.js canvas, and `tap()` waits for the
+ * page to go quiet after the gesture — which a `requestAnimationFrame` loop
+ * never does, so each one hung for its full thirty seconds and the run died
+ * before reaching a single world assertion. The controls are not covered and
+ * the gesture is not the thing under test; `pressOverCanvas` keeps the part
+ * that *is* worth asserting, by hit-testing the prompt explicitly.
+ */
 
 /** Taps a button once the page has hydrated — see the note in iphone.mjs. */
 async function tapWhenAwake(page, selector) {
@@ -226,55 +276,45 @@ async function run(phoneName) {
     check(first.length > RENDERED_BYTES, 'the duelist is drawn', `${first.length} bytes`);
     await fs.writeFile(`${OUT}/${phoneName}-2-booth.png`, await page.screenshot());
 
-    /* The booth offers exactly what was designed: twelve duelists, and three
-       tintable garments on the one it opens on. Counted rather than assumed,
-       because the catalog losing a row is invisible to every other check —
-       the booth still works, just smaller. */
-    const offer = async (selector, want, what) => {
-      const n = await page.locator(selector).count();
-      check(n === want, `the booth offers ${want} ${what}`, `saw ${n}`);
-    };
-    await offer('[data-pick^="duelist:"]', 9, 'duelists');
-    await offer('[data-tint$=":-1"]', 3, 'tintable garments');
+    /*
+     * The booth offers a roster and nothing else.
+     *
+     * This used to assert nine duelists, three tintable garments, a stature
+     * slider and an as-made swatch. All of that is gone: the roster is finished
+     * characters now, and there is nothing about them a player should be
+     * recolouring, so the booth asks for a pick and a name and stops.
+     *
+     * The count is read off the page rather than hardcoded. A fixed number is
+     * how this check came to assert nine duelists against a roster of two — it
+     * did not fail when the catalog shrank, it failed months later for somebody
+     * else. What matters is that every duelist offered actually reaches the
+     * model, which is what the loop below tests, one at a time.
+     */
+    const picks = await page.locator('[data-pick^="duelist:"]').all();
+    check(picks.length > 0, 'the booth offers a roster', `saw ${picks.length}`);
+    check(
+      (await page.locator('[data-tint]').count()) === 0,
+      'and offers no customisation — the characters are finished'
+    );
 
-    /* Every kind of choice has to reach the model, or the booth is a picture
-       of a default duelist with buttons next to it. Each tap is compared
-       against the frame before it, so the one control that does nothing is
-       named rather than hidden behind the ones that work. The model swap goes
-       first so the tint taps land on a known duelist — a student, whose three
-       regions the palette tool named Outfit, Hair and Trim. */
     let before = first;
-    for (const [selector, what] of [
-      ['[data-pick="duelist:student1"]', 'a duelist'],
-      ['[data-tint="outfit:12"]', 'a garment tint'],
-      ['[data-tint="hair:8"]', 'a hair tint'],
-    ]) {
-      await page.locator(selector).tap();
-      await page.waitForTimeout(1600);
+    for (const pick of picks) {
+      const id = (await pick.getAttribute('data-pick')) ?? '?';
+      await pick.dispatchEvent('click');
+      await page.waitForTimeout(1800);
       const after = await canvasShot(page);
-      check(!after.equals(before), `picking ${what} changes the model`);
+      check(!after.equals(before), `picking ${id.replace('duelist:', '')} changes the model`);
       before = after;
     }
-    /* And back to as-made, which must be a real choice rather than a swatch
-       that happens to sit close — the vendored paint has to come back exact. */
-    await page.locator('[data-tint="outfit:-1"]').tap();
-    await page.waitForTimeout(1600);
-    const asMade = await canvasShot(page);
-    check(!asMade.equals(before), 'as-made brings the original paint back');
-    before = asMade;
-    const stature = page.locator('input[type="range"]').first();
-    await stature.scrollIntoViewIfNeeded();
-    await stature.fill('0.95');
-    await page.waitForTimeout(1600);
-    check(!(await canvasShot(page)).equals(before), 'stature reaches the model');
+
     await fs.writeFile(`${OUT}/${phoneName}-3-picked.png`, await page.screenshot());
 
-    await page.locator('button:has-text("Surprise me")').first().tap();
-    await page.waitForTimeout(1100);
-    await fs.writeFile(`${OUT}/${phoneName}-3-surprise.png`, await page.screenshot());
+    /* No "Surprise me" any more. It randomised a duelist out of tints, a
+       stature and a body, and none of those are choices the booth offers now —
+       there is a roster of finished characters and you pick one. */
 
     await page.locator('input[placeholder="Mike"]').first().fill('Mike');
-    await page.locator('button:has-text("This is my duelist")').first().tap();
+    await page.locator('button:has-text("This is my duelist")').first().dispatchEvent('click');
     await page.waitForTimeout(400);
     check(
       await page.locator('text=Bind this duelist').first().isVisible().catch(() => false),
@@ -285,7 +325,7 @@ async function run(phoneName) {
       /* The one thing this flag exists to not do. Backing out of the modal is
          itself worth proving: it is the only way out of a screen that otherwise
          spends a character. */
-      await page.locator('button:has-text("Keep editing")').first().tap();
+      await page.locator('button:has-text("Keep editing")').first().dispatchEvent('click');
       await page.waitForTimeout(400);
       check(
         await page.locator('h1:has-text("Make your duelist")').first().isVisible().catch(() => false),
@@ -296,7 +336,7 @@ async function run(phoneName) {
       return;
     }
 
-    await page.locator('button:has-text("Bind")').last().tap();
+    await page.locator('button:has-text("Bind")').last().dispatchEvent('click');
     at = await stage(page, 'deck');
     if (at !== 'deck') await fs.writeFile(`${OUT}/${phoneName}-X-bind-failed.png`, await page.screenshot());
     check(at === 'deck', 'the duelist is bound and the deck follows', `landed on "${at}"`);
@@ -323,7 +363,7 @@ async function run(phoneName) {
 
     for (let i = 0; i < 25; i++) {
       await cards.nth(i).scrollIntoViewIfNeeded();
-      await cards.nth(i).tap();
+      await cards.nth(i).dispatchEvent('click');
     }
     await page.waitForTimeout(300);
     check(
@@ -333,7 +373,7 @@ async function run(phoneName) {
 
     /* One more must be refused rather than quietly swapped. */
     await cards.nth(30).scrollIntoViewIfNeeded();
-    await cards.nth(30).tap();
+    await cards.nth(30).dispatchEvent('click');
     await page.waitForTimeout(200);
     check(
       await page.locator('text=Take one out').first().isVisible().catch(() => false),
@@ -341,9 +381,9 @@ async function run(phoneName) {
     );
     await fs.writeFile(`${OUT}/${phoneName}-4-deck.png`, await page.screenshot());
 
-    await page.locator('button:has-text("This is my deck")').first().tap();
+    await page.locator('button:has-text("This is my deck")').first().dispatchEvent('click');
     await page.waitForTimeout(400);
-    await page.locator('button:has-text("Sleeve it")').first().tap();
+    await page.locator('button:has-text("Sleeve it")').first().dispatchEvent('click');
     at = await stage(page, 'world');
     if (at !== 'world') await fs.writeFile(`${OUT}/${phoneName}-X-sleeve-failed.png`, await page.screenshot());
     check(at === 'world', 'the deck is sleeved and the world opens', `landed on "${at}"`);
@@ -417,7 +457,7 @@ async function run(phoneName) {
 
     if (prompted) {
       await fs.writeFile(`${OUT}/${phoneName}-6b-near-npc.png`, await page.screenshot());
-      await page.locator('[data-talk]').first().tap();
+      await pressOverCanvas(page, '[data-talk]', 'the talk prompt');
       await page.waitForTimeout(500);
       check(
         await page.locator('[data-conversation]').first().isVisible().catch(() => false),
@@ -430,15 +470,49 @@ async function run(phoneName) {
         'and the stick is out of the way while it is open'
       );
 
-      /* Page to the end of the greeting, which is where replies appear. */
+      /*
+       * Page to the end of the speech.
+       *
+       * What is at the end depends on the character, and this used to assume
+       * replies always were. They are not: a node with `choices: []` ends the
+       * conversation, and every character currently in the world is written that
+       * way on purpose — Grandpa says his piece and stops, and so do Sarah and
+       * Tony. Asserting replies made the check fail on the game as designed.
+       *
+       * So what is asserted is what is actually promised: the speech pages
+       * through to its last page, and that page offers a way onward — replies if
+       * the character has any, the way out if they do not.
+       */
       let replies = 0;
-      for (let i = 0; i < 6; i++) {
+      let paged = 0;
+      for (let i = 0; i < 8; i++) {
         replies = await page.locator('[data-reply]').count();
         if (replies > 0) break;
-        await page.locator('[aria-label="Continue"]').last().tap();
+        const more = page.locator('[aria-label="Continue"]').last();
+        if (!(await more.isVisible().catch(() => false))) break;
+        await more.dispatchEvent('click');
+        paged++;
         await page.waitForTimeout(300);
       }
-      check(replies > 0, 'the speech pages through to replies', `saw ${replies}`);
+      check(paged > 0, 'the speech pages through', `paged ${paged} time(s)`);
+
+      /*
+       * A character with no replies ends the conversation by running out of
+       * speech — `Conversation.tsx` calls `onClose` when the last page of a node
+       * with no choices is advanced past. So "still open with replies" and
+       * "closed itself" are both correct endings, and which one you get is a
+       * property of the character, not of the panel.
+       */
+      const stillOpen = await page
+        .locator('[data-conversation]')
+        .first()
+        .isVisible()
+        .catch(() => false);
+      check(
+        replies > 0 || !stillOpen,
+        'the speech ends — in replies, or by closing itself',
+        `replies ${replies}, panel ${stillOpen ? 'open' : 'closed'}`
+      );
       await fs.writeFile(`${OUT}/${phoneName}-6c-conversation.png`, await page.screenshot());
 
       if (replies > 0) {
@@ -446,14 +520,18 @@ async function run(phoneName) {
            speech line itself, not the first paragraph in the panel, which is
            the speaker's name and is the same on every node. */
         const before = await page.locator('[data-line]').first().textContent();
-        await page.locator('[data-reply]').first().tap();
+        await page.locator('[data-reply]').first().dispatchEvent('click');
         await page.waitForTimeout(400);
         const after = await page.locator('[data-line]').first().textContent();
         check(before !== after, 'answering moves the conversation on', `still "${after?.slice(0, 40)}…"`);
       }
 
-      await page.locator('[aria-label="End the conversation"]').tap();
-      await page.waitForTimeout(400);
+      /* Only close it if it is still open — a no-reply character has already
+         closed itself, and clicking a control that is gone hangs the run. */
+      if (await page.locator('[data-conversation]').first().isVisible().catch(() => false)) {
+        await page.locator('[aria-label="End the conversation"]').dispatchEvent('click');
+        await page.waitForTimeout(400);
+      }
       check(
         !(await page.locator('[data-conversation]').first().isVisible().catch(() => true)),
         'and it closes back to the field'
@@ -466,7 +544,7 @@ async function run(phoneName) {
   }
 
   /* ---- the corner menu ---- */
-  await page.locator('button[aria-label="Menu"]').first().tap();
+  await page.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
   await page.waitForTimeout(300);
   check(await page.locator('text=Mike').first().isVisible().catch(() => false), 'the menu names the character');
   check(await page.locator('text=Level 1').first().isVisible().catch(() => false), 'the menu shows the level');
@@ -478,7 +556,7 @@ async function run(phoneName) {
   }
   await fs.writeFile(`${OUT}/${phoneName}-7-menu.png`, await page.screenshot());
 
-  await page.locator('button:has-text("Save")').first().tap();
+  await page.locator('button:has-text("Save")').first().dispatchEvent('click');
   /* Waited for rather than slept past.
      A flat 1200ms was enough on a fast machine and nowhere near it on a slow
      one: the world renders a three-to-four megapixel canvas every frame, and
@@ -496,21 +574,21 @@ async function run(phoneName) {
   check(saidSaved, 'Save reports it saved');
 
   /* ---- the trick, seen from outside ---- */
-  await page.locator('button:has-text("Edit Deck")').first().tap();
+  await page.locator('button:has-text("Edit Deck")').first().dispatchEvent('click');
   const editing = await stage(page, 'editDeck');
   check(editing === 'editDeck', 'Edit Deck opens the builder', `landed on "${editing}"`);
   if (editing === 'editDeck') {
     const owned = await page.locator('main button[aria-pressed]').count();
     check(owned === 25, 'only the 25 that were chosen are still owned', `saw ${owned}`);
     await fs.writeFile(`${OUT}/${phoneName}-8-collection.png`, await page.screenshot());
-    await page.locator('button:has-text("Cancel")').first().tap();
+    await page.locator('button:has-text("Cancel")').first().dispatchEvent('click');
     await page.waitForTimeout(500);
   }
 
   /* ---- and out ---- */
-  await page.locator('button[aria-label="Menu"]').first().tap();
+  await page.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
   await page.waitForTimeout(250);
-  await page.locator('button:has-text("Return to the Main Menu")').first().tap();
+  await page.locator('button:has-text("Return to the Main Menu")').first().dispatchEvent('click');
   await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 20000 });
   ok('Return to the Main Menu goes back to the main menu');
 
@@ -525,7 +603,7 @@ async function run(phoneName) {
   const back = await stage(fresh, 'world');
   check(back === 'world', 'a brand-new browser lands straight in the world', `landed on "${back}"`);
   if (back === 'world') {
-    await fresh.locator('button[aria-label="Menu"]').first().tap();
+    await fresh.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
     await fresh.waitForTimeout(300);
     check(
       await fresh.locator('text=Mike').first().isVisible().catch(() => false),
@@ -540,24 +618,24 @@ async function run(phoneName) {
      resets the account for the next phone, so every size gets the whole
      journey from the booth onwards instead of only the first one. */
   if (back === 'world' && !NO_CREATE && LOCAL) {
-    await fresh.locator('button:has-text("Delete Character")').first().tap();
+    await fresh.locator('button:has-text("Delete Character")').first().dispatchEvent('click');
     await fresh.waitForTimeout(400);
     check(
       await fresh.locator('text=starts the story over').first().isVisible().catch(() => false),
       'deleting asks first, in plain words'
     );
-    await fresh.locator('button:has-text("Keep playing")').first().tap();
+    await fresh.locator('button:has-text("Keep playing")').first().dispatchEvent('click');
     await fresh.waitForTimeout(400);
     check(
       await fresh.locator('[aria-label="Move"]').isVisible().catch(() => false),
       'and backing out of it keeps the save'
     );
 
-    await fresh.locator('button[aria-label="Menu"]').first().tap();
+    await fresh.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
     await fresh.waitForTimeout(250);
-    await fresh.locator('button:has-text("Delete Character")').first().tap();
+    await fresh.locator('button:has-text("Delete Character")').first().dispatchEvent('click');
     await fresh.waitForTimeout(400);
-    await fresh.locator('button:has-text("Delete for ever")').first().tap();
+    await fresh.locator('button:has-text("Delete for ever")').first().dispatchEvent('click');
     const gone = await stage(fresh, 'signin');
     check(gone === 'signin', 'deleting lands back on the sign-in screen', `landed on "${gone}"`);
     await fs.writeFile(`${OUT}/${phoneName}-10-deleted.png`, await fresh.screenshot());

@@ -340,6 +340,50 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
+  {
+    /*
+     * Sarah, the first duelist you meet who is not behind a counter.
+     *
+     * 1.70 m, which is what she is modelled at, so her clips need no rescaling:
+     * 1.87 and 4.23 m/s measured off her own Walk and Run by `gait.py`.
+     *
+     * Her idle is the `scout` style — alert, light, arms held a little off the
+     * plate, on a 4.1 second period. The period matters as much as the shape:
+     * she stands in the same street as Tony, and two people breathing on the
+     * same clock read as a pair of mannequins.
+     */
+    id: 'sarah',
+    label: 'Sarah',
+    note: 'Clockwork Vanguard, purple plate',
+    file: '/models/cast/sarah.glb',
+    height: 1.7,
+    walkSpeed: 1.87,
+    runSpeed: 4.23,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    /*
+     * Tony, across the road from her.
+     *
+     * 1.86 m — he is the biggest person in the game so far and reads as it, so
+     * his measured 2.03 and 4.12 are scaled by 1.86/1.70 to the height he is
+     * actually rendered at. A speed left at the modelled figure is a character
+     * whose feet slide the moment they are scaled up.
+     *
+     * `heavy` idle, 4.7 second period: the chest does the work, the head barely
+     * moves. Nothing else placed uses it, and it is 0.6 s off Sarah's.
+     */
+    id: 'tony',
+    label: 'Tony',
+    note: 'Forest Ambush, tactical vest',
+    file: '/models/cast/tony.glb',
+    height: 1.86,
+    walkSpeed: 2.22,
+    runSpeed: 4.51,
+    tintSlots: [],
+    npcOnly: true,
+  },
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */
