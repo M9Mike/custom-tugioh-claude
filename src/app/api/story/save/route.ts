@@ -1,6 +1,7 @@
 import { canonicalUsername, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
 import { readBody } from '../body';
+import { areaById, settle, PLAYER_RADIUS } from '@/story/areas';
 import type { WorldPosition } from '@/story/profile';
 
 export const runtime = 'nodejs';
@@ -9,8 +10,7 @@ export const dynamic = 'force-dynamic';
 const finite = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 
-/** Matches the world's own walkable radius; see `WORLD_RADIUS` in OpenWorld. */
-const WORLD_RADIUS = 120;
+
 
 /**
  * The Save button in the open world.
@@ -32,10 +32,31 @@ export async function POST(req: Request) {
 
   try {
     const result = await updateProfile(canonical, (profile) => {
-      const clamp = (v: number) => (v < -WORLD_RADIUS ? -WORLD_RADIUS : v > WORLD_RADIUS ? WORLD_RADIUS : v);
+      /*
+       * Settled against the area's own geometry rather than clamped to a radius.
+       *
+       * The world used to be one circular field, so a save was two numbers held
+       * inside 120 metres. It is rooms now, and the same job — "this position
+       * must be somewhere a person could actually stand" — is the collision the
+       * renderer already does. Running it here means a posted position lands
+       * outside a wall even if it was invented rather than walked to, and a
+       * player cannot be restored into the middle of a counter.
+       *
+       * The area is taken from the patch and resolved by `areaById`, which falls
+       * back to the first area for anything unrecognised, including the saves
+       * written before areas existed.
+       */
+      const area = areaById(patch.area ?? profile.world.area);
+      const settled = settle(
+        area,
+        finite(patch.x, profile.world.x),
+        finite(patch.z, profile.world.z),
+        PLAYER_RADIUS
+      );
       const world: WorldPosition = {
-        x: clamp(finite(patch.x, profile.world.x)),
-        z: clamp(finite(patch.z, profile.world.z)),
+        area: area.id,
+        x: settled.x,
+        z: settled.z,
         facing: finite(patch.facing, profile.world.facing) % (Math.PI * 2),
       };
       return { ok: true, profile: { ...profile, world } };

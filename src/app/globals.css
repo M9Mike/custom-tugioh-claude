@@ -917,3 +917,11 @@ body {
     animation: none !important;
   }
 }
+
+/* The area name that appears when you walk into somewhere new: up, hold, out. */
+@keyframes fadeaway {
+  0% { opacity: 0; transform: translate(-50%, 6px); }
+  12% { opacity: 1; transform: translate(-50%, 0); }
+  72% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}

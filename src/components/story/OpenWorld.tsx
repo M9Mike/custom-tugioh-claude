@@ -19,6 +19,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
 import { WORLD_NPCS, type WorldNpc } from '@/story/npcs';
+import {
+  areaById,
+  cameraReach,
+  doorAt,
+  landing,
+  settle,
+  PLAYER_RADIUS,
+  type AreaId,
+  type Door,
+} from '@/story/areas';
+import { buildShop, type BuiltArea } from './world/shop';
+import { buildStreet } from './world/street';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -63,7 +75,7 @@ interface Props {
   profile: StoryProfile;
   onEditDeck: () => void;
   /** Returns an error to show, or null when the save landed. */
-  onSave: (world: { x: number; z: number; facing: number }) => Promise<string | null>;
+  onSave: (world: { area: AreaId; x: number; z: number; facing: number }) => Promise<string | null>;
   /**
    * Erases the whole save. Returns an error to show, or null — in which case
    * the caller swaps this screen out, the same contract as the booth's bind.
@@ -114,13 +126,50 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     talkingRef.current = talkingTo;
   }, [talkingTo]);
 
+
   const holder = useRef<HTMLDivElement>(null);
   const stick = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
 
   /** Live input and live position, read by the render loop and by Save. */
   const move = useRef({ x: 0, y: 0 });
-  const here = useRef({ x: profile.world.x, z: profile.world.z, facing: profile.world.facing });
+  /**
+   * Where the duelist actually starts.
+   *
+   * Through `landing`, never straight off the profile: a save written before the
+   * world had rooms holds coordinates from the old open field, and those put the
+   * player outside the shop standing in the void.
+   */
+  const start = landing(profile.world);
+  const here = useRef({ x: start.x, z: start.z, facing: start.facing });
+  /**
+   * Which area is on screen, held in a ref because the render loop owns it.
+   *
+   * Walking through a door must not re-run the effect that built the renderer —
+   * that would drop the WebGL context and rebuild the world from scratch every
+   * time somebody opened a shop door. The loop swaps the area's geometry in
+   * place instead, and this is how it remembers which one is up.
+   */
+  const areaRef = useRef<AreaId>(start.area);
+  /** The name of the place just entered, shown briefly and then faded out. */
+  const [entered, setEntered] = useState<string | null>(null);
+  /**
+   * The black sheet a door transition plays behind.
+   *
+   * A plain div rather than anything in the scene, and driven by writing to its
+   * style from the render loop rather than through React state — a fade is sixty
+   * opacity values a second, and sixty re-renders a second to deliver them would
+   * cost more than the world it is covering up.
+   */
+  const fade = useRef<HTMLDivElement>(null);
+
+  /* The area card says its piece and goes. Cleared rather than left mounted so
+     re-entering the same area re-triggers the animation. */
+  useEffect(() => {
+    if (!entered) return;
+    const timer = window.setTimeout(() => setEntered(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [entered]);
 
   /**
    * The duelist this world was built for, frozen on the first render.
@@ -168,149 +217,63 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     canvas.style.touchAction = 'none';
 
     const scene = new THREE.Scene();
-    const HORIZON = new THREE.Color('#bcd0dd');
-    scene.fog = new THREE.Fog(HORIZON, 70, 210);
+    /*
+     * Black, and fogged to black.
+     *
+     * There is nothing outside an area — no sky sphere, no ground plane running
+     * to a horizon. The fog is what makes that read as depth rather than as a
+     * hole: geometry fades into the same black the background is, so the far end
+     * of the street goes soft instead of ending at a hard edge with void behind
+     * it. The near distance is set well past the width of the largest area so
+     * nothing a player can walk up to is ever hazy.
+     */
+    const VOID = new THREE.Color('#000000');
+    scene.background = VOID;
+    scene.fog = new THREE.Fog(VOID, 34, 78);
 
-    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 600);
+    /*
+     * Near and far are tight on purpose: it is the whole of the flicker fix.
+     *
+     * The depth buffer's precision is spent across the near/far ratio, not
+     * across the distance — so a near of 0.1 with a far of 600 (which is what
+     * the old open field needed) leaves almost none of it for the first twenty
+     * metres, and every surface laid flat on another one starts fighting: road
+     * markings strobing on the asphalt, the rug flickering on the floorboards,
+     * shop signs tearing against the walls they hang on.
+     *
+     * The largest area is 44 m across with 11 m buildings on it and the fog is
+     * gone by 78, so 140 is generous. Moving the near plane out to 0.2 costs
+     * nothing — the camera is never closer than 0.9 to anything — and the two
+     * together multiply the usable depth precision by a factor of about
+     * twenty-five.
+     */
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.2, 140);
 
-    const trash: { dispose(): void }[] = [];
-    const keep = <T extends { dispose(): void }>(x: T): T => {
-      trash.push(x);
-      return x;
+    /* ---- the area ----
+       Everything that is not a person: floor, walls, buildings, lamps, and the
+       light they cast. Built by whichever area we are standing in, added as one
+       group and thrown away as one group when we leave. The two builders own
+       their own lighting because a shop and a street at dusk want completely
+       different light, and passing one rig between them would mean tuning it
+       for neither. */
+    let built: BuiltArea | null = null;
+    let area = areaById(areaRef.current);
+    const anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    const enter = (id: AreaId) => {
+      if (built) {
+        scene.remove(built.root);
+        built.dispose();
+        built = null;
+      }
+      area = areaById(id);
+      areaRef.current = area.id;
+      built = area.kind === 'interior' ? buildShop(anisotropy) : buildStreet(anisotropy);
+      scene.add(built.root);
+      populate(area.id);
+      setEntered(area.name);
     };
 
-    /* ---- sky ----
-       A sphere turned inside out with two colours and a gradient between them.
-       Cheaper than a cube map, has no files behind it, and the horizon colour is
-       shared with the fog so the ground dissolves into the sky rather than
-       ending at a hard line. */
-    const skyGeo = keep(new THREE.SphereGeometry(400, 24, 16));
-    const skyMat = keep(
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        depthWrite: false,
-        fog: false,
-        uniforms: {
-          uTop: { value: new THREE.Color('#4d7fb5') },
-          uBottom: { value: HORIZON },
-        },
-        vertexShader: `
-          varying vec3 vPos;
-          void main() {
-            vPos = position;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform vec3 uTop;
-          uniform vec3 uBottom;
-          varying vec3 vPos;
-          void main() {
-            float h = clamp(normalize(vPos).y * 1.6 + 0.12, 0.0, 1.0);
-            gl_FragColor = vec4(mix(uBottom, uTop, pow(h, 0.75)), 1.0);
-          }
-        `,
-      })
-    );
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    scene.add(sky);
-
-    /* ---- light ---- */
-    /* Daylight, but not as much of it as an open field suggests. The duelist's
-       cloth and skin carry a sheen lobe that saturates towards white under a
-       strong key, so the sun here is dialled to where a dark coat is still a
-       dark coat — see the note on lighting in the creation booth. */
-    const sun = new THREE.DirectionalLight('#fff2d8', 2.05);
-    sun.position.set(30, 48, 22);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 90;
-    /* A tight shadow frustum that travels with the player. Covering the whole
-       field at this resolution would put one texel every 23cm and the duelist
-       would stand in a blur; ten metres around them is four times sharper than
-       anything they can see anyway. */
-    sun.shadow.camera.left = -6;
-    sun.shadow.camera.right = 6;
-    sun.shadow.camera.top = 6;
-    sun.shadow.camera.bottom = -6;
-    sun.shadow.bias = -0.0018;
-    scene.add(sun);
-    scene.add(sun.target);
-    /* 0.95, up from 0.72: the vendored duelists are matte standard materials,
-       not the old sheen-lobed cloth, and at 0.72 the side of the body away
-       from the sun read as a silhouette against the bright grass. The grass
-       takes the same raise and stays grass. */
-    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.95));
-
-    /* ---- ground ----
-       The texture is painted into a canvas rather than downloaded: five thousand
-       short strokes in a spread of greens, tiled small enough that a metre of
-       ground is a metre of grass rather than a metre of pattern. At head height
-       it reads as grass and it weighs nothing. */
-    const painted = grassTexture(renderer.capabilities.getMaxAnisotropy());
-    const groundTex = painted ? keep(painted) : null;
-    const groundGeo = keep(new THREE.CircleGeometry(WORLD_RADIUS + 60, 64));
-    const groundMat = keep(
-      new THREE.MeshStandardMaterial({
-        map: groundTex,
-        color: groundTex ? '#ffffff' : '#4d6b32',
-        roughness: 1,
-        metalness: 0,
-      })
-    );
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    /* ---- grass ----
-       One instanced mesh for the whole field, and the sway is a handful of lines
-       injected into the standard vertex shader — so sixteen thousand tufts move
-       in the wind for one draw call and no per-frame work on the CPU at all. */
-    const wind = { value: 0 };
-    const tuftGeo = keep(tuftGeometry());
-    const tuftMat = keep(
-      new THREE.MeshStandardMaterial({ color: '#78a344', roughness: 1, side: THREE.DoubleSide })
-    );
-    tuftMat.onBeforeCompile = (shader) => {
-      shader.uniforms.uWind = wind;
-      shader.vertexShader = `uniform float uWind;\n${shader.vertexShader}`.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-         #ifdef USE_INSTANCING
-           float phase = instanceMatrix[3][0] * 0.6 + instanceMatrix[3][2] * 0.45;
-           float bend = sin(uWind * 1.7 + phase) * 0.16 + sin(uWind * 0.6 + phase * 0.3) * 0.07;
-           float up = max(transformed.y, 0.0);
-           transformed.x += bend * up;
-           transformed.z += bend * 0.45 * up;
-         #endif`
-      );
-    };
-    const TUFTS = 16000;
-    const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, TUFTS);
-    tufts.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-    const dummy = new THREE.Object3D();
-    /* Deterministic scatter: the field looks the same every time you walk into
-       it, which is the difference between a place and a screensaver. */
-    let seed = 20260810;
-    const rnd = () => {
-      seed = (seed * 1664525 + 1013904223) % 4294967296;
-      return seed / 4294967296;
-    };
-    for (let i = 0; i < TUFTS; i++) {
-      const a = rnd() * Math.PI * 2;
-      const r = Math.sqrt(rnd()) * (WORLD_RADIUS + 10);
-      dummy.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-      dummy.rotation.y = rnd() * Math.PI;
-      const s = 0.7 + rnd() * 0.9;
-      dummy.scale.set(s, s * (0.8 + rnd() * 0.7), s);
-      dummy.updateMatrix();
-      tufts.setMatrixAt(i, dummy.matrix);
-    }
-    tufts.instanceMatrix.needsUpdate = true;
-    tufts.frustumCulled = false;
-    scene.add(tufts);
 
     /* ---- the duelist ----
        Fetched, not constructed: the model is a file. The field does not wait
@@ -343,28 +306,53 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        the field when it lands, so one slow model never holds up the rest —
        and a model that never arrives costs its own character and nothing
        else. */
-    const npcs: { npc: WorldNpc; rig: PremadeRig }[] = [];
-    for (const npc of WORLD_NPCS) {
-      buildPremadeRig(npc.character, {
-        overrides: npc.overrides,
-        accessories: npc.accessories,
-        repaint: npc.repaint,
-        build: npc.build,
-      })
-        .then((fresh) => {
-          if (gone) {
-            fresh.dispose();
-            return;
-          }
-          fresh.root.position.set(npc.x, 0, npc.z);
-          fresh.root.rotation.y = npc.facing;
-          scene.add(fresh.root);
-          npcs.push({ npc, rig: fresh });
+    let npcs: { npc: WorldNpc; rig: PremadeRig }[] = [];
+
+    /**
+     * Builds the people who live in one area, and only them.
+     *
+     * Re-run on every door, which means a rig is thrown away and re-fetched when
+     * you walk back in. That is deliberate and it is nearly free: the model is
+     * already in the browser cache and `loadDuelistTemplate` keeps the parsed
+     * glTF for the life of the page, so re-entering costs a skeleton clone
+     * rather than a download. Holding every area's cast in memory at once would
+     * be the optimisation, and it would be the wrong one — this world is going
+     * to have a lot more areas than it has people on screen.
+     */
+    const populate = (id: AreaId) => {
+      for (const { rig: theirs } of npcs) {
+        scene.remove(theirs.root);
+        theirs.dispose();
+      }
+      npcs = [];
+      const wanted = WORLD_NPCS.filter((n) => n.area === id);
+      for (const npc of wanted) {
+        buildPremadeRig(npc.character, {
+          overrides: npc.overrides,
+          accessories: npc.accessories,
+          repaint: npc.repaint,
+          build: npc.build,
         })
-        .catch((err) => {
-          console.error(`open world: ${npc.id} failed to load`, err);
-        });
-    }
+          .then((fresh) => {
+            /* Two ways to be stale: the screen is gone, or the player has
+               already walked out of the area this rig belongs to. */
+            if (gone || areaRef.current !== id) {
+              fresh.dispose();
+              return;
+            }
+            fresh.root.position.set(npc.x, 0, npc.z);
+            fresh.root.rotation.y = npc.facing;
+            scene.add(fresh.root);
+            npcs.push({ npc, rig: fresh });
+          })
+          .catch((err) => {
+            console.error(`open world: ${npc.id} failed to load`, err);
+          });
+      }
+    };
+
+    /* Now that both halves exist, open the area the save left us in. */
+    enter(areaRef.current);
 
     /* ---- camera control: drag anywhere on the world to look ---- */
     let camYaw = here.current.facing + Math.PI;
@@ -420,6 +408,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     ro.observe(el);
 
     const clock = new THREE.Clock();
+    /**
+     * A door being walked through: black out, swap the world, come back.
+     *
+     * `t` runs 0 → 2. The first half fades to black, the area is swapped at the
+     * exact moment nothing is visible, and the second half fades back in. Hiding
+     * the swap is not only cosmetic — building a street is a few hundred meshes
+     * and a couple of shadow maps, which is a visible hitch on a phone, and a
+     * hitch that happens behind a black screen is a load rather than a stutter.
+     */
+    let crossing: { door: Door; t: number; swapped: boolean } | null = null;
     let stride = 0;
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
@@ -428,6 +426,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     let talkBlend = 0;
     let raf = 0;
     const camPos = new THREE.Vector3();
+    /* Eased, so the fit never snaps. Starts at the walking distance. */
+    let camDist = 4.6;
+    /* 0 in the open, 1 when the camera is fully squeezed against something. */
+    let camLift = 0;
     const lookAt = new THREE.Vector3();
 
     const frame = () => {
@@ -435,14 +437,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       /* Clamped: a backgrounded tab hands back a delta of many seconds, and an
          unclamped one teleports the duelist across the field on return. */
       const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.getElapsedTime();
-      wind.value = t;
 
       /* A conversation holds you still. Not by disabling the controls — the
          stick is hidden and the keys are simply not read — so that letting go
          of the stick to tap a reply cannot leave a held direction behind to
          walk off with when the panel closes. */
-      const talking = talkingRef.current !== null;
+      const talking = talkingRef.current !== null || crossing !== null;
       let ix = talking ? 0 : move.current.x;
       let iy = talking ? 0 : move.current.y;
       if (!talking) {
@@ -501,11 +501,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       if (stride > 0.002) {
         p.x += Math.sin(heading) * TOP_SPEED * stride * dt;
         p.z += Math.cos(heading) * TOP_SPEED * stride * dt;
-        const r = Math.hypot(p.x, p.z);
-        if (r > WORLD_RADIUS) {
-          p.x = (p.x / r) * WORLD_RADIUS;
-          p.z = (p.z / r) * WORLD_RADIUS;
-        }
+        /*
+         * Stopped by the room, not by a radius.
+         *
+         * `settle` pushes the duelist out of every solid the area declares and
+         * then clamps to its bounds — walls, counters, buildings, benches. It is
+         * run every frame rather than only on contact because the resolution is
+         * order-dependent in a corner: pushed out of one wall into another, the
+         * second pass is what puts you back in the room.
+         */
+        const fixed = settle(area, p.x, p.z, PLAYER_RADIUS);
+        p.x = fixed.x;
+        p.z = fixed.z;
         /**
          * People are solid.
          *
@@ -525,6 +532,20 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             p.x = npc.x + (dx / d) * NPC_RADIUS;
             p.z = npc.z + (dz / d) * NPC_RADIUS;
           }
+        }
+
+        /*
+         * Doors are walked through, not pressed.
+         *
+         * Checked after the position has settled, so the trigger is tested
+         * against where the duelist actually ended up rather than where they
+         * were heading — otherwise a doorway you were pushed out of still counts
+         * as one you walked into. `crossing` holds the transition for the length
+         * of the fade so it cannot fire twice on consecutive frames.
+         */
+        if (!crossing) {
+          const door = doorAt(area, p.x, p.z);
+          if (door) crossing = { door, t: 0, swapped: false };
         }
       }
 
@@ -574,10 +595,33 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         setNearNpc(closest);
       }
 
-      /* Shadow box rides along with the duelist. */
-      sun.position.set(p.x + 30, 48, p.z + 22);
-      sun.target.position.set(p.x, 0, p.z);
-      sun.target.updateMatrixWorld();
+      /* ---- walking through a door ---- */
+      if (crossing) {
+        crossing.t += dt / 0.3;
+        if (crossing.t >= 1 && !crossing.swapped) {
+          crossing.swapped = true;
+          const { door } = crossing;
+          enter(door.to);
+          p.x = door.spawn.x;
+          p.z = door.spawn.z;
+          p.facing = door.spawn.facing;
+          heading = door.spawn.facing;
+          /* Put the camera behind the arrival heading, so you step out of a door
+             looking where you are going rather than at the door you just used. */
+          camYaw = door.spawn.facing + Math.PI;
+          camPitch = 0.24;
+          if (rig) {
+            rig.root.position.set(p.x, 0, p.z);
+            rig.root.rotation.y = p.facing;
+          }
+        }
+        const shade = crossing.t <= 1 ? crossing.t : 2 - crossing.t;
+        if (fade.current) fade.current.style.opacity = String(Math.max(0, Math.min(1, shade)));
+        if (crossing.t >= 2) {
+          crossing = null;
+          if (fade.current) fade.current.style.opacity = '0';
+        }
+      }
 
       /**
        * The conversation camera.
@@ -617,29 +661,109 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            enough to clear their head, little enough that the person they are
            talking to stays inside the lens. */
         const axis = Math.atan2(near.x - p.x, near.z - p.z);
-        let d = axis + Math.PI + 0.34 - camYaw;
+        /*
+         * A third of a radian was not enough once the cast had real heights.
+         *
+         * The offset only has to clear the duelist's shoulder when both parties
+         * are the same size. Robert Barathion is 1.9 m and Grandpa is 1.6 m
+         * standing behind a counter, so at 0.34 the player's back covered him
+         * completely and the conversation played against a shoulder blade. 0.62
+         * puts the player at the edge of frame where they belong and leaves the
+         * middle for whoever is talking.
+         */
+        let d = axis + Math.PI + 0.62 - camYaw;
         d = Math.atan2(Math.sin(d), Math.cos(d));
         camYaw += d * talkBlend * Math.min(1, dt * 3);
-        camPitch += (0.1 - camPitch) * talkBlend * Math.min(1, dt * 3);
+        /* Lifted a little: a short character behind a counter is below the
+           walking camera's eyeline, and looking slightly down at them is both
+           how you would actually stand and what keeps them in frame. */
+        camPitch += (0.17 - camPitch) * talkBlend * Math.min(1, dt * 3);
         /* All the way to the speaker, not half way: they are the subject. */
         lookX = p.x + (near.x - p.x) * talkBlend;
         lookZ = p.z + (near.z - p.z) * talkBlend;
         /* Their head, and above the panel that covers the bottom third. */
-        lookY = 1.15 + 0.2 * talkBlend;
+        lookY = 1.15 + 0.05 * talkBlend;
         dist = 4.6 - 1.7 * talkBlend;
       }
 
-      camPos.set(
-        p.x + Math.sin(camYaw) * Math.cos(camPitch) * dist,
-        1.55 + Math.sin(camPitch) * dist,
-        p.z + Math.cos(camYaw) * Math.cos(camPitch) * dist
+      /**
+       * The camera is pulled in until it is inside the room with you.
+       *
+       * A shop is eleven metres across and the walking camera sits four and a
+       * half metres back, so for most of the interior the ideal camera position
+       * is through a wall and out on the street. `cameraReach` marches the ray
+       * from the duelist outwards and stops at the first thing tall enough to
+       * matter, so the shot tightens as you back into a corner and opens out
+       * again the moment you have room — which is what every third-person game
+       * does and what nobody notices when it is done.
+       *
+       * Interiors start closer as well. The same distance that frames a street
+       * puts a ceiling across the top third of a shop.
+       */
+      const want = area.kind === 'interior' ? dist * 0.72 : dist;
+      const reach = cameraReach(
+        area, p.x, p.z,
+        Math.sin(camYaw) * Math.cos(camPitch),
+        Math.cos(camYaw) * Math.cos(camPitch),
+        want
       );
-      /* Never below the grass, however far the camera is pushed down. */
-      camera.position.set(camPos.x, Math.max(0.45, camPos.y), camPos.z);
+      /* Eased towards the allowed distance rather than snapped to it: a camera
+         that steps in and out on a threshold reads as a bug. */
+      camDist += (Math.min(want, reach) - camDist) * Math.min(1, dt * 6);
+
+      /**
+       * When it cannot get back, it goes up instead.
+       *
+       * A camera pinned against a wall a metre behind the duelist is looking at
+       * the back of their head from inside their collar, which is unusable — you
+       * cannot see the room and you cannot see where you are going. Every
+       * third-person game answers this the same way: trade the distance you
+       * cannot have for height you can, and look down over the shoulder.
+       *
+       * The lift is proportional to how much distance was lost, so it is nothing
+       * at all in the open and at its strongest in a corner, and it is eased on
+       * the same clock as the distance so the two move together.
+       */
+      const squeezed = Math.max(0, Math.min(1, 1 - camDist / Math.max(0.001, want)));
+      camLift += (squeezed - camLift) * Math.min(1, dt * 6);
+      const pitch = camPitch + camLift * 0.55;
+
+      camPos.set(
+        p.x + Math.sin(camYaw) * Math.cos(pitch) * camDist,
+        1.55 + Math.sin(pitch) * camDist + camLift * 1.15,
+        p.z + Math.cos(camYaw) * Math.cos(pitch) * camDist
+      );
+      /* Never through the floor, however far the camera is pushed down, and
+         never through a ceiling either. */
+      const ceilingLimit = area.kind === 'interior' ? 3.05 : 40;
+      camera.position.set(camPos.x, Math.max(0.5, Math.min(ceilingLimit, camPos.y)), camPos.z);
       lookAt.set(lookX, lookY, lookZ);
       camera.lookAt(lookAt);
-      sky.position.set(camera.position.x, 0, camera.position.z);
 
+      /*
+       * A window handle on the world's live state, for the driving scripts.
+       *
+       * Development only. The scripts that walk this world and photograph it
+       * need to know where the duelist actually is — steering by keypress alone
+       * is guesswork, and every camera-relative control makes it worse. It is
+       * the difference between "the screenshot looks wrong" and "the player is
+       * at (9.5, 14.5), which is outside the shop", which is how the stale-save
+       * bug was found.
+       *
+       * Stripped from production builds: it is a debugging aid, not a feature.
+       */
+      if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+        const w = window as unknown as { __probe?: unknown };
+        w.__probe = {
+          area: area.id,
+          player: [+p.x.toFixed(2), +p.z.toFixed(2)],
+          cam: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],
+          camDist: +camDist.toFixed(2), camLift: +camLift.toFixed(2), camYaw: +camYaw.toFixed(3),
+          near: nearRef.current?.id ?? null,
+          lights: scene.children.length,
+          built: built ? built.root.children.length : 0,
+        };
+      }
       renderer.render(scene, camera);
     };
     frame();
@@ -656,10 +780,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       gone = true;
+      /* The area owns its geometry, its textures and its lights; one call takes
+         all of it. */
+      if (built) {
+        scene.remove(built.root);
+        built.dispose();
+      }
       rig?.dispose();
       for (const { rig: theirs } of npcs) theirs.dispose();
-      tufts.dispose();
-      for (const x of trash) x.dispose();
       /* `dispose()` frees three's own objects but leaves the WebGL context
          itself alive until the GC gets round to it. A browser allows only a
          handful at once, and walking booth → deck → world → booth opens one
@@ -752,7 +880,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     sfx.click();
     let problem: string | null;
     try {
-      problem = await onSave({ ...here.current });
+      problem = await onSave({ ...here.current, area: areaRef.current });
     } catch (err) {
       /* `onSave` is contracted to *resolve* a problem, so a rejection is a
          broken caller. It still has to be caught: the clear is in `finally`
@@ -826,6 +954,31 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   return (
     <main className="relative h-[100svh] w-full overflow-hidden">
       <div ref={holder} className="absolute inset-0" />
+
+      {/* The sheet a door transition plays behind. Opacity is written straight
+          from the render loop; React never re-renders for it. */}
+      <div
+        ref={fade}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-black"
+        style={{ opacity: 0 }}
+      />
+
+      {/* Where you are, said once on arrival and then got out of the way. The
+          areas have names because we are going to be referring to them for the
+          rest of the game; this is the player learning them too. */}
+      {entered && (
+        <div
+          data-area={entered}
+          className="pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 rounded-full
+                     border border-white/15 bg-black/55 px-5 py-2 text-center backdrop-blur-sm
+                     animate-[fadeaway_2.6s_ease-out_forwards]"
+        >
+          <span className="text-[13px] font-semibold tracking-[0.18em] text-amber-100/90 uppercase">
+            {entered}
+          </span>
+        </div>
+      )}
 
       {/* corner menu */}
       {/* `items-end` is load-bearing. The box is only as wide as its widest
@@ -989,57 +1142,4 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
 /* Generated assets                                                    */
 /* ------------------------------------------------------------------ */
 
-/**
- * Grass, painted into a canvas: a few thousand short strokes in six greens.
- *
- * Returns null if the browser will not give up a 2D context — which happens on
- * a device that has run out of them, and which used to take the whole world
- * down with a TypeError on the `!`. The caller falls back to a flat green,
- * because a plain field is a field and a crash is a black screen.
- */
-function grassTexture(anisotropy: number): THREE.CanvasTexture | null {
-  const size = 256;
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext('2d');
-  if (!ctx) return null;
-  ctx.fillStyle = '#415c2a';
-  ctx.fillRect(0, 0, size, size);
-  let seed = 7717;
-  const rnd = () => {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return seed / 2147483648;
-  };
-  for (let i = 0; i < 5200; i++) {
-    const shade = 0.62 + rnd() * 0.75;
-    ctx.fillStyle = `rgb(${Math.round(78 * shade)},${Math.round(112 * shade)},${Math.round(50 * shade)})`;
-    ctx.fillRect(rnd() * size, rnd() * size, 1 + rnd() * 2, 2 + rnd() * 5);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(210, 210);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = Math.min(8, anisotropy);
-  return tex;
-}
 
-/** A clump of five blades, leaning different ways. One instance of this is one tuft. */
-function tuftGeometry(): THREE.BufferGeometry {
-  const pos: number[] = [];
-  const blades = 5;
-  for (let i = 0; i < blades; i++) {
-    const a = (i / blades) * Math.PI + 0.4;
-    const w = 0.026;
-    const h = 0.2 + (i % 3) * 0.09;
-    const dx = Math.cos(a);
-    const dz = Math.sin(a);
-    const lean = 0.07;
-    pos.push(-dz * w, 0, dx * w, dz * w, 0, -dx * w, dx * lean, h, dz * lean);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.computeVertexNormals();
-  return g;
-}

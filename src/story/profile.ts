@@ -8,9 +8,19 @@
  * duelist, and localStorage cannot keep that promise.
  */
 
+import { AREAS, FIRST_AREA, type AreaId } from './areas';
 import type { PremadeCharacter } from './premade';
 
 export interface WorldPosition {
+  /**
+   * Which area they are standing in.
+   *
+   * Optional, and read through `areaById`, because saves written before the
+   * world had areas hold only an x and a z — those were coordinates in a single
+   * open field that no longer exists, so they resolve to the first area and its
+   * own spawn rather than to whatever those numbers happen to mean now.
+   */
+  area?: AreaId;
   x: number;
   z: number;
   /** Facing, in radians, around the world's Y axis. */
@@ -61,7 +71,11 @@ export interface StoryProfile {
   rev?: number;
 }
 
-export const STARTING_POSITION: WorldPosition = { x: 0, z: 0, facing: 0 };
+/** Inside the shop, a step in from the door, looking at the counter. */
+export const STARTING_POSITION: WorldPosition = {
+  area: FIRST_AREA,
+  ...AREAS[FIRST_AREA].spawn,
+};
 
 export function newProfile(username: string, now: number): StoryProfile {
   return {

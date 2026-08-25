@@ -144,41 +144,60 @@ Character is the one way out, and it takes the whole save with it.
 The first deck is exactly 25 from 34 offered cards, one copy of each. The
 offered pool is not the collection — **what you keep is what you sleeved.**
 
-The world you walk out into is a grass field and nothing else yet, which is
-deliberate: what goes in it is not decided, and the piece worth building first
-is the one everything attaches to. Ground, sky, wind, a third-person camera, a
-thumb stick (WASD on a keyboard), and a corner menu with your name, your level,
-Edit Deck, Save and the way back to the main menu.
+Story Mode opens **inside Grandpa's shop**, and the world is made of named
+areas rather than one field. Two of them exist:
 
-The field is generated and the people in it are not. The ground, the sky and the
-grass are made at runtime — sixteen thousand instances of four triangles swaying
-in a hand-injected vertex shader, over a texture painted into a canvas on load —
-and everybody standing on it comes out of a `.glb`. The whole of it is
-[three.js](https://threejs.org) behind a `next/dynamic` boundary, so the
-renderer is downloaded when you enter Story Mode and never by the duel board.
+**Grandpa's Shop** — the Kame Game Shop from the inside. Thirteen metres by
+eleven: floorboards, a counter with a till and a case of singles, shelving down
+both walls, a pegboard of card packs, and Solomon Muto behind the counter. He
+says one thing and repeats it, on purpose — the world does not have anything to
+tutorialise yet, so he tells you to go and play instead.
+
+**Starting Area** — the street outside. Four times the floor of the shop, at
+dusk, enclosed on all four sides: the shop's own terrace and its neighbours to
+the north, an unbroken terrace opposite, a hoarding over a building site at one
+end and a railed alley mouth at the other. Lamps, benches, planters, a post box,
+a vending machine, road markings and drains.
+
+You walk between them through the shop door, which is a trigger rather than a
+prompt. The screen fades, the area is swapped behind the black, and the name of
+where you have arrived appears briefly. Which area you are in is part of the
+save, so closing the tab in the street brings you back to the street.
+
+**Everything outside an area is black**, and that is the whole reason the
+enclosure matters: there is no sky sphere and no ground running to a horizon, so
+the illusion depends on never reaching a place where the void is the thing in
+front of you. Every walkable edge is stopped by something you can see — a wall, a
+shopfront, a hoarding — and the black is only ever seen over a roofline.
+
+All of it is generated. Floorboards, plaster, brick, asphalt, paving and the
+shop's hand-painted sign are drawn into canvases at load; the geometry is boxes
+and planes. The whole of it is [three.js](https://threejs.org) behind a
+`next/dynamic` boundary, so the renderer is downloaded when you enter Story Mode
+and never by the duel board.
 
 ### The cast
 
-Eighteen characters stand in the field, from three different places, and the
-differences between them are worth knowing because they are visible.
+Seven characters are finished — rigged, carrying Idle, Walk and Run, and checked
+a frame at a time at full resolution.
 
-**Rigged.** The vendored roster the booth offers, and Yugi, Yami, Kaiba and Joey
-— converted from the character rips of *Yu-Gi-Oh! Duel Monsters: Saikyo Card
-Battle* (3DS) by `npm run import-rip`, which turns a set of Valve SMD files into
-one `.glb` carrying Idle, Walk and Run. These are the ones that move.
+**In the world.** Solomon Muto, standing behind his own counter. He is the only
+one placed: the rest are duelists you meet on a circuit, and there is one street
+so far. Standing five named characters in a road because they happen to be ready
+is how a world stops feeling like a place.
 
-**The eight you can be.** Amazoni, Savage Valkyrie, Valkyrie Sentinel, Wave,
-Christy, Meg, Shea and Sandra Afrika, in `public/models/players/`. Sculpted,
-and static like everything else sculpted here.
+**On the bench.** Yugi, Yami, Seto Kaiba, Joey Wheeler and Mai Valentine, in
+`WAITING_CAST` in `src/story/npcs.ts`. Introducing one is moving it into
+`WORLD_NPCS` and giving it an area. Mai's duel — she offers, you play her with
+your own twenty-five, she reacts to the result — is built and travels with her.
 
-**Sculpted.** Fourteen modelled characters — Solomon, Mai, Pegasus, Bandit
-Keith, Bakura, Mako, Weevil, Rex, Marik, Odion, Ishizu, Priest Seto, a visiting
-Ash Ketchum, and a Blue-Eyes White Dragon closing the far end of the field.
-They look like the characters, and **they do not move**: each is a single static
-mesh with no skeleton, so there is no idle and no walk until somebody rigs them.
-Solomon and Mai replace assembled versions of themselves — a generic body,
-repainted, with a bandana and a beard generated in code — and the whole of that
-costume was deleted with the change.
+**Playable.** Sandra Afrika and Robert Barathion.
+
+Characters arrive rigged at source and come in one at a time through `npm run
+rigged`. An earlier attempt fitted one shared skeleton to every model
+automatically and had to be reverted: these are posed individually — one stands
+with her ankles crossed — so a generic fit runs the left leg bone through the
+right calf. See the header of `scripts/import-rigged.mjs`.
 
 They arrive at 60–140 MB each, two to three million triangles under a 4K JPEG,
 which is three separate impossibilities: GitHub refuses a file over 100 MB, the

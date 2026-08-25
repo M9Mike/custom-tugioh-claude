@@ -25,6 +25,7 @@
  * between a character and a signpost.
  */
 
+import type { AreaId } from './areas';
 import type { PremadeCharacter, RepaintRule } from './premade';
 import type { AccessorySpec } from '@/components/story/accessories';
 
@@ -98,7 +99,9 @@ export interface WorldNpc {
    * the change moves or resizes with it.
    */
   build?: Record<string, [number, number, number]>;
-  /** Where they stand, in world metres. */
+  /** Which area they stand in. */
+  area: AreaId;
+  /** Where they stand, in that area's metres. */
   x: number;
   z: number;
   /** Which way they face when nobody is near, in radians (0 is +Z). */
@@ -169,127 +172,29 @@ const GRANDPA_LOOK: PremadeCharacter = {
  * way an old man talks about things that happened — sideways, and only when
  * asked.
  */
+/**
+ * Everything he says, which is one thing.
+ *
+ * Deliberately one node with no choices. The world he is standing in has two
+ * areas and nothing to do in either of them yet, so a tutorial would be
+ * explaining a game the player cannot go and play — and the long version he used
+ * to give (four thousand life points, three monster zones, the five pieces of
+ * Exodia) described rules against a world that did not exist to use them in.
+ *
+ * So he says the true thing instead: go away and play, it is not complicated.
+ * It is also in character. He is not a quest marker, he is somebody's
+ * grandfather who has explained this several thousand times and has stopped
+ * dressing it up.
+ *
+ * `choices: []` is what makes it repeat: the panel offers a single way out, and
+ * walking back into range starts it again from the top, unchanged.
+ */
 const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
   greet: {
     lines: [
-      'Well now — a face I have not seen before.',
-      'Welcome, {name}. Every duelist who has ever mattered started exactly where you are standing: in a field, with a deck they have not played yet.',
-    ],
-    choices: [
-      { label: 'Who are you?', to: 'who' },
-      { label: 'Where am I?', to: 'where' },
-      { label: 'Teach me to duel.', to: 'duel' },
-    ],
-  },
-
-  who: {
-    lines: [
-      'Solomon Muto. Most people just say Grandpa, and I have stopped correcting them.',
-      'I keep the Kame Game Shop — the little one with the turtle over the door. I taught my grandson Yugi to play at that counter, and he has since done things with the game I could not have imagined.',
-      'So I stand out here now and tell new duelists the parts nobody tells them. It saves a great deal of grief.',
-    ],
-    choices: [
-      { label: 'Teach me to duel, then.', to: 'duel' },
-      { label: 'Were you a duelist?', to: 'past' },
-      { label: 'What about my deck?', to: 'deck' },
-    ],
-  },
-
-  past: {
-    lines: [
-      'A long time ago, and not only at a card table. I spent my younger years digging in Egypt, in tombs that did not want to be dug in.',
-      'I brought a puzzle home from one of them. Gold, in a box, in pieces — eight years my grandson spent putting it together. You could say the whole thing started on my shelf.',
-      'And yes, I have owned a card or two worth owning. There was a Blue-Eyes White Dragon. A young man in a very expensive coat tore it in half in front of me, to be certain nobody else could ever play it.',
-      'I have never decided whether that was the cruellest thing I have seen done to a card, or simply the most honest thing I have seen anyone do about wanting to win.',
-    ],
-    choices: [
-      { label: 'Teach me to duel.', to: 'duel' },
-      { label: 'What about my deck?', to: 'deck' },
-      { label: 'I am sorry about the dragon.', to: 'menu' },
-    ],
-  },
-
-  where: {
-    lines: [
-      'A field. Not much of one yet — grass, sky, and room to walk.',
-      'It will be more than that. There will be duelists standing where you are standing now, each with a deck of their own and a reason to use it. Yugi will be among them, and Kaiba, and the rest of that noisy generation.',
-      'For the moment there is me, and there is you, and that is enough to start with.',
-    ],
-    choices: [
-      { label: 'Teach me to duel.', to: 'duel' },
-      { label: 'Who are you?', to: 'who' },
-      { label: 'I will look around.', to: null },
-    ],
-  },
-
-  duel: {
-    lines: [
-      'Good. Sit up, this part is short.',
-      'You begin with four thousand life points and five cards. A turn goes: draw, one Main Phase, battle, end. One Main Phase — not two — so everything you mean to play, you play before you swing.',
-      'You have three monster zones and a single spell or trap zone. Three. That is the whole of your board, and it is why the question is never what is strongest, it is what fits.',
-      'Nobody attacks on the first turn of the duel. Whoever goes first gets the tempo; you get to still be standing.',
-    ],
-    choices: [
-      { label: 'How do I win?', to: 'win' },
-      { label: 'Tell me about summoning.', to: 'tribute' },
-      { label: 'And my deck?', to: 'deck' },
-    ],
-  },
-
-  tribute: {
-    lines: [
-      'Levels five and six cost you one monster off your own field. Seven and up cost two. That is the price of anything worth summoning, and paying it is most of what playing well looks like.',
-      'The exception is the toons, which need no tribute at all while Toon World is face-up. If you ever duel Pegasus you will find out what that is worth. Rather quickly.',
-    ],
-    choices: [
-      { label: 'How do I win?', to: 'win' },
-      { label: 'And my deck?', to: 'deck' },
-      { label: 'That is enough for now.', to: 'bye' },
-    ],
-  },
-
-  win: {
-    lines: [
-      'Three ways, and only the first is obvious.',
-      'Take your opponent to zero life points. Or leave them with no cards to draw — a duel that goes long is won by whoever built the better twenty-five.',
-      'Or assemble all five pieces of Exodia. In your hand, on your field, or split between the two — a piece standing in a monster zone still counts. Only the graveyard is final. Lose a piece there and it is lost.',
-    ],
-    choices: [
-      { label: 'Tell me about my deck.', to: 'deck' },
-      { label: 'Anything else I should know?', to: 'menu' },
-      { label: 'Thank you.', to: 'bye' },
-    ],
-  },
-
-  deck: {
-    lines: [
-      'Twenty-five cards. Exactly twenty-five — the ones you chose when you cut it, and those are the cards you own. Not a sample of them. All of them.',
-      'You can rearrange what you have from the menu whenever you like. Making it *bigger* is a different matter: a collection grows by winning, and there is nobody out here yet to win against.',
-      'Which is a polite way of saying come back and see me.',
-    ],
-    choices: [
-      { label: 'How do I win a duel?', to: 'win' },
-      { label: 'Anything else?', to: 'menu' },
-      { label: 'I will. Thank you.', to: 'bye' },
-    ],
-  },
-
-  menu: {
-    lines: ['Ask away. I have nowhere to be.'],
-    choices: [
-      { label: 'How does a duel work?', to: 'duel' },
-      { label: 'How do I win?', to: 'win' },
-      { label: 'What about my deck?', to: 'deck' },
-      { label: 'Tell me about the puzzle.', to: 'past' },
-      { label: 'Nothing — thank you.', to: 'bye' },
-    ],
-  },
-
-  bye: {
-    lines: [
-      'Go on, then. Walk the field, get the feel of it.',
-      'And {name} — the deck you are holding is the one you built. My grandson would tell you the cards have hearts and they listen. I will only tell you that the ones you chose on purpose tend to turn up when you need them.',
-      'Come back when there is somebody out here to beat.',
+      'Well, well. A new face.',
+      'I can see you are new here, {name} — you have the look. Do not think about it too hard.',
+      'It is a card game. Go and play some duels, you will pick it up faster than I could ever explain it. I have been trying to explain it since 1987.',
     ],
     choices: [],
   },
@@ -414,9 +319,28 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
-const CAST: WorldNpc[] = [
+/**
+ * The cast, built and waiting to be placed.
+ *
+ * Every one of these is finished — rigged, animated, and carrying the dialogue
+ * they will use. They are *not* in `WORLD_NPCS` because the world they belong in
+ * does not exist yet: they are duelists you meet on a tournament circuit, and
+ * there is one street and one shop so far. Standing five named characters in a
+ * road because they happen to be ready is how a world stops feeling like a place
+ * and starts feeling like a character select screen.
+ *
+ * Introducing one is moving it into `WORLD_NPCS` and giving it an `area`. That is
+ * the whole operation, which is why they are kept here rather than deleted.
+ *
+ * **Mai's duel goes with her.** Everything that makes her offer a duel and react
+ * to the result still exists — `duel`, the routes, the room seating — and it is
+ * unreachable while she is not placed, because nobody can walk up to her.
+ */
+const WAITING: WorldNpc[] = [
   {
     id: 'yugi',
+    /* Not placed yet — see WAITING_CAST. */
+    area: 'starting-area',
     /* His own model, so nothing to dress and nothing to build. */
     character: { name: 'Yugi Muto', model: 'yugi', tints: [], stature: 0.5 },
     x: -7.5,
@@ -431,6 +355,8 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'yami',
+    /* Not placed yet — see WAITING_CAST. */
+    area: 'starting-area',
     character: { name: 'Yami Yugi', model: 'yami', tints: [], stature: 0.5 },
     x: 7.5,
     z: 10.5,
@@ -444,6 +370,8 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'kaiba',
+    /* Not placed yet — see WAITING_CAST. */
+    area: 'starting-area',
     character: { name: 'Seto Kaiba', model: 'kaiba', tints: [], stature: 0.5 },
     x: 13,
     z: 4.5,
@@ -457,6 +385,8 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'joey',
+    /* Not placed yet — see WAITING_CAST. */
+    area: 'starting-area',
     character: { name: 'Joey Wheeler', model: 'joey', tints: [], stature: 0.5 },
     x: -13,
     z: 4.5,
@@ -470,6 +400,8 @@ const CAST: WorldNpc[] = [
   },
   {
     id: 'mai',
+    /* Not placed yet — see WAITING_CAST. */
+    area: 'starting-area',
     /*
      * Mai, modelled.
      *
@@ -537,17 +469,36 @@ export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
     character: GRANDPA_LOOK,
-    x: 0,
-    z: 6.5,
-    facing: Math.PI,
-    /* Comfortably wider than a pace, so the prompt does not flicker on and
-       off while you are standing still fidgeting with the stick. */
-    range: 3.2,
+    area: 'grandpa-shop',
+    /*
+     * Behind his own counter, which is the whole staging of the scene.
+     *
+     * The counter runs from x −4.7 to 2.5 and he stands a metre behind the
+     * middle of it, so a player walking in through the door at x 2.6 sees him
+     * across it rather than beside it. You cannot get round to his side — the
+     * counter is solid — so the conversation happens over it, at about a metre
+     * and a half, which is exactly the distance you talk to a shopkeeper at.
+     */
+    x: -1.0,
+    /*
+     * Behind the counter, not in it. The counter runs from z −3.15 to −2.05, and
+     * he was at −2.95 — inside its own volume, so he read as a head sitting on
+     * the worktop. Half a metre clear of the back edge shows him from the waist
+     * up, which is how you see somebody serving.
+     */
+    z: -3.3,
+    /* Facing +Z: towards the door, so he is looking at you as you come in. */
+    facing: 0,
+    /* Wider than the counter is deep, so the prompt is live from anywhere a
+       customer would reasonably stand. */
+    range: 3.4,
     start: 'greet',
     script: GRANDPA_SCRIPT,
   },
-  ...CAST,
 ];
+
+/** Nobody is placed outside `WORLD_NPCS`; `WAITING` is the bench. */
+export const WAITING_CAST: WorldNpc[] = WAITING;
 
 /** Fills the one token a line may carry. */
 export function sayLine(line: string, playerName: string): string {
