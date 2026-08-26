@@ -50,14 +50,24 @@ check(
 );
 check(packPool('nobody-at-all').length === 0, 'an unknown duelist has an empty pool rather than throwing');
 
-/* A duelist with real duplicates, to prove copies are separate entries. */
-const tony = DUELIST_BY_ID['tony'];
-const imps = packPool('tony').filter((k) => slugOf(k) === 'feral-imp');
-check(
-  tony?.deck.some(([s, c]) => s === 'feral-imp' && c === 3) === true && imps.length === 3,
-  "Tony's three Feral Imps are three entries",
-  `${imps.length}`
+/*
+ * Copies are separate entries, proved against whatever the decks actually hold.
+ *
+ * This used to name Tony's three Feral Imps. He no longer runs them — the decks
+ * are being rebalanced in another branch and a card can leave one at any time —
+ * so the check failed on a rule that had not changed, which is the least useful
+ * kind of failure. It looks for *a* card somebody runs three of instead.
+ */
+const tripled = DUELISTS.flatMap((d) =>
+  d.deck.filter(([, n]) => n === 3).map(([slug]) => ({ id: d.id, slug }))
 );
+check(tripled.length > 0, 'some duelist runs three of something', `${tripled.length} such entries`);
+if (tripled.length) {
+  const { id, slug } = tripled[0];
+  const copies = packPool(id).filter((k) => slugOf(k) === slug);
+  check(copies.length === 3, `${id}'s three ${slug} are three entries`, `${copies.length}`);
+  check(new Set(copies).size === 3, 'and each of the three is its own key', copies.join(' '));
+}
 
 /* ---------------------------------------------------------------- */
 console.log('\none pack');
