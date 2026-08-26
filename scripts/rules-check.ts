@@ -1287,6 +1287,118 @@ console.log('\nRex Raptor: the herd, and what it costs to run it');
     ok(!on(dead, ME).some((m) => m.slug === 'crawling-dragon'), 'while an effect keeps it down', on(dead, ME).map((m) => m.slug).join(',') || 'gone');
   }
 
+  /* Reported: "Crawling Dragon effect is supposed to be +200 more atk each time
+     it is special summoned this way... when it leaves the field by another way
+     not being destroyed by battle it's atk is reverted to the original, and it
+     won't be revived by it's effect."
+
+     The bonus was flat. A dragon that had already clawed back twice still came
+     back at printed + 200, so it stopped growing after the first round — and
+     the block above passes either way, which is why this one exists.
+
+     Two halves, and they are the same mechanism seen from both ends: the count
+     rides on the instance, and `resetInstance` — the ceremony every road off a
+     zone performs — clears it. Battle is the one exception, and it is not a
+     carve-out: `destroyCard` lends the tally back across the single beat that
+     reads it and takes it away again. */
+  {
+    /** Their 2500 runs it over; then the turn comes round and the dragon lands. */
+    const killAndWait = (s: DuelState, dragonUid: string): DuelState => {
+      const killer = s.players[FOE].monsters.find((m) => m?.slug === 'blue-eyes-white-dragon')!;
+      let cur = s.phase === 'battle' ? s : act(s, FOE, { type: 'toPhase', phase: 'battle' });
+      cur = act(cur, FOE, { type: 'attack', uid: killer.uid, targetUid: dragonUid });
+      return act(cur, FOE, { type: 'endTurn' });
+    };
+    /** A board where it is our dragon's turn to be run over. */
+    const arena = (): DuelState => {
+      const s = fresh('battle');
+      s.active = FOE;
+      /* Four run-overs by a 3000 body is more than 4000 Life Points can take,
+         and a duel that ends stops answering. The subject here is the dragon,
+         not the scoreline. */
+      s.players[ME].lp = 99999;
+      const killer = card(FOE, 'blue-eyes-white-dragon');
+      killer.summonedOnTurn = 0;
+      s.players[FOE].monsters[0] = killer;
+      const d = card(ME, 'crawling-dragon');
+      d.summonedOnTurn = 0;
+      s.players[ME].monsters[0] = d;
+      return s;
+    };
+    const printed = baseAtkOf('crawling-dragon');
+
+    /* Three deaths, three returns, each one heavier than the last. */
+    let cur = arena();
+    let dragonUid = cur.players[ME].monsters[0]!.uid;
+    for (let round = 1; round <= 3; round++) {
+      cur = killAndWait(cur, dragonUid);
+      const back = on(cur, ME).find((m) => m.slug === 'crawling-dragon');
+      ok(
+        !!back && effAtk(cur, back, ME) === printed + 200 * round,
+        `return ${round} is ${200 * round} heavier, not two hundred flat`,
+        back ? `${effAtk(cur, back, ME)} (want ${printed + 200 * round})` : 'it did not come back'
+      );
+      if (!back) break;
+      dragonUid = back.uid;
+      cur = act(cur, ME, { type: 'endTurn' });
+    }
+
+    /* Now the other half. Two returns earned, then a Spell takes it off the
+       field — which is not battle, so nothing is owed and nothing is kept. */
+    let t = arena();
+    t = killAndWait(t, t.players[ME].monsters[0]!.uid);
+    t = act(t, ME, { type: 'endTurn' });
+    t = killAndWait(t, on(t, ME).find((m) => m.slug === 'crawling-dragon')!.uid);
+    const twice = on(t, ME).find((m) => m.slug === 'crawling-dragon');
+    ok(!!twice && effAtk(t, twice, ME) === printed + 400, 'two returns stand at four hundred over', twice ? `${effAtk(t, twice, ME)}` : '—');
+
+    const hole3 = card(ME, 'dark-hole');
+    t.players[ME].hand.push(hole3);
+    t = act(t, ME, { type: 'activateSpell', uid: hole3.uid, targets: [] });
+    ok(
+      t.ongoing.filter((o) => o.kind === 'pendingRevival').length === 0,
+      'a Spell that is not battle owes it nothing',
+      `${t.ongoing.filter((o) => o.kind === 'pendingRevival').length} pending`
+    );
+    const lying = t.players[ME].grave.find((c) => c.slug === 'crawling-dragon');
+    ok(!!lying && (lying.revivals ?? 0) === 0, 'and takes back everything it had earned', `tally ${lying?.revivals ?? 0}`);
+
+    /* Somebody else's card brings it back: the printed dragon, not the grown
+       one — and the next battle death starts the count again from one. */
+    const reborn = card(ME, 'monster-reborn');
+    t.players[ME].hand.push(reborn);
+    t = act(t, ME, { type: 'activateSpell', uid: reborn.uid, targets: [lying!.uid] });
+    const raised = on(t, ME).find((m) => m.slug === 'crawling-dragon');
+    ok(!!raised && effAtk(t, raised, ME) === printed, 'Monster Reborn returns the printed body', raised ? `${effAtk(t, raised, ME)} (want ${printed})` : '—');
+
+    t.players[FOE].monsters[0] = (() => { const k = card(FOE, 'blue-eyes-white-dragon'); k.summonedOnTurn = 0; return k; })();
+    t = act(t, ME, { type: 'endTurn' });
+    t = killAndWait(t, raised!.uid);
+    const again = on(t, ME).find((m) => m.slug === 'crawling-dragon');
+    ok(!!again && effAtk(t, again, ME) === printed + 200, 'and the count starts over from one', again ? `${effAtk(t, again, ME)} (want ${printed + 200})` : '—');
+
+    /* The road back to the hand reverts it too — the same one clearing site,
+       reached by a different door. Guardian Sphinx flipping up sends every
+       monster the other player controls home. */
+    let b = arena();
+    b = killAndWait(b, b.players[ME].monsters[0]!.uid);
+    b = act(b, ME, { type: 'endTurn' });
+    b = killAndWait(b, on(b, ME).find((m) => m.slug === 'crawling-dragon')!.uid);
+    const grown = on(b, ME).find((m) => m.slug === 'crawling-dragon');
+    ok(!!grown && (grown.revivals ?? 0) === 2, 'the tally is a count, and it counts', `${grown?.revivals ?? 0}`);
+
+    const sphinx = card(FOE, 'guardian-sphinx');
+    sphinx.face = 'down';
+    sphinx.position = 'def';
+    sphinx.summonedOnTurn = 0;
+    b.players[FOE].monsters[1] = sphinx;
+    b.active = FOE;
+    b.phase = 'main';
+    b = act(b, FOE, { type: 'changePosition', uid: sphinx.uid });
+    const home = b.players[ME].hand.find((c) => c.slug === 'crawling-dragon');
+    ok(!!home && (home.revivals ?? 0) === 0 && home.atkMod === 0, 'and sent back to the hand it is printed again', home ? `tally ${home.revivals ?? 0}, atkMod ${home.atkMod}` : 'not in hand');
+  }
+
   /* Serpent Night Dragon: the pile, and their whole board plus one. */
   {
     const s5 = fresh();
