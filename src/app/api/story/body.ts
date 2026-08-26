@@ -23,6 +23,8 @@ export interface StoryBody {
   /** Packs: the room a win is being claimed against. */
   code?: unknown;
   token?: unknown;
+  /** The shop: which card is being bought. */
+  slug?: unknown;
 }
 
 export async function readBody(req: Request): Promise<StoryBody> {
@@ -34,6 +36,7 @@ export async function readBody(req: Request): Promise<StoryBody> {
     action: obj.action,
     code: obj.code,
     token: obj.token,
+    slug: obj.slug,
     deck: obj.deck,
     world: obj.world,
   };

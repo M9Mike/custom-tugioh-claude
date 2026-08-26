@@ -196,6 +196,7 @@ export async function loadProfile(username: string): Promise<StoryProfile | null
    */
   if (!Array.isArray(profile.packs)) profile.packs = [];
   if (!profile.pulled || typeof profile.pulled !== 'object') profile.pulled = {};
+  if (typeof profile.money !== 'number' || !Number.isFinite(profile.money)) profile.money = 0;
   return profile;
 }
 

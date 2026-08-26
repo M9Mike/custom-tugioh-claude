@@ -568,21 +568,32 @@ async function run(phoneName) {
            speech line itself, not the first paragraph in the panel, which is
            the speaker's name and is the same on every node. */
         /*
-         * A reply that does not start a duel.
+         * A reply that stays in the conversation.
          *
-         * Some characters lead with one that does — Tony's first line is "A
-         * duel." — and pressing it leaves the world entirely, so the next four
-         * assertions were checking the world menu against a duel board. The
-         * duel path has its own coverage; what this step is about is whether an
-         * answer advances the script.
+         * Three kinds of reply leave the script rather than moving through it:
+         * `data-duel` goes to a duel, `data-shop-choice` opens Solomon's
+         * counter, and `data-ends` closes the conversation outright. Pressing
+         * any of them takes the run somewhere this step is not asking about —
+         * and pressing the closing one left nothing on screen to read, so the
+         * step timed out waiting for a line that had gone.
+         *
+         * And a character may legitimately have *no* advancing reply. Grandpa is
+         * the case: he says his one line, offers his shelf, and offers to let you
+         * go — that is the whole of him by design. "Answering advances the
+         * script" is not a rule he breaks, it is a rule that does not apply, so
+         * the step says so rather than failing him for it.
          */
-        const talky = page.locator('[data-reply]:not([data-duel])');
-        const advancing = (await talky.count()) ? talky.first() : page.locator('[data-reply]').first();
-        const before = await page.locator('[data-line]').first().textContent();
-        await advancing.dispatchEvent('click');
-        await page.waitForTimeout(400);
-        const after = await page.locator('[data-line]').first().textContent();
-        check(before !== after, 'answering moves the conversation on', `still "${after?.slice(0, 40)}…"`);
+        const talky = page.locator('[data-reply]:not([data-duel]):not([data-shop-choice]):not([data-ends])');
+        const advancing = await talky.count();
+        if (!advancing) {
+          check(true, 'answering moves the conversation on', 'no advancing reply here — every choice hands off or leaves');
+        } else {
+          const before = await page.locator('[data-line]').first().textContent();
+          await talky.first().dispatchEvent('click');
+          await page.waitForTimeout(400);
+          const after = await page.locator('[data-line]').first().textContent();
+          check(before !== after, 'answering moves the conversation on', `still "${after?.slice(0, 40)}…"`);
+        }
       }
 
       /* Only close it if it is still open — a no-reply character has already

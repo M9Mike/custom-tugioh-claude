@@ -4,6 +4,7 @@ import { claimStoryPack } from '@/server/rooms';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 import { openPack } from '@/story/packs';
+import { bountyFor } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,9 +65,24 @@ export async function POST(req: Request) {
       }
 
       const duelistId = verdict.duelistId;
+      /*
+       * The pack and the money are one transaction.
+       *
+       * Both are owed by the same win and both are settled against the same
+       * already-checked room, so paying them in one `updateProfile` means there
+       * is no state where a player got the cards and not the coin. It also means
+       * the money inherits everything the pack claim already proves — right
+       * room, right seat, duel actually finished, this seat actually won — and
+       * cannot be minted by asking nicely.
+       */
+      const paid = bountyFor(duelistId);
       const result = await updateProfile(canonical, (profile) => ({
         ok: true,
-        profile: { ...profile, packs: [...profile.packs, duelistId] },
+        profile: {
+          ...profile,
+          packs: [...profile.packs, duelistId],
+          money: (profile.money ?? 0) + paid,
+        },
       }));
       if (!result.ok) {
         return Response.json({ ok: false, error: result.error }, { status: result.status });
@@ -75,6 +91,7 @@ export async function POST(req: Request) {
         ok: true,
         awarded: true,
         duelistId,
+        paid,
         profile: result.profile,
         stage: stageFor(result.profile),
       });

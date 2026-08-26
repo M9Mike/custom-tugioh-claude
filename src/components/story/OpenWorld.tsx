@@ -88,6 +88,8 @@ interface Props {
    * navigates; this screen is about to be unmounted either way.
    */
   onDuel?: (npc: WorldNpc) => void;
+  /** A character has been asked what they have for sale. */
+  onShop?: (npc: WorldNpc) => void;
   /**
    * Somebody to walk straight back into a conversation with, and where to pick
    * it up — set when returning from a duel they sent the player to.
@@ -95,7 +97,7 @@ interface Props {
   resume?: { npcId: string; node: string } | null;
 }
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, resume }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
@@ -1186,6 +1188,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         <Conversation
           npc={talkingTo}
           openAt={resumeAt ?? undefined}
+          onShop={() => onShop?.(talkingTo)}
           onDuel={() => {
             /*
              * Where you are standing is written down before the duel, not after.

@@ -41,6 +41,14 @@ export interface DialogueChoice {
    * and comes back with one bit of information.
    */
   duel?: boolean;
+  /**
+   * Opens this character's shop instead of advancing the conversation.
+   *
+   * The same shape as `duel` and for the same reason: the counter is a screen
+   * rather than a node, so the script hands off and the node named by `to` is
+   * where the conversation picks up when the player is done buying.
+   */
+  shop?: boolean;
   /** The node it leads to, or `null` to end the conversation. */
   to: string | null;
 }
@@ -196,7 +204,10 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
       'I can see you are new here, {name} — you have the look. Do not think about it too hard.',
       'It is a card game. Go and play some duels, you will pick it up faster than I could ever explain it. I have been trying to explain it since 1987.',
     ],
-    choices: [],
+    choices: [
+      { label: 'What have you got for sale?', to: 'greet', shop: true },
+      { label: 'I will go and duel, then.', to: null },
+    ],
   },
 };
 

@@ -59,7 +59,8 @@
     "ai-honesty": "tsx scripts/ai-honesty-check.ts",
     "coplanar": "node scripts/coplanar-check.mjs",
     "packs": "tsx scripts/pack-check.ts",
-    "sort": "tsx scripts/sort-check.ts"
+    "sort": "tsx scripts/sort-check.ts",
+    "shop": "tsx scripts/shop-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

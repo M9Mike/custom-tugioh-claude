@@ -21,6 +21,8 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import DeckBuilder from '@/components/story/DeckBuilder';
 import PackOpening from '@/components/story/PackOpening';
+import Shop from '@/components/story/Shop';
+import { shopStock } from '@/story/shop';
 import type { PackResult } from '@/story/packs';
 import { DUELIST_BY_ID } from '@/game/cards';
 import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
@@ -95,6 +97,8 @@ export default function StoryMode() {
       ? { code: returned.code, token: returned.token }
       : null
   );
+  /** True while Solomon's counter is open over the world. */
+  const [shopping, setShopping] = useState(false);
   /** The pack being opened, and who it came off. */
   const [pack, setPack] = useState<{ result: PackResult; from: string } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -353,6 +357,31 @@ export default function StoryMode() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, returned, profile, busy, name]);
 
+  /**
+   * Buys one card, and returns what Solomon should say — or null when it worked.
+   *
+   * The wording lives here rather than in the route because a refusal is a
+   * shopkeeper turning you down, not a status code. He never explains *why* a
+   * second copy is impossible; he simply will not do it.
+   */
+  const buyCard = async (slug: string): Promise<string | null> => {
+    const res = await post<{ bought?: boolean; refusal?: string; profile: StoryProfile }>(
+      '/api/story/shop',
+      { username: name, slug }
+    );
+    if (!res.ok) return res.error;
+    if (res.data.profile) setProfile(res.data.profile);
+    if (res.data.bought) return null;
+    switch (res.data.refusal) {
+      case 'owned':
+        return 'You have got one of those already. I am not selling you another.';
+      case 'poor':
+        return 'Come back when your pockets are heavier.';
+      default:
+        return 'I do not have that. Not today.';
+    }
+  };
+
   const toMenu = () => router.push('/');
 
   /* ---------------- sign in ---------------- */
@@ -445,6 +474,14 @@ export default function StoryMode() {
       {pack && (
         <PackOpening pack={pack.result} from={pack.from} onDone={() => setPack(null)} />
       )}
+      {shopping && (
+        <Shop
+          profile={profile}
+          stock={shopStock()}
+          onBuy={buyCard}
+          onClose={() => setShopping(false)}
+        />
+      )}
       <OpenWorld
       profile={profile}
       onEditDeck={() => setScreen('editDeck')}
@@ -452,6 +489,7 @@ export default function StoryMode() {
       onDelete={deleteCharacter}
       onExit={toMenu}
       onDuel={startDuel}
+      onShop={() => setShopping(true)}
       resume={resume}
     />
     </>

@@ -62,6 +62,14 @@ export interface StoryProfile {
    */
   packs: string[];
   /**
+   * Dollars, earned by winning and spent only in the Kame Game Shop.
+   *
+   * One-way: nothing sells a card back and nothing else costs money, so this
+   * only ever goes up by a win and down by a purchase. Absent on saves written
+   * before the shop existed, which every reader treats as nothing yet.
+   */
+  money?: number;
+  /**
    * Which cards have already been pulled from each duelist, keyed by duelist id.
    *
    * The values are `slug#copy` entries — see `packs.ts` for why they are keyed
@@ -102,6 +110,7 @@ export function newProfile(username: string, now: number): StoryProfile {
     deck: null,
     collection: [],
     packs: [],
+    money: 0,
     pulled: {},
     level: 1,
     xp: 0,

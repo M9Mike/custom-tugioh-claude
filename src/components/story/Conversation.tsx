@@ -39,9 +39,11 @@ interface Props {
   openAt?: string;
   /** Leave the conversation and duel this character. */
   onDuel?: () => void;
+  /** Open this character's shop, and come back to the conversation after. */
+  onShop?: () => void;
 }
 
-export default function Conversation({ npc, playerName, onClose, openAt, onDuel }: Props) {
+export default function Conversation({ npc, playerName, onClose, openAt, onDuel, onShop }: Props) {
   const [nodeId, setNodeId] = useState(openAt ?? npc.start);
   const [page, setPage] = useState(0);
 
@@ -71,11 +73,17 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel 
     if (node.choices.length === 0) onClose();
   };
 
-  const choose = (to: string | null, duel?: boolean) => {
+  const choose = (to: string | null, duel?: boolean, shop?: boolean) => {
     sfx.click();
     /* A duel leaves the conversation rather than advancing it. The node named
        by the choice is where it will resume, and the caller records that — the
        panel is about to be unmounted and cannot remember anything. */
+    if (shop && onShop) {
+      /* The counter is a screen, not a node. `to` is where the conversation
+         resumes when it closes, which the caller reopens. */
+      onShop();
+      return;
+    }
     if (duel && onDuel) {
       onDuel();
       return;
@@ -143,8 +151,15 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel 
                    DOM otherwise, and the Story Mode check needs a reply it can
                    press without being taken out of the world. */
                 data-duel={c.duel ? '' : undefined}
+                data-shop-choice={c.shop ? '' : undefined}
+                /* Marked so a reply that *ends* the conversation can be told
+                   from one that advances it. All three — duel, shop, and this —
+                   leave the script rather than moving through it, and the Story
+                   Mode check needs a reply it can press and still be talking
+                   afterwards. */
+                data-ends={c.to === null && !c.duel && !c.shop ? '' : undefined}
                 className="btn rounded px-3 py-2 text-left text-[11px]"
-                onClick={() => choose(c.to, c.duel)}
+                onClick={() => choose(c.to, c.duel, c.shop)}
               >
                 {c.label}
               </button>
