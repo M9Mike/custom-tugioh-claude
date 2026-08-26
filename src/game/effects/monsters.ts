@@ -3519,12 +3519,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The mask outlives the beast: 3300 is the biggest body in the deck and
        therefore the best single Tribute for Ra, and spending it hands you
        one of their monsters — which is another body for the same summon. */
+    /* "1 monster", and the mask picks it. The op said `strongest`, so the text
+       promised a choice the card then made for you — and on a board holding a
+       2000 wall and a 1900 attacker those are very different cards to be
+       handed. The mask chooses its next face; whoever is wearing it decides
+       which. */
     text: 'When this monster leaves the field: take control of 1 monster your opponent controls.',
     cry: 'The mask chooses its next face.',
     effects: [
       {
         trigger: 'onSentToGrave',
-        ops: [{ op: 'takeControl', target: sel('opp', 'strongest'), duration: 'permanent' }],
+        ops: [{ op: 'takeControl', target: sel('opp', 'chosen'), duration: 'permanent' }],
       },
     ],
   },

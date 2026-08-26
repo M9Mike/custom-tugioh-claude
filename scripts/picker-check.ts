@@ -202,6 +202,19 @@ function satisfy(s: DuelState, spec: TargetSpec, self: string) {
       case 'backrow':
         if (def?.kind !== 'monster') p.spellTrap = { ...c, face: 'down' };
         break;
+      /* One pool spanning two or three piles — see the note on `handOrDeck`.
+         The card only has to be reachable, so it goes in the Deck, the widest
+         of them and the one every combined zone includes. Left to the
+         `default` below, these placed nothing at all and then reported the
+         empty position the harness had built as a bug in the card: Queen's
+         Knight reaches for its King "from your Deck or Graveyard", and the
+         board was blamed for offering nothing to point at. A harness must not
+         fail a position it failed to set up. */
+      case 'handOrDeck':
+      case 'deckOrGrave':
+      case 'handOrDeckOrGrave':
+        p.deck.push(c);
+        break;
       default:
         break;
     }
@@ -311,10 +324,11 @@ for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown') continue;
   if (ONLY && def.slug !== ONLY) continue;
 
-  /* A. A card that declares a target must have a question to ask.
+  /* A. An effect that reaches into a pile for one of several cards must have a
+     question to ask.
      ------------------------------------------------------------------
      Everything below this starts with a spec and checks that the spec is
-     honest, which means a card with *no* spec is invisible to the whole
+     honest, which means an effect with *no* spec is invisible to the whole
      harness — and a missing spec is not a missing question, it is a question
      the engine answers for you. `destinyDraw` had none, so the Temple of the
      Kings resolved with an empty target list and the engine took the top card:
@@ -322,17 +336,22 @@ for (const def of Object.values(CARDS)) {
      simply not fired. Reported by the owner as "it did not let me pick a card
      for the next draw". Mask of Darkness was sitting on the same silence.
 
-     `targets` is the card saying, in the data, "somebody chooses here". If the
-     interface cannot turn that into a prompt, the promise is broken before the
-     duel starts, and this is the one claim that can be made without building a
-     position at all. */
+     This used to read `eff.targets` — the card opting in by hand — and that
+     opt-in is gone, so the claim is made about the ops instead. It is a
+     stronger claim and a cheaper one: it holds for cards nobody has written
+     yet, which is the whole reason the opt-in was worth deleting. A card that
+     names its own end is excused, and has to say so in its data. */
+  const REACHES = new Set(['search', 'stealFromGrave', 'setTrap', 'destinyDraw']);
   def.effects.forEach((eff, i) => {
-    if (!eff.targets) return;
+    const reaching = eff.ops.filter(
+      (o) => REACHES.has(o.op) && !('pick' in o && (o.pick === 'strongest' || o.pick === 'weakest' || o.pick === 'random'))
+    );
+    if (!reaching.length) return;
     ok(
       !!targetSpecForEffect(def.slug, i),
-      `effect ${i} declares ${eff.targets} target(s) and the board knows what to ask`,
-      `${def.name} (${def.slug}) effect ${i} [${eff.trigger}] declares targets: ${eff.targets}, but ` +
-        `\`specFromEffect\` produces no spec for ops [${eff.ops.map((o) => o.op).join(', ')}] — ` +
+      `effect ${i} reaches into a pile, and the board knows what to ask`,
+      `${def.name} (${def.slug}) effect ${i} [${eff.trigger}] runs [${reaching.map((o) => o.op).join(', ')}] ` +
+        'with no `pick` rule of its own, but `specFromEffect` produces no spec — ' +
         'the player is never asked and the engine picks for them'
     );
   });

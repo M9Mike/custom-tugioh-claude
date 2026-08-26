@@ -100,13 +100,22 @@ function act(s: DuelState, pid: PlayerId, a: DuelAction): DuelState {
  */
 function answer(s: DuelState, ...slugs: string[]): DuelState {
   const p = s.pending;
-  if (!p || p.kind !== 'choose') throw new Error(`nothing is being asked (pending: ${p?.kind ?? 'none'})`);
+  /* Reported rather than thrown, and deliberately — see the note on `guard`
+     below. A helper that throws kills the process before the summary, so one
+     card that stops asking hides every other card that stopped asking with it,
+     and a falsification run reports one failure where there are twenty. The
+     state comes back untouched, so the assertions that follow fail on their
+     own terms and each one names itself. */
+  if (!p || p.kind !== 'choose') {
+    ok(false, `answer(${slugs.join(', ')}) — but nothing is being asked`, `pending: ${p?.kind ?? 'none'}`);
+    return s;
+  }
   const uids: string[] = [];
   for (const want of slugs) {
     const hit = p.options.find((u) => findCard(s, u)?.slug === want && !uids.includes(u));
     if (!hit) {
-      const offered = p.options.map((u) => findCard(s, u)?.slug ?? '?').join(', ');
-      throw new Error(`"${want}" is not one of the answers — offered: ${offered}`);
+      ok(false, `answer(${want}) — but that is not one of the answers`, p.options.map((u) => findCard(s, u)?.slug ?? '?').join(', '));
+      return s;
     }
     uids.push(hit);
   }
@@ -11274,6 +11283,91 @@ console.log('\nThe Dinosaur that comes back is the one you point at');
   });
   ok(!solo.state.pending, 'with one Dinosaur in the pile it asks nothing', solo.state.pending?.kind ?? '');
   ok(on(solo.state, ME).some((m) => m.slug === 'uraby'), 'and brings it back anyway');
+}
+
+console.log('\nOne question, asked the same way down every road');
+{
+  /* The gate that decided which cards asked was `targets`, set by hand, so a
+     monster arriving off the summon button was asked and the same monster
+     arriving any other way was not. These pin the roads, not the cards: the
+     point is that they agree. */
+
+  /* Feral Imp hunts Exodia's five pieces. Summoned by hand it always asked,
+     because the board looks up a spec before it sends the action. Put on the
+     field by somebody else's card it went through `raiseChoice`, which was
+     shut — so the engine took a limb for you. */
+  const stockImp = (s: DuelState) => {
+    s.players[ME].deck = [
+      card(ME, 'left-arm-of-the-forbidden-one'),
+      card(ME, 'right-leg-of-the-forbidden-one'),
+      card(ME, 'kuriboh'),
+    ];
+    return s;
+  };
+  const byHand = stockImp(fresh());
+  const imp = card(ME, 'feral-imp');
+  byHand.players[ME].hand = [imp];
+  const handAsk = act(byHand, ME, { type: 'normalSummon', uid: imp.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  const handOffers = asked(handAsk);
+  ok(!!handOffers && handOffers.length === 2, 'Feral Imp asks when it walks out of your hand', JSON.stringify(handOffers));
+
+  /* And the other road: Monster Reborn stands the same Imp up out of the
+     Graveyard. Same monster, same Deck, same question. */
+  const byReborn = stockImp(fresh());
+  const dead = card(ME, 'feral-imp');
+  byReborn.players[ME].grave = [dead];
+  const reborn = card(ME, 'monster-reborn');
+  byReborn.players[ME].hand = [reborn];
+  const revived = act(byReborn, ME, { type: 'activateSpell', uid: reborn.uid, targets: [dead.uid] });
+  const revivedOffers = asked(revived);
+  ok(
+    JSON.stringify(revivedOffers) === JSON.stringify(handOffers),
+    'and asks the same question when another card stands it up',
+    `${JSON.stringify(revivedOffers)} vs ${JSON.stringify(handOffers)}`
+  );
+  const took = answer(revived, 'right-leg-of-the-forbidden-one');
+  ok(
+    took.players[ME].hand.some((c) => c.slug === 'right-leg-of-the-forbidden-one'),
+    'and the limb pointed at is the limb that comes',
+    took.players[ME].hand.map((c) => c.slug).join(',')
+  );
+
+  /* The mask promised a choice its op then made. "Take control of 1 monster
+     your opponent controls" is a decision between a wall and an attacker, and
+     `strongest` is not always the one you want. */
+  {
+    const s = fresh();
+    const beast = card(ME, 'masked-beast-des-gardius');
+    s.players[ME].monsters[0] = beast;
+    const big = card(FOE, 'summoned-skull');
+    const wall = card(FOE, 'mystical-elf');
+    s.players[FOE].monsters[0] = big;
+    s.players[FOE].monsters[1] = wall;
+    const hole = card(ME, 'dark-hole');
+    s.players[ME].hand = [hole];
+    const swept = act(s, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    /* Dark Hole clears both sides, so what the mask can reach is whatever the
+       sweep left — the question is that it asks at all, and offers what is
+       actually there rather than deciding by ATK. */
+    const spec = targetSpecFor('masked-beast-des-gardius', 'onSentToGrave');
+    ok(!!spec && spec.side === 'opp' && spec.zone === 'monster',
+      'the mask names a monster across the table, and lets you say which', `${spec?.side}/${spec?.zone}`);
+    ok(!swept.winner, 'CONTROL: the sweep resolves without ending the duel');
+  }
+
+  /* Trap Hole and Torrential Tribute answer the same word. They used to
+     disagree — one narrow, one wide — and a comment in Trap Hole still said so
+     after the code had changed underneath it. */
+  const holeWindow = CARDS['trap-hole'].effects.find((e) => e.trigger === 'trap')?.window;
+  const tideWindow = CARDS['torrential-tribute'].effects.find((e) => e.trigger === 'trap')?.window;
+  ok(holeWindow === 'opponentSummon', 'Trap Hole answers any kind of Summon', String(holeWindow));
+  ok(tideWindow === holeWindow, 'and Torrential Tribute answers exactly the same one', `${tideWindow} vs ${holeWindow}`);
+  ok(
+    /\bSummons a monster\b/.test(CARDS['trap-hole'].text ?? '') &&
+      /\bsummons a monster\b/i.test(CARDS['torrential-tribute'].text ?? ''),
+    'and both say so in the same words',
+    `"${CARDS['trap-hole'].text}" / "${CARDS['torrential-tribute'].text}"`
+  );
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

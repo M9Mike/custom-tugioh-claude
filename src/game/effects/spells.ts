@@ -88,9 +88,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'trap',
-        // "Normal Summons", and it means it: a Fusion Summon is a Special
-        // Summon and opens the wider `opponentSummon` window, which Torrential
-        // Tribute watches and this card does not.
+        /* Any kind of Summon, which is what the owner asked for — "change from
+           normal summon to just summon (so any kind)" — and what the text above
+           now says. The comment that used to sit here still described the
+           narrow window and pointed at Torrential Tribute as the card watching
+           the wider one; the two watch the same window today, and say so in
+           the same words. A Set is still not a Summon, and neither of them
+           answers one. */
         window: 'opponentSummon',
         label: 'Trap Hole — destroy the summoned monster',
         ops: [
