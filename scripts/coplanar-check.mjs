@@ -166,13 +166,57 @@ const audit = async (label) => {
   return hits.hits.length;
 };
 
-let total = await audit('grandpa-shop');
+/*
+ * Every area is reached by putting the player in it and reloading.
+ *
+ * It used to walk: audit the shop, hold ArrowDown for 3.4 seconds, audit the
+ * street. That worked for exactly one door and then lied. Once Market Row opened
+ * off the east end of Turtle Lane, a run that happened to start from a save out
+ * that way walked straight through the arch — so the pass labelled
+ * "starting-area" was auditing the arcade, and the arcade's own pass found
+ * nothing because the player was already past it. The labels were wrong and one
+ * area went unswept, which is the worst possible failure for a check whose whole
+ * job is to look at things nobody looks at.
+ *
+ * Posting a position and coming back in is what the door check does to set up
+ * its run-ups. It costs a page load per area and it cannot end up somewhere it
+ * did not mean to be — and the script prints where it actually is next to where
+ * it meant to be, so a lie of this kind can never be silent again.
+ */
+const visit = async (area) => {
+  await fetch(`${BASE}/api/story/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'Mike', world: { area, x: 0, z: 0, facing: 0 } }),
+  }).catch(() => {});
+  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 180000 });
+  /* The name has to go back in. Reloading /story returns to the sign-in card
+     with an empty field, and clicking Enter without filling it does nothing at
+     all — which is how three areas in a row reported "no scene on window". */
+  const field = page.locator('input[placeholder="Enter your name"]');
+  if (await field.isVisible().catch(() => false)) {
+    await field.fill('Mike');
+    const again = page.locator('button:has-text("Enter Story Mode")');
+    for (let i = 0; i < 400 && !(await again.isEnabled().catch(() => false)); i++) await page.waitForTimeout(200);
+    await again.click();
+  }
+  /* Built, not merely loaded: the scene appears on `window` the first frame the
+     area is in it, and auditing before that reports zero meshes and passes. */
+  for (let i = 0; i < 150; i++) {
+    const there = await page.evaluate(
+      (want) => !!window.__scene && window.__probe && window.__probe.area === want, area
+    ).catch(() => false);
+    if (there) break;
+    await page.waitForTimeout(200);
+  }
+  await page.waitForTimeout(1200);
+  return audit(area);
+};
 
-/* Walk out and audit the street too. */
-const hold = async (k, ms) => { await page.keyboard.down(k); await page.waitForTimeout(ms); await page.keyboard.up(k); await page.waitForTimeout(500); };
-await hold('ArrowDown', 3400);
-await page.waitForTimeout(2400);
-total += await audit('starting-area');
+let total = 0;
+for (const area of ['grandpa-shop', 'starting-area', 'market-row']) {
+  total += await visit(area);
+}
 
 console.log(total === 0 ? 'COPLANAR: none' : `COPLANAR: ${total} pair(s) — these will flicker`);
 await browser.close();

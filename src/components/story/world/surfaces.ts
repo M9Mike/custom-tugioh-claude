@@ -389,6 +389,152 @@ export function paving(): THREE.CanvasTexture | null {
   });
 }
 
+/**
+ * The arcade floor: small tiles, laid in courses, polished down the middle.
+ *
+ * Not `paving()` with a different colour. A covered shopping street is not a
+ * pavement — it is an interior floor that happens to have shops on it, and the
+ * three things that say so are all in here:
+ *
+ * - **Small units.** Half-metre tiles rather than metre slabs. Scale is most of
+ *   what separates "indoors" from "out".
+ * - **A worn lane down the centre.** Forty years of people walking the middle of
+ *   an arcade and none of them walking the edges. The centre band is lighter and
+ *   smoother; the tiles by the shopfronts keep their texture and their dirt.
+ * - **No kerb, no camber, no drainage.** The street's ground is built to shed
+ *   rain. This one never sees any, and looks it.
+ */
+export function arcadeFloor(): THREE.CanvasTexture | null {
+  return surface(1024, (ctx, s) => {
+    const rnd = seeded(0x5eed09);
+    ctx.fillStyle = '#584f45';
+    ctx.fillRect(0, 0, s, s);
+
+    const n = 8;                 // eight tiles across the metre-and-a-bit
+    const c = s / n;
+    for (let ix = 0; ix < n; ix++) {
+      for (let iz = 0; iz < n; iz++) {
+        /*
+         * Warm grey, and every tile its own value — the same rule the wood floor
+         * follows, and for the same reason.
+         *
+         * Dark, and it has to be. The first pass was a genuinely plausible tile
+         * colour, around 60% grey, and it turned the whole arcade into a lit
+         * white corridor: the street gets away with lamps at 210 candela because
+         * it is laid on asphalt that returns a fifth of what hits it, and a floor
+         * three times as reflective under a roof reads as a shopping centre at
+         * midday. Albedo is lighting. This is pitched to sit in the same world as
+         * the road outside.
+         */
+        const tone = 0.86 + rnd() * 0.26;
+        const r = Math.round(104 * tone);
+        const g = Math.round(98 * tone);
+        const b = Math.round(87 * tone);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(ix * c + 1.5, iz * c + 1.5, c - 3, c - 3);
+        for (let k = 0; k < 160; k++) {
+          const v = 0.5 + rnd() * 0.5;
+          ctx.fillStyle = rnd() > 0.5
+            ? `rgba(255,255,255,${v * 0.045})`
+            : `rgba(0,0,0,${v * 0.055})`;
+          ctx.fillRect(ix * c + 1.5 + rnd() * (c - 3), iz * c + 1.5 + rnd() * (c - 3), 1.3, 1.3);
+        }
+        /* A chipped edge here and there, and a cracked one now and then. */
+        if (rnd() > 0.86) {
+          ctx.fillStyle = 'rgba(0,0,0,0.14)';
+          ctx.fillRect(ix * c + (rnd() > 0.5 ? c - 9 : 2.5), iz * c + (rnd() > 0.5 ? c - 9 : 2.5), 7, 7);
+        }
+      }
+    }
+
+    /* Joints — thinner and cleaner than paving's, because these are grouted
+       rather than sand-filled. */
+    ctx.strokeStyle = 'rgba(30,27,23,0.6)';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i <= n; i++) {
+      wobbleLine(ctx, i * c, 0, i * c, s, rnd, 1.1);
+      wobbleLine(ctx, 0, i * c, s, i * c, rnd, 1.1);
+    }
+
+    /*
+     * The worn lane is **not** in here, and that is deliberate.
+     *
+     * It was: a pale band down the middle of the canvas. Which works exactly
+     * once, because this texture has to repeat about a dozen times along a
+     * forty-six metre arcade — so the one worn path came out as a dozen of them
+     * laid side by side, a stripe every four metres across a floor nobody walks
+     * that way. A feature that exists once in the world cannot live in a texture
+     * that exists many times. `world/market.ts` lays it down as a single plane.
+     */
+    grime(ctx, s, rnd, 14, 0.1);
+    speckle(ctx, s, rnd, 2000, 0.03);
+  });
+}
+
+/**
+ * A roller shutter, pulled down. Corrugated, dented, and dirty along the bottom.
+ *
+ * Half the units in a shopping arcade are shut at any hour, and a shut one is
+ * the cheapest character an area has: it says the place has more life in it than
+ * you are seeing, which a row of uniformly open shops never manages.
+ *
+ * The ribs run across the canvas because that is how a shutter is built — slats
+ * stacked up the way it rolls — so the plane this goes on wants its height
+ * mapped to the canvas height, unrepeated vertically.
+ */
+export function shutter(tint: string): THREE.CanvasTexture | null {
+  return surface(512, (ctx, s) => {
+    const rnd = seeded(0x5eed0a);
+    const col = new THREE.Color(tint);
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, s, s);
+
+    const slats = 26;
+    const h = s / slats;
+    for (let i = 0; i < slats; i++) {
+      const y = i * h;
+      /* Each slat is a little cylinder: dark at the top where it turns away,
+         bright across its belly, and a hard shadow in the join below. */
+      const g = ctx.createLinearGradient(0, y, 0, y + h);
+      const lit = 1.06 + rnd() * 0.1;
+      g.addColorStop(0, `rgba(0,0,0,0.34)`);
+      g.addColorStop(0.32, `rgb(${Math.round(col.r * 255 * lit)},${Math.round(col.g * 255 * lit)},${Math.round(col.b * 255 * lit)})`);
+      g.addColorStop(0.62, `rgb(${Math.round(col.r * 235)},${Math.round(col.g * 235)},${Math.round(col.b * 235)})`);
+      g.addColorStop(1, 'rgba(0,0,0,0.42)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, y, s, h);
+    }
+
+    /* Dents: a slat that has been kicked reads along its whole length. */
+    for (let i = 0; i < 7; i++) {
+      const y = Math.floor(rnd() * slats) * h;
+      const x = rnd() * s;
+      const w = s * (0.06 + rnd() * 0.16);
+      const d = ctx.createLinearGradient(x, 0, x + w, 0);
+      d.addColorStop(0, 'rgba(0,0,0,0)');
+      d.addColorStop(0.5, `rgba(0,0,0,${0.1 + rnd() * 0.14})`);
+      d.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = d;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    /* Rust creeping up from the bottom rail, and road dirt with it. */
+    const rust = ctx.createLinearGradient(0, s, 0, s * 0.62);
+    rust.addColorStop(0, 'rgba(96,52,26,0.34)');
+    rust.addColorStop(1, 'rgba(96,52,26,0)');
+    ctx.fillStyle = rust;
+    ctx.fillRect(0, s * 0.62, s, s * 0.38);
+    for (let i = 0; i < 26; i++) {
+      const x = rnd() * s;
+      ctx.fillStyle = `rgba(74,42,20,${0.06 + rnd() * 0.12})`;
+      ctx.fillRect(x, s * (0.66 + rnd() * 0.3), 1 + rnd() * 4, s * (0.02 + rnd() * 0.1));
+    }
+
+    grime(ctx, s, rnd, 12, 0.16);
+    speckle(ctx, s, rnd, 1400, 0.035);
+  });
+}
+
 /** Ceiling tiles for the shop — plain, but not perfectly plain. */
 export function ceiling(): THREE.CanvasTexture | null {
   return surface(512, (ctx, s) => {

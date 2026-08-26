@@ -60,7 +60,10 @@
     "coplanar": "node scripts/coplanar-check.mjs",
     "packs": "tsx scripts/pack-check.ts",
     "sort": "tsx scripts/sort-check.ts",
-    "shop": "tsx scripts/shop-check.ts"
+    "shop": "tsx scripts/shop-check.ts",
+    "areas": "tsx scripts/area-check.ts",
+    "doors": "tsx scripts/door-check.ts",
+    "footing": "tsx scripts/footing-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

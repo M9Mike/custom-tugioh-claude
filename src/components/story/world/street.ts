@@ -28,9 +28,9 @@
  */
 
 import * as THREE from 'three';
-import { asphalt, paving, brick, render, darkWood, plaster, signBoard, tile } from './surfaces';
-import type { BuiltArea } from './shop';
-import { AREAS } from '@/story/areas';
+import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor } from './surfaces';
+import { Owned, box, matt, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import { AREAS, SHOP_STEP, STREET_FACES } from '@/story/areas';
 
 /**
  * The pavements, taken from the area rather than restated here.
@@ -44,104 +44,32 @@ import { AREAS } from '@/story/areas';
  * So the area owns them and this draws what it is told. `areas.ts` stays free of
  * three.js, which is the rule that made it the right place to put them.
  */
-const PAVEMENTS = AREAS['starting-area'].platforms ?? [];
+const PLATFORMS = AREAS['starting-area'].platforms ?? [];
+/* The doorstep is a platform too, but it is not a pavement — it gets a kerb and
+   a paving plane below if it goes through that loop. Told apart by identity
+   rather than by size, so neither can be renamed into the other. */
+const PAVEMENTS = PLATFORMS.filter((p) => p !== SHOP_STEP);
 
 const ST_W = 22;
 const ST_D = 17;
 
-/** Where the buildings' front faces are. */
-const NORTH_FACE = -9;
-const SOUTH_FACE = 10;
-const WEST_FACE = -18;
-const EAST_FACE = 18;
+/* Where the buildings' front faces are — from `areas.ts`, which needs them
+   too so a door's threshold can say which wall it is in. */
+const { north: NORTH_FACE, south: SOUTH_FACE, west: WEST_FACE, east: EAST_FACE } = STREET_FACES;
 
 /** Pavement runs from each building face to these. */
 const NORTH_KERB = -6.5;
 const SOUTH_KERB = 7.5;
 
-class Owned {
-  readonly items: { dispose(): void }[] = [];
-  keep<T extends { dispose(): void }>(x: T): T {
-    this.items.push(x);
-    return x;
-  }
-}
 
-function surfaceOf(
-  own: Owned,
-  make: () => THREE.Texture | null,
-  rx: number, ry: number, anisotropy: number
-): THREE.Texture | null {
-  const tex = make();
-  if (!tex) return null;
-  own.keep(tex);
-  return tile(tex, rx, ry, anisotropy);
-}
-
-function matt(own: Owned, colour: string, map?: THREE.Texture | null): THREE.MeshStandardMaterial {
-  return own.keep(new THREE.MeshStandardMaterial({
-    color: colour, map: map ?? null, roughness: 1, metalness: 0,
-  }));
-}
-
-/**
- * A material for anything laid flat *on* another surface — road markings, bills,
- * posters.
- *
- * `polygonOffset` biases the fragment's depth away from the camera by a hair, so
- * a decal and the thing it is painted on can never resolve to the same depth
- * value and strobe against each other as the camera moves. Tightening the near
- * and far planes (see `OpenWorld`) removes almost all of the risk; this removes
- * the rest, and costs nothing.
- */
-function decal(own: Owned, colour: string): THREE.MeshStandardMaterial {
-  return own.keep(new THREE.MeshStandardMaterial({
-    color: colour, roughness: 1, metalness: 0,
-    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-  }));
-}
-
-/**
- * An unlit material, for anything that is a light source rather than lit by one.
- *
- * The colours passed in are much darker than instinct suggests, and they have to
- * be. A `MeshBasicMaterial` ignores every light in the scene and draws its colour
- * flat, so a window painted `#ffd9a0` comes out at almost full white *everywhere*
- * — no falloff, no shading, no tone response. Fifteen of them across two terraces
- * turned the street into a row of light boxes with a road in front. Lit glass
- * seen from outside is a mid amber, not a lamp, and these are pitched there.
- */
-function glow(own: Owned, colour: string): THREE.MeshBasicMaterial {
-  return own.keep(new THREE.MeshBasicMaterial({ color: colour }));
-}
-
-function box(
-  own: Owned, w: number, h: number, d: number,
-  material: THREE.Material, x: number, y: number, z: number, rotY = 0
-): THREE.Mesh {
-  const geo = own.keep(new THREE.BoxGeometry(w, h, d));
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-/** Deterministic, so the street is the same street every time it is entered. */
-function seeded(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
 
 export function buildStreet(anisotropy: number): BuiltArea {
   const own = new Owned();
   const root = new THREE.Group();
   root.name = 'starting-area';
   const rnd = seeded(0x51ee7);
+  /* Every point light the street owns, so their shadow maps go with it. */
+  const lamps: THREE.PointLight[] = [];
 
   /* ---- ground ---- */
 
@@ -165,8 +93,20 @@ export function buildStreet(anisotropy: number): BuiltArea {
     /* The kerb itself — a lip, not a painted line. It faces the road, which is
        whichever of the slab's two long edges is nearer the middle of the street. */
     const roadside = slab.z < 0 ? slab.z + slab.hd : slab.z - slab.hd;
-    const kerb = box(own, slab.hw * 2, slab.y + 0.02, 0.3, matt(own, '#8b8d90'),
-                     slab.x, (slab.y + 0.02) / 2, roadside + (slab.z < 0 ? -0.15 : 0.15));
+    /*
+     * Buried 20 cm, so its underside is not on the plane every building in the
+     * street stands on.
+     *
+     * The kerbs run the full 44 m and both ends drive into a building — the
+     * hoarding at the west, the arch at the east — and a kerb whose base is at
+     * exactly y 0 shares that face with every one of them. Four pairs, 1.2 m²
+     * each, all of it under the pavement where nobody would ever have looked.
+     * Nothing below y 0 is ever seen, so the fix costs a number.
+     */
+    const kerbTop = slab.y + 0.02;
+    const kerb = box(own, slab.hw * 2, kerbTop + 0.2, 0.3, matt(own, '#8b8d90'),
+                     slab.x, kerbTop - (kerbTop + 0.2) / 2,
+                     roadside + (slab.z < 0 ? -0.15 : 0.15));
     root.add(kerb);
   }
 
@@ -405,14 +345,15 @@ export function buildStreet(anisotropy: number): BuiltArea {
   root.add(box(own, 0.46, 0.3, 0.12, matt(own, '#5f8a5a'), shopX + 2.4, 3.46, NORTH_FACE + 0.9, Math.PI / 2));
 
   /*
-   * A step up to the door — and its top has to be *above* the pavement.
+   * The step up to the door, drawn from `SHOP_STEP`.
    *
-   * It was 0.14 tall standing on the ground, so its top face landed on exactly
-   * the same plane as the pavement at y 0.14. That is what was flickering
-   * underfoot at the shop door. Twenty-two centimetres tall now, which both
-   * fixes it and makes the threshold read as a step rather than a paving slab.
+   * Its height is declared in `areas.ts` and read here, so the game and the
+   * picture cannot disagree about how high it is — which they did, twice: once
+   * as a flicker when it matched the pavement exactly, and once as a pair of
+   * feet 8 cm inside it after the flicker was fixed by raising it alone.
    */
-  root.add(box(own, 2.0, 0.22, 0.7, matt(own, '#8b8d90'), shopX, 0.11, NORTH_FACE + 0.5));
+  root.add(box(own, SHOP_STEP.hw * 2, SHOP_STEP.y, SHOP_STEP.hd * 2, matt(own, '#8b8d90'),
+               SHOP_STEP.x, SHOP_STEP.y / 2, SHOP_STEP.z));
 
   /* ---- the ends ---- */
 
@@ -438,22 +379,135 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -ST_D + 3 + i * 5.6));
   }
 
-  /* East: a railed-off alley mouth. You can see down it; you cannot go. */
-  root.add(box(own, 4, 9.5, ST_D * 2, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 4.75, 0));
-  const railMat = matt(own, '#2f3336');
-  root.add(box(own, 0.12, 1.5, 6.2, railMat, EAST_FACE - 0.1, 0.9, 0.5));
-  for (let i = 0; i < 13; i++) {
-    root.add(box(own, 0.06, 1.4, 0.06, railMat, EAST_FACE - 0.1, 0.85, -2.6 + i * 0.52));
+  /*
+   * East: the arch into Market Row.
+   *
+   * It was a railed-off alley mouth — somewhere to look down and never enter,
+   * which is what an area needs at its edge right up until there is something on
+   * the other side. There is now, so the railing is gone and the wall has a way
+   * through it: two building slabs with 4.4 m between them, a gate over the top,
+   * and the arcade visible in the gap.
+   *
+   * The gap is on the road rather than the pavement, which is where a covered
+   * shopping street always meets the traffic — the carriageway ends, bollards
+   * stop the cars, and people carry on.
+   */
+  root.add(box(own, 4, 9.5, ST_D - 1.7, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 4.75, -9.35));
+  root.add(box(own, 4, 9.5, ST_D - 2.7, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 4.75, 9.85));
+  /*
+   * And the wall *above* the opening, which is the whole difference between an
+   * archway and a hole.
+   *
+   * The two slabs above stop either side of the 4.4 m gap, so without this the
+   * building has a 4.4 m slot running from head height to the roofline with the
+   * void behind it — which is precisely what the first pass rendered, and it read
+   * as a black rectangle hanging over the arch. A gate through a building has
+   * building over it.
+   */
+  root.add(box(own, 4, 3.1, 4.4, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 7.95, 0.5));
+
+  /* The gate: two piers, a header, and the name across it. */
+  const gateStone = matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1.6, 2, anisotropy));
+  for (const pz of [-2.25, 3.25]) {
+    root.add(box(own, 1.5, 5.6, 1.1, gateStone, EAST_FACE, 2.8, pz));
+    root.add(box(own, 1.7, 0.24, 1.3, matt(own, '#5f574c'), EAST_FACE, 5.72, pz));
   }
-  /* The handrail sits above the panel rather than flush with it: at 1.58 its top
-     landed on exactly the panel's top at 1.65 and the two fought along the whole
-     six metres of it. */
-  root.add(box(own, 0.14, 0.14, 6.4, railMat, EAST_FACE - 0.1, 1.64, 0.5));
+  /* Set into the pier caps rather than resting on them — see the same gate in
+     `market.ts` for why two faces at one depth is the bug and not the fix. */
+  root.add(box(own, 1.5, 1.0, 6.6, gateStone, EAST_FACE, 6.0, 0.5));
+  root.add(box(own, 1.8, 0.26, 7.0, matt(own, '#5f574c'), EAST_FACE, 6.56, 0.5));
+
+  /* Facing back down the street, because that is the only side of it anybody
+     standing in Turtle Lane can see. */
+  const marketBoard = own.keep(new THREE.MeshBasicMaterial({
+    map: surfaceOf(own, () => signBoard('MARKET ROW', '#f0e2bc', '#3a2f22', undefined, 5.4 / 0.82),
+                   1, 1, anisotropy),
+    color: '#cfc4a6',
+  }));
+  const marketMesh = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(5.4, 0.82)), marketBoard);
+  marketMesh.position.set(EAST_FACE - 0.78, 6.05, 0.5);
+  marketMesh.rotation.y = -Math.PI / 2;
+  root.add(marketMesh);
+
+  /* Bollards, matching the two solids the area declares at x 17. */
+  for (const bz of [-1.2, 2.2]) {
+    root.add(box(own, 0.32, 0.9, 0.32, matt(own, '#3f4348'), 17.0, 0.45, bz));
+    root.add(box(own, 0.38, 0.08, 0.38, matt(own, '#5a5f62'), 17.0, 0.94, bz));
+  }
+
+  /*
+   * And Market Row itself, in the gap, as a backdrop.
+   *
+   * The arch is a 4.4 m hole in the only thing closing this end of the street,
+   * and the area on the far side of it is not in the scene — only one ever is.
+   * So a few metres of arcade are drawn here: floor, a shopfront each side, a
+   * canopy over the top and one warm light in it.
+   *
+   * It is the same trick Market Row plays back the other way, and it is built to
+   * the cone the arch actually shows rather than to what is really over there —
+   * about nine metres deep and never seen from closer than two, which is a view
+   * five metres wide by the time it reaches the back of it.
+   */
+  /*
+   * Thirty metres of it, not nine.
+   *
+   * The first backdrop was a short box: floor, a wall each side and a wall
+   * across the end nine metres in. Through a 4.4 m arch that reads as an alcove
+   * with brick at the back of it — the arch stopped being a way through and
+   * became a recess, which is worse than the void it replaced because it is
+   * confidently wrong rather than obviously missing.
+   *
+   * What the eye needs is *convergence*: two lines of shopfront running away to
+   * a point, and the far end far enough off that the fog is already taking it.
+   * Thirty metres does that, and thirty metres of two walls and a lid is sixteen
+   * boxes. It is the cheapest thing in this file and it is the first thing
+   * anybody ever sees of Market Row.
+   */
+  const beyondFloor = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(30, 11)),
+    matt(own, '#ffffff', surfaceOf(own, arcadeFloor, 7.2, 2.6, anisotropy))
+  );
+  beyondFloor.rotation.x = -Math.PI / 2;
+  /* 15 mm, not 4. The road runs to x 22 and this starts at 18, so the two share
+     four metres of ground through the archway — and at 4 mm apart that is inside
+     the tolerance `npm run coplanar` calls a flicker. Invisible either way; only
+     one of them is stable. */
+  beyondFloor.position.set(EAST_FACE + 15, 0.015, 0.5);
+  beyondFloor.receiveShadow = true;
+  root.add(beyondFloor);
+
+  for (const fz of [-4.5, 5.5]) {
+    const inward = fz < 0 ? 1 : -1;
+    root.add(box(own, 30, 6.2, 2, matt(own, '#ffffff', brickAlt), EAST_FACE + 15, 3.1, fz));
+    /* Four lit fronts down each side. Warm and cold alternating, the same mix
+       the arcade itself is lit by — see `market.ts` on why that matters. */
+    for (let i = 0; i < 4; i++) {
+      const fx = EAST_FACE + 4 + i * 7;
+      root.add(box(own, 5.4, 2.3, 0.12, matt(own, '#20252c'), fx, 1.7, fz + inward * 1.02));
+      root.add(box(own, 5.0, 2.1, 0.05,
+                   glow(own, (i + (fz < 0 ? 0 : 1)) % 2 ? '#6f8479' : '#8a6534'),
+                   fx, 1.7, fz + inward * 1.1));
+      /* A fascia over each, so the wall has a rhythm rather than being a strip
+         of light thirty metres long. */
+      root.add(box(own, 5.4, 0.9, 0.24, matt(own, '#3a3128'), fx, 3.3, fz + inward * 1.0));
+    }
+  }
+
+  /* The lid, which is the thing that says "covered" from out here. */
+  root.add(box(own, 30, 0.3, 11.4, matt(own, '#242930'), EAST_FACE + 15, 6.35, 0.5));
+  /* And the far end, thirty metres off and already going into the fog. */
+  root.add(box(own, 2, 6.4, 12.4, matt(own, '#ffffff', brickAlt), EAST_FACE + 31, 3.2, 0.5));
+
+  for (let i = 0; i < 3; i++) {
+    const beyond = new THREE.PointLight('#ffbe7c', 88, 15, 2);
+    beyond.position.set(EAST_FACE + 5 + i * 9, 4.7, 0.5);
+    root.add(beyond);
+    lamps.push(beyond);
+  }
 
   /* ---- street furniture ---- */
 
   const lampMat = matt(own, '#33373a');
-  const lamps: THREE.PointLight[] = [];
   for (const [lx, lz] of [[-9.5, -6.9], [9.5, -6.9], [-9.5, 7.9], [9.5, 7.9]] as const) {
     root.add(box(own, 0.34, 0.28, 0.34, lampMat, lx, 0.28, lz));
     root.add(box(own, 0.17, 4.6, 0.17, lampMat, lx, 2.5, lz));

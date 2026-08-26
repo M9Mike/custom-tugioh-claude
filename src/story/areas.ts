@@ -38,7 +38,7 @@
  */
 
 /** Every area that exists. Names here are the ones to use when talking about them. */
-export type AreaId = 'grandpa-shop' | 'starting-area';
+export type AreaId = 'grandpa-shop' | 'starting-area' | 'market-row';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -82,8 +82,41 @@ export interface Door {
   /** Walk into this and you leave. */
   trigger: Rect;
   to: AreaId;
-  /** Where you arrive, in the target area's coordinates. */
-  spawn: { x: number; z: number; facing: number };
+  /**
+   * The threshold itself, in **this** area's coordinates.
+   *
+   * Two doors that connect are two sides of one doorway, and this says where
+   * that doorway is. Put both through `toWorld` and they have to land on the
+   * same spot in Domino City. That assertion is the entire reason `world`
+   * exists: it is what stops the city drifting apart as it grows, and it is
+   * checked by `npm run areas`.
+   */
+  seam: { x: number; z: number };
+  /**
+   * Where you stand, and which way you are turned, when you come **in** through
+   * this doorway. In this area's coordinates.
+   *
+   * ## Why the arrival lives with the door you arrive through
+   *
+   * This used to be `spawn`, and it held the coordinates of where you land in
+   * the *other* area. Two areas, each storing the other's numbers: opening the
+   * shop meant editing the street, moving the street's pavement meant hunting
+   * through the shop, and nothing anywhere checked that the two agreed. With
+   * two areas that is a nuisance. With thirty-six it is a bug generator, and
+   * the bugs it generates are the silent kind — a door that lands you a metre
+   * inside a wall, and no test that can tell.
+   *
+   * So a door now owns exactly one arrival: its own. Every number in this
+   * object shares a coordinate space with the `trigger` directly above it,
+   * which means nobody editing an area ever types a coordinate belonging to an
+   * area they are not looking at. Walking A → B reads B's return door and uses
+   * **its** arrival — that is `arrivalThrough`.
+   *
+   * Two things it must clear, both checked: every solid, because you cannot
+   * arrive inside a wall; and every door trigger in the area, because arriving
+   * in one walks you straight back out of the room you just entered.
+   */
+  arrive: { x: number; z: number; facing: number };
   /** Shown briefly as the transition plays — "Kame Game Shop", "The Street". */
   label: string;
 }
@@ -98,6 +131,26 @@ export interface Area {
    * worth of duplicated decisions.
    */
   kind: 'interior' | 'exterior';
+  /**
+   * Where this area's origin sits in Domino City. Metres; +X is east, +Z south.
+   *
+   * ## It does not move any geometry
+   *
+   * Areas are still built at their own origin and only one is ever in the scene,
+   * so nothing in `world/` reads this and nothing renders differently because of
+   * it. What it buys is the one thing hand-matched doors could never give:
+   * **a single place every area can be compared in.**
+   *
+   * With it, "the shop's door and the street's door are the same door" stops
+   * being a promise in a comment and becomes arithmetic — `toWorld` both seams
+   * and they must agree. It also makes two whole classes of mistake findable
+   * that were previously invisible: an area dropped in the wrong ward, and two
+   * areas whose walkable floors occupy the same ground in the city.
+   *
+   * The Starting Area is the origin, because that is where the game starts and
+   * an origin has to be something. Everything else is measured from it.
+   */
+  world: { x: number; z: number };
   /** The outer limit of walking, set *inside* the enclosing geometry. */
   bounds: Rect;
   /** Everything you cannot walk through. */
@@ -167,6 +220,15 @@ const GRANDPA_SHOP: Area = {
   id: 'grandpa-shop',
   name: "Grandpa's Shop",
   kind: 'interior',
+  /*
+   * Inside the north terrace, 14.5 m up the street from its middle.
+   *
+   * Not a guess: it is whatever puts this room's doorway on top of the street's.
+   * The shop's threshold is at local z 5.5 and the street's at z −9, so the
+   * origin has to sit at −14.5 for the two to be the same doorway. `npm run
+   * areas` re-derives that and fails if either side moves without the other.
+   */
+  world: { x: 0, z: -14.5 },
   /* Half a metre inside the walls: the player is stopped by the wall solids
      below long before this, and this only exists so a bug cannot put anybody
      outside the room. */
@@ -216,28 +278,19 @@ const GRANDPA_SHOP: Area = {
        */
       trigger: { x: 2.6, z: 4.0, hw: 1.05, hd: 1.1 },
       to: 'starting-area',
+      /* The threshold, on the inner face of the front wall. The street calls the
+         same doorway (2.6, −9); both land on (2.6, −9) in Domino City. */
+      seam: { x: 2.6, z: SHOP_D },
       /*
-       * On the pavement outside the shop, facing down the street.
+       * Coming *in* off the street: well inside the room, clear of this door's
+       * own trigger, looking at the counter.
        *
-       * z −7.2, not −11.4. The first version put the arrival *inside the shop's
-       * own building* — the north terrace runs from z −17 to −9 — so stepping
-       * out of the door landed you in solid geometry and the collision pass
-       * shoved you back out through whichever wall was nearest.
+       * Both halves matter. The camera needs somewhere to stand behind you,
+       * which an arrival against the front wall does not give it. And the door
+       * is a trigger — arrive inside its rectangle and you walk straight back
+       * out of the shop you just entered.
        */
-      /*
-       * Facing along the street, not across it and not at the door.
-       *
-       * Three tries. Math.PI faced the door you had just walked out of, which is
-       * what this was reported for. Facing 0 turned you to the street but put the
-       * camera hard against the shopfront a metre and a half behind you — the
-       * squeeze traded all of it for height and you arrived looking at the top of
-       * your own head.
-       *
-       * A quarter turn east solves both: the street runs away in front of you,
-       * and the camera has the whole length of the pavement to sit back in. It is
-       * also the direction with something in it — Tony is down that end.
-       */
-      spawn: { x: 2.6, z: -7.2, facing: Math.PI / 2 },
+      arrive: { x: 2.6, z: 2.6, facing: Math.PI },
       label: 'The Street',
     },
   ],
@@ -271,10 +324,41 @@ const GRANDPA_SHOP: Area = {
 const ST_W = 22;   // half-width, so 44 m across
 const ST_D = 17;   // half-depth, so 34 m deep
 
+/**
+ * The lines the Starting Area's buildings stand on.
+ *
+ * They were four constants in `world/street.ts` and nothing here knew them, so
+ * a door's threshold had to be typed as a bare −9 and hoped over. `street.ts`
+ * imports these now, the same way it already takes its pavements from
+ * `platforms` — one definition, and the renderer and the geometry cannot drift.
+ */
+export const STREET_FACES = { north: -9, south: 10, west: -18, east: 18 } as const;
+
+/**
+ * The step up to the shop's door.
+ *
+ * It is 22 cm rather than the pavement's 14, and that is not arbitrary: at 14 it
+ * had its top face on exactly the plane of the paving around it and the two
+ * flickered underfoot at the one spot every player walks over. Raising it fixed
+ * the flicker and quietly introduced the opposite bug — the game still thought
+ * the ground there was 14, so crossing the threshold put both feet 8 cm into the
+ * stone. `npm run footing` found four cells of it, all of them directly in front
+ * of Grandpa's door.
+ *
+ * So it is a `platform` like the pavements are, and like them it is written down
+ * once: `world/street.ts` draws the step from this rectangle. A raised surface
+ * the renderer knows about and the collision does not is the whole family of
+ * bug, and it has now produced two of them.
+ */
+export const SHOP_STEP = { x: 2.6, z: -8.5, hw: 1.0, hd: 0.35, y: 0.22 };
+
 const STARTING_AREA: Area = {
   id: 'starting-area',
   name: 'Starting Area',
   kind: 'exterior',
+  /* The origin of Domino City. Something has to be, and this is where the game
+     starts — every other area is measured from this one. */
+  world: { x: 0, z: 0 },
   bounds: { x: 0, z: 0, hw: ST_W - 1, hd: ST_D - 1 },
   solids: [
     /*
@@ -297,8 +381,25 @@ const STARTING_AREA: Area = {
 
     /* West end: a hoarding across a building site. */
     { x: -ST_W + 2, z: 0, hw: 2, hd: ST_D, tall: true },
-    /* East end: a railed-off alley mouth. */
-    { x: ST_W - 2, z: 0, hw: 2, hd: ST_D, tall: true },
+    /*
+     * East end: the mouth of Market Row, and the wall either side of it.
+     *
+     * It was one slab across the whole end, closing a railed-off alley you could
+     * look down and never enter. The arcade is on the other side of it now, so
+     * the slab is two with 4.4 m of archway between them, set on the middle of
+     * the road where a covered shopping street always meets the traffic.
+     *
+     * Same shape as the shop's doorway in the north terrace, and the same
+     * consequence: a gap is a hole in the collision on purpose, so the camera
+     * needs a `camSolid` put back across it or it walks through the arch and
+     * looks at the unlit backs of the buildings.
+     */
+    { x: ST_W - 2, z: -9.35, hw: 2, hd: 7.65, tall: true },
+    { x: ST_W - 2, z: 9.85, hw: 2, hd: 7.15, tall: true },
+
+    /* Bollards across the arch: the road stops here, the arcade does not. */
+    { x: 17.0, z: -1.2, hw: 0.16, hd: 0.16 },
+    { x: 17.0, z: 2.2, hw: 0.16, hd: 0.16 },
 
     /* Street furniture, which is what stops the middle being an empty car park. */
     { x: -9.5, z: -6.9, hw: 0.28, hd: 0.28 },   // lamp post, north pavement
@@ -322,11 +423,17 @@ const STARTING_AREA: Area = {
   platforms: [
     { x: 0, z: -7.75, hw: 22, hd: 1.25, y: 0.14 },
     { x: 0, z: 8.75, hw: 22, hd: 1.25, y: 0.14 },
+    SHOP_STEP,
   ],
   /* The shop's doorway, closed to the camera. Same span and depth as the two
      terrace slabs it sits between, so the whole north side is solid to look at
      even though 1.6 m of it is walkable. */
-  camSolids: [{ x: 2.6, z: -ST_D + 4, hw: 0.9, hd: 4 }],
+  camSolids: [
+    { x: 2.6, z: -ST_D + 4, hw: 0.9, hd: 4 },
+    /* The archway into Market Row, closed to the camera for the same reason the
+       shop's door is: from outside, a way through is still a wall to look at. */
+    { x: ST_W - 2, z: 0.5, hw: 2, hd: 2.2 },
+  ],
   doors: [
     {
       id: 'street-to-shop',
@@ -335,9 +442,47 @@ const STARTING_AREA: Area = {
          walking at the door always crosses it. */
       trigger: { x: 2.6, z: -8.3, hw: 1.05, hd: 0.75 },
       to: 'grandpa-shop',
-      /* Inside the shop, clear of its own door trigger, looking at the counter. */
-      spawn: { x: 2.6, z: 2.6, facing: Math.PI },
+      seam: { x: 2.6, z: STREET_FACES.north },
+      /*
+       * Coming *out* of the shop: on the pavement, facing down the street.
+       *
+       * z −7.2, not −11.4. The first version put the arrival inside the shop's
+       * own building — the north terrace runs from z −17 to −9 — so stepping out
+       * of the door landed you in solid geometry and the collision pass shoved
+       * you back out through whichever wall was nearest.
+       *
+       * Facing took three tries. Math.PI faced the door you had just walked out
+       * of, which is what this was reported for. Facing 0 turned you to the
+       * street but put the camera hard against the shopfront a metre and a half
+       * behind you — the squeeze traded all of it for height and you arrived
+       * looking at the top of your own head. A quarter turn east solves both:
+       * the street runs away in front of you, and the camera has the whole
+       * length of the pavement to sit back in.
+       */
+      arrive: { x: 2.6, z: -7.2, facing: Math.PI / 2 },
       label: 'Kame Game Shop',
+    },
+    {
+      id: 'street-to-market',
+      /* Across the mouth of the arch, and deep enough to cover the whole of it,
+         so walking east out of the street always crosses it. */
+      trigger: { x: 17.4, z: 0.5, hw: 0.9, hd: 2.1 },
+      to: 'market-row',
+      seam: { x: STREET_FACES.east, z: 0.5 },
+      /*
+       * Coming back out of the arcade: well clear of the arch, turned west.
+       *
+       * x 12.5 and not 15.2, and the difference is the camera rather than the
+       * duelist. The walking shot sits four and a half metres behind you, which
+       * from 15.2 facing west is at x 19.7 — inside the east wall. `cameraReach`
+       * pulls it in to about three, `camLift` trades the metre and a half it
+       * lost for height, and you arrive looking down at the top of your own
+       * head. It is the same failure the shop's door hit facing 0, found the
+       * same way, and the fix is the same: land where the camera has somewhere
+       * to stand.
+       */
+      arrive: { x: 12.5, z: 0.5, facing: -Math.PI / 2 },
+      label: 'Market Row',
     },
   ],
   /* On the pavement outside the shop — the same place the shop's door lands
@@ -346,9 +491,182 @@ const STARTING_AREA: Area = {
   spawn: { x: 2.6, z: -7.2, facing: Math.PI / 2 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Market Row                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The covered shopping street, straight on through the arch at the east end of
+ * Turtle Lane.
+ *
+ * A shōtengai: forty-six metres of shopfronts facing each other across ten
+ * metres of paving, with a roof over the whole of it. Everything that makes the
+ * Starting Area work is reused here — buildings for walls, warm light, an edge
+ * you are stopped by rather than clamped at — and then it is asked to do the one
+ * thing that area never had to.
+ *
+ * ## An exterior with a lid
+ *
+ * The street solves the void by being taller than the camera: look up at the end
+ * of it and you see roofline, and past the roofline is black that reads as dusk
+ * sky. That works because you are outdoors and the sky is *supposed* to be up
+ * there.
+ *
+ * Market Row has a roof, so the black is not sky any more — it is a hole in the
+ * building you are standing inside. There is nowhere to look up to. The arcade
+ * canopy is therefore not decoration: it is the top wall, and it is the first
+ * enclosure in this world that runs horizontally.
+ *
+ * That changes the light, too, and this is the real difference between the two
+ * areas. A street at dusk is lit from the sky and picked out by lamps. An arcade
+ * is lit *entirely by itself* — pendants down the spine, spill out of the shop
+ * windows, and daylight only at the two ends where it opens. Nothing here is lit
+ * by anything you cannot see hanging.
+ *
+ * ## Why it is narrow, and why that is the point
+ *
+ * Ten metres between shopfronts against the street's thirty. The camera sits
+ * four and a half metres back, so walking the length of the arcade it has the
+ * whole corridor to fall into, and walking across it clamps to a shopfront in
+ * about a metre and a half. That is not a compromise — being close to things is
+ * what a market feels like, and it is why the goods are on the floor rather than
+ * behind glass.
+ */
+const MR_W = 23;   // half-length, so 46 m from the arch to the far gates
+const MR_D = 9;    // half-depth, so 18 m across, units included
+
+/** Where the two rows of shopfronts face each other. */
+const MR_FRONT = 5;
+
+/** One thing left out on the arcade floor, and what it is. */
+export type GoodsKind = 'crates' | 'bin' | 'sacks' | 'rack' | 'ice' | 'bench' | 'bicycles';
+
+export interface Goods extends Rect {
+  kind: GoodsKind;
+  /** The dominant colour, where the thing has one. */
+  tint?: string;
+}
+
+/**
+ * The goods on the arcade floor — and the only place they are written down.
+ *
+ * These are simultaneously collision and scenery, and that is the point. They
+ * are spread into `solids` below, and `world/market.ts` draws from this same
+ * list: a crate is drawn where there is a solid because it *is* the solid, not
+ * because two files were kept in step by somebody remembering to.
+ *
+ * The alternative is what the pavements taught. Those were spans in `street.ts`
+ * and nothing here knew about them, so walking onto one buried the duelist's
+ * feet to the ankle — the geometry was right and nothing was reading it. Two
+ * copies of a rectangle is two copies until the day it is one and a half.
+ *
+ * All of it is against the shopfronts, 90 cm deep at the most, so the middle of
+ * the arcade stays clear the whole way along. A market you have to slalom
+ * through is a market nobody walks down twice.
+ */
+export const MARKET_GOODS: Goods[] = [
+  { kind: 'crates',   x: -16.5, z: -4.15, hw: 1.5, hd: 0.85, tint: '#6f5a3a' },
+  { kind: 'bin',      x: -8.5,  z: -4.5,  hw: 0.35, hd: 0.35 },
+  { kind: 'sacks',    x: -6.2,  z: -4.2,  hw: 1.1, hd: 0.8 },
+  { kind: 'rack',     x: 4.8,   z: -4.45, hw: 1.3, hd: 0.55 },
+  { kind: 'crates',   x: 15.0,  z: -4.2,  hw: 1.2, hd: 0.8, tint: '#5f6a4a' },
+
+  { kind: 'ice',      x: -12.0, z: 4.1,   hw: 1.6, hd: 0.9 },
+  { kind: 'bench',    x: -1.5,  z: 4.5,   hw: 1.1, hd: 0.45 },
+  { kind: 'bicycles', x: 9.0,   z: 4.2,   hw: 1.4, hd: 0.5 },
+  { kind: 'crates',   x: 18.2,  z: 4.2,   hw: 1.0, hd: 0.8, tint: '#6a5a44' },
+];
+
+const MARKET_ROW: Area = {
+  id: 'market-row',
+  name: 'Market Row',
+  kind: 'exterior',
+  /*
+   * Due east of the Starting Area, on the far side of its east wall.
+   *
+   * x 41 is forced: the arcade's west threshold is at local −23 and the street's
+   * east face is at 18, so the origin lands 41 m east of the street's. z 0.5 is
+   * the same 0.5 the archway sits on, which is the middle of the road.
+   *
+   * Running east rather than turning north is also the only thing that fits. The
+   * street's north terrace occupies the ground from z −17 to −9 across its whole
+   * width; an arcade turning north out of the arch would have had its floor
+   * inside those buildings.
+   */
+  world: { x: 41, z: 0.5 },
+  bounds: { x: 0, z: 0, hw: MR_W - 1, hd: MR_D - 1 },
+  solids: [
+    /*
+     * The two rows of units. One slab each rather than nine, because collision
+     * only ever needs to know "there is building here" — the nine shopfronts are
+     * drawn on the front of it by `world/market.ts`, and a player who cannot
+     * reach behind them cannot tell the difference.
+     */
+    { x: 0, z: -MR_FRONT - 2, hw: MR_W, hd: 2, tall: true },
+    { x: 0, z: MR_FRONT + 2, hw: MR_W, hd: 2, tall: true },
+
+    /* West end: the arch back out to Turtle Lane, with wall either side of it.
+       The 4.4 m gap between these is the doorway, and the camera gets it back
+       as a `camSolid` below. */
+    { x: -MR_W + 1, z: -3.6, hw: 1, hd: 1.4, tall: true },
+    { x: -MR_W + 1, z: 3.6, hw: 1, hd: 1.4, tall: true },
+
+    /*
+     * East end: the far gates, shut.
+     *
+     * The arcade genuinely continues towards the station on the other side of
+     * these, and one day the shutter goes up and this solid becomes a doorway.
+     * Until then it is closed, and it is closed *visibly* — a rolled gate with a
+     * lit wall behind it — rather than being a stretch of blank building
+     * pretending the arcade was always this long. A dead end you can see the
+     * reason for is a place. One you cannot is a budget.
+     */
+    { x: MR_W - 1, z: 0, hw: 1, hd: MR_FRONT, tall: true },
+
+    /* And everything left out on the floor, which is what `MARKET_GOODS`
+       exists for: these rectangles and the crates drawn on them are the same
+       nine entries, read twice. */
+    ...MARKET_GOODS,
+  ],
+  /* The archway, closed to the camera. Standing just inside it and turning back
+     west would otherwise put the camera through the wall and into the void
+     where the street is not built. */
+  camSolids: [{ x: -MR_W + 1, z: 0, hw: 1, hd: 2.2 }],
+  doors: [
+    {
+      id: 'market-to-street',
+      /* Across the arch and as deep as it is wide, so walking west out of the
+         arcade always crosses it. */
+      trigger: { x: -20.4, z: 0, hw: 0.9, hd: 2.1 },
+      to: 'starting-area',
+      seam: { x: -MR_W, z: 0 },
+      /*
+       * Coming in under the arch: eight metres in, looking east down the length
+       * of the arcade.
+       *
+       * Which is the whole reason the arcade runs the way it does. You step
+       * through an archway and the place opens out ahead of you in one shot —
+       * forty-six metres of roof, pendants and shopfronts running away to the
+       * far gates. Arriving side-on to that would waste the only view this area
+       * has that the street cannot match.
+       *
+       * Eight and not four, and the four was measured rather than guessed at: at
+       * x −18.5 the camera wants to be at −23, which is the archway, so it came
+       * in to 3.07 and lifted to 0.17 and the arrival shot was the floor and the
+       * back of the duelist's head. From here it has its full distance and the
+       * arcade is what you see.
+       */
+      arrive: { x: -15.0, z: 0, facing: Math.PI / 2 },
+      label: 'Turtle Lane',
+    },
+  ],
+  spawn: { x: -15.0, z: 0, facing: Math.PI / 2 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
+  'market-row': MARKET_ROW,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */
@@ -508,6 +826,93 @@ export function groundAt(area: Area, x: number, z: number): number {
 /** The door whose trigger contains this point, if any. */
 export function doorAt(area: Area, x: number, z: number): Door | null {
   return area.doors.find((d) => inside(d.trigger, x, z)) ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Domino City                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How far apart two sides of one doorway may be and still be one doorway.
+ *
+ * A metre, which sounds slack and is not. Two areas model the wall between them
+ * at whatever thickness suits each of them — the shop's front wall is a metre
+ * deep, the street's terrace is eight — so demanding they agree to the
+ * centimetre would only mean typing numbers until the check went quiet, which
+ * is not the same as being right.
+ *
+ * What a metre does catch is every mistake that matters: a door put on the wrong
+ * side of a building, an area dropped in the wrong ward, a `world` offset with a
+ * sign error or a transposed digit. All of those are out by many metres, and all
+ * of them are silent without this.
+ */
+export const SEAM_TOLERANCE = 1.0;
+
+/** A point in one area's coordinates, in Domino City's. */
+export function toWorld(area: Area, x: number, z: number): { x: number; z: number } {
+  return { x: area.world.x + x, z: area.world.z + z };
+}
+
+/** A point in Domino City's coordinates, in one area's. */
+export function toLocal(area: Area, x: number, z: number): { x: number; z: number } {
+  return { x: x - area.world.x, z: z - area.world.z };
+}
+
+/**
+ * The door on the other side of this one.
+ *
+ * Matched by **where the doorway is in Domino City**, not by name and not by
+ * position in a list. Both sides declare a `seam`; the partner is the door in
+ * the target area that leads back here and whose seam is standing in the same
+ * place.
+ *
+ * Which is what makes `world` load-bearing rather than documentation. If an
+ * offset is wrong, this stops finding partners and the check says so — the
+ * numbers cannot rot quietly, because the game reads them every time anybody
+ * walks through a door.
+ *
+ * It also settles the case two areas joined twice would otherwise break: two
+ * archways between the same pair are told apart by which one you walked into,
+ * where matching on `to` alone would always pick the first.
+ */
+export function partnerOf(door: Door, from: AreaId): Door | null {
+  const here = AREAS[from];
+  const there = AREAS[door.to];
+  if (!here || !there) return null;
+  const seam = toWorld(here, door.seam.x, door.seam.z);
+  let best: Door | null = null;
+  let bestGap = SEAM_TOLERANCE;
+  for (const other of there.doors) {
+    if (other.to !== from) continue;
+    const at = toWorld(there, other.seam.x, other.seam.z);
+    const gap = Math.hypot(at.x - seam.x, at.z - seam.z);
+    if (gap <= bestGap) {
+      bestGap = gap;
+      best = other;
+    }
+  }
+  return best;
+}
+
+/**
+ * Where walking through this door puts you.
+ *
+ * The partner door's own arrival, which is the point of the whole arrangement:
+ * the numbers describing a landing in Market Row live in Market Row, and the
+ * street simply asks for them.
+ *
+ * The fallback is the target area's spawn. It should never run — `npm run areas`
+ * fails on any door without a partner — but a city with a mis-typed offset in it
+ * ought to drop the player somewhere they can stand rather than throw on the
+ * frame they walked through a door.
+ */
+export function arrivalThrough(
+  door: Door,
+  from: AreaId
+): { area: AreaId; x: number; z: number; facing: number } {
+  const target = AREAS[door.to];
+  const partner = partnerOf(door, from);
+  return { area: target.id, ...(partner ? partner.arrive : target.spawn) };
 }
 
 

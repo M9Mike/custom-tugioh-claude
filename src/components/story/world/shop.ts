@@ -28,79 +28,15 @@
  */
 
 import * as THREE from 'three';
-import { woodFloor, darkWood, plaster, ceiling, tile } from './surfaces';
-
-export interface BuiltArea {
-  /** Added to the scene as one object, removed as one object. */
-  root: THREE.Group;
-  /** Lights belong to the area and are torn down with it. */
-  dispose(): void;
-}
+import { woodFloor, darkWood, plaster, ceiling } from './surfaces';
+import { Owned, box, matt, surfaceOf, type BuiltArea } from './kit';
+export type { BuiltArea };
 
 const SHOP_W = 6.5;
 const SHOP_D = 5.5;
 const WALL_H = 3.6;
 
-/** Everything the room owns, so nothing leaks when you walk out of it. */
-class Owned {
-  readonly items: { dispose(): void }[] = [];
-  keep<T extends { dispose(): void }>(x: T): T {
-    this.items.push(x);
-    return x;
-  }
-}
 
-/**
- * A box, with the shading the whole world uses.
- *
- * `roughness: 1` and `metalness: 0` across the board on purpose: the scene is
- * lit by a handful of point and directional lights with no environment map, and
- * anything shiny in that setup goes black rather than glossy. Matte reads
- * correctly under every light in this game, which is the only test that matters.
- */
-function box(
-  own: Owned,
-  w: number, h: number, d: number,
-  material: THREE.Material,
-  x: number, y: number, z: number,
-  rotY = 0
-): THREE.Mesh {
-  const geo = own.keep(new THREE.BoxGeometry(w, h, d));
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-/**
- * A texture from one of the `surfaces` drawers, tiled and owned in one step.
- *
- * The drawers return null when the browser will not hand over a 2D context, and
- * that null has to survive all the way to the material — a flat colour is a
- * perfectly good floor, and a thrown error is a black screen. So this keeps the
- * texture only when there is one, and passes the null straight through.
- */
-function surfaceOf(
-  own: Owned,
-  make: () => THREE.Texture | null,
-  rx: number, ry: number, anisotropy: number
-): THREE.Texture | null {
-  const tex = make();
-  if (!tex) return null;
-  own.keep(tex);
-  return tile(tex, rx, ry, anisotropy);
-}
-
-function matt(own: Owned, colour: string, map?: THREE.Texture | null): THREE.MeshStandardMaterial {
-  return own.keep(new THREE.MeshStandardMaterial({
-    color: colour,
-    map: map ?? null,
-    roughness: 1,
-    metalness: 0,
-  }));
-}
 
 export function buildShop(anisotropy: number): BuiltArea {
   const own = new Owned();

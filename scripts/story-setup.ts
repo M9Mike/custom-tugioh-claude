@@ -1,0 +1,96 @@
+import { STARTER_POOL } from '../src/story/roster';
+
+/**
+ * A signed-in duelist with a sleeved deck, so a check can reach the open world.
+ *
+ * Both browser checks need the same three things before they can start — an
+ * account, a character bound to it and twenty-five cards — and neither of them
+ * is about any of that. Worse, the Story Mode end-to-end deletes the character
+ * on its way out (that is the one sanctioned way back, and it is what lets the
+ * next phone run the whole journey), so whichever check runs after it arrives to
+ * an empty account and stalls in the creation booth.
+ *
+ * Which is exactly what happened: `npm run footing` had no setup of its own and
+ * reported an area as "never reached" the first time it ran after the e2e.
+ *
+ * Local stores only. This writes a character and a deck, and neither is a thing
+ * to do to somebody's real save.
+ */
+
+const BASE_ARG = process.argv.slice(2).find((a) => !a.startsWith('--'));
+export const BASE = BASE_ARG ?? 'http://localhost:3000';
+export const NAME = 'Mike';
+
+/**
+ * Refuses anything that is not a local store, and refuses it here.
+ *
+ * The guard used to sit at the top of `door-check.ts`, which protected exactly
+ * the script that happened to have it — `footing-check.ts` was written later,
+ * writes the same character, the same deck and the same position, and had none.
+ * A rule that has to be copied into each new check is a rule that is one new
+ * check away from being missed, and the thing it is protecting is somebody's
+ * only duelist.
+ *
+ * So it lives with the writing. Anything that imports this to set a player up
+ * cannot get past this line pointed at a deployment.
+ */
+export function refuseRemote(): void {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE)) return;
+  console.error(
+    `\nRefusing to run against ${BASE}.\n\n` +
+    `This writes a character, a deck and a world position against "${NAME}".\n` +
+    `Against a deployment those are a real player's, and there is no flag for\n` +
+    `that because a flag is a thing you can forget.\n`
+  );
+  process.exit(1);
+}
+
+/** As much of a story route's reply as this script ever looks at. */
+interface Reply {
+  ok?: boolean;
+  error?: string;
+  profile?: {
+    character?: unknown;
+    deck?: unknown;
+    collection?: string[];
+  };
+}
+
+export const post = async (path: string, body: unknown): Promise<Reply> => {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<Reply>;
+};
+
+/** A duelist and a sleeved deck, so the run reaches the world. */
+export async function ensurePlayer(): Promise<void> {
+  refuseRemote();
+  const seen = await post('/api/story/login', { username: NAME });
+  if (!seen.ok) throw new Error(`cannot sign in as ${NAME}: ${seen.error ?? 'unknown'}`);
+
+  if (!seen.profile?.character) {
+    const made = await post('/api/story/character', {
+      username: NAME,
+      character: { model: 'sandra-afrika', name: NAME, stature: 0.5, tints: [] },
+    });
+    if (!made.ok) throw new Error(`cannot make a duelist: ${made.error}`);
+  }
+
+  const now = await post('/api/story/login', { username: NAME });
+  const deckNow = now.profile?.deck;
+  if (!Array.isArray(deckNow) || deckNow.length !== 25) {
+    /* The first deck is cut from the starter pool, not from the collection —
+       the collection is still empty at this point, which is the whole reason
+       the pool exists. Afterwards it is the collection, and by then there is
+       already a deck and this branch does not run. */
+    const owned: string[] = now.profile?.collection ?? [];
+    const deck = (owned.length >= 25 ? owned : STARTER_POOL).slice(0, 25);
+    const sleeved = await post('/api/story/deck', { username: NAME, deck });
+    if (!sleeved.ok) throw new Error(`cannot sleeve a deck: ${sleeved.error}`);
+  }
+}
+
+

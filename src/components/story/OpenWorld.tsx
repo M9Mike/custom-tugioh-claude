@@ -1,18 +1,21 @@
 'use client';
 
 /**
- * The open world, such as it is so far: a grass field, a sky, and your duelist
- * standing in it.
+ * The open world: the areas of Domino City, your duelist, and everything that
+ * moves them.
  *
- * Nothing is placed in it yet on purpose — what goes here is not decided, and a
- * field with a walkable character, a following camera and a save is the piece
- * that everything else will be attached to. So this file is written as the
- * *harness*: ground, weather, input, camera, persistence. Adding a thing to the
- * world should be adding a thing, not rewriting this.
+ * This file is the *harness* — input, camera, collision, doors, persistence —
+ * and deliberately not a place. What each area looks like is `world/`, which
+ * this calls into by id; adding an area should be adding an area, not rewriting
+ * this.
  *
- * Everything is generated at runtime — the grass texture is drawn into a canvas
- * on load and the field is one instanced mesh — so the whole world downloads as
- * code and costs no assets at all.
+ * It began as one grass field with a radius, and the comments in here said so
+ * for a while after it stopped being true. It is rooms and streets now, built
+ * one at a time from `story/areas.ts` and thrown away on the way out.
+ *
+ * Everything is still generated at runtime — every texture is drawn into a
+ * canvas on load — so the whole world downloads as code and costs no assets at
+ * all. The only files are the characters.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +25,7 @@ import { WORLD_NPCS, type WorldNpc } from '@/story/npcs';
 import {
   areaById,
   doorAt,
+  arrivalThrough,
   landing,
   settle,
   PLAYER_RADIUS,
@@ -30,8 +34,10 @@ import {
   groundAt,
   cameraReach,
 } from '@/story/areas';
-import { buildShop, type BuiltArea } from './world/shop';
+import type { BuiltArea } from './world/kit';
+import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
+import { buildMarket } from './world/market';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -191,8 +197,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * response is parsed JSON, so the character has a new identity even though
    * every field in it is the same. With the effect below keyed on that, pressing
    * Save tore down the renderer and rebuilt the sky, the ground texture and all
-   * sixteen thousand tufts of grass — a visible stall on a phone, in exchange
-   * for nothing, and it reset the camera angle while it was at it.
+   * every mesh in the area — a visible stall on a phone, in exchange for
+   * nothing, and it reset the camera angle while it was at it.
    *
    * State with a lazy initialiser rather than a ref, because this *is* read
    * while rendering and a ref read during render is a different bug waiting to
@@ -268,6 +274,21 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        their own lighting because a shop and a street at dusk want completely
        different light, and passing one rig between them would mean tuning it
        for neither. */
+    /*
+     * Which builder draws which area.
+     *
+     * It used to be `kind === 'interior' ? shop : street`, which worked for
+     * exactly as long as there was one of each. Market Row is an exterior and is
+     * nothing like the street, and every area after it is its own place too — so
+     * the mapping is by id, and a new area that forgets to add itself here is a
+     * type error rather than a street with the wrong name on it.
+     */
+    const BUILDERS: Record<AreaId, (anisotropy: number) => BuiltArea> = {
+      'grandpa-shop': buildShop,
+      'starting-area': buildStreet,
+      'market-row': buildMarket,
+    };
+
     let built: BuiltArea | null = null;
     let area = areaById(areaRef.current);
     const anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -280,7 +301,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       }
       area = areaById(id);
       areaRef.current = area.id;
-      built = area.kind === 'interior' ? buildShop(anisotropy) : buildStreet(anisotropy);
+      built = BUILDERS[area.id](anisotropy);
       scene.add(built.root);
       populate(area.id);
       setEntered(area.name);
@@ -288,11 +309,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
 
 
     /* ---- the duelist ----
-       Fetched, not constructed: the model is a file. The field does not wait
-       for it — ground, sky and grass are all runtime-made and appear at once —
-       and the duelist steps onto it the moment the fetch lands, usually from
-       cache. Until then there is a field with nobody in it, which is a truthful
-       picture of the situation. */
+       Fetched, not constructed: the model is a file. The area does not wait
+       for it — every surface in it is runtime-made and appears at once — and
+       the duelist steps into it the moment the fetch lands, usually from cache.
+       Until then there is a room with nobody in it, which is a truthful picture
+       of the situation. */
     let rig: PremadeRig | null = null;
     let gone = false;
     buildPremadeRig(character)
@@ -625,14 +646,23 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         if (crossing.t >= 1 && !crossing.swapped) {
           crossing.swapped = true;
           const { door } = crossing;
+          /*
+           * Asked before `enter`, which reassigns `area`.
+           *
+           * The landing belongs to the door on the *other* side — the one you
+           * would come back through — so working it out needs to know which area
+           * you are walking out of, and a moment later that is no longer this
+           * one.
+           */
+          const to = arrivalThrough(door, area.id);
           enter(door.to);
-          p.x = door.spawn.x;
-          p.z = door.spawn.z;
-          p.facing = door.spawn.facing;
-          heading = door.spawn.facing;
+          p.x = to.x;
+          p.z = to.z;
+          p.facing = to.facing;
+          heading = to.facing;
           /* Put the camera behind the arrival heading, so you step out of a door
              looking where you are going rather than at the door you just used. */
-          camYaw = door.spawn.facing + Math.PI;
+          camYaw = to.facing + Math.PI;
           camPitch = 0.24;
           if (rig) {
             rig.root.position.set(p.x, 0, p.z);
