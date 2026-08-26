@@ -10,7 +10,7 @@ import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookO
 import { changesAnything, faceUpOnSide, matchesFilter, revivable } from './targeting';
 /* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
    targeting rules from `targeting.ts` now, not from here. */
-import { targetCandidates, targetSpecFor } from './ui';
+import { targetCandidates, targetSpecFor, worthAsking } from './ui';
 /* Re-exported because they lived here for the whole of this game's history and
    dozens of callers — the board, the checks, the harnesses — import them from
    the engine. Moving the file they live in should not move everyone's import. */
@@ -3136,7 +3136,12 @@ function raiseChoice(
      of the two on the board is a decision, and so is taking neither. A
      compulsory pick with no room to choose is not, and goes straight through. */
   const optional = optionalPick(c.slug, trigger);
-  if (optional ? options.length === 0 : options.length <= want) return false;
+  /* `worthAsking`, not a count: two copies of Keldo in a Deck are one answer,
+     and laying them side by side asks the player to pick a card off a shuffled
+     pile at random and call it a decision. The board asks the same function —
+     it has to, or it raises a question the engine would have skipped and the
+     answer matches nothing. */
+  if (optional ? options.length === 0 : !worthAsking(spec, options, want)) return false;
 
   const from = whereIs(state, c.uid);
   if (!from) return false;

@@ -60,6 +60,42 @@ export interface TargetSpec {
   changing?: string;
 }
 
+/**
+ * The zones where two cards of the same name are two different answers.
+ *
+ * On the field they always are: one Summoned Skull is wearing an Axe of
+ * Despair and kneeling, the other is standing bare, and "destroy one of them"
+ * is a real decision. Everywhere else — a hand, a Deck, a Graveyard — a card
+ * is only its name, and `resetInstance` has already wiped anything that could
+ * have told the copies apart.
+ */
+const LIVE_ZONES = new Set<TargetSpec['zone']>(['monster', 'spellTrap', 'backrow']);
+
+/**
+ * Whether this pool holds a decision, which is not the same as holding more
+ * cards than the effect will take.
+ *
+ * Two copies of Keldo in your Deck are one answer, not two, and a prompt that
+ * lays them side by side is asking the player to pick a card off a shuffled
+ * pile at random and call it a choice. The board's own type already says so —
+ * see the note on `handOrDeck`, "the copy you hold and the copy you have not
+ * drawn are the same option to the player" — but the rule had never reached
+ * the question of whether to ask at all.
+ *
+ * The test is not "more than one distinct name", because an effect taking two
+ * cards out of two copies of A and one B has a genuine choice between A+A and
+ * A+B. It is: more cards than we will take, AND more than one name among them.
+ *
+ * Asked by the engine in `raiseChoice` and by the board before it sends an
+ * action. Both, or they disagree — and a board that asks a question the engine
+ * would not raise is how a pick ends up matching nothing at all.
+ */
+export function worthAsking(spec: TargetSpec, options: CardInstance[], want: number): boolean {
+  if (options.length <= want) return false;
+  if (LIVE_ZONES.has(spec.zone)) return true;
+  return new Set(options.map((c) => c.slug)).size > 1;
+}
+
 function scanOps(ops: Op[], owner: string): TargetSpec | null {
   for (const op of ops) {
     if (op.op === 'coinFlip') {

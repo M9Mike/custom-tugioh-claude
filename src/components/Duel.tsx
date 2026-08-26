@@ -31,7 +31,7 @@ import {
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
-import { pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '@/game/ui';
+import { pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -906,7 +906,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       // as many, or fewer: name them and go, rather than opening a prompt with
       // nothing to decide. A summon whose effect has no legal target at all
       // still happens — the monster is the point, its effect is a bonus.
-      if (options.length > want) {
+      if (mustAsk(spec, uid, want)) {
         setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], summon: { position, face, tributes } });
         return;
       }
@@ -924,18 +924,32 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      alike. It was a closure in here, so the only way to test it was to
      re-implement it — and a test that re-implements the rule agrees with the
      bug it is meant to catch. */
-  const pickableUids = useCallback(
+  const pickable = useCallback(
     /* `exclude` is the card doing the asking — see `targetCandidates`, which
        owns that rule now rather than the engine keeping it to itself. Required
        rather than optional: seven of the eight callers passed it and the eighth
        was `targetableSet`, the one every picker on screen draws from, so Gamma
        the Magnet Warrior offered itself as a Magnet Warrior to Special Summon.
        A rule that can be forgotten at one call site will be. */
-    (spec: TargetSpec, exclude: string): string[] =>
-      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true, exclude).map(
-        (c) => c.uid
-      ),
+    (spec: TargetSpec, exclude: string): CardInstance[] =>
+      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true, exclude),
     [state, me]
+  );
+
+  /** The same pool as uids, which is what every picker on screen wants. */
+  const pickableUids = useCallback(
+    (spec: TargetSpec, exclude: string): string[] => pickable(spec, exclude).map((c) => c.uid),
+    [pickable]
+  );
+
+  /**
+   * Whether to open a modal at all, asked of the rule the engine asks — see
+   * `worthAsking`. Two copies of one card in a Deck are one answer, and the
+   * board used to lay them out as two.
+   */
+  const mustAsk = useCallback(
+    (spec: TargetSpec, exclude: string, want: number): boolean => worthAsking(spec, pickable(spec, exclude), want),
+    [pickable]
   );
 
   /**
@@ -990,7 +1004,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       if (rider) {
         const riderOptions = pickableUids(rider, uid);
         const riderWant = rider.count ?? 1;
-        if (riderOptions.length > riderWant) {
+        if (mustAsk(rider, uid, riderWant)) {
           setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: [], effectIndex });
           return;
         }
@@ -1033,7 +1047,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        than sending an empty list and hoping the engine guesses the same way.
        It did not always: `destroy` fell back to the strongest legal card while
        the damage beside it read the target list and found nothing. */
-    if (options.length <= want) {
+    if (!mustAsk(spec, uid, want)) {
       send(source, uid, options.slice(0, want), effectIndex);
       return;
     }
@@ -1064,7 +1078,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       const choice = !carry ? summonChoiceSpec(slug, 'activate') : null;
       if (choice) {
         const options = pickableUids(choice, uid);
-        if (options.length > 1) {
+        if (mustAsk(choice, uid, 1)) {
           setMode({ kind: 'target', source, uid, spec: choice, picked: [], carry: answers });
           return;
         }
@@ -1073,7 +1087,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           const solo = chosenSummonRider(options[0]);
           if (solo) {
             const riderOptions = pickableUids(solo, uid);
-            if (riderOptions.length > (solo.count ?? 1)) {
+            if (mustAsk(solo, uid, solo.count ?? 1)) {
               setMode({ kind: 'target', source, uid, spec: solo, picked: [], carry: chosen });
               return;
             }
@@ -1090,7 +1104,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         const rider2 = picked.length === 1 ? chosenSummonRider(picked[0]) : null;
         if (rider2) {
           const riderOptions = pickableUids(rider2, uid);
-          if (riderOptions.length > (rider2.count ?? 1)) {
+          if (mustAsk(rider2, uid, rider2.count ?? 1)) {
             setMode({ kind: 'target', source, uid, spec: rider2, picked: [], carry: answers, effectIndex });
             return;
           }
@@ -1105,7 +1119,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       if (rider) {
         const options = pickableUids(rider, uid);
         const want = rider.count ?? 1;
-        if (options.length > want) {
+        if (mustAsk(rider, uid, want)) {
           setMode({ kind: 'target', source, uid, spec: rider, picked: [], carry: answers, effectIndex });
           return;
         }
