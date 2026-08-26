@@ -30,13 +30,14 @@
  * a Discard button would be a way to walk out still broken.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CARDS } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
 import type { CardInstance } from '@/game/types';
 import { DECK_SIZE, validateDeck } from '@/story/roster';
+import { TRUNK_SORTS, deckOrder, searchCards, trunkOrder, type TrunkSort } from '@/story/deckSort';
 import { sfx } from '@/lib/sfx';
 
 interface Props {
@@ -50,18 +51,146 @@ interface Props {
   onCancel?: () => void;
 }
 
+/**
+ * One card in the grid.
+ *
+ * **Declared here, at module scope, and that is the whole point.** It used to be
+ * a function defined inside `DeckBuilder`, which makes it a *different component
+ * type* on every render — so React threw away every card and built them all
+ * again whenever anything changed, and each new `<img>` re-fetched and re-decoded
+ * its artwork. That was the flash: not the card moving, but a hundred cards
+ * being destroyed and recreated because one of them was tapped.
+ *
+ * At module scope the type is stable, so a move is a reorder of existing nodes
+ * and the artwork never reloads. `React.memo` then keeps a card from re-rendering
+ * at all unless its own props changed, which is what lets the FLIP transforms
+ * survive the frame they are set in.
+ */
+const Card = memo(function Card({
+  slug,
+  held,
+  card,
+  onPick,
+  onRead,
+}: {
+  slug: string;
+  held: boolean;
+  card: CardInstance;
+  onPick: (slug: string) => void;
+  onRead: (slug: string) => void;
+}) {
+  return (
+    <div
+      data-card={slug}
+      data-where={held ? 'deck' : 'trunk'}
+      className="relative will-change-transform"
+    >
+      <button
+        type="button"
+        onClick={() => onPick(slug)}
+        aria-pressed={held}
+        aria-label={`${held ? 'Move to Trunk' : 'Add to Deck'}: ${CARDS[slug]?.name ?? slug}`}
+        data-move={slug}
+        className={`w-full rounded text-left ${held ? 'selectable' : 'opacity-80'}`}
+      >
+        <GameCard card={card} compact />
+        <p className="mt-0.5 truncate text-center text-[8px] leading-tight text-ptextdim">
+          {CARDS[slug]?.name ?? slug}
+        </p>
+      </button>
+      {/*
+        * Reading a card is its own button.
+        *
+        * Tapping the card used to do both — move it *and* open it in the strip —
+        * which meant there was no way to find out what a card did without also
+        * putting it somewhere. You would tap to read, and the card left the list
+        * you were reading it in.
+        *
+        * So the card moves and this reads. It sits over the corner rather than
+        * beside the card because the grid is eight across on a laptop and there
+        * is no room for a second control in the flow; `pointer-events` are only
+        * on the button itself, so the rest of the card is still one big target.
+        */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRead(slug);
+        }}
+        data-read={slug}
+        aria-label={`Read ${CARDS[slug]?.name ?? slug}`}
+        className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full border border-brassdim bg-ink/85 text-[10px] font-bold leading-none text-brassbright hover:bg-ink"
+      >
+        i
+      </button>
+    </div>
+  );
+});
+
 export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel }: Props) {
   const [chosen, setChosen] = useState<string[]>(() => (initial ?? []).filter((s) => pool.includes(s)));
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** How the Trunk is ordered. The Deck's order is fixed — see `deckSort.ts`. */
+  const [sort, setSort] = useState<TrunkSort>('type');
+  const [query, setQuery] = useState('');
 
   const inDeck = useMemo(() => new Set(chosen), [chosen]);
   const complete = chosen.length === DECK_SIZE;
 
-  /** What is left in the Trunk: owned, and not currently sleeved. */
-  const trunk = useMemo(() => pool.filter((s) => !inDeck.has(s)), [pool, inDeck]);
+  /**
+   * The Deck, in its one canonical order.
+   *
+   * Sorted for display only — `chosen` keeps the order things were added in, and
+   * that is what gets saved. Nothing downstream cares about a deck's order, and
+   * re-sorting the stored list would make every tap look like it rearranged the
+   * whole deck in the save as well as on screen.
+   */
+  const deckShown = useMemo(() => deckOrder(chosen), [chosen]);
+
+  /** What is left in the Trunk: owned, not sleeved, matching the search, sorted. */
+  const trunk = useMemo(
+    () => trunkOrder(searchCards(pool.filter((s) => !inDeck.has(s)), query), sort),
+    [pool, inDeck, query, sort]
+  );
+  /** How many are hidden by the search, so the count can be honest about it. */
+  const trunkTotal = useMemo(() => pool.filter((s) => !inDeck.has(s)).length, [pool, inDeck]);
+
+  /** Everything the grid draws, in one list — see the note at the grid. */
+  type Row =
+    | { kind: 'card'; key: string; slug: string; held: boolean }
+    | { kind: 'heading'; key: string; label: string; tone: 'deck' | 'trunk' }
+    | { kind: 'note'; key: string; label: string };
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [
+      { kind: 'heading', key: 'h-deck', label: `Deck · ${chosen.length}/${DECK_SIZE}`, tone: 'deck' },
+    ];
+    if (chosen.length === 0) {
+      out.push({ kind: 'note', key: 'n-deck', label: 'Nothing sleeved yet. Tap cards in the Trunk below.' });
+    }
+    for (const slug of deckShown) out.push({ kind: 'card', key: slug, slug, held: true });
+    out.push({
+      kind: 'heading',
+      key: 'h-trunk',
+      label: query.trim()
+        ? `Trunk · ${trunk.length} of ${trunkTotal}`
+        : `Trunk · ${trunk.length}`,
+      tone: 'trunk',
+    });
+    if (trunk.length === 0) {
+      out.push({
+        kind: 'note',
+        key: 'n-trunk',
+        label: query.trim()
+          ? `Nothing in the Trunk matches “${query.trim()}”.`
+          : 'Every card you own is in your deck.',
+      });
+    }
+    for (const slug of trunk) out.push({ kind: 'card', key: slug, slug, held: false });
+    return out;
+  }, [chosen, deckShown, trunk, trunkTotal, query]);
 
   /**
    * Whether the deck already stored is one this screen may be left on.
@@ -83,6 +212,99 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     return new Map(pool.map((slug, i) => [slug, list[i]]));
   }, [pool]);
 
+  /* ------------------------------------------------------------------ */
+  /* Moving a card looks like moving a card                              */
+  /* ------------------------------------------------------------------ */
+
+  const gridRef = useRef<HTMLDivElement>(null);
+  /** Where every card was before this change, so the move can be played backwards. */
+  const wasAt = useRef(new Map<string, DOMRect>());
+  /** The card the player just tapped, which gets the lift the others do not. */
+  const justMoved = useRef<string | null>(null);
+  /**
+   * Whether the inspector was open when the photograph was taken.
+   *
+   * The detail strip appears above the grid on the first tap and pushes every
+   * card down by its height. That is a real move and FLIP would dutifully animate
+   * it — a hundred cards sliding at once because you looked at one. It is not a
+   * card moving between lists, so the first tap is left alone.
+   */
+  const panelWasOpen = useRef(false);
+
+  /** Photograph the grid, called before the state that rearranges it. */
+  const rememberPositions = () => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const map = new Map<string, DOMRect>();
+    for (const el of grid.querySelectorAll<HTMLElement>('[data-card]')) {
+      const slug = el.dataset.card;
+      if (slug) map.set(slug, el.getBoundingClientRect());
+    }
+    wasAt.current = map;
+  };
+
+  /**
+   * FLIP: First, Last, Invert, Play.
+   *
+   * Every card that has moved since the last render is put *back* where it was
+   * with a transform, and then released — so the browser animates it from its old
+   * position to its new one in one go, on the compositor, without React knowing
+   * anything about it. This is the standard trick and it is the only one that
+   * survives a reflowing grid: the cards after the gap all shuffle up by a slot
+   * too, and they should be seen to.
+   *
+   * `useLayoutEffect`, not `useEffect` — the inverting transform has to be
+   * applied in the same frame as the reorder, or the card is briefly drawn at its
+   * destination and the animation starts from the wrong place, which looks like
+   * the jump it is meant to hide.
+   */
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    const before = wasAt.current;
+    if (!grid || before.size === 0) return;
+
+    const moved = justMoved.current;
+    justMoved.current = null;
+
+    /* The strip opening is a layout change, not a move. Skip that one frame. */
+    const panelOpenNow = inspect !== null;
+    const panelJustOpened = panelOpenNow && !panelWasOpen.current;
+    panelWasOpen.current = panelOpenNow;
+    if (panelJustOpened) {
+      wasAt.current = new Map();
+      return;
+    }
+
+    for (const el of grid.querySelectorAll<HTMLElement>('[data-card]')) {
+      const slug = el.dataset.card;
+      if (!slug) continue;
+      const from = before.get(slug);
+      if (!from) continue;
+      const to = el.getBoundingClientRect();
+      const dx = from.left - to.left;
+      const dy = from.top - to.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+
+      const lifted = slug === moved;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)${lifted ? ' scale(1.08)' : ''}`;
+      el.style.zIndex = lifted ? '20' : '';
+      /* Read once to commit the inverted position before releasing it. */
+      void el.offsetWidth;
+      el.style.transition = lifted
+        ? 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
+        : 'transform 260ms cubic-bezier(0.4, 0, 0.2, 1)';
+      el.style.transform = '';
+      const clear = () => {
+        el.style.transition = '';
+        el.style.zIndex = '';
+        el.removeEventListener('transitionend', clear);
+      };
+      el.addEventListener('transitionend', clear);
+    }
+    wasAt.current = new Map();
+  }, [chosen, inspect]);
+
   /**
    * A card moves across, and the strip above opens it.
    *
@@ -94,9 +316,12 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
    * before a re-render would otherwise both build their new list from the same
    * stale array and the second would undo the first.
    */
-  const toggle = (slug: string) => {
+  const toggle = useCallback((slug: string) => {
     setError(null);
-    setInspect(instances.get(slug) ?? null);
+    /* Photographed before the state changes, so the effect below has a "before"
+       to animate from. */
+    rememberPositions();
+    justMoved.current = slug;
     if (inDeck.has(slug)) {
       sfx.flip();
       setChosen((cur) => cur.filter((s) => s !== slug));
@@ -109,7 +334,19 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     }
     sfx.place();
     setChosen((cur) => (cur.includes(slug) || cur.length >= DECK_SIZE ? cur : [...cur, slug]));
-  };
+    /* `chosen` and `inDeck` are read here, so the identity changes when the deck
+       does — which is fine and is not the render-per-keystroke case `memo` is
+       guarding against. */
+  }, [chosen, inDeck]);
+
+  /** Open a card in the strip above, and move nothing. */
+  const read = useCallback(
+    (slug: string) => {
+      sfx.click();
+      setInspect((cur) => (cur?.slug === slug ? null : instances.get(slug) ?? null));
+    },
+    [instances]
+  );
 
   /* See the note on the same guard in the creation booth: `busy` is state and
      does not take effect until the next render, so a fast double-tap can post
@@ -139,28 +376,6 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
       setAsking(false);
       sleeving.current = false;
     }
-  };
-
-  const Card = ({ slug, held }: { slug: string; held: boolean }) => {
-    const card = instances.get(slug);
-    if (!card) return null;
-    return (
-      <button
-        key={slug}
-        type="button"
-        onClick={() => toggle(slug)}
-        aria-pressed={held}
-        aria-label={CARDS[slug]?.name ?? slug}
-        data-card={slug}
-        data-where={held ? 'deck' : 'trunk'}
-        className={`relative rounded text-left transition-transform ${held ? 'selectable -translate-y-0.5' : 'opacity-80'}`}
-      >
-        <GameCard card={card} compact />
-        <p className="mt-0.5 truncate text-center text-[8px] leading-tight text-ptextdim">
-          {CARDS[slug]?.name ?? slug}
-        </p>
-      </button>
-    );
   };
 
   return (
@@ -197,46 +412,103 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
         </p>
       </div>
 
+      {/*
+        * Sorting and searching, for the Trunk only.
+        *
+        * The Deck deliberately has no controls: it is one canonical order so that
+        * a deck looks the same every time it is opened. The Trunk is the pile you
+        * rummage in, and it grows every time you win, so it gets both.
+        */}
+      <div className="mb-2 flex shrink-0 items-center gap-1.5">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search the Trunk"
+          aria-label="Search the Trunk"
+          data-trunk-search
+          className="min-w-0 flex-1 rounded border border-stoneline bg-black/40 px-2 py-1.5 text-[11px] text-parchment placeholder:text-ptextdim/70"
+        />
+        <div className="flex shrink-0 gap-1" role="group" aria-label="Sort the Trunk">
+          {TRUNK_SORTS.map((s2) => (
+            <button
+              key={s2.key}
+              type="button"
+              data-sort={s2.key}
+              aria-pressed={sort === s2.key}
+              onClick={() => {
+                sfx.click();
+                rememberPositions();
+                setSort(s2.key);
+              }}
+              className={`btn rounded px-2 py-1.5 text-[10px] ${sort === s2.key ? 'btn-primary' : ''}`}
+            >
+              {s2.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {inspect && (
         <div className="mb-2 shrink-0">
           <CardDetail card={inspect} onClose={() => setInspect(null)} layout="row" />
         </div>
       )}
 
-      <div className="thin-scroll min-h-0 flex-1 overflow-y-auto pb-2">
-        <section aria-label="Deck" data-section="deck">
-          <h2 className="sticky top-0 z-10 -mx-1 bg-ink/95 px-1 py-1 font-display text-[11px] uppercase tracking-wider text-brassbright">
-            Deck · {chosen.length}/{DECK_SIZE}
-          </h2>
-          {chosen.length === 0 ? (
-            <p className="px-1 py-3 text-[11px] text-ptextdim">
-              Nothing sleeved yet. Tap cards in the Trunk below.
-            </p>
-          ) : (
-            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-8">
-              {chosen.map((slug) => (
-                <Card key={slug} slug={slug} held />
-              ))}
-            </div>
+      {/*
+        * One grid, not two.
+        *
+        * The Deck and the Trunk used to be separate `<section>`s with a grid
+        * each, which is the obvious way to lay out two lists and the reason a
+        * card *flashed* every time it moved: React cannot move a DOM node
+        * between two parents, so it destroyed the card in one grid and built a
+        * new one in the other, and the new one re-fetched and re-decoded its
+        * artwork. The card you tapped visibly blinked out and back.
+        *
+        * Here every card lives in the same container for its whole life, keyed by
+        * its own slug, with the two headings as full-width grid items between
+        * them. Moving a card is now a reorder — React keeps the same element,
+        * the same `<img>`, and nothing reloads. That alone kills the flash; the
+        * animation below is what turns it into a move you can follow.
+        */}
+      <div ref={gridRef} className="thin-scroll min-h-0 flex-1 overflow-y-auto pb-2">
+        {/*
+          * One flat children array, headings included.
+          *
+          * Splitting it as `{heading}{chosen.map()}{heading}{trunk.map()}` looks
+          * identical and is not: React matches keys *within a single array*, so
+          * `chosen.map()` and `trunk.map()` are two separate reconciliation
+          * scopes and a card moving between them is still an unmount and a
+          * remount — the exact thing this was all meant to stop. Flattened, every
+          * child sits in one array, a move is a reorder, and the element (and its
+          * decoded artwork) survives.
+          */}
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-8">
+          {rows.map((row) =>
+            row.kind === 'card' ? (
+              <Card
+                key={row.key}
+                slug={row.slug}
+                held={row.held}
+                card={instances.get(row.slug)!}
+                onPick={toggle}
+                onRead={read}
+              />
+            ) : row.kind === 'heading' ? (
+              <h2
+                key={row.key}
+                className={`col-span-full sticky top-0 z-10 -mx-1 bg-ink/95 px-1 py-1 font-display text-[11px] uppercase tracking-wider ${
+                  row.tone === 'deck' ? 'text-brassbright' : 'mt-3 text-ptextdim'
+                }`}
+              >
+                {row.label}
+              </h2>
+            ) : (
+              <p key={row.key} className="col-span-full px-1 py-3 text-[11px] text-ptextdim">
+                {row.label}
+              </p>
+            )
           )}
-        </section>
-
-        <section aria-label="Trunk" data-section="trunk" className="mt-3">
-          <h2 className="sticky top-0 z-10 -mx-1 bg-ink/95 px-1 py-1 font-display text-[11px] uppercase tracking-wider text-ptextdim">
-            Trunk · {trunk.length}
-          </h2>
-          {trunk.length === 0 ? (
-            <p className="px-1 py-3 text-[11px] text-ptextdim">
-              Every card you own is in your deck.
-            </p>
-          ) : (
-            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-8">
-              {trunk.map((slug) => (
-                <Card key={slug} slug={slug} held={false} />
-              ))}
-            </div>
-          )}
-        </section>
+        </div>
       </div>
 
       <div className="shrink-0 border-t border-stoneline pt-2">

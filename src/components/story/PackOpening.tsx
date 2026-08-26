@@ -1,11 +1,15 @@
 'use client';
 
 /**
- * The Thrill of the Pull.
+ * The Thrill of the Pull — the screen, not the words.
  *
  * You beat somebody, you get a pack, and the pack is made of *their* deck. This
  * screen is the moment between those two things, and its whole job is to make
  * three cards take longer than three cards need to take.
+ *
+ * The mechanic's name is not printed on it. It went there first and read as
+ * marketing: the player knows what is happening, and "Tony's Deck" over three
+ * face-down cards says all of it.
  *
  * ## Why it is a tap and not an animation
  *
@@ -69,9 +73,11 @@ export default function PackOpening({ pack, from, onDone }: Props) {
   return (
     <main className="safe-page fixed inset-0 z-50 grid place-items-center bg-black/90 p-4" data-pack>
       <div className="panel grain w-full max-w-lg rounded p-5 text-center">
-        <p className="font-display text-[11px] uppercase tracking-[0.2em] text-ptextdim">The Thrill of the Pull</p>
-        <h1 className="mt-1 font-display text-xl text-brassbright sm:text-2xl">
-          {from}&rsquo;s pack
+        {/* The heading says whose deck this came out of and nothing else. The
+            mechanic had its name printed over it — which is a thing to call a
+            feature in a changelog, not a thing to read every time you win. */}
+        <h1 className="font-display text-xl text-brassbright sm:text-2xl">
+          {from}&rsquo;s Deck
         </h1>
         <div className="brass-rule mx-auto my-3 w-40" />
 

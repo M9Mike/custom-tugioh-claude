@@ -58,7 +58,8 @@
     "rigged": "node --max-old-space-size=8192 scripts/import-rigged.mjs",
     "ai-honesty": "tsx scripts/ai-honesty-check.ts",
     "coplanar": "node scripts/coplanar-check.mjs",
-    "packs": "tsx scripts/pack-check.ts"
+    "packs": "tsx scripts/pack-check.ts",
+    "sort": "tsx scripts/sort-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

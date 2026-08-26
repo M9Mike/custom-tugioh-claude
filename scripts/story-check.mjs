@@ -346,7 +346,11 @@ async function run(phoneName) {
 
   /* ---- the first deck ---- */
   if (at === 'deck') {
-    const cards = page.locator('main button[aria-pressed]');
+    /* `[data-card]` rather than `button[aria-pressed]`: a card is a wrapper with
+       a move button and a read button inside it now, and the Trunk's sort
+       controls are pressed-state buttons too, so the old selector counted four
+       extra. */
+    const cards = page.locator('main [data-card]');
     const offered = await cards.count();
     check(offered === 34, 'thirty-four cards are offered', `saw ${offered}`);
 
@@ -362,8 +366,8 @@ async function run(phoneName) {
     }
 
     for (let i = 0; i < 25; i++) {
-      await cards.nth(i).scrollIntoViewIfNeeded();
-      await cards.nth(i).dispatchEvent('click');
+      await cards.nth(i).locator('[data-move]').scrollIntoViewIfNeeded();
+      await cards.nth(i).locator('[data-move]').dispatchEvent('click');
     }
     await page.waitForTimeout(300);
     check(
@@ -379,7 +383,7 @@ async function run(phoneName) {
      * offset lands in the Deck — where a tap legitimately *removes* a card, so
      * nothing was refused and the check failed on a screen that was working.
      */
-    const spare = page.locator('[data-where="trunk"]').first();
+    const spare = page.locator('[data-where="trunk"] [data-move]').first();
     await spare.scrollIntoViewIfNeeded();
     await spare.dispatchEvent('click');
     await page.waitForTimeout(200);
@@ -613,11 +617,11 @@ async function run(phoneName) {
     check(inTrunk >= 0, 'and the trunk holds the rest', `${inTrunk} in the trunk`);
 
     /* An illegal deck cannot be saved, which is the whole of the rule. */
-    await page.locator('[data-where="deck"]').first().dispatchEvent('click');
+    await page.locator('[data-where="deck"] [data-move]').first().dispatchEvent('click');
     await page.waitForTimeout(400);
     const refused = !(await page.locator('[data-save-deck]').isEnabled());
     check(refused, 'a deck of 24 cannot be saved');
-    await page.locator('[data-where="trunk"]').first().dispatchEvent('click');
+    await page.locator('[data-where="trunk"] [data-move]').first().dispatchEvent('click');
     await page.waitForTimeout(400);
     check(await page.locator('[data-save-deck]').isEnabled(), 'and putting it back allows it again');
     await fs.writeFile(`${OUT}/${phoneName}-8-collection.png`, await page.screenshot());
