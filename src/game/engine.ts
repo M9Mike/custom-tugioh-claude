@@ -867,6 +867,14 @@ function resetInstance(c: CardInstance) {
      revived by Time Machine must not still be wearing Zoa's name. Cleared on
      every arrival; only the Special Summon that caused it writes it back. */
   c.summonedBy = undefined;
+  /* And Crawling Dragon's running tally of its own returns, which is why its
+     ATK reverts to the printed body the moment it leaves the field any way but
+     battle: this ceremony is performed on every road off a zone — Graveyard,
+     banishment, back to the hand, shuffled into the Deck — so there is nowhere
+     the count can survive. The one beat that still needs it is the battle
+     death that earns the next return, and `destroyCard` lends it back across
+     exactly that beat rather than letting it live here. */
+  c.revivals = undefined;
 }
 
 /**
@@ -1646,9 +1654,18 @@ function destroyCard(
   // finds the board full and quietly does nothing, even though the space it
   // just gave up is exactly where the replacement should go.
   // The one site in the game that is genuinely a destruction.
+  /* Read before the body leaves, because `toGrave` performs `resetInstance` on
+     the way and that is where the count is wiped. Crawling Dragon's return is
+     heavier every time, and the beat that decides how heavy fires from the
+     Graveyard — so the tally is lent back across exactly that beat and taken
+     away again. Kept out of the instance's own life on purpose: every other
+     road off the field then reverts it to its printed body for free. */
+  const owedReturns = c.revivals;
   toGrave(state, c.uid, true, true);
   if (byBattle && found.zone === 'monster') {
+    c.revivals = owedReturns;
     fireTriggers(state, c, found.controller, 'onDestroyedByBattle', ctx?.trig ?? {});
+    c.revivals = undefined;
   }
   queueDestroyWindow(state, found.controller);
   return true;
@@ -2183,14 +2200,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            the clock, not one: it is decremented at the end of every affected
            player's turn, and this is written during the *opponent's* battle,
            so one turn would expire before its owner ever came round. */
+        /* Heavier EVERY time, not once. The bonus was flat, so a dragon that
+           had already clawed back twice still returned at printed + 200 — it
+           got no further for dying again. The count rides on the instance and
+           is cleared by every other kind of arrival, which is what makes
+           leaving the field another way revert it. */
+        const times = (ctx.source.revivals ?? 0) + 1;
         state.ongoing.push({
           id: `revive-${ctx.source.uid}`,
           source: ctx.source.slug,
           kind: 'pendingRevival',
           target: ctx.controller,
           turns: 2,
-          atkBonus: op.atk ?? 0,
-          defBonus: op.def ?? 0,
+          atkBonus: (op.atk ?? 0) * times,
+          defBonus: (op.def ?? 0) * times,
+          revivals: times,
         });
         log(state, `${displayName(state, ctx.source)} will claw its way back.`, 'effect', ctx.controller, logSlug(ctx.source));
         break;
@@ -3758,6 +3782,7 @@ function startTurn(state: DuelState) {
        these are written after the landing rather than before it. */
     back.atkMod += owed.atkBonus ?? 0;
     back.defMod += owed.defBonus ?? 0;
+    back.revivals = owed.revivals ?? 1;
     fireTriggers(state, back, pid, 'onSummon', {});
     if (!state.winner) {
       fireOpponentSummon(state, pid, back.uid);

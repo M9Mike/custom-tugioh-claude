@@ -2696,11 +2696,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'crawling-dragon': {
     /* It reaches the whole pile now rather than the small end of it, and it does
        not stay down: battle kills it for one turn only, and what crawls back is
-       200 heavier at both ends. A card effect still puts it down for good, which
-       is the answer worth holding. */
+       200 heavier at both ends — heavier EVERY time, so a dragon nobody can
+       answer except in battle keeps growing. A card effect still puts it down
+       for good, and doing so also takes back everything it had earned: the
+       tally lives on the instance and every arrival but its own clears it. */
     text:
       'When this monster is summoned: Special Summon 1 Dinosaur monster from your Graveyard in Attack Position. ' +
-      'When this monster is destroyed by battle: Special Summon it at the start of your next turn with 200 more ATK and DEF.',
+      'When this monster is destroyed by battle: Special Summon it at the start of your next turn, ' +
+      'gaining 200 ATK and DEF each time it returns this way. If it leaves the field any other way, that gain is lost.',
     effects: [
       /* `targets` is how a card opts into being ASKED — see `raiseChoice`,
          which refuses to raise a question no effect declared. The board's own

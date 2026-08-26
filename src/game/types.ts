@@ -1140,6 +1140,20 @@ export interface CardInstance {
    */
   summonedBy?: string;
   /**
+   * How many times this card has clawed its own way back out of the Graveyard.
+   *
+   * Crawling Dragon returns 200 heavier EVERY time battle kills it, so the
+   * bonus is a running total rather than a flat one — and it is a count rather
+   * than an amount so the card's own numbers stay the card's business.
+   *
+   * Cleared by `resetInstance`, which every road off a zone performs, so the
+   * count cannot outlive the body that earned it: leave the field any way but
+   * battle and the dragon is its printed self again. `destroyCard` lends it
+   * back across the one beat that reads it — the battle death that buys the
+   * next return — and `startTurn` writes it on the dragon that lands.
+   */
+  revivals?: number;
+  /**
    * A token that is swept at the end of the turn it arrived on — see
    * `summonToken.fleeting`. Bought to be spent, not to hold a board.
    */
@@ -1232,6 +1246,8 @@ export interface OngoingEffect {
   /** `pendingRevival`: what it comes back with on top of its printed stats. */
   atkBonus?: number;
   defBonus?: number;
+  /** `pendingRevival`: which return this is, so the next one is heavier still. */
+  revivals?: number;
 }
 
 export interface PlayerState {
