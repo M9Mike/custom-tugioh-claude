@@ -25,6 +25,9 @@ import { chromium } from 'playwright';
 
 const BASE = process.argv[2] || 'http://localhost:3000';
 const GAP = Number(process.argv[3] || 0.004);
+/* How many pairs to print per area. Twenty is plenty when the answer is meant to
+   be none; hunting a reported flicker at a wider gap needs all of them. */
+const SHOW = Number(process.argv[4] || 20);
 
 const browser = await chromium.launch();
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
@@ -160,7 +163,7 @@ const audit = async (label) => {
   }, GAP);
   if (hits.error) { console.log(label, 'ERROR', hits.error); return 1; }
   console.log(`${label} (actually in: ${where}): ${hits.count} meshes, ${hits.hits.length} coplanar pair(s)`);
-  for (const h of hits.hits.slice(0, 20)) {
+  for (const h of hits.hits.slice(0, SHOW)) {
     console.log(`   ${h.axis} = ${h.at}  overlap ${h.overlap} m²   ${h.a} / ${h.b}`);
   }
   return hits.hits.length;
@@ -193,9 +196,15 @@ const visit = async (area) => {
   /* The name has to go back in. Reloading /story returns to the sign-in card
      with an empty field, and clicking Enter without filling it does nothing at
      all — which is how three areas in a row reported "no scene on window". */
+  /* Only typed when it is wrong. The field comes back pre-filled from
+     `localStorage`, and filling a controlled input that is not empty signs you
+     in as "MikeMike" — which is not a duelist, so the world never opens. */
   const field = page.locator('input[placeholder="Enter your name"]');
   if (await field.isVisible().catch(() => false)) {
-    await field.fill('Mike');
+    if ((await field.inputValue().catch(() => '')) !== 'Mike') {
+      await field.fill('');
+      await field.fill('Mike');
+    }
     const again = page.locator('button:has-text("Enter Story Mode")');
     for (let i = 0; i < 400 && !(await again.isEnabled().catch(() => false)); i++) await page.waitForTimeout(200);
     await again.click();

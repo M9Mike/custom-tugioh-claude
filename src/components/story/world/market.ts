@@ -264,27 +264,69 @@ export function buildMarket(anisotropy: number): BuiltArea {
        * row read as a lightbox rather than a street — the same lesson the
        * terraces on Turtle Lane taught, arriving at half the viewing distance.
        */
+      /*
+       * A window with panes in it, not one lit slab with bars laid over it.
+       *
+       * It was a single sheet 4.3 m wide and 2.3 m tall in one flat colour, with
+       * the mullions floating 3 cm in front of it and a near-black reveal behind
+       * that. From thirty metres it read as a shopfront. From two — which is the
+       * distance this whole area is designed to be seen at — it read as a slab
+       * of colour inside a slab of black, and the bars laid over it were three
+       * more surfaces stacked inside four centimetres of depth.
+       *
+       * So the glazing is cut into bays and the frame goes *between* them.
+       * Nothing overlaps anything on any axis: each pane sits in its own hole,
+       * each mullion in its own gap. There is nothing left for the depth buffer
+       * to arbitrate, and it reads as joinery rather than as a poster.
+       */
       const gw = w - 0.5;
-      root.add(box(own, gw, 2.5, 0.14, dimGlass, cx, 1.75, zf + out * 0.1));
-      root.add(box(own, gw - 0.2, 2.28, 0.05,
-                   glow(own, u.cool ? '#6f8479' : '#9a6f36'), cx, 1.75, zf + out * 0.17));
+      const bays = Math.max(3, Math.round(gw / 1.05));
+      const bayW = gw / bays;
+      const lit = glow(own, u.cool ? '#6f8479' : '#9a6f36');
+      const frame = matt(own, '#33291f');
 
-      const bars = Math.max(3, Math.round(gw / 1.05));
-      for (let m = 1; m < bars; m++) {
-        root.add(box(own, 0.075, 2.28, 0.07, matt(own, '#33291f'),
-                     cx - gw / 2 + (gw / bars) * m, 1.75, zf + out * 0.2));
+      /* The reveal, behind the glazing and only ever seen at its edges. Dark
+         timber rather than near-black: a surround is a frame, and #161b22 seen
+         from two metres is a hole in the world. */
+      root.add(box(own, gw + 0.12, 2.62, 0.1, matt(own, '#2b2119'), cx, 1.72, zf + out * 0.06));
+
+      for (let m = 0; m < bays; m++) {
+        const bx = cx - gw / 2 + bayW * (m + 0.5);
+        root.add(box(own, bayW - 0.1, 1.66, 0.05, lit, bx, 1.55, zf + out * 0.17));
+        root.add(box(own, bayW - 0.1, 0.26, 0.05, lit, bx, 2.66, zf + out * 0.17));
       }
-      /* Transom, a centimetre proud of the uprights it crosses so the two never
-         share a face and strobe where they meet. */
-      root.add(box(own, gw - 0.2, 0.09, 0.07, matt(own, '#33291f'), cx, 2.62, zf + out * 0.215));
+      /*
+       * Uprights in front, rails behind, and the two at different depths.
+       *
+       * A frame whose members all sit on one plane is a frame whose members all
+       * share a face wherever they cross — and they cross at every joint, which
+       * is nine times per unit and 280 pairs across the arcade. Real joinery does
+       * not do that either: the stiles stand proud and the rails are set back
+       * into them, which is both why it reads as woodwork and why nothing here
+       * is coplanar with anything.
+       */
+      for (let m = 1; m < bays; m++) {
+        root.add(box(own, 0.08, 2.5, 0.10, frame, cx - gw / 2 + bayW * m, 1.75, zf + out * 0.20));
+      }
+      root.add(box(own, 0.1, 2.66, 0.10, frame, cx - gw / 2, 1.72, zf + out * 0.20));
+      root.add(box(own, 0.1, 2.66, 0.10, frame, cx + gw / 2, 1.72, zf + out * 0.20));
+      root.add(box(own, gw, 0.09, 0.07, frame, cx, 2.455, zf + out * 0.165));
+      root.add(box(own, gw + 0.2, 0.12, 0.07, frame, cx, 2.93, zf + out * 0.165));
 
-      /* Stock behind the glass: a stepped run of small boxes, one row per unit,
-         in that unit's own colours so a fishmonger and a florist do not have
-         the same window. */
+      /*
+       * Stock in the window, standing in front of the glazing rather than buried
+       * behind it.
+       *
+       * These used to sit at `out * 0.02` — inside the reveal, behind an opaque
+       * pane — so the only part anybody ever saw was the centimetre poking out
+       * through the front of the glass. A row of coloured slivers exactly level
+       * with a large flat surface: invisible as a detail, and the sort of thing
+       * that fights.
+       */
       const stock = [u.ground, u.ink, u.awning ?? u.ground, u.noren ?? u.ink];
       for (let d = 0; d < Math.max(3, Math.floor(gw / 0.9)); d++) {
-        root.add(box(own, 0.3, 0.24 + rnd() * 0.2, 0.22, matt(own, stock[d % stock.length]),
-                     cx - gw / 2 + 0.45 + d * 0.9, 0.9 + (d % 2) * 0.16, zf + out * 0.02));
+        root.add(box(own, 0.28, 0.24 + rnd() * 0.2, 0.16, matt(own, stock[d % stock.length]),
+                     cx - gw / 2 + 0.45 + d * 0.9, 0.92 + (d % 2) * 0.16, zf + out * 0.31));
       }
 
       if (u.noren) {
@@ -295,7 +337,9 @@ export function buildMarket(anisotropy: number): BuiltArea {
           root.add(box(own, 0.52, 0.72, 0.03, matt(own, u.noren),
                        nx + n * 0.56, 2.16, zf + out * 0.26));
         }
-        root.add(box(own, 1.8, 0.06, 0.06, matt(own, '#3a3128'), nx, 2.54, zf + out * 0.26));
+        /* The rail is deeper than the cloth hanging off it, so its faces are
+           3 cm outside the panels' rather than 1.5 cm inside them. */
+        root.add(box(own, 1.8, 0.07, 0.12, matt(own, '#3a3128'), nx, 2.56, zf + out * 0.26));
       }
 
       /* Light out of the doorway onto the floor. Three of these across the whole
@@ -324,7 +368,9 @@ export function buildMarket(anisotropy: number): BuiltArea {
         color: u.shut ? '#7c7568' : '#cfc4a6',
       }));
       const mesh = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(fw, fh)), board);
-      mesh.position.set(cx, 3.62, faceZ + out * 0.41);
+      /* 0.47, not 0.41: the board behind it ends at 0.39, and 20 mm is not
+         enough clearance for two large flat faces pointing the same way. */
+      mesh.position.set(cx, 3.62, faceZ + out * 0.47);
       mesh.rotation.y = side === -1 ? 0 : Math.PI;
       root.add(mesh);
     }
@@ -341,7 +387,16 @@ export function buildMarket(anisotropy: number): BuiltArea {
     root.add(box(own, 0.1, 0.1, 0.8, matt(own, '#403a33'), cx, 4.32, faceZ + out * 0.5));
     const hang = box(own, 0.09, 0.78, 0.62, matt(own, u.ground), cx, 3.92, faceZ + out * 0.92);
     root.add(hang);
-    root.add(box(own, 0.06, 0.5, 0.4, matt(own, u.ink), cx, 3.92, faceZ + out * 0.92));
+    /*
+     * The device on it stands *proud* of the board — 0.17 against the board's
+     * 0.09, so it is 4 cm out on both faces rather than 1.5 cm in.
+     *
+     * At 0.06 it sat inside the board with 15 mm between their side faces, on
+     * every one of the eighteen units, hanging at head height in the middle of
+     * the arcade. It is the flicker you see standing between the bakery and the
+     * butcher, and it was there on all of them.
+     */
+    root.add(box(own, 0.17, 0.5, 0.4, matt(own, u.ink), cx, 3.92, faceZ + out * 0.92));
 
     if (u.awning) {
       const aw = w - 0.7;
@@ -414,11 +469,26 @@ export function buildMarket(anisotropy: number): BuiltArea {
       leg.castShadow = false;
       root.add(leg);
     }
-    /* The tie across the bottom of the truss, and a king post up to the ridge. */
-    const tie = box(own, 0.13, 0.13, run * 2, steel, x, EAVE_Y - 0.02, 0);
+    /*
+     * The tie across the bottom of the truss, and a king post up to the ridge.
+     *
+     * Their widths are chosen so no two of the three ever sit 15 mm apart. The
+     * rafters are 0.16 across; a tie of 0.13 and a post of 0.11 put every one of
+     * their side faces a centimetre and a half inside a rafter, over a metre of
+     * shared length, eleven trusses down the arcade — which is 44 flickering
+     * pairs directly over the player's head, and the biggest single source of it
+     * in the area.
+     *
+     * A tie beam heavier than the rafters it carries is also simply what a truss
+     * looks like. The post is slimmer than both for the same reason in reverse.
+     */
+    /* Slung below the rafters rather than level with their feet: the rafters'
+       lowest point is 5.79 and a tie at 5.88 put its underside within 2 cm of
+       it across the full width of the arcade, eleven times over. */
+    const tie = box(own, 0.26, 0.14, run * 2, steel, x, EAVE_Y - 0.2, 0);
     tie.castShadow = false;
     root.add(tie);
-    const post = box(own, 0.11, rise, 0.11, steel, x, EAVE_Y + rise / 2, 0);
+    const post = box(own, 0.08, rise, 0.08, steel, x, EAVE_Y + rise / 2, 0);
     post.castShadow = false;
     root.add(post);
   }
@@ -478,9 +548,13 @@ export function buildMarket(anisotropy: number): BuiltArea {
     shade.position.set(x, 5.58, 0);
     root.add(shade);
 
+    /* 6 cm below the shade's rim, not 1. A flat disc a centimetre under an
+       opaque cone is two horizontal faces the depth buffer has to choose
+       between, on every one of the eight pendants down the middle of the
+       arcade — see the same fault on the arch lamps and on Turtle Lane's. */
     const lens = new THREE.Mesh(lensGeo, lensMat);
     lens.rotation.x = Math.PI / 2;
-    lens.position.set(x, 5.42, 0);
+    lens.position.set(x, 5.37, 0);
     root.add(lens);
 
     /*
@@ -573,9 +647,12 @@ export function buildMarket(anisotropy: number): BuiltArea {
   /* A lamp on each pier, throwing light down onto the threshold. */
   for (const s of [-1, 1] as const) {
     root.add(box(own, 0.3, 0.5, 0.3, matt(own, '#3f4348'), archX + 0.6, 4.5, s * 2.75));
+    /* Clear of the housing above it by 6 cm. At 1 cm these two — one on each
+       pier — are the grey rectangles that flicker on the wall as you walk out
+       of the arcade. */
     const lens = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(0.24, 0.24)), glow(own, '#e0b47e'));
     lens.rotation.x = Math.PI / 2;
-    lens.position.set(archX + 0.6, 4.24, s * 2.75);
+    lens.position.set(archX + 0.6, 4.19, s * 2.75);
     root.add(lens);
   }
   /*
@@ -722,18 +799,29 @@ export function buildMarket(anisotropy: number): BuiltArea {
       for (let i = 0; i < cols; i++) {
         const cx = g.x - g.hw + cw * (i + 0.5);
         const high = 1 + Math.floor(rnd() * 2);
+        let top = 0;
         for (let k = 0; k < high; k++) {
+          const y = 0.19 + k * 0.37;
           const c = box(own, cw - 0.1, 0.36, g.hd * 2 - 0.12,
                         matt(own, k % 2 ? (g.tint ?? '#6f5a3a') : '#8a6b45'),
-                        cx, 0.19 + k * 0.37, g.z);
+                        cx, y, g.z);
           c.rotation.y = (rnd() - 0.5) * 0.09;
           root.add(c);
+          top = y + 0.18;
         }
-        /* Something in the top one, so a crate is a crate and not a block. */
+        /*
+         * Something in the top one, sitting *on* it.
+         *
+         * The height used to be worked out from the number of crates rather than
+         * from where the top of them actually was, and it came out 17 cm high —
+         * so every stack in the arcade had three little boxes of vegetables
+         * hovering in the air above it. Measured off `top` now, which is the one
+         * number that cannot be wrong.
+         */
         for (let n = 0; n < 3; n++) {
           root.add(box(own, 0.18, 0.15, 0.18,
                        matt(own, ['#7a8a3a', '#a8703a', '#8a3a3a', '#c2a04a', '#6a7a4a'][(i + n) % 5]),
-                       cx + (n - 1) * 0.3, 0.19 + high * 0.37 + 0.06,
+                       cx + (n - 1) * 0.3, top + 0.074,
                        g.z + (rnd() - 0.5) * (g.hd * 0.9)));
         }
       }
@@ -745,12 +833,19 @@ export function buildMarket(anisotropy: number): BuiltArea {
     },
 
     sacks: (g) => {
+      /*
+       * Kept inside the rectangle they are declared as.
+       *
+       * At one and a half times the depth, with half of it again as jitter and a
+       * quarter-radian turn on top, a sack reached 20 cm past the front of its
+       * own footprint — straight into the shopfront behind it.
+       */
       const n = Math.max(3, Math.round(g.hw * 2.4));
       for (let i = 0; i < n; i++) {
-        const sk = box(own, (g.hw * 2) / n - 0.04, 0.34, g.hd * 1.5, matt(own, '#c4b48e'),
+        const sk = box(own, (g.hw * 2) / n - 0.06, 0.34, g.hd * 1.1, matt(own, '#c4b48e'),
                        g.x - g.hw + ((g.hw * 2) / n) * (i + 0.5),
-                       0.17 + (i % 2) * 0.34, g.z + (rnd() - 0.5) * (g.hd * 0.5));
-        sk.rotation.y = (rnd() - 0.5) * 0.5;
+                       0.17 + (i % 2) * 0.34, g.z + (rnd() - 0.5) * (g.hd * 0.2));
+        sk.rotation.y = (rnd() - 0.5) * 0.24;
         root.add(sk);
       }
     },
@@ -848,7 +943,27 @@ export function buildMarket(anisotropy: number): BuiltArea {
   overhead.shadow.camera.bottom = -11;
   overhead.shadow.camera.near = 1;
   overhead.shadow.camera.far = 42;
-  overhead.shadow.bias = -0.0016;
+  /*
+   * `bias` alone was never going to be enough here, and this area is the worst
+   * case for it in the whole world.
+   *
+   * A constant depth bias shifts every shadow sample by the same amount, which
+   * is right for a surface facing the light and hopeless for one edge-on to it —
+   * the depth across a single shadow texel varies by far more than the bias, so
+   * half the texel shadows itself. It shows as grey rectangles crawling over a
+   * wall as the camera moves, which is exactly what it is: the shadow map
+   * disagreeing with itself, one texel at a time.
+   *
+   * This light points very nearly straight down and every wall in the arcade is
+   * vertical, so *every* wall is edge-on to it. `normalBias` pushes the sample
+   * along the surface normal instead — off the surface, into the air in front of
+   * it — and the amount it needs is about one shadow texel, which at 50 m across
+   * 2048 is 2.4 cm.
+   *
+   * Not one light in this game set it. All five do now.
+   */
+  overhead.shadow.bias = -0.0009;
+  overhead.shadow.normalBias = 0.05;
   root.add(overhead);
   root.add(overhead.target);
   lights.push(overhead);

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Cinzel, Inter } from 'next/font/google';
 import './globals.css';
+import StaleBuild from './StaleBuild';
 
 const display = Cinzel({
   variable: '--font-display',
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="min-h-full">
         <div className="arena-bg" aria-hidden />
+        <StaleBuild />
         {children}
       </body>
     </html>

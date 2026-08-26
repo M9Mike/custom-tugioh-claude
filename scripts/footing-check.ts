@@ -36,7 +36,7 @@
 import { chromium, type Page } from 'playwright';
 import { AREAS, groundAt, type AreaId } from '../src/story/areas';
 import { walkableCells } from './walkable';
-import { BASE, NAME, ensurePlayer } from './story-setup';
+import { BASE, NAME, ensurePlayer, enterStory } from './story-setup';
 
 /** A foot on the floor versus a foot in it. */
 const TOLERANCE = 0.04;
@@ -132,36 +132,14 @@ function surfaceUnder(boxes: Box[], x: number, z: number): number | null {
   return best;
 }
 
+/** Puts the player in an area and waits for it to be built. */
 async function enterArea(page: Page, area: AreaId): Promise<boolean> {
   await fetch(`${BASE}/api/story/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: NAME, world: { area, ...AREAS[area].spawn } }),
   }).catch(() => {});
-  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  const field = page.locator('input[placeholder="Enter your name"]');
-  if (await field.isVisible().catch(() => false)) {
-    await field.fill(NAME);
-    const enter = page.locator('button:has-text("Enter Story Mode")').first();
-    for (let i = 0; i < 200 && !(await enter.isEnabled().catch(() => false)); i++) {
-      await page.waitForTimeout(200);
-    }
-    await enter.click();
-  }
-  for (let i = 0; i < 200; i++) {
-    const there = await page
-      .evaluate((want) => {
-        const w = window as unknown as { __scene?: unknown; __probe?: { area: string } };
-        return !!w.__scene && w.__probe?.area === want;
-      }, area)
-      .catch(() => false);
-    if (there) {
-      await page.waitForTimeout(600);
-      return true;
-    }
-    await page.waitForTimeout(200);
-  }
-  return false;
+  return enterStory(page, area);
 }
 
 async function main() {

@@ -37,7 +37,7 @@ import {
   AREAS, PLAYER_RADIUS, arrivalThrough, partnerOf,
   type AreaId, type Door,
 } from '../src/story/areas';
-import { BASE, NAME, ensurePlayer, post } from './story-setup';
+import { BASE, NAME, ensurePlayer, enterStory, post } from './story-setup';
 
 
 let failures = 0;
@@ -124,22 +124,6 @@ async function walkForward(page: Page, ms: number): Promise<void> {
   await page.mouse.up();
 }
 
-async function enterWorld(page: Page): Promise<void> {
-  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  const name = page.locator('input[placeholder="Enter your name"]');
-  if (await name.isVisible().catch(() => false)) {
-    await name.fill(NAME);
-    const btn = page.locator('button:has-text("Enter Story Mode")').first();
-    await btn.waitFor({ timeout: 30000 });
-    for (let i = 0; i < 80; i++) {
-      await btn.dispatchEvent('click');
-      await page.waitForTimeout(250);
-      if (!(await name.isVisible().catch(() => false))) break;
-    }
-  }
-  await page.locator('canvas').first().waitFor({ timeout: 40000 });
-}
-
 /* ------------------------------------------------------------------ */
 
 async function main() {
@@ -166,7 +150,7 @@ async function main() {
       const partner = partnerOf(door, id);
 
       await post('/api/story/save', { username: NAME, world: { area: id, ...from } });
-      await enterWorld(page);
+      await enterStory(page, id);
 
       const start = await waitForArea(page, id, 25000);
       if (!start || start.area !== id) {

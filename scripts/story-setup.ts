@@ -1,3 +1,4 @@
+import type { Page } from 'playwright';
 import { STARTER_POOL } from '../src/story/roster';
 
 /**
@@ -94,3 +95,49 @@ export async function ensurePlayer(): Promise<void> {
 }
 
 
+
+
+/**
+ * Opens Story Mode and waits until the world is actually built.
+ *
+ * Every browser check had its own copy of this and every copy had the same bug:
+ * `fill(NAME)` on the sign-in field. It works on the first load, when the field
+ * is empty — and on every load after that the field has already been filled in
+ * from `localStorage`, and filling a controlled React input that is not empty
+ * leaves you signed in as "MikeMike", which is not a duelist. Whichever check
+ * happened to reload landed on the sign-in card with a red error and reported
+ * whatever nonsense followed from that.
+ *
+ * So the name is only typed when it is wrong, and the wait is for the *scene*
+ * rather than for the canvas — a canvas exists while the world is still being
+ * built, and auditing a half-built area is worse than not auditing it.
+ */
+export async function enterStory(page: Page, area?: string): Promise<boolean> {
+  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  const field = page.locator('input[placeholder="Enter your name"]');
+  if (await field.isVisible().catch(() => false)) {
+    if ((await field.inputValue().catch(() => '')) !== NAME) {
+      await field.fill('');
+      await field.fill(NAME);
+    }
+    const enter = page.locator('button:has-text("Enter Story Mode")').first();
+    for (let i = 0; i < 200 && !(await enter.isEnabled().catch(() => false)); i++) {
+      await page.waitForTimeout(200);
+    }
+    await enter.click();
+  }
+  for (let i = 0; i < 250; i++) {
+    const there = await page
+      .evaluate((want) => {
+        const w = window as unknown as { __scene?: unknown; __probe?: { area: string } };
+        return !!w.__scene && (!want || w.__probe?.area === want);
+      }, area ?? null)
+      .catch(() => false);
+    if (there) {
+      await page.waitForTimeout(700);
+      return true;
+    }
+    await page.waitForTimeout(200);
+  }
+  return false;
+}

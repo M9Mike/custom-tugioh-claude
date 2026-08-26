@@ -62,6 +62,7 @@ export function walkableCells(area: Area): { x: number; z: number }[] {
   if (!start) return [];
   const seen = new Set<string>();
   const out: { x: number; z: number }[] = [];
+  const edges = new Map<string, { x: number; z: number }>();
   const queue = [start];
   seen.add(`${start.ix},${start.iz}`);
 
@@ -77,8 +78,33 @@ export function walkableCells(area: Area): { x: number; z: number }[] {
       const k = `${nx},${nz}`;
       if (seen.has(k)) continue;
       seen.add(k);
-      if (standable(area, nx * STEP, nz * STEP)) queue.push({ ix: nx, iz: nz });
+      if (standable(area, nx * STEP, nz * STEP)) {
+        queue.push({ ix: nx, iz: nz });
+        continue;
+      }
+      /*
+       * Where the wall actually stops you.
+       *
+       * A grid anchored to the spawn lands on multiples of a quarter metre and
+       * nothing else, so the closest it ever gets to a shopfront is whatever
+       * happens to fall inside — and the last nine centimetres, which is
+       * precisely where a player ends up when they walk into something and keep
+       * pushing, are never sampled at all.
+       *
+       * That is not a rounding detail. Market Row's shopfronts have a timber
+       * stallboard along the bottom that sticks 25 cm out into the arcade, and
+       * the grid missed the strip you can stand on by 9 cm — so `npm run
+       * footing` passed while walking along the shops put both feet inside the
+       * wood. Mike found it in about a minute.
+       *
+       * So every cell the fill *cannot* enter is settled instead, and the
+       * position it settles to — hard against the thing that stopped it — is
+       * checked like anywhere else you can stand.
+       */
+      const at = settle(area, nx * STEP, nz * STEP, PLAYER_RADIUS);
+      const key = `${Math.round(at.x * 1000)},${Math.round(at.z * 1000)}`;
+      if (!edges.has(key)) edges.set(key, at);
     }
   }
-  return out;
+  return out.concat([...edges.values()]);
 }

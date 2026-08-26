@@ -32,7 +32,7 @@
 
 import { readFileSync } from 'node:fs';
 import {
-  AREAS, FIRST_AREA, MARKET_GOODS, PLAYER_RADIUS, SEAM_TOLERANCE,
+  AREAS, FIRST_AREA, MARKET_GOODS, MARKET_GOODS_LIMIT, PLAYER_RADIUS, SEAM_TOLERANCE,
   arrivalThrough, partnerOf, settle, toWorld, inside,
   type Area, type AreaId, type Rect,
 } from '../src/story/areas';
@@ -299,10 +299,41 @@ console.log('\nMarket Row');
   check(missing.length === 0, 'every crate on the floor is also something you bump into',
         missing.map((g) => `${g.kind} at ${g.x}`).join(', '));
   check(
-    MARKET_GOODS.every((g) => Math.abs(g.z) > 3.2),
+    MARKET_GOODS.every((g) => Math.abs(g.z) > 3.0),
     'and all of it is against the shopfronts, not in the middle',
-    MARKET_GOODS.filter((g) => Math.abs(g.z) <= 3.2).map((g) => g.kind).join(', ')
+    MARKET_GOODS.filter((g) => Math.abs(g.z) <= 3.0).map((g) => g.kind).join(', ')
   );
+  const through = MARKET_GOODS.filter((g) => Math.abs(g.z) + g.hd > MARKET_GOODS_LIMIT + 1e-9);
+  check(through.length === 0, 'and none of it is standing inside a shopfront',
+        through.map((g) => `${g.kind} reaches ${(Math.abs(g.z) + g.hd).toFixed(2)}`).join(', '));
+}
+
+/* ---------------------------------------------------------------- */
+console.log('\nevery shadow has a normal bias');
+{
+  /*
+   * A source scan, because there is no way to ask a running scene "is this
+   * shadow acne".
+   *
+   * Every light that casts a shadow needs `normalBias` as well as `bias`. The
+   * constant one cannot cover a surface edge-on to the light — the depth across
+   * a single shadow texel varies by more than any constant worth setting — so a
+   * wall lit from above shadows itself in stripes that crawl as the camera
+   * moves. All five casters in this world shipped without it, and it read as
+   * grey rectangles flickering on the walls.
+   *
+   * Any light that sets `shadow.mapSize` is a light that casts, so that is what
+   * this looks for, and it wants a `shadow.normalBias` for each one.
+   */
+  const dir = new URL('../src/components/story/world/', import.meta.url);
+  for (const file of ['shop.ts', 'street.ts', 'market.ts']) {
+    const src = readFileSync(new URL(file, dir), 'utf8');
+    const casters = [...src.matchAll(/(\w+)\.shadow\.mapSize/g)].map((m) => m[1]);
+    const unique = [...new Set(casters)];
+    const missing = unique.filter((name) => !src.includes(`${name}.shadow.normalBias`));
+    check(missing.length === 0, `world/${file}: every shadow caster sets normalBias`,
+          missing.length ? missing.join(', ') : `${unique.length} caster(s)`);
+  }
 }
 
 /* ---------------------------------------------------------------- */

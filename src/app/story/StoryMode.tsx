@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { RESUME_KEY } from '@/lib/staleBuild';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import DeckBuilder from '@/components/story/DeckBuilder';
@@ -106,18 +107,7 @@ export default function StoryMode() {
   /* Same trick as the home page: both fields are controlled, so React's first
      commit after hydration would otherwise wipe whatever was typed during a
      slow start. Whatever is in the field at that moment wins. */
-  useEffect(() => {
-    const typed = nameRef.current?.value ?? '';
-    let remembered = '';
-    try {
-      remembered = window.localStorage.getItem(NAME_KEY) ?? '';
-    } catch {
-      /* private browsing */
-    }
-    setName(typed || remembered);
-    primeAudio();
-    setReady(true);
-  }, []);
+
 
   const post = async <T,>(url: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; error: string }> => {
     try {
@@ -135,12 +125,16 @@ export default function StoryMode() {
     }
   };
 
-  const signIn = async () => {
+  /**
+   * `as` is for the resume above, which runs inside the same effect that sets
+   * `name` — so the state it would otherwise read has not landed yet.
+   */
+  const signIn = async (as?: string) => {
     setBusy(true);
     setError(null);
     primeAudio();
     sfx.click();
-    const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/login', { username: name });
+    const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/login', { username: as ?? name });
     setBusy(false);
     if (!res.ok) {
       sfx.error();
@@ -155,6 +149,51 @@ export default function StoryMode() {
     setProfile(res.data.profile);
     setScreen(res.data.stage);
   };
+
+  useEffect(() => {
+    const typed = nameRef.current?.value ?? '';
+    let remembered = '';
+    try {
+      remembered = window.localStorage.getItem(NAME_KEY) ?? '';
+    } catch {
+      /* private browsing */
+    }
+    const who = typed || remembered;
+    setName(who);
+    primeAudio();
+    setReady(true);
+
+    /*
+     * Carrying on after a rescue reload.
+     *
+     * `StaleBuild` reloads the page when a chunk from a replaced build has gone.
+     * That fixes the build and loses every scrap of state with it, so Story Mode
+     * comes back on its sign-in card — name already in the box — asking the
+     * player who they are in the middle of something they were already doing.
+     * Pressing Save across a deploy looked exactly like being thrown out, and
+     * this is the half of it that is not about the bundle.
+     *
+     * The flag is written by that reload and by nothing else, and is consumed
+     * the first time it is seen. Signing in the ordinary way is untouched:
+     * this is not auto-sign-in, it is a session picking itself back up.
+     *
+     * It goes here rather than in an effect of its own because "once, on
+     * arrival" is what this effect already is — and because signing in from a
+     * second effect is a setState cascade, which is a real complaint and not
+     * one to silence.
+     */
+    let carryOn = false;
+    try {
+      carryOn = window.sessionStorage.getItem(RESUME_KEY) === '1';
+      if (carryOn) window.sessionStorage.removeItem(RESUME_KEY);
+    } catch {
+      /* private browsing — they type it again, exactly as before */
+    }
+    if (carryOn && who) void signIn(who);
+    /* Mount only. It sits below `signIn` rather than above it so that call is
+       to something already declared — the order in this file is load-bearing. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveCharacter = async (character: PremadeCharacter): Promise<string | null> => {
     const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/character', {
@@ -419,7 +458,9 @@ export default function StoryMode() {
 
           <button
             className="btn btn-primary mt-4 w-full rounded px-4 py-3 text-sm"
-            onClick={signIn}
+            /* Wrapped, not passed: `signIn` takes an optional name and a click
+               handler is handed a MouseEvent, which would arrive as the name. */
+            onClick={() => void signIn()}
             disabled={busy || !ready || !name.trim()}
           >
             {!ready ? 'Waking the arena…' : busy ? 'Signing in…' : 'Enter Story Mode'}

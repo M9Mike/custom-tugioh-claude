@@ -248,9 +248,21 @@ const GRANDPA_SHOP: Area = {
      */
     { x: -1.1, z: -2.6, hw: 3.9, hd: 0.55 },
 
+    /*
+     * The stack of cardboard boxes behind the counter.
+     *
+     * Drawn in `world/shop.ts` at (−4.4, −3.2) and, until now, solid to nothing.
+     * You can get behind the counter — the gap at the right-hand end is
+     * deliberate — and once there you could stand inside half a metre of
+     * cardboard with both feet in it. Found by `npm run footing` the moment it
+     * started sampling where a wall actually stops you rather than where the
+     * grid happened to land.
+     */
+    { x: -4.4, z: -3.2, hw: 0.46, hd: 0.4 },
+
     /* Shelf units down both side walls, and the display case by the window. */
-    { x: -SHOP_W + 0.55, z: 0.6, hw: 0.55, hd: 2.4 },
-    { x: SHOP_W - 0.55, z: -0.9, hw: 0.55, hd: 2.8 },
+    { x: -SHOP_W + 0.67, z: 0.6, hw: 0.55, hd: 2.4 },
+    { x: SHOP_W - 0.67, z: -0.9, hw: 0.55, hd: 2.8 },
     { x: SHOP_W - 0.7, z: 3.0, hw: 0.7, hd: 0.6 },
   ],
   doors: [
@@ -433,6 +445,13 @@ const STARTING_AREA: Area = {
     /* The archway into Market Row, closed to the camera for the same reason the
        shop's door is: from outside, a way through is still a wall to look at. */
     { x: ST_W - 2, z: 0.5, hw: 2, hd: 2.2 },
+
+    /* And the terraces' awnings, for the reason Market Row's are stopped: the
+       scalloped edges hang at 2.8 m, which is exactly where the walking camera
+       sits, and backing towards a shopfront put one of them a hand's width in
+       front of the lens. */
+    { x: 0, z: -(7.3 + ST_D) / 2, hw: ST_W, hd: (ST_D - 7.3) / 2 },
+    { x: 0, z: (8.3 + ST_D) / 2, hw: ST_W, hd: (ST_D - 8.3) / 2 },
   ],
   doors: [
     {
@@ -538,6 +557,24 @@ const MR_D = 9;    // half-depth, so 18 m across, units included
 /** Where the two rows of shopfronts face each other. */
 const MR_FRONT = 5;
 
+/**
+ * How far into the arcade a shopfront actually reaches.
+ *
+ * Not `MR_FRONT`. Every unit has a timber stallboard along the bottom of it
+ * standing 25 cm proud, and guide rails on the shuttered ones proud of that —
+ * so the plane the shops are *drawn* on is not the plane you are stopped at.
+ *
+ * The collision used to be `MR_FRONT`, which let a duelist walk to within 38 cm
+ * of it — a hand's width *inside* the stallboard — and stand there with both
+ * feet in the wood. Walking the length of the arcade close to the shops did it
+ * the whole way along.
+ *
+ * So the blocks start here, 45 cm out, which is clear of everything hanging off
+ * a shopfront below head height. `npm run footing` samples the position a wall
+ * actually stops you at, which is how this was found and how it stays found.
+ */
+const MR_REACH = MR_FRONT - 0.45;
+
 /** One thing left out on the arcade floor, and what it is. */
 export type GoodsKind = 'crates' | 'bin' | 'sacks' | 'rack' | 'ice' | 'bench' | 'bicycles';
 
@@ -565,17 +602,29 @@ export interface Goods extends Rect {
  * through is a market nobody walks down twice.
  */
 export const MARKET_GOODS: Goods[] = [
-  { kind: 'crates',   x: -16.5, z: -4.15, hw: 1.5, hd: 0.85, tint: '#6f5a3a' },
-  { kind: 'bin',      x: -8.5,  z: -4.5,  hw: 0.35, hd: 0.35 },
-  { kind: 'sacks',    x: -6.2,  z: -4.2,  hw: 1.1, hd: 0.8 },
-  { kind: 'rack',     x: 4.8,   z: -4.45, hw: 1.3, hd: 0.55 },
-  { kind: 'crates',   x: 15.0,  z: -4.2,  hw: 1.2, hd: 0.8, tint: '#5f6a4a' },
+  { kind: 'crates',   x: -16.3, z: -3.85, hw: 1.3, hd: 0.85, tint: '#6f5a3a' },
+  { kind: 'bin',      x: -8.5,  z: -4.35, hw: 0.35, hd: 0.35 },
+  { kind: 'sacks',    x: -6.2,  z: -3.9,  hw: 1.1, hd: 0.8 },
+  { kind: 'rack',     x: 4.8,   z: -4.15, hw: 1.3, hd: 0.55 },
+  { kind: 'crates',   x: 15.0,  z: -3.9,  hw: 1.2, hd: 0.8, tint: '#5f6a4a' },
 
-  { kind: 'ice',      x: -12.0, z: 4.1,   hw: 1.6, hd: 0.9 },
-  { kind: 'bench',    x: -1.5,  z: 4.5,   hw: 1.1, hd: 0.45 },
+  { kind: 'ice',      x: -12.0, z: 3.8,   hw: 1.6, hd: 0.9 },
+  { kind: 'bench',    x: -1.5,  z: 4.1,   hw: 1.1, hd: 0.45 },
   { kind: 'bicycles', x: 9.0,   z: 4.2,   hw: 1.4, hd: 0.5 },
-  { kind: 'crates',   x: 18.2,  z: 4.2,   hw: 1.0, hd: 0.8, tint: '#6a5a44' },
+  { kind: 'crates',   x: 18.2,  z: 3.9,   hw: 1.0, hd: 0.8, tint: '#6a5a44' },
 ];
+
+/**
+ * Nothing on the floor may reach past here.
+ *
+ * The shopfronts are drawn at |z| 5 and their reveals start at 4.84, so a crate
+ * whose footprint runs to 5.0 has its back face inside the joinery. Every one of
+ * these used to: they were laid out against `MR_FRONT` as if the shopfront were
+ * a flat plane, and it is not — it is 16 cm of frame, glass and reveal.
+ *
+ * 4.7 leaves them clear of all of it, and `npm run areas` holds them to it.
+ */
+export const MARKET_GOODS_LIMIT = 4.7;
 
 const MARKET_ROW: Area = {
   id: 'market-row',
@@ -602,8 +651,8 @@ const MARKET_ROW: Area = {
      * drawn on the front of it by `world/market.ts`, and a player who cannot
      * reach behind them cannot tell the difference.
      */
-    { x: 0, z: -MR_FRONT - 2, hw: MR_W, hd: 2, tall: true },
-    { x: 0, z: MR_FRONT + 2, hw: MR_W, hd: 2, tall: true },
+    { x: 0, z: -(MR_REACH + MR_D) / 2, hw: MR_W, hd: (MR_D - MR_REACH) / 2, tall: true },
+    { x: 0, z: (MR_REACH + MR_D) / 2, hw: MR_W, hd: (MR_D - MR_REACH) / 2, tall: true },
 
     /* West end: the arch back out to Turtle Lane, with wall either side of it.
        The 4.4 m gap between these is the doorway, and the camera gets it back
@@ -628,10 +677,36 @@ const MARKET_ROW: Area = {
        nine entries, read twice. */
     ...MARKET_GOODS,
   ],
-  /* The archway, closed to the camera. Standing just inside it and turning back
-     west would otherwise put the camera through the wall and into the void
-     where the street is not built. */
-  camSolids: [{ x: -MR_W + 1, z: 0, hw: 1, hd: 2.2 }],
+  camSolids: [
+    /* The archway, closed to the camera. Standing just inside it and turning
+       back west would otherwise put the camera through the wall and into the
+       void where the street is not built. */
+    { x: -MR_W + 1, z: 0, hw: 1, hd: 2.2 },
+
+    /*
+     * The awnings, which the camera used to reverse straight into.
+     *
+     * Every unit's awning projects a metre and a half over the pavement and its
+     * scalloped edge hangs at 2.7 m — and the walking camera sits at about 2.8.
+     * Stand in the middle of the arcade and turn to face a shop and the camera
+     * goes back four and a half metres, which puts it *under the awnings on the
+     * other side*: a 32 cm cloth tab, 62 cm from the lens, filling a third of
+     * the screen with flat colour that jumps to a different unit's colour as you
+     * move. That is the flicker in front of the shops.
+     *
+     * The collision cannot fix it — you are supposed to be able to walk under an
+     * awning, and you do. This is the camera's own limit, which is what
+     * `camSolids` is for: it stops a metre and a half short of the shopfronts,
+     * before the cloth starts, and trades the distance for height the way it
+     * does against any other wall.
+     *
+     * Being *inside* one does not clamp — a slab entered from within returns
+     * zero — so walking along under the awnings is unaffected. Only backing into
+     * them from the open middle is.
+     */
+    { x: 0, z: -(3.4 + MR_D) / 2, hw: MR_W, hd: (MR_D - 3.4) / 2 },
+    { x: 0, z: (3.4 + MR_D) / 2, hw: MR_W, hd: (MR_D - 3.4) / 2 },
+  ],
   doors: [
     {
       id: 'market-to-street',

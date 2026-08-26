@@ -251,7 +251,10 @@ export function buildShop(anisotropy: number): BuiltArea {
     color: '#cfe6f2', roughness: 0.1, metalness: 0, transparent: true, opacity: 0.18,
   }));
   const caseTop = new THREE.Mesh(own.keep(new THREE.BoxGeometry(2.0, 0.02, 0.8)), caseGlass);
-  caseTop.position.set(cx - 2.2, 0.95, cz);
+  /* 3 cm above the counter it stands on, not 1.5. The glass top of a display
+     case is a large flat sheet directly over another large flat sheet, and at
+     15 mm the pair of them was the biggest near-coincidence left in the shop. */
+  caseTop.position.set(cx - 2.2, 0.975, cz);
   root.add(caseTop);
   for (let i = 0; i < 5; i++) {
     root.add(box(own, 0.28, 0.012, 0.4, matt(own, ['#7a5aa8', '#3f6fb0', '#a8863f', '#8f3f4f', '#3f8f6a'][i]),
@@ -298,8 +301,18 @@ export function buildShop(anisotropy: number): BuiltArea {
     }
     root.add(g);
   };
-  unit(-SHOP_W + 0.55, 0.6, 4.6, 1.0, Math.PI / 2);
-  unit(SHOP_W - 0.55, -0.9, 5.4, 1.0, -Math.PI / 2);
+  /*
+   * Stood 12 cm off the wall rather than 5.
+   *
+   * Their backs used to land a centimetre off the skirting board running behind
+   * them — two thin vertical faces sharing the better part of a square metre,
+   * down both sides of the room. Shelving does not touch a skirting anyway; it
+   * stands in front of it.
+   *
+   * The matching solids in `areas.ts` moved with them.
+   */
+  unit(-SHOP_W + 0.67, 0.6, 4.6, 1.0, Math.PI / 2);
+  unit(SHOP_W - 0.67, -0.9, 5.4, 1.0, -Math.PI / 2);
 
   /* The back wall behind the counter: pegboard and a rack of boosters. */
   const pegMat = matt(own, '#8a7a5c');
@@ -375,7 +388,11 @@ export function buildShop(anisotropy: number): BuiltArea {
     lamp.position.set(lx, WALL_H - 0.55, -0.2);
     lamp.castShadow = true;
     lamp.shadow.mapSize.set(1024, 1024);
-    lamp.shadow.bias = -0.004;
+    /* See `market.ts` on `normalBias`. A room is a kinder case than a street —
+       everything is close and the light is above it — but the walls are still
+       edge-on to a ceiling lamp. */
+    lamp.shadow.bias = -0.002;
+    lamp.shadow.normalBias = 0.025;
     root.add(lamp);
     lamps.push(lamp);
   }
@@ -396,7 +413,8 @@ export function buildShop(anisotropy: number): BuiltArea {
   day.shadow.camera.bottom = -3;
   day.shadow.camera.near = 0.5;
   day.shadow.camera.far = 22;
-  day.shadow.bias = -0.0016;
+  day.shadow.bias = -0.0009;
+  day.shadow.normalBias = 0.03;
   root.add(day);
   root.add(day.target);
 

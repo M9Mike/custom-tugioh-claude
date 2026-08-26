@@ -194,40 +194,52 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
     /* Ground floor: either a shopfront or a plain frontage with a door. */
     if (opts.shopfront) {
+      /*
+       * Panes in a frame, the same way Market Row's are built.
+       *
+       * This used to be four surfaces stacked inside seven centimetres of depth:
+       * a dark reveal, a lit sheet five millimetres proud of it, mullions three
+       * centimetres in front of that, and a transom a centimetre in front of
+       * those. Every one of those spacings is smaller than the thing it is
+       * spacing, and the largest pair of them shared fourteen square metres.
+       *
+       * Cutting the glazing into bays removes the whole question. The frame goes
+       * *between* the panes rather than on top of them, the uprights stand proud
+       * of the rails as joinery does, and nothing overlaps anything.
+       */
       const gw = w - 1.0;
-      root.add(box(own, gw, 2.1, 0.14, darkWindow, cx, 1.9, zf + out * 0.08));
-      /* Warm spill from inside, which is what makes a street at dusk look
-         inhabited rather than abandoned. */
-      root.add(box(own, gw - 0.24, 1.86, 0.05, glow(own, '#9d6f35'), cx, 1.9, zf + out * 0.13));
-      /*
-       * Mullions across it, and the transom above.
-       *
-       * Without them a shopfront is a single lit rectangle two metres tall, and
-       * a terrace of those reads as a row of billboards. Three bars and a
-       * cross-piece cost twelve triangles each and turn every one of them into a
-       * window with panes — which is the difference between a street and a set.
-       */
-      const bars = Math.max(2, Math.round(gw / 1.1));
-      for (let m = 1; m < bars; m++) {
-        root.add(box(own, 0.08, 1.86, 0.07, matt(own, '#33291f'),
-                     cx - gw / 2 + (gw / bars) * m, 1.9, zf + out * 0.16));
+      const bays = Math.max(2, Math.round(gw / 1.1));
+      const bayW = gw / bays;
+      const litPane = glow(own, '#9d6f35');
+      const woodwork = matt(own, '#33291f');
+
+      /* The reveal, seen only at the edges of the opening. */
+      root.add(box(own, gw + 0.1, 2.24, 0.1, darkWindow, cx, 1.9, zf + out * 0.06));
+
+      for (let m = 0; m < bays; m++) {
+        const bx = cx - gw / 2 + bayW * (m + 0.5);
+        root.add(box(own, bayW - 0.1, 1.32, 0.05, litPane, bx, 1.72, zf + out * 0.15));
+        root.add(box(own, bayW - 0.1, 0.26, 0.05, litPane, bx, 2.62, zf + out * 0.15));
       }
-      /*
-       * The transom sits a centimetre proud of the uprights it crosses.
-       *
-       * At the same depth they share a face wherever they intersect, and each of
-       * those little crossings flickers — 68 of them across the two terraces,
-       * which `npm run coplanar` found and no screenshot ever would have.
-       */
-      root.add(box(own, gw - 0.24, 0.09, 0.07, matt(own, '#33291f'), cx, 2.46, zf + out * 0.175));
-      /* Something on the other side of the glass, so it is not a light box. */
+      for (let m = 1; m < bays; m++) {
+        root.add(box(own, 0.08, 2.14, 0.10, woodwork, cx - gw / 2 + bayW * m, 1.9, zf + out * 0.18));
+      }
+      root.add(box(own, 0.1, 2.28, 0.10, woodwork, cx - gw / 2, 1.9, zf + out * 0.18));
+      root.add(box(own, 0.1, 2.28, 0.10, woodwork, cx + gw / 2, 1.9, zf + out * 0.18));
+      root.add(box(own, gw, 0.09, 0.07, woodwork, cx, 2.43, zf + out * 0.145));
+
+      /* Goods in the window, in front of the glazing rather than buried behind
+         an opaque pane with a centimetre poking through. */
       for (let d2 = 0; d2 < Math.max(2, Math.floor(gw / 1.4)); d2++) {
-        root.add(box(own, 0.34, 0.3, 0.22,
+        root.add(box(own, 0.32, 0.3, 0.14,
                      matt(own, ['#7a4638', '#3f566f', '#6b5f3c', '#47654f'][d2 % 4]),
-                     cx - gw / 2 + 0.6 + d2 * 1.4, 1.35, zf + out * 0.03));
+                     cx - gw / 2 + 0.6 + d2 * 1.4, 1.32, zf + out * 0.28));
       }
-      root.add(box(own, gw + 0.3, 0.22, 0.28, matt(own, '#3b332a'), cx, 3.06, zf + out * 0.14));
-      root.add(box(own, gw + 0.3, 0.24, 0.28, matt(own, '#3b332a'), cx, 0.82, zf + out * 0.14));
+      /* The bands over and under the window stand clear of the reveal behind
+         them: at `out * 0.14` their back face was a centimetre off its back
+         face, over more than a square metre, on every shopfront in the street. */
+      root.add(box(own, gw + 0.3, 0.22, 0.28, matt(own, '#3b332a'), cx, 3.06, zf + out * 0.20));
+      root.add(box(own, gw + 0.3, 0.24, 0.28, matt(own, '#3b332a'), cx, 0.82, zf + out * 0.20));
       const spill = new THREE.PointLight('#ffb96a', 45, 12, 2);
       spill.position.set(cx, 2.1, faceZ + out * 1.4);
       root.add(spill);
@@ -463,16 +475,19 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * boxes. It is the cheapest thing in this file and it is the first thing
    * anybody ever sees of Market Row.
    */
+  /* Starting where the road stops rather than four metres under it: two ground
+     planes sharing forty-four square metres is the largest coplanar pair the
+     sweep has ever found here. */
   const beyondFloor = new THREE.Mesh(
-    own.keep(new THREE.PlaneGeometry(30, 11)),
-    matt(own, '#ffffff', surfaceOf(own, arcadeFloor, 7.2, 2.6, anisotropy))
+    own.keep(new THREE.PlaneGeometry(26, 11)),
+    matt(own, '#ffffff', surfaceOf(own, arcadeFloor, 6.2, 2.6, anisotropy))
   );
   beyondFloor.rotation.x = -Math.PI / 2;
   /* 15 mm, not 4. The road runs to x 22 and this starts at 18, so the two share
      four metres of ground through the archway — and at 4 mm apart that is inside
      the tolerance `npm run coplanar` calls a flicker. Invisible either way; only
      one of them is stable. */
-  beyondFloor.position.set(EAST_FACE + 15, 0.015, 0.5);
+  beyondFloor.position.set(EAST_FACE + 17, 0.004, 0.5);
   beyondFloor.receiveShadow = true;
   root.add(beyondFloor);
 
@@ -515,15 +530,23 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(box(own, 0.12, 0.12, 1.2, lampMat, lx, 4.75, lz + armZ));
     const head = box(own, 0.44, 0.22, 0.7, lampMat, lx, 4.62, lz + armZ * 2);
     root.add(head);
+    /* 6 cm under the lamp head rather than 1. Four of these down the street,
+       each a flat disc a centimetre below an opaque box — the same fault the
+       arcade's pendants had. */
     const lens = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(0.36, 0.6)), glow(own, '#ffd9a2'));
     lens.rotation.x = Math.PI / 2;
-    lens.position.set(lx, 4.5, lz + armZ * 2);
+    lens.position.set(lx, 4.45, lz + armZ * 2);
     root.add(lens);
     const light = new THREE.PointLight('#ffb469', 210, 24, 2);
     light.position.set(lx, 4.4, lz + armZ * 2);
     light.castShadow = true;
     light.shadow.mapSize.set(1024, 1024);
-    light.shadow.bias = -0.005;
+    /* See `market.ts` on `normalBias`: a constant bias cannot cover a surface
+       edge-on to the light, and a street lamp is edge-on to every wall it
+       stands against. With the normal offset doing that work the constant can
+       come down, which takes the shadows back under the things casting them. */
+    light.shadow.bias = -0.0025;
+    light.shadow.normalBias = 0.04;
     root.add(light);
     lamps.push(light);
   }
@@ -595,7 +618,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
   dusk.shadow.camera.bottom = -22;
   dusk.shadow.camera.near = 1;
   dusk.shadow.camera.far = 70;
-  dusk.shadow.bias = -0.0014;
+  dusk.shadow.bias = -0.0009;
+  /* One shadow texel at this scale: 52 m across 2048. See `market.ts`. */
+  dusk.shadow.normalBias = 0.05;
   root.add(dusk);
   root.add(dusk.target);
 
