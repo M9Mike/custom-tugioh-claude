@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import GameCard from './GameCard';
 import CardDetail from './CardDetail';
 import { previewInstances } from './deckPreview';
+import { menuDeckOrder, menuExtraOrder } from '@/story/deckSort';
 import { CARDS, DUELISTS, artUrl } from '@/game/cards';
 import { primeAudio, sfx } from '@/lib/sfx';
 import { other } from '@/game/engine';
@@ -314,7 +315,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {previewInstances(deck.deck).map((c) => (
+              {previewInstances(menuDeckOrder(deck.deck)).map((c) => (
                 <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                   <GameCard card={c} />
                   <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
@@ -326,7 +327,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                 <div className="brass-rule my-3" />
                 <p className="mb-2 font-display text-xs uppercase tracking-widest text-brass">Extra Deck</p>
                 <div className="flex flex-wrap gap-2">
-                  {previewInstances(deck.extra.map((s) => [s, 1] as [string, number])).map((c) => (
+                  {previewInstances(menuExtraOrder(deck.extra).map((s) => [s, 1] as [string, number])).map((c) => (
                     <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                       <GameCard card={c} />
                       <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>

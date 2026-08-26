@@ -157,7 +157,43 @@ async function tapWhenAwake(page, selector) {
   throw new Error(`"${selector}" never became enabled — the page did not finish hydrating.`);
 }
 
+/**
+ * Puts the duelist somewhere known before the world is opened.
+ *
+ * The walk-and-talk check pushes the stick forward and waits for a talk prompt,
+ * so whether it passes depends entirely on where the save happened to leave the
+ * player and which way they were facing. Standing in the middle of the road, it
+ * walked into an empty street for six seconds and failed a feature that works —
+ * three times, on three different days, each time after something unrelated had
+ * moved the save.
+ *
+ * So the check places them: just inside the shop, a few paces from Grandpa,
+ * facing him. That spot is deterministic, it is where a new player starts
+ * anyway, and Grandpa is the one character who is always there. Written before
+ * the world loads, because the world reads the save on the way in and nothing
+ * moves a duelist who is already standing up.
+ *
+ * Best-effort: against a deployed URL the save is a real player's, so a failure
+ * here is not worth failing the run over — it only means the approach starts
+ * from wherever they left off, which is what it used to do always.
+ */
+async function standNearGrandpa(name) {
+  try {
+    await fetch(`${BASE}/api/story/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: name,
+        world: { area: 'grandpa-shop', x: 2.6, z: 1.6, facing: Math.PI },
+      }),
+    });
+  } catch {
+    /* No server, or a save that is not ours to move. The walk still runs. */
+  }
+}
+
 async function signIn(page, name) {
+  await standNearGrandpa(name);
   await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.locator('input[placeholder="Enter your name"]').fill(name);
   await tapWhenAwake(page, 'button:has-text("Enter Story Mode")');

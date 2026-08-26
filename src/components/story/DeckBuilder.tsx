@@ -37,7 +37,15 @@ import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
 import type { CardInstance } from '@/game/types';
 import { DECK_SIZE, validateDeck } from '@/story/roster';
-import { TRUNK_SORTS, deckOrder, searchCards, trunkOrder, type TrunkSort } from '@/story/deckSort';
+import {
+  TRUNK_FILTERS,
+  TRUNK_SORTS,
+  deckOrder,
+  searchCards,
+  trunkOrder,
+  type TrunkFilter,
+  type TrunkSort,
+} from '@/story/deckSort';
 import { sfx } from '@/lib/sfx';
 
 interface Props {
@@ -134,7 +142,8 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** How the Trunk is ordered. The Deck's order is fixed — see `deckSort.ts`. */
-  const [sort, setSort] = useState<TrunkSort>('type');
+  const [sort, setSort] = useState<TrunkSort>('curve');
+  const [filter, setFilter] = useState<TrunkFilter>('all');
   const [query, setQuery] = useState('');
 
   const inDeck = useMemo(() => new Set(chosen), [chosen]);
@@ -152,8 +161,8 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
 
   /** What is left in the Trunk: owned, not sleeved, matching the search, sorted. */
   const trunk = useMemo(
-    () => trunkOrder(searchCards(pool.filter((s) => !inDeck.has(s)), query), sort),
-    [pool, inDeck, query, sort]
+    () => trunkOrder(searchCards(pool.filter((s) => !inDeck.has(s)), query), sort, filter),
+    [pool, inDeck, query, sort, filter]
   );
   /** How many are hidden by the search, so the count can be honest about it. */
   const trunkTotal = useMemo(() => pool.filter((s) => !inDeck.has(s)).length, [pool, inDeck]);
@@ -174,9 +183,10 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
     out.push({
       kind: 'heading',
       key: 'h-trunk',
-      label: query.trim()
-        ? `Trunk · ${trunk.length} of ${trunkTotal}`
-        : `Trunk · ${trunk.length}`,
+      label:
+        query.trim() || filter !== 'all'
+          ? `Trunk · ${trunk.length} of ${trunkTotal}`
+          : `Trunk · ${trunk.length}`,
       tone: 'trunk',
     });
     if (trunk.length === 0) {
@@ -185,12 +195,14 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
         key: 'n-trunk',
         label: query.trim()
           ? `Nothing in the Trunk matches “${query.trim()}”.`
-          : 'Every card you own is in your deck.',
+          : filter !== 'all'
+            ? `No ${filter}s in the Trunk.`
+            : 'Every card you own is in your deck.',
       });
     }
     for (const slug of trunk) out.push({ kind: 'card', key: slug, slug, held: false });
     return out;
-  }, [chosen, deckShown, trunk, trunkTotal, query]);
+  }, [chosen, deckShown, trunk, trunkTotal, query, filter]);
 
   /**
    * Whether the deck already stored is one this screen may be left on.
@@ -419,6 +431,25 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
         * a deck looks the same every time it is opened. The Trunk is the pile you
         * rummage in, and it grows every time you win, so it gets both.
         */}
+      <div className="mb-1.5 flex shrink-0 gap-1" role="group" aria-label="Show in the Trunk">
+        {TRUNK_FILTERS.map((f2) => (
+          <button
+            key={f2.key}
+            type="button"
+            data-filter={f2.key}
+            aria-pressed={filter === f2.key}
+            onClick={() => {
+              sfx.click();
+              rememberPositions();
+              setFilter(f2.key);
+            }}
+            className={`btn flex-1 rounded px-2 py-1.5 text-[10px] ${filter === f2.key ? 'btn-primary' : ''}`}
+          >
+            {f2.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-2 flex shrink-0 items-center gap-1.5">
         <input
           value={query}

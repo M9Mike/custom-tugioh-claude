@@ -6,6 +6,7 @@ import { CARDS, DUELISTS, artUrl } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
+import { menuDeckOrder, menuExtraOrder } from '@/story/deckSort';
 import type { CardInstance } from '@/game/types';
 import { joinRoomWithRetry, loadIdentity, loadName, saveIdentity, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
@@ -150,7 +151,12 @@ export default function Home() {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {previewInstances([...deck.deck, ...deck.extra.map((x) => [x, 1] as [string, number])]).map((c) => (
+            {/* Monsters, spells, traps, then the Extra Deck — and the monsters by
+                what they cost to Summon. See `menuDeckOrder`. */}
+            {previewInstances([
+              ...menuDeckOrder(deck.deck),
+              ...menuExtraOrder(deck.extra).map((x) => [x, 1] as [string, number]),
+            ]).map((c) => (
               <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                 <GameCard card={c} />
                 <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
