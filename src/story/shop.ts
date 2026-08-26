@@ -52,13 +52,23 @@ export interface ShopItem {
 /**
  * Solomon's stock.
  *
- * One card, and the price is not a mistake: at a dollar a win it is seven and a
- * half thousand duels. That is the number Mike chose and wants to watch, and it
- * is written here plainly so nobody later "fixes" it on the assumption that a
- * zero slipped in.
+ * Add a card by adding a line. Nothing else needs touching: the shelf sorts
+ * itself into the same order a deck is listed in, the panel draws whatever is
+ * here, and the route prices from this table rather than from anything a client
+ * sends. The only rule is that the slug must be a real card, which `npm run
+ * shop` checks.
+ *
+ * **And add no explanation with it.** Not a note about what makes it appear, not
+ * an "unlocks at". How stock arrives is the one thing the game never tells
+ * anybody.
+ *
+ * Blue-Eyes at 7,500 is not a mistake: at a dollar a win that is seven and a half
+ * thousand duels. It is the number Mike chose and wants to watch, written down
+ * here so nobody later "fixes" it on the assumption that a zero slipped in.
  */
 export const STOCK: ShopItem[] = [
   { slug: 'blue-eyes-white-dragon', price: 7500 },
+  { slug: 'alligator-s-sword', price: 25 },
 ];
 
 /** The stock, in the same order a deck is listed in. */
