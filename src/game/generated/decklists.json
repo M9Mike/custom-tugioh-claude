@@ -1533,11 +1533,7 @@
       "extra": [],
       "deck": [
         [
-          "mystical-elf",
-          3
-        ],
-        [
-          "magician-of-faith",
+          "dunames-dark-witch",
           1
         ],
         [
@@ -1545,27 +1541,11 @@
           3
         ],
         [
-          "dunames-dark-witch",
-          1
-        ],
-        [
           "sonic-maid",
-          1
-        ],
-        [
-          "happy-lover",
           3
         ],
         [
           "lady-of-faith",
-          2
-        ],
-        [
-          "aqua-madoor",
-          1
-        ],
-        [
-          "queen-s-knight",
           3
         ],
         [
@@ -1573,19 +1553,35 @@
           1
         ],
         [
-          "gravekeeper-s-spy",
+          "happy-lover",
+          3
+        ],
+        [
+          "magician-of-faith",
           1
         ],
         [
-          "stop-defense",
+          "mask-of-darkness",
           1
+        ],
+        [
+          "amazon-of-the-seas",
+          1
+        ],
+        [
+          "tiger-axe",
+          1
+        ],
+        [
+          "kuriboh",
+          2
         ],
         [
           "royal-tribute",
           1
         ],
         [
-          "spellbinding-circle",
+          "stop-defense",
           1
         ],
         [
@@ -1594,6 +1590,10 @@
         ],
         [
           "negate-attack",
+          1
+        ],
+        [
+          "spellbinding-circle",
           1
         ]
       ]
