@@ -1556,7 +1556,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onDestroyed',
         ops: [{ op: 'specialSummon', from: 'deck', filter: { kind: 'monster' }, pick: 'weakest', position: 'def', face: 'up' }],
       },
-      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster', maxAtk: 1500 } }] },
+      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster', maxAtk: 1500 }, pick: 'strongest' }] },
     ],
   },
 
@@ -1571,7 +1571,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'onSummon',
         ops: [{ op: 'specialSummon', from: 'deck', filter: { slugs: ['sangan'] }, position: 'def', face: 'up' }],
       },
-      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster' } }] },
+      { trigger: 'onSentToGrave', ops: [{ op: 'search', filter: { kind: 'monster' }, pick: 'strongest' }] },
     ],
   },
 

@@ -493,7 +493,15 @@ export type Op =
    * Deck or the Graveyard" has to be a single lookup that can only ever yield
    * one card.
    */
-  | { op: 'search'; filter: CardFilter; count?: number; orGrave?: boolean }
+  /**
+   * `pick` is the card naming its own rule, and the difference between "add 1
+   * monster from your Deck" and "add *the strongest* monster from your Deck".
+   * The first is a decision and its owner is asked; the second is not a
+   * decision at all, and a prompt there would be the game asking a question
+   * the card has already answered. Left unset for every search that means "1
+   * of these", which is nearly all of them.
+   */
+  | { op: 'search'; filter: CardFilter; count?: number; orGrave?: boolean; pick?: 'strongest' | 'weakest' }
   /** `from` may list several zones, searched in order — a Ritual Spell has to
    *  reach the monster whether it was drawn or is still in the Deck. */
   /**

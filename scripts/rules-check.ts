@@ -85,6 +85,55 @@ function act(s: DuelState, pid: PlayerId, a: DuelAction): DuelState {
 }
 
 /**
+ * Answer whatever question the duel is holding, naming the cards you want.
+ *
+ * Most effects that pick a card now stop and ask — see `raiseChoice`, which
+ * lost its opt-in — so a test that summons a searcher and then reads the hand
+ * is reading it one beat too early. This is the beat: the board would put a
+ * modal up here, and a duel with an AI on that seat would answer from
+ * `choiceResponses`.
+ *
+ * Named by slug rather than by uid because that is what a test knows. Throws
+ * when the duel is not asking anything, or when the card named is not one of
+ * the answers — both of those are the test being wrong about the rules, which
+ * is exactly what it is here to find out.
+ */
+function answer(s: DuelState, ...slugs: string[]): DuelState {
+  const p = s.pending;
+  if (!p || p.kind !== 'choose') throw new Error(`nothing is being asked (pending: ${p?.kind ?? 'none'})`);
+  const uids: string[] = [];
+  for (const want of slugs) {
+    const hit = p.options.find((u) => findCard(s, u)?.slug === want && !uids.includes(u));
+    if (!hit) {
+      const offered = p.options.map((u) => findCard(s, u)?.slug ?? '?').join(', ');
+      throw new Error(`"${want}" is not one of the answers — offered: ${offered}`);
+    }
+    uids.push(hit);
+  }
+  return act(s, p.player, { type: 'chooseCard', uids });
+}
+
+/** Is the duel asking, and what is it offering? For pins about the question itself. */
+function asked(s: DuelState): string[] | null {
+  const p = s.pending;
+  if (!p || p.kind !== 'choose') return null;
+  return p.options.map((u) => findCard(s, u)?.slug ?? '?').sort();
+}
+
+/** Every card anywhere in the duel, by uid — the piles a question can reach into. */
+function findCard(s: DuelState, uid: string): CardInstance | undefined {
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const p = s.players[pid];
+    const pools: (CardInstance | null | undefined)[] = [
+      ...p.monsters, p.spellTrap, p.field, ...p.hand, ...p.deck, ...p.grave, ...p.banished, ...p.extra,
+    ];
+    const hit = pools.find((c) => c?.uid === uid);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
  * A throw must not be able to swallow the verdict.
  *
  * `act` throws when the engine refuses an action, which is right for a test
@@ -438,11 +487,22 @@ console.log('\nA Deck search takes the strongest match, not whatever is on top')
   const after = act(s, ME, { type: 'attack', uid: killer.uid, targetUid: sangan.uid });
   const added = after.players[FOE].hand.map((c) => c.slug);
 
+  /* Sangan asks nothing, and that is the card rather than an oversight. Its
+     text names both ends out loud — "the weakest monster from your Deck", "the
+     strongest monster with 1500 or less ATK" — so there is no decision left to
+     put in front of anybody. Every other search in the game means "1 of these"
+     and does ask; see `selfRuled`, which is how the two are told apart. */
+  ok(asked(after) === null, 'a card that names its own end asks nothing', JSON.stringify(asked(after)));
   ok(added.length === 1, 'Sangan adds exactly one card', `added ${added.join(', ') || 'nothing'}`);
   ok(
     added[0] === 'hitotsu-me-giant',
     'and it is the strongest one under the cap, not the first in the deck',
     `got ${added[0] ?? 'nothing'}`
+  );
+  ok(
+    after.players[FOE].monsters.some((m) => m?.slug === 'kuriboh'),
+    'while the body it stands up is the weakest, exactly as its text says',
+    after.players[FOE].monsters.map((m) => m?.slug ?? '-').join(',')
   );
 }
 
@@ -929,14 +989,36 @@ console.log('\nMagician of Faith reaches for your own Graveyard first');
     return act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: mage.uid });
   };
 
-  const after = flipItOver(['monster-reborn'], ['dark-hole']);
+  /* A Spell in each pile is two answers, so she asks — mid-attack, which is
+     precisely the moment she was once held back from asking at. Both piles are
+     offered, because "either Graveyard" means either. */
+  const asking = flipItOver(['monster-reborn'], ['dark-hole']);
+  ok(
+    JSON.stringify(asked(asking)) === JSON.stringify(['dark-hole', 'monster-reborn']),
+    'she offers both Graveyards, which is what "either" says',
+    JSON.stringify(asked(asking))
+  );
+  const after = answer(asking, 'monster-reborn');
   const got = after.players[ME].hand.map((c) => c.slug);
   ok(got.includes('monster-reborn'), 'takes your own Spell back', got.join(', ') || '(empty)');
   ok(!got.includes('dark-hole'), 'and leaves theirs where it fell', got.join(', '));
 
+  /* And a computer on that seat reaches for its own pile first, which is the
+     original report — "Magician of Faith gave me back the enemy spell card" —
+     answered a second time, in the place the decision moved to. */
+  const machine = choiceResponses(asking, ME)[0];
+  const wantedUid = machine?.type === 'chooseCard' ? machine.uids[0] : '';
+  ok(
+    asking.players[ME].grave.some((c) => c.uid === wantedUid),
+    'and a computer answering reaches into its own pile first',
+    asking.players[FOE].grave.some((c) => c.uid === wantedUid) ? 'took theirs' : 'took nothing'
+  );
+
   // With nothing of your own to take, the other Graveyard is still fair game —
-  // which is what keeps the card's own "either Graveyard" honest.
+  // which is what keeps the card's own "either Graveyard" honest. One answer,
+  // so no question either.
   const after2 = flipItOver([], ['dark-hole']);
+  ok(asked(after2) === null, 'one Spell anywhere is one answer, so nothing is asked', JSON.stringify(asked(after2)));
   ok(
     after2.players[ME].hand.some((c) => c.slug === 'dark-hole'),
     'and reaches across when yours holds nothing',
@@ -4520,37 +4602,92 @@ console.log('\nA card that names its options means them in that order');
 
      A filter that names its cards is a preference order, and the card's text
      is where that order is written. */
-  const fetched = (deck: string[]) => {
+  /* The order is still the card's, but it is now a *recommendation* rather
+     than a verdict: the player is asked, and what the order decides is which
+     answers an AI on that seat considers first — see `choiceResponses`. Both
+     halves are pinned, because the -1 ATK trap moved when the asking did. */
+  const summonViser = (deck: string[]) => {
     const s = fresh();
     const v = card(ME, 'viser-des');
     s.players[ME].hand = [v];
     s.players[ME].deck = deck.map((d) => card(ME, d));
-    const out = act(s, ME, { type: 'normalSummon', uid: v.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
-    return out.players[ME].hand.filter((c) => c.slug !== 'viser-des').map((c) => c.slug);
+    return act(s, ME, { type: 'normalSummon', uid: v.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
   };
+  const inHand = (s: DuelState) => s.players[ME].hand.filter((c) => c.slug !== 'viser-des').map((c) => c.slug);
 
-  ok(fetched(['coffin-seller', 'nightmare-wheel', 'bowganian', 'the-winged-dragon-of-ra'])[0] === 'the-winged-dragon-of-ra',
-    'the God is named first, so the God is what it fetches');
+  const wide = summonViser(['coffin-seller', 'nightmare-wheel', 'bowganian', 'the-winged-dragon-of-ra']);
+  ok(
+    (asked(wide) ?? []).includes('the-winged-dragon-of-ra'),
+    'Viser Des asks, and the God is one of the answers it offers',
+    JSON.stringify(asked(wide))
+  );
+  ok(inHand(answer(wide, 'coffin-seller'))[0] === 'coffin-seller',
+    'and the player may take the Trap over the God if that is the play');
+
+  /* The ranking an AI reads. Ra's printed ATK is "?", which the database gives
+     as -1 — so a plain ATK sort put the headline card of the deck dead last.
+     `choiceResponses` reads the card's named order first, and the first answer
+     it offers is the one it would take. */
+  const offers = choiceResponses(wide, ME);
+  const firstChoice = offers[0]?.type === 'chooseCard' ? offers[0].uids[0] : '';
+  const firstSlug = wide.pending && wide.pending.kind === 'choose'
+    ? (['p1', 'p2'] as PlayerId[]).flatMap((pid) => wide.players[pid].deck).find((c) => c.uid === firstChoice)?.slug
+    : undefined;
+  ok(firstSlug === 'the-winged-dragon-of-ra',
+    'and a computer answering it reaches for the God first, not last', firstSlug ?? 'nothing');
+
   /* Deck order must not matter, or the fix is luck wearing a rule's clothes. */
-  ok(fetched(['the-winged-dragon-of-ra', 'bowganian'])[0] === 'the-winged-dragon-of-ra',
-    'and it does not matter where in the Deck it is sitting');
-  ok(fetched(['coffin-seller', 'nightmare-wheel', 'bowganian'])[0] === 'bowganian',
-    'with no God to find it takes the next one named');
-  ok(fetched(['coffin-seller', 'nightmare-wheel'])[0] === 'nightmare-wheel',
-    'and the next after that');
-  ok(fetched(['coffin-seller'])[0] === 'coffin-seller', 'down to the last one listed');
+  const two = summonViser(['the-winged-dragon-of-ra', 'bowganian']);
+  ok((asked(two) ?? []).includes('the-winged-dragon-of-ra'),
+    'and it does not matter where in the Deck the God is sitting', JSON.stringify(asked(two)));
 
-  /* CONTROL: a search with no named list still takes the strongest, which is
-     what a player would have said if there were anyone to ask. */
-  const anyDeck = fresh();
-  const alpha = card(ME, 'alpha-the-magnet-warrior');
-  anyDeck.players[ME].hand = [alpha];
-  anyDeck.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'beta-the-magnet-warrior'), card(ME, 'gamma-the-magnet-warrior')];
-  const magnets = act(anyDeck, ME, {
-    type: 'normalSummon', uid: alpha.uid, zone: 0, position: 'atk', face: 'up', tributes: [],
-  });
-  ok(magnets.players[ME].hand.some((c) => c.slug === 'beta-the-magnet-warrior'),
-    'CONTROL: an unordered search still reaches for what it wants');
+  /* One name left in the Deck is one answer, so there is nothing to ask and
+     the card simply takes it. */
+  const alone = summonViser(['coffin-seller']);
+  ok(asked(alone) === null, 'down to the last one listed it asks nothing', JSON.stringify(asked(alone)));
+  ok(inHand(alone)[0] === 'coffin-seller', 'and takes it anyway', inHand(alone)[0] ?? 'nothing');
+
+  /* Alpha takes two brothers, so exactly two brothers in the Deck is no
+     decision at all — it takes both and says nothing. */
+  const summonAlpha = (deck: string[]) => {
+    const s = fresh();
+    const alpha = card(ME, 'alpha-the-magnet-warrior');
+    s.players[ME].hand = [alpha];
+    s.players[ME].deck = deck.map((d) => card(ME, d));
+    return act(s, ME, { type: 'normalSummon', uid: alpha.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  };
+  const exactly = summonAlpha(['kuriboh', 'beta-the-magnet-warrior', 'gamma-the-magnet-warrior']);
+  ok(asked(exactly) === null, 'two brothers for two slots is no decision, so nothing is asked', JSON.stringify(asked(exactly)));
+  ok(
+    exactly.players[ME].hand.some((c) => c.slug === 'beta-the-magnet-warrior') &&
+      exactly.players[ME].hand.some((c) => c.slug === 'gamma-the-magnet-warrior'),
+    'CONTROL: an unordered search still reaches for what it wants',
+    exactly.players[ME].hand.map((c) => c.slug).join(',')
+  );
+
+  /* Three copies of the same brother for two slots is still no decision —
+     `worthAsking` counts names, not cards, and every way of taking two of
+     three Betas ends with two Betas in hand. */
+  const clones = summonAlpha(['beta-the-magnet-warrior', 'beta-the-magnet-warrior', 'beta-the-magnet-warrior']);
+  ok(asked(clones) === null, 'and three copies of one brother is still no decision', JSON.stringify(asked(clones)));
+  ok(
+    clones.players[ME].hand.filter((c) => c.slug === 'beta-the-magnet-warrior').length === 2,
+    'it simply takes two of them',
+    `${clones.players[ME].hand.filter((c) => c.slug === 'beta-the-magnet-warrior').length}`
+  );
+
+  /* Two Betas and a Gamma is, because Beta+Beta and Beta+Gamma are different
+     hands — which is why the rule cannot be "more than one name" on its own. */
+  const mixed = summonAlpha(['beta-the-magnet-warrior', 'beta-the-magnet-warrior', 'gamma-the-magnet-warrior']);
+  const offered = asked(mixed);
+  ok(!!offered && offered.length === 3, 'two of one and one of another is a decision', JSON.stringify(offered));
+  const took = answer(mixed, 'beta-the-magnet-warrior', 'beta-the-magnet-warrior');
+  ok(
+    took.players[ME].hand.filter((c) => c.slug === 'beta-the-magnet-warrior').length === 2 &&
+      !took.players[ME].hand.some((c) => c.slug === 'gamma-the-magnet-warrior'),
+    'and the pair pointed at is the pair that comes, Gamma left behind',
+    took.players[ME].hand.map((c) => c.slug).join(',')
+  );
 }
 
 console.log('\nEvery ignition on a card can be reached');
@@ -5242,24 +5379,37 @@ console.log('\nKaiba: the ring stops biting its owner, and the giant fetches the
 console.log('\nJoey: the underdog draws his own combo pieces');
 {
   /* Alligator's Sword stopped poking and became the other half of the fusion.
-     Named order is a preference, so Baby Dragon comes first when both sit
-     in the Deck. */
+     The two names in its text used to be a *preference*, and Baby Dragon came
+     first when both sat in the Deck — because nobody was asked. It asks now:
+     which half of the fusion you want is the whole decision the card is, and
+     the answer depends on what is already in your hand. */
   const s = fresh();
   const gator = card(ME, "alligator-s-sword");
   s.players[ME].hand = [gator];
   s.players[ME].deck = [card(ME, 'polymerization'), card(ME, 'baby-dragon'), card(ME, 'kuriboh')];
-  const got = act(s, ME, { type: 'normalSummon', uid: gator.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
-  ok(got.players[ME].hand.length === 1, "Alligator's Sword adds exactly one card", `hand ${got.players[ME].hand.length}`);
-  ok(got.players[ME].hand[0].slug === 'baby-dragon', 'and it is Baby Dragon, the first name in its text', got.players[ME].hand[0].slug);
+  const asking = act(s, ME, { type: 'normalSummon', uid: gator.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(
+    JSON.stringify(asked(asking)) === JSON.stringify(['baby-dragon', 'polymerization']),
+    "Alligator's Sword asks which half of the fusion it fetches",
+    JSON.stringify(asked(asking))
+  );
+  const got = answer(asking, 'polymerization');
+  ok(got.players[ME].hand.length === 1, "and adds exactly one card", `hand ${got.players[ME].hand.length}`);
+  ok(
+    got.players[ME].hand[0].slug === 'polymerization',
+    'the one that was pointed at, not the first name in its text',
+    got.players[ME].hand[0].slug
+  );
   const swordOnField = got.players[ME].monsters.find((m) => m?.uid === gator.uid)!;
   ok(effAtk(got, swordOnField, ME) === baseAtkOf(gator.slug), 'and the old +400 swing is gone', `ATK ${effAtk(got, swordOnField, ME)}`);
 
-  // Only Polymerization left, and it takes that instead.
+  // Only Polymerization left: one answer, so no question, and it takes it.
   const p = fresh();
   const gator2 = card(ME, "alligator-s-sword");
   p.players[ME].hand = [gator2];
   p.players[ME].deck = [card(ME, 'polymerization'), card(ME, 'kuriboh')];
   const poly = act(p, ME, { type: 'normalSummon', uid: gator2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+  ok(asked(poly) === null, 'with one name left in the Deck it asks nothing', JSON.stringify(asked(poly)));
   ok(poly.players[ME].hand[0]?.slug === 'polymerization', 'and Polymerization when the dragon is elsewhere', poly.players[ME].hand[0]?.slug);
 
   /* Flame Swordsman arms himself from EITHER pile, which is two ops: `search`
@@ -5952,10 +6102,57 @@ console.log('\nJoey: one banner per roll, a dragon off heads, and a chosen grave
     taken.players[ME].hand.map((c) => c.slug).join(',')
   );
 
-  /* CONTROL: the mid-resolution steals must NOT have grown a prompt. Nobody is
-     there to answer one when a summon resolves. */
-  ok(!targetSpecFor('hitotsu-me-giant', 'onSummon'), 'CONTROL: Hitotsu-Me Giant still asks nothing');
-  ok(!targetSpecFor('lady-of-faith', 'onSummon'), 'CONTROL: Lady of Faith still asks nothing');
+  /* The mid-resolution steals used to be held back from asking, on the grounds
+     that nobody is standing there when a summon resolves. Somebody is: the
+     board raises a modal and an AI answers from `choiceResponses`, exactly as
+     they do for the question Graverobber has always asked.
+
+     So both declare a spec now, and what decides whether the question is put is
+     the Graveyard rather than the card — see `worthAsking`. Hitotsu-Me Giant
+     reaches for Pot of Greed by name, so two of them down there are still one
+     answer and it takes it without a word. Lady of Faith reaches for any Fiend,
+     which is a real decision the moment there are two different ones. */
+  ok(!!targetSpecFor('hitotsu-me-giant', 'onSummon'), 'Hitotsu-Me Giant declares its reach into the Graveyard');
+  ok(!!targetSpecFor('magician-of-faith', 'onFlip'), 'and so does Magician of Faith');
+  /* Lady of Faith is the exception that proves what the rule is about. Her
+     text reads "add 1 *random* Fiend" and the op carries `pick: 'random'`, so
+     she is answered before anybody could be asked — see `selfRuled`. Handing
+     her a modal would not be giving a choice back, it would be deleting the
+     only thing the card does. */
+  ok(!targetSpecFor('lady-of-faith', 'onSummon'), 'and the Lady, who reaches without looking, still asks nothing');
+  {
+    const q = fresh();
+    const giant = card(ME, 'hitotsu-me-giant');
+    q.players[ME].hand = [giant];
+    q.players[ME].grave = [card(ME, 'pot-of-greed'), card(ME, 'pot-of-greed')];
+    const quiet = act(q, ME, { type: 'normalSummon', uid: giant.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(asked(quiet) === null, 'two Pots of Greed are one answer, so the giant is not asked', JSON.stringify(asked(quiet)));
+    ok(quiet.players[ME].hand.some((c) => c.slug === 'pot-of-greed'), 'and it takes one anyway', quiet.players[ME].hand.map((c) => c.slug).join(','));
+
+    /* Magician of Faith turns face-up in the middle of somebody else's attack,
+       which used to be the whole reason she was never asked. She is asked now,
+       and the Spell she hands back is the one that was pointed at. */
+    const m = fresh();
+    const mage = card(ME, 'magician-of-faith');
+    mage.face = 'down';
+    mage.position = 'def';
+    mage.summonedOnTurn = 0;
+    m.players[ME].monsters[0] = mage;
+    m.players[ME].grave = [card(ME, 'dark-hole'), card(ME, 'monster-reborn'), card(ME, 'kuriboh')];
+    m.players[ME].deck = [card(ME, 'kuriboh')];
+    const asks = act(m, ME, { type: 'changePosition', uid: mage.uid });
+    ok(
+      JSON.stringify(asked(asks)) === JSON.stringify(['dark-hole', 'monster-reborn']),
+      'she offers every Spell in the pile and nothing that is not one',
+      JSON.stringify(asked(asks))
+    );
+    const chosen = answer(asks, 'monster-reborn');
+    ok(
+      chosen.players[ME].hand.some((c) => c.slug === 'monster-reborn'),
+      'and takes the one pointed at, not the first card down there',
+      chosen.players[ME].hand.map((c) => c.slug).join(',')
+    );
+  }
 
   /* Reported from a real duel: "Graverobber says there is nothing it can
      target but the enemy has cards in their graveyard" — a pile holding only

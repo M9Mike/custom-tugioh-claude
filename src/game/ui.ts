@@ -96,8 +96,30 @@ export function worthAsking(spec: TargetSpec, options: CardInstance[], want: num
   return new Set(options.map((c) => c.slug)).size > 1;
 }
 
+/**
+ * Has this op already answered its own question?
+ *
+ * "Special Summon the weakest monster from your Deck" is not a choice — the
+ * card has made it, and putting a modal in front of the player there is the
+ * game asking something it already knows. Sangan says exactly that, and was
+ * the first card to be asked a question it had answered in its own text.
+ *
+ * `random` counts, and is the sharper case: Lady of Faith reaches into the
+ * Graveyard *without looking*, and that is not a worse version of choosing, it
+ * is what the card is. A prompt there would not be giving the player a choice
+ * back — it would be deleting the card's only mechanic.
+ *
+ * Every other `pick` — `chosen`, `attacker`, `all` — is either the question
+ * itself or a target with no alternatives, and neither is ruled out here.
+ */
+const SELF_RULED = new Set(['strongest', 'weakest', 'random']);
+function selfRuled(op: Op): boolean {
+  return 'pick' in op && typeof op.pick === 'string' && SELF_RULED.has(op.pick);
+}
+
 function scanOps(ops: Op[], owner: string): TargetSpec | null {
   for (const op of ops) {
+    if (selfRuled(op)) continue;
     if (op.op === 'coinFlip') {
       const r = scanOps(op.heads, owner) ?? scanOps(op.tails, owner);
       if (r) return r;
@@ -228,37 +250,24 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
       filter: eff.cost.tributeFilter,
     };
   }
-  /* Taking a card out of a Graveyard is a choice only when the card says so.
-     Graverobber is activated by a player who is standing right there, so it
-     asks — the owner's report, and the same shape Monster Reborn already has.
-     Every other `stealFromGrave` in the game fires mid-resolution off a summon
-     or a flip, where there is nobody to ask and the engine takes the strongest
-     legal card by design.
-     So the gate is the effect's own `targets`, deliberately, rather than the
-     presence of the op: handling it inside `scanOps` would have started
-     prompting for Hitotsu-Me Giant and Lady of Faith too, neither of which was
-     asked for and neither of which has a player to answer. */
-  /* Calling a monster out of the Deck, the same way and for the same reason.
-     `scanOps` handles a Special Summon from the hand or the Graveyard and stops
-     short of the Deck, which is not an oversight — most Deck summons in this
-     game resolve where there is nobody standing there to ask: Sangan on its way
-     to the Graveyard, the Cocoon hatching on its own turn, Witch replacing
-     herself as she dies. But some of them are a player pressing a button, and
-     those were choosing for themselves too. Gravekeeper's Spy names *nine*
-     possible Flip monsters and took the biggest one every single time —
-     reported by the owner as "it should allow me to select which monster I
-     would special summon".
+  /* Calling a monster out of the Deck. `scanOps` handles a Special Summon from
+     the hand or the Graveyard and stops short of the Deck, which is a
+     deliberate split rather than an oversight: this branch sits *after* the
+     Tribute cost above, so a card that pays a price first is asked about the
+     price first, and it cannot move into `scanOps` for that reason alone —
+     Black Illusion Ritual would match it there, and its first question is which
+     monster to Tribute, the summon coming after and asked by
+     `summonRiderSpec`.
 
-     So the gate is the effect's own `targets`, exactly as it is for the
-     Graveyard steal directly below: the card opts in, one card at a time, and
-     the death triggers keep resolving themselves. Placed after the Tribute cost
-     above so a card that pays a price first still asks about the price first.
-
-     Note this cannot land in `scanOps`: Black Illusion Ritual would match it,
-     and its first question is which monster to Tribute — the summon comes after
-     and is asked by `summonRiderSpec`. */
-  if (eff.targets) {
-    const summon = eff.ops.find((o) => o.op === 'specialSummon');
+     What used to gate it was the effect's own `targets`, one card opting in at
+     a time. Gravekeeper's Spy names *nine* possible Flip monsters and took the
+     biggest one every single time, reported by the owner as "it should allow me
+     to select which monster I would special summon" — and the fix was to switch
+     that one card on. Eighty-odd others were still choosing for themselves, so
+     the gate has gone; `worthAsking` keeps the silence where silence was the
+     point. */
+  {
+    const summon = eff.ops.find((o) => o.op === 'specialSummon' && !selfRuled(o));
     if (summon && summon.op === 'specialSummon') {
       const zones = Array.isArray(summon.from) ? summon.from : [summon.from];
       if (zones.includes('deck')) {
@@ -281,13 +290,25 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
       }
     }
   }
-  if (eff.targets && eff.ops.some((o) => o.op === 'stealFromGrave')) {
-    const steal = eff.ops.find((o) => o.op === 'stealFromGrave');
+  /* And taking a card back out of a Graveyard. Graverobber is a player
+     standing right there pressing a button, and Magician of Faith is a card
+     turning face-up in the middle of somebody else's attack — the same
+     question either way, and only the first of them was ever asked. */
+  {
+    const steal = eff.ops.find((o) => o.op === 'stealFromGrave' && !selfRuled(o));
     if (steal && steal.op === 'stealFromGrave') {
       return {
-        side: steal.from === 'own' ? 'own' : steal.from === 'either' ? 'both' : 'opp',
+        /* An unset `from` is "either Graveyard", not the opponent's — which is
+           what the engine has always done with it (`[own, theirs]`, own first)
+           and the opposite of what this line used to say. Magician of Faith
+           reaches into both piles and the picker would have offered her only
+           the enemy's, so the one card she is actually for — your own Monster
+           Reborn — was not among her answers. Invisible until she started
+           asking, which is how this file keeps learning the same lesson: the
+           picker and the engine must not hold two opinions about one word. */
+        side: steal.from === 'own' ? 'own' : steal.from === 'opp' ? 'opp' : 'both',
         zone: 'grave',
-        count: eff.targets,
+        count: eff.targets ?? 1,
         prompt: 'Choose a card to take from the Graveyard',
         filter: steal.filter,
       };

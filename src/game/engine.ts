@@ -2282,12 +2282,19 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
               }
             }
             if (idx < 0) {
-              /* No named order to follow: take the strongest, which is what a
-                 player would have said if there had been anyone to ask. */
+              /* No named order to follow: the end the card asks for, and the
+                 strongest when it does not ask for either — which is what a
+                 player would have said if there had been anyone to ask.
+                 Sangan says "the weakest" out loud and is the reason `pick`
+                 exists at all. */
+              const wantWeak = op.pick === 'weakest';
               let best = -1;
               for (let k = 0; k < p.deck.length; k++) {
                 if (!matchesFilter(p.deck[k], op.filter)) continue;
-                if (best < 0 || (CARDS[p.deck[k].slug]?.atk ?? 0) > (CARDS[p.deck[best].slug]?.atk ?? 0)) best = k;
+                if (best < 0) { best = k; continue; }
+                const here = baseAtk(p.deck[k].slug);
+                const held = baseAtk(p.deck[best].slug);
+                if (wantWeak ? here < held : here > held) best = k;
               }
               idx = best;
             }
@@ -3104,7 +3111,19 @@ function raiseChoice(
   targets: string[]
 ): boolean {
   if (targets.length || state.winner) return false;
-  if (!eff.targets) return false;
+  /* No opt-in. There used to be one — an effect asked only if it declared
+     `targets` — and it was there to keep the noise down: Hitotsu-Me Giant
+     reaching for the one Pot of Greed in its Graveyard has nothing to ask, and
+     a gate that had to be switched on card by card was the cheapest way to say
+     so.
+     `worthAsking` says it better, and says it about the *board* rather than
+     about the card: one Pot of Greed is one answer however many effects reach
+     for it. So the opt-in is gone, and with it the eighty-odd cards that chose
+     for the player on every road but the one button that happened to ask.
+     What is left is the rule itself — a decision between distinguishable cards
+     belongs to whoever controls the card — applied everywhere, including to
+     cards nobody has written yet. `targets` survives as what it reads like: how
+     many, not whether. */
   const spec = targetSpecFor(c.slug, trigger);
   if (!spec) return false;
   /* Never the card doing the asking. A monster does not Special Summon itself
@@ -3189,9 +3208,42 @@ export function choiceResponses(state: DuelState, pid: PlayerId): DuelAction[] {
      Found by the A/B harness, which reports a crashed game instead of hiding
      it: one duel in sixty-five died here, in a room this would be a duel that
      simply stopped. The `?? ''` read as a safe default and was the opposite. */
+  /* The card's own text first, printed ATK only after it.
+     A filter that names its cards names them in an order, and that order is the
+     designer saying which answer is the good one — Viser Des reaches for Ra
+     before it reaches for Bowganian. Sorting by ATK alone got this exactly
+     backwards, because a God's printed ATK is "?" and the database gives "?"
+     as **-1**: Ra sorted below a 1300 body and below two Traps on 0, so the
+     headline card of the whole deck was the one answer the search would never
+     take. That was found once and fixed inside the search; it came straight
+     back the day the search started asking instead, because the ranking had
+     simply moved here.
+     Only the top few are handed to the beam, so this is not a tie-break — it
+     decides which answers get considered at all. */
+  const spec = targetSpecFor(pending.sourceSlug, pending.trigger);
+  const named = spec?.filter?.slugs;
   const worth = (uid: string): number => {
     const c = findAnywhere(state, uid);
-    return c ? (c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug)) : 0;
+    /* A card the window named and nothing can find any more is worth nothing —
+       it is NOT worth `card('')`, which throws and takes the whole duel with
+       it. Found by the A/B harness, which reports a crashed game instead of
+       hiding it: one duel in sixty-five died here, in a room this would be a
+       duel that simply stopped. The `?? ''` read as a safe default and was the
+       opposite. */
+    if (!c) return -1;
+    if (named) {
+      const at = named.indexOf(c.slug);
+      if (at >= 0) return 1_000_000 - at;
+    }
+    // Its strength is the hand or the Tribute behind it, never the number.
+    if (CARDS[c.slug]?.type === 'Divine-Beast') return 900_000;
+    const body = c.isToken ? (c.tokenAtk ?? 0) : Math.max(0, baseAtk(c.slug));
+    /* Your own pile first, where the question spans both. "Magician of Faith
+       gave me back the enemy spell card" was reported when the *engine* chose,
+       and fixed there; a computer answering the question now would hand the
+       same complaint straight back without this. A nudge rather than a rule —
+       a genuinely better card across the table still wins. */
+    return body + (state.players[pid].grave.some((g) => g.uid === uid) ? 1 : 0);
   };
   const ranked = [...pending.options].sort((a, b) => worth(b) - worth(a));
   const out: DuelAction[] = [];
@@ -3221,7 +3273,11 @@ function drainChoices(state: DuelState) {
     return;
   }
   const options = targetCandidates(state, next.player, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
-  if (next.optional ? options.length === 0 : options.length <= next.want) {
+  /* The same `worthAsking` the other two gates ask. A parked question that is
+     no longer worth putting must resolve itself here exactly as it would have
+     been skipped there — three gates, one rule, or a question the board would
+     never have raised comes back out of the queue a turn later. */
+  if (next.optional ? options.length === 0 : !worthAsking(spec, options, next.want)) {
     // No longer a choice. Resolve it the way it would have resolved anyway.
     resumeChoice(state, { ...next, options: options.map((o) => o.uid) }, options.slice(0, next.want).map((o) => o.uid));
     drainChoices(state);
