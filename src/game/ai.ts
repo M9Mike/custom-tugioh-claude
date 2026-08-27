@@ -123,20 +123,36 @@ const EXODIA = new Set([
  * as a big body. Watching what was paid is reading the table, not the card.
  */
 const unknownMeans = (() => {
-  const small = { atk: 0, def: 0, n: 0 };
+  /* A Set is CHOSEN, not drawn: people Set their walls and their flip
+     effects, not their average card, so the unknown averages over the
+     Level ≤ 4 monsters somebody would actually put face-down — defence at
+     least even with attack, or a flip effect worth hiding. The first cut of
+     this averaged the whole small half of the pool, priced every unknown at
+     1150/1050, and the engine turned globally optimistic about faces it had
+     never seen — measured as three points of win rate given away to its own
+     baseline. Selection bias is information too. */
+  const setish = { atk: 0, def: 0, n: 0 };
   const big = { atk: 0, def: 0, n: 0 };
   for (const def of Object.values(CARDS)) {
     if (def.kind !== 'monster' || def.slug === 'facedown' || def.type === 'Divine-Beast') continue;
-    const into = (def.level ?? 0) <= 4 ? small : big;
-    into.atk += Math.max(0, def.atk ?? 0);
-    into.def += Math.max(0, def.def ?? 0);
-    into.n += 1;
+    if ((def.level ?? 0) > 4) {
+      big.atk += Math.max(0, def.atk ?? 0);
+      big.def += Math.max(0, def.def ?? 0);
+      big.n += 1;
+      continue;
+    }
+    const wall = (def.def ?? 0) >= (def.atk ?? 0);
+    const flip = (def.effects ?? []).some((e) => e.trigger === 'onFlip');
+    if (!wall && !flip) continue;
+    setish.atk += Math.max(0, def.atk ?? 0);
+    setish.def += Math.max(0, def.def ?? 0);
+    setish.n += 1;
   }
   const mean = (t: { atk: number; def: number; n: number }) => ({
     atk: Math.round(t.atk / Math.max(1, t.n) / 50) * 50,
     def: Math.round(t.def / Math.max(1, t.n) / 50) * 50,
   });
-  return { small: mean(small), big: mean(big) };
+  return { small: mean(setish), big: mean(big) };
 })();
 /* Derived, not written: the constants here were hand-set as "roughly the mean
    across the season-one decks" and the card pool walked away from them — the
@@ -144,6 +160,68 @@ const unknownMeans = (() => {
    Set can only be Level 4 or lower, so it averages over that half of the pool;
    a Set that visibly cost a Tribute averages over the other. Gods excluded:
    they cannot be Set. */
+/**
+ * The same two averages, computed from ONE opponent's live unseen multiset —
+ * their hand, their deck, and the face-down cards themselves, all of which is
+ * decklist-minus-what-you-have-seen and therefore table knowledge.
+ *
+ * This is what breaks the tie the global constants could not: against a deck
+ * whose walls are thin, an 1100 probe is a favourite and the anchor world
+ * should say so; against a wall-heavy deck the same probe bounces, and the
+ * SAME code says that instead. One number was serving both masters and lost
+ * games at each extreme. Cached per state object — worlds are clones, and
+ * every evaluation of one state asks many times.
+ */
+const POOL_UNKNOWN = new WeakMap<DuelState, Map<PlayerId, { small: { atk: number; def: number }; big: { atk: number; def: number } }>>();
+function unknownFor(state: DuelState, pid: PlayerId): { small: { atk: number; def: number }; big: { atk: number; def: number } } {
+  let byPid = POOL_UNKNOWN.get(state);
+  if (!byPid) {
+    byPid = new Map();
+    POOL_UNKNOWN.set(state, byPid);
+  }
+  const hit = byPid.get(pid);
+  if (hit) return hit;
+  const p = state.players[pid];
+  const smallAtk: number[] = [];
+  const smallDef: number[] = [];
+  const bigAtk: number[] = [];
+  const bigDef: number[] = [];
+  const consider = (slug: string) => {
+    const d = CARDS[slug];
+    if (d?.kind !== 'monster' || d.type === 'Divine-Beast') return;
+    if ((d.level ?? 0) > 4) {
+      bigAtk.push(Math.max(0, d.atk ?? 0));
+      bigDef.push(Math.max(0, d.def ?? 0));
+    } else {
+      smallAtk.push(Math.max(0, d.atk ?? 0));
+      smallDef.push(Math.max(0, d.def ?? 0));
+    }
+  };
+  for (const c of p.hand) consider(c.slug);
+  for (const c of p.deck) consider(c.slug);
+  for (const m of p.monsters) if (m && m.face === 'down') consider(m.slug);
+  /* MEDIAN, not mean, and it is load-bearing: the beam prunes lines by their
+     anchor-world score before the judge ever votes, so the anchor body's DEF
+     decides whether a probing attack survives to be sampled at all. The
+     median answers the question the anchor world is standing in for — "what
+     happens in the TYPICAL world" — where a mean dragged upward by a couple
+     of 2000-DEF walls answered "bounce" against pools two-thirds of which
+     die to the swing. Same statistic the sampler converges to, same
+     distribution the sampler deals from: all of it, unweighted, because the
+     sampled worlds deal unweighted. */
+  const med = (xs: number[], fb: number): number => {
+    if (!xs.length) return fb;
+    const sorted = [...xs].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  };
+  const out = {
+    small: { atk: med(smallAtk, unknownMeans.small.atk), def: med(smallDef, unknownMeans.small.def) },
+    big: { atk: med(bigAtk, unknownMeans.big.atk), def: med(bigDef, unknownMeans.big.def) },
+  };
+  byPid.set(pid, out);
+  return out;
+}
+
 const UNKNOWN_ATK = unknownMeans.small.atk;
 /* What a body they have not summoned yet swings for — one number, shared by
    the threat term's phantom and the expectation world's hand proxies, so the
@@ -174,8 +252,9 @@ function bodyOf(state: DuelState, m: CardInstance, ctrl: PlayerId, viewer: Playe
   const hidden = m.face === 'down' && ctrl !== viewer;
   const f = effFlags(state, m, ctrl);
   const tributed = hidden && (m.setTributes ?? 0) > 0;
-  const atk = hidden ? (tributed ? TRIBUTED_UNKNOWN_ATK : UNKNOWN_ATK) : effAtk(state, m, ctrl);
-  const def = hidden ? (tributed ? TRIBUTED_UNKNOWN_DEF : UNKNOWN_DEF) : effDef(state, m, ctrl);
+  const pool = hidden ? unknownFor(state, ctrl) : null;
+  const atk = hidden ? (tributed ? pool!.big.atk : pool!.small.atk) : effAtk(state, m, ctrl);
+  const def = hidden ? (tributed ? pool!.big.def : pool!.small.def) : effDef(state, m, ctrl);
   /* The engine refuses a frozen or held-down attack, and only a Divine-Beast
      walks through the lock — `canAttackWith`'s exact rule, mirrored. Without
      this, the threat model kept counting attacks the engine would never
@@ -972,11 +1051,12 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
          face-down is the conditioned unknown, never its real numbers — the
          old sort read `effDef` straight off the hidden card, which quietly
          ordered the beam by information the player does not have. */
+      const foePool = unknownFor(state, foe);
       const wallOf = (t: CardInstance): number =>
         t.face === 'down'
           ? (t.setTributes ?? 0) > 0
-            ? TRIBUTED_UNKNOWN_DEF
-            : UNKNOWN_DEF
+            ? foePool.big.def
+            : foePool.small.def
           : t.position === 'atk'
             ? effAtk(state, t, foe)
             : effDef(state, t, foe);
@@ -1270,9 +1350,10 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
     /* The conditioned unknown, matching `bodyOf` exactly: a Set that visibly
        cost a Tribute stands as a big body in the anchor world too, or the
        judge and the evaluation argue about the same card. */
+    const pool = unknownFor(state, other(viewer));
     for (const m of hiddenMonsters) {
-      if ((m.setTributes ?? 0) > 0) proxyBody(m, TRIBUTED_UNKNOWN_ATK, TRIBUTED_UNKNOWN_DEF);
-      else proxyBody(m);
+      if ((m.setTributes ?? 0) > 0) proxyBody(m, pool.big.atk, pool.big.def);
+      else proxyBody(m, pool.small.atk, pool.small.def);
     }
     /* Their hand too. The beam never reads a hand card's identity directly,
        but it was reading one *indirectly*: declaring an attack asks the engine
@@ -1288,7 +1369,7 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
        cut of this proxied hands at the Set-mean and two pinned positions —
        Swords with the duel on the line, the outgunned board kneeling — went
        from certain to coin-flip exactly there. */
-    for (const h of foe.hand) proxyBody(h, PHANTOM_SUMMON_ATK, UNKNOWN_DEF);
+    for (const h of foe.hand) proxyBody(h, PHANTOM_SUMMON_ATK, pool.small.def);
     sortHidden(foe.deck);
     shuffleWith(foe.deck, rnd);
     return view;
@@ -2053,9 +2134,25 @@ function judgeAcrossWorlds(
          rollout shrink the next line's budget, so the current leader was
          always judged by a fatter, steadier playout than its rivals — a
          thumb on the scale that grew as the clock drained, and pure noise
-         on a knife-edge decision. Same worlds, same food. */
-      const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 5));
-      for (const i of order.slice(0, 5)) {
+         on a knife-edge decision. Same worlds, same food.
+
+         And the food goes where the decision is. A single playout carries a
+         bounded vote of up to ±ROLLOUT_AUTHORITY — thousands — while the
+         real margins between good lines are routinely a few hundred, so on
+         a close call one noisy future decided the turn: probes with a clear
+         priced edge were being coin-flipped away, and the measured cost was
+         real win rate. When the top two sit inside one authority of each
+         other, the round's rollouts go to THEM, twice each, and the
+         also-rans wait: variance falls exactly where the verdict lives. */
+      const knifeEdge = order.length > 1 && Math.abs(score(order[0]) - score(order[1])) < ROLLOUT_AUTHORITY;
+      /* Every contender keeps its rollout — a line judged with horizon beside
+         a line judged without one is not a comparison, and the first cut of
+         this starved third place of playouts entirely and lost a pinned
+         position to exactly that. The knife-edge pair gets SECONDS, not the
+         whole table. */
+      const targets = [...order.slice(0, 5), ...(knifeEdge ? [order[0], order[1]] : [])];
+      const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / targets.length));
+      for (const i of targets) {
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
