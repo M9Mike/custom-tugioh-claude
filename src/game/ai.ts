@@ -47,7 +47,7 @@ import {
 import { changesAnything, matchesFilter } from './targeting';
 import { summonTargetSpec, targetSpecFor } from './ui';
 import { type AiLevel } from './ai-levels';
-import { MONSTER_ZONES, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
+import { MONSTER_ZONES, type CardFilter, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
 
 export type { AiLevel };
 
@@ -280,10 +280,17 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
      Life Point buffer where it used to end the turn naked. */
   const p = state.players[att];
   if (p.hand.length > 0 && p.monsters.some((m) => !m) && !monstersFrozen(state, att)) {
+    /* D1 of the plan: the phantom's size scales gently with the grip. One
+       card might be anything; a full hand almost certainly holds a real
+       summon, and the flat phantom read both as the same threat — which is
+       how a player tapped completely out and a player sitting on five cards
+       came to press the same amount of respect out of the computer. Gentle
+       on purpose: ±200 around the shared constant, never a new attacker. */
+    const grip = Math.min(4, p.hand.length);
     attackers.push({
-      atk: PHANTOM_SUMMON_ATK,
+      atk: PHANTOM_SUMMON_ATK - 200 + grip * 100,
       def: 0,
-      wall: PHANTOM_SUMMON_ATK,
+      wall: PHANTOM_SUMMON_ATK - 200 + grip * 100,
       atkPos: true,
       attacks: 1,
       pierce: false,
@@ -410,6 +417,60 @@ function flipWorth(slug: string): number {
   return clamped;
 }
 
+/**
+ * What holding this card promises beyond itself: the strongest cards its own
+ * ops can pull out of the Deck, derived from the effect DSL and cached.
+ *
+ * A hand was priced flat — 220 a card — so Witch of the Black Forest and a
+ * vanilla 1100 read as the same asset, and the search happily discarded the
+ * searcher. Nothing here is hand-written per combo: a card that fetches or
+ * summons another names it in its ops, so every future card inherits its
+ * lines for free. Top three targets only, kept as slugs; whether a target is
+ * still IN the deck is checked at evaluation time, because a fetcher whose
+ * every target is already spent promises nothing.
+ */
+const ENABLE_TARGETS = new Map<string, { slugs: string[]; summon: boolean }[]>();
+function enableTargets(slug: string): { slugs: string[]; summon: boolean }[] {
+  const cached = ENABLE_TARGETS.get(slug);
+  if (cached) return cached;
+  const out: { slugs: string[]; summon: boolean }[] = [];
+  const worthOf = (t: string): number => (menace(t) + Math.max(0, CARDS[t]?.atk ?? 0) * 0.12) || 0;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) {
+      let filter: CardFilter | undefined;
+      let summon = false;
+      if (op.op === 'search') filter = op.filter;
+      else if (op.op === 'specialSummon') {
+        const zones = Array.isArray(op.from) ? op.from : [op.from];
+        if (!zones.includes('deck')) continue;
+        filter = op.filter;
+        summon = true;
+      } else continue;
+      const matches = Object.values(CARDS)
+        .filter((d) => d.slug !== 'facedown' && d.slug !== slug && matchesFilter({ slug: d.slug } as CardInstance, filter))
+        .sort((x, y) => worthOf(y.slug) - worthOf(x.slug))
+        .slice(0, 3)
+        .map((d) => d.slug);
+      if (matches.length) out.push({ slugs: matches, summon });
+    }
+  }
+  ENABLE_TARGETS.set(slug, out);
+  return out;
+}
+
+/** What this hand card promises, given what is still in the holder's Deck. */
+function promiseOf(slug: string, deckSlugs: Set<string>): number {
+  let best = 0;
+  for (const en of enableTargets(slug)) {
+    for (const t of en.slugs) {
+      if (!deckSlugs.has(t)) continue;
+      const worth = (menace(t) + Math.max(0, CARDS[t]?.atk ?? 0) * 0.12) * (en.summon ? 0.3 : 0.2);
+      best = Math.max(best, Math.min(en.summon ? 300 : 220, worth));
+    }
+  }
+  return best;
+}
+
 const MENACE = new Map<string, number>();
 function menace(slug: string): number {
   const cached = MENACE.get(slug);
@@ -495,6 +556,34 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   // Card advantage. A card in hand is a future threat; a set Spell/Trap is a
   // live one — ours priced by what it actually does, theirs by not knowing.
   score += (my.hand.length - their.hand.length) * w.hand;
+  /* The promise inside the hand, on top of the flat card value — a searcher
+     whose target is still in the Deck is worth more than a vanilla body, and
+     was priced identically. Own hand only: theirs is proxied in every world
+     this function runs in, which is the honesty doing its job. */
+  {
+    const deckSlugs = new Set(my.deck.map((c) => c.slug));
+    for (const h of my.hand) score += promiseOf(h.slug, deckSlugs);
+  }
+  /* The Tribute ladder: bodies standing where a boss is waiting are the
+     price of Summoning it already half-paid, and fodder summons stopped
+     reading as weak tempo the day this landed. Counted only up to what the
+     biggest boss in hand actually needs, at a deliberately modest rate —
+     the boss on the BOARD is the real prize, and this must never outbid
+     summoning it. */
+  {
+    let need = 0;
+    for (const h of my.hand) {
+      const d = CARDS[h.slug];
+      if (d?.kind !== 'monster' || EXODIA.has(h.slug)) continue;
+      const lv = d.level ?? 0;
+      const n = d.type === 'Divine-Beast' ? 3 : lv >= 7 ? 2 : lv >= 5 ? 1 : 0;
+      need = Math.max(need, n);
+    }
+    if (need > 0) {
+      const bodies = my.monsters.filter(Boolean).length;
+      score += Math.min(bodies, need) * 140;
+    }
+  }
   /* A set trap must outscore the same trap sitting in hand, or the search
      never sets it. At 140 + 0.35x, a mid trap priced below the 220 a hand
      card is worth, and the disagreement probe caught the AI holding

@@ -878,7 +878,44 @@ windowCase(
   console.log(`  ${pass3 ? '✅' : '❌'} commitment counts bodies risked, not actions taken  (summon+swing=${one}, summon+other=${two})`);
 }
 
-const TOTAL = CASES.length + 6;
+/* Plans that outlive the turn, pinned the same direct way. */
+{
+  /* The Tribute ladder: a body on the board is worth MORE while a boss waits
+     in hand — the price of Summoning it, half-paid. Measured as the delta of
+     adding one body, with and without the boss watching. */
+  const bare = fresh(3, 'kaiba');
+  bare.players[ME].hand = [card(ME, 'kuriboh')]; // no boss
+  const bareEmpty = evaluate(bare, ME);
+  bare.players[ME].monsters[0] = card(ME, 'battle-ox');
+  const bareBody = evaluate(bare, ME);
+
+  const laddered = fresh(3, 'kaiba');
+  laddered.players[ME].hand = [card(ME, 'blue-eyes-white-dragon')]; // Level 8 — two Tributes
+  const bossEmpty = evaluate(laddered, ME);
+  laddered.players[ME].monsters[0] = card(ME, 'battle-ox');
+  const bossBody = evaluate(laddered, ME);
+
+  const plainDelta = bareBody - bareEmpty;
+  const ladderDelta = bossBody - bossEmpty;
+  const pass4 = ladderDelta >= plainDelta + 100;
+  if (!pass4) failures += 1;
+  console.log(`  ${pass4 ? '✅' : '❌'} a body is worth more while a boss waits in hand  (+${Math.round(plainDelta)} plain, +${Math.round(ladderDelta)} laddered)`);
+
+  /* The enables-graph: a searcher whose target is still in the Deck promises
+     more than a vanilla of the same size — and promises NOTHING once every
+     target is spent. Witch of the Black Forest fetches Sangan. */
+  const promise = fresh(3, 'yami');
+  promise.players[ME].hand = [card(ME, 'witch-of-the-black-forest')];
+  promise.players[ME].deck = [card(ME, 'sangan'), card(ME, 'kuriboh')];
+  const withTarget = evaluate(promise, ME);
+  promise.players[ME].deck = [card(ME, 'kuriboh')];
+  const spent = evaluate(promise, ME);
+  const pass5 = withTarget > spent + 30;
+  if (!pass5) failures += 1;
+  console.log(`  ${pass5 ? '✅' : '❌'} a searcher promises its target only while the Deck still holds one  (${Math.round(withTarget)} vs ${Math.round(spent)})`);
+}
+
+const TOTAL = CASES.length + 8;
 console.log(
   failures
     ? `\n❌ ${failures} of ${TOTAL} positions played wrong.`

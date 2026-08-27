@@ -15,6 +15,7 @@
  * checks were validated against.
  */
 import { claim, readJson, writeJsonIf } from './store';
+import { CARDS, DUELISTS } from '../game/cards';
 
 export interface DeckBrain {
   games: number;
@@ -51,9 +52,53 @@ interface Held {
   brain: DeckBrain;
 }
 
+/**
+ * The style a deck is BUILT to play, read off its own list — the brain's
+ * starting point before a single game has taught it anything.
+ *
+ * A deck that runs a fistful of trap-window answers was built to hold and
+ * punish; one whose monsters average big was built to press; one carrying the
+ * Forbidden One was built to survive, and pressing with it is playing
+ * somebody else's deck. The old starting point was NEUTRAL for everyone,
+ * which meant Exodia spent its first dozen losses learning what its decklist
+ * already said. Coarse on purpose, and bounded well inside `KNOB_LIMIT` so
+ * the games still get the last word — and every pinned check still runs at
+ * NEUTRAL, which this function never touches.
+ */
+export function deckStyle(deckId: string): { aggression: number; caution: number } {
+  const d = DUELISTS.find((x) => x.id === deckId);
+  if (!d) return { aggression: 0, caution: 0 };
+  let monsters = 0;
+  let atkSum = 0;
+  let answers = 0;
+  let total = 0;
+  let exodia = 0;
+  for (const [slug, count] of d.deck) {
+    const def = CARDS[slug];
+    if (!def) continue;
+    total += count;
+    if (def.kind === 'monster') {
+      monsters += count;
+      atkSum += Math.max(0, def.atk ?? 0) * count;
+    }
+    if ((def.effects ?? []).some((e) => e.trigger === 'trap')) answers += count;
+    if (def.name.includes('Forbidden One') || def.name === 'Exodia the Forbidden One') exodia += count;
+  }
+  if (exodia >= 3) return { aggression: -0.3, caution: 0.3 };
+  const meanAtk = monsters ? atkSum / monsters : 0;
+  const aggression = Math.max(-0.3, Math.min(0.3, ((meanAtk - 1450) / 900) * 0.3));
+  const caution = Math.max(0, Math.min(0.3, (answers / Math.max(1, total)) * 1.5));
+  return { aggression: Math.round(aggression * 100) / 100, caution: Math.round(caution * 100) / 100 };
+}
+
 export async function loadBrain(deckId: string): Promise<DeckBrain> {
   const held = await readJson<Held>(brainKey(deckId));
-  return held?.brain ?? { ...NEUTRAL };
+  if (held) return held.brain;
+  /* A deck that has never played starts from what it was built to be, not
+     from nowhere. Only the two style knobs — games and wins stay zero, and
+     the first recorded game folds its lesson in on top exactly as before. */
+  const style = deckStyle(deckId);
+  return { ...NEUTRAL, aggression: style.aggression, caution: style.caution };
 }
 
 /**

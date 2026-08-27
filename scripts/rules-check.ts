@@ -8,11 +8,11 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
+import { deckStyle, KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
 import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
-import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
+import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
@@ -10923,6 +10923,21 @@ console.log('\nThe deck that remembers losing');
     'a clean win consolidates instead of leaning further',
     `aggression ${leaning.aggression} -> ${consolidated.aggression}`
   );
+
+  /* And the style a deck is BUILT to play, before its first game: derived
+     from the list, bounded inside half the clamp so the games always get the
+     last word, and never touching NEUTRAL — the pins all run there. */
+  const exo = deckStyle('yugi'); // the deck that runs the Forbidden One
+  ok(exo.aggression < 0 && exo.caution > 0, 'a deck built around Exodia starts holding back', `aggr ${exo.aggression}, caut ${exo.caution}`);
+  for (const d of DUELISTS) {
+    const st = deckStyle(d.id);
+    if (Math.abs(st.aggression) > KNOB_LIMIT / 2 + 1e-9 || st.caution < 0 || st.caution > KNOB_LIMIT / 2 + 1e-9) {
+      ok(false, 'every built-in style sits inside half the clamp', `${d.id}: aggr ${st.aggression}, caut ${st.caution}`);
+    }
+  }
+  ok(true, 'every built-in style sits inside half the clamp');
+  ok(deckStyle('no-such-deck').aggression === 0 && deckStyle('no-such-deck').caution === 0, 'an unknown deck starts truly neutral');
+  ok(NEUTRAL.aggression === 0 && NEUTRAL.caution === 0, 'and NEUTRAL itself is untouched — the pins run there');
   ok(consolidated.games === leaning.games + 1, 'and every game is counted', `games ${consolidated.games}`);
 }
 

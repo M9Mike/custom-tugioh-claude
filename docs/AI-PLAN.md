@@ -179,3 +179,33 @@ one Life Point"*. Any of those going red is a stop, not a negotiation.
 
 Done looks like: the computer attacks when the maths says attack, holds when
 it can name the reason, and the reason survives being asked.
+
+---
+
+## Execution log (2026-08-27)
+
+**A landed** (`f982599`, `d8aa428`): the measured curve moved exactly to
+target — 1100 ATK probes 8/10 at the pin (was 0 by construction), 1700 → 4/5,
+2000 → 5/5, controls untouched, the last-blocker guard bends it back to 0/5.
+Three latent defects surfaced on the way and are fixed and pinned: the
+expectation world's proxy had rotted into a 2400/2000 wall; the batteries'
+verdicts moved with machine load (`setPureClock` — node budgets for tests);
+and the sampled-world dealer was stream-sensitive to refactors.
+
+**B landed** (same commits): fear is zero when zero answers remain (unit-
+pinned both directions), commitment counts bodies (Tiger Axe follows through,
+pinned), the expendable attacker leads where order matters (guarded to
+independent swings — the unguarded version broke direct attacks and the
+waves pin caught it at 1/10). What the measurement corrected: baiting is
+worthless against wipe-shaped fear, so the real doctrine is "one blow tests
+the water, the cheap body stays safe or leads" — measured 5/5, pinned.
+
+**C landed**: the Tribute ladder and the enables-graph as evaluation terms
+(unit-pinned as deltas — a body is worth more while a boss waits in hand; a
+searcher promises its target only while the Deck still holds one), and
+`deckStyle` — the brain's starting point read off the decklist, bounded
+inside half the learning clamp, Exodia holds back from game one, NEUTRAL
+untouched (rules-pinned). C4's hold-back was measured already present
+(the whole-board GUARD pin at 10/10); nothing further shipped for it.
+
+**D verdicts** are recorded here as they land, per the delete-if-idle rule.
