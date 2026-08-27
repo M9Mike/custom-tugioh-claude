@@ -422,7 +422,7 @@ const STARTING_AREA: Area = {
     { x: 13.5, z: 8.6, hw: 1.0, hd: 0.42 },     // bench
     { x: -14.5, z: -7.5, hw: 0.9, hd: 0.9 },    // planter
     { x: 15.5, z: -7.5, hw: 0.9, hd: 0.9 },     // planter
-    { x: 17.6, z: -4.0, hw: 0.5, hd: 0.85 },    // vending machine
+    { x: 17.62, z: -4.0, hw: 0.42, hd: 0.62 },  // vending machine, facing the road
     { x: -17.2, z: 2.5, hw: 0.55, hd: 0.55 },   // post box
   ],
   /*

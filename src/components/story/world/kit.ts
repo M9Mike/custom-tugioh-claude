@@ -56,6 +56,8 @@ export function box(
   rotY = 0
 ): THREE.Mesh {
   const geo = own.keep(new THREE.BoxGeometry(w, h, d));
+  const metres = material.userData?.tile as number | undefined;
+  if (metres) scaleBoxUVs(geo, w, h, d, metres);
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(x, y, z);
   mesh.rotation.y = rotY;
@@ -134,4 +136,71 @@ export function seeded(seed: number): () => number {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Masonry                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How much wall one tile of a masonry texture covers, in metres.
+ *
+ * One number for the whole world, which is the entire point — see `tiled`.
+ */
+export const MASONRY_TILE = 3.0;
+
+/**
+ * Marks a material as covering a fixed size in metres rather than a fixed
+ * fraction of whatever it lands on.
+ *
+ * ## The bug this exists to kill
+ *
+ * `BoxGeometry` gives every face UVs from 0 to 1, so a texture with
+ * `repeat.set(3, 2.2)` puts three tiles across a face **whatever size that face
+ * is**. A terrace 8 m wide and a block 4 m wide, skinned with the same brick,
+ * come out with bricks at half the size on one of them. Worse, one box's own
+ * faces disagree: the same block is 4 m through and 7.3 m across, so its side
+ * and its front are bricked at different scales.
+ *
+ * The whole street was built like that and it shows exactly where two of them
+ * meet — the wall either side of the Market Row arch is a different brick from
+ * the wall it joins, which is what Mike saw. Trimming those blocks made it worse
+ * because it changed their size, and changing their size changed their bricks.
+ *
+ * With this, a material declares the size of its tile in metres and `box` scales
+ * each face's UVs by that face's real dimensions. Every brick in Domino City is
+ * then the same brick, and stays the same brick when a wall is resized.
+ */
+export function tiled<T extends THREE.Material>(material: T, metres = MASONRY_TILE): T {
+  material.userData.tile = metres;
+  return material;
+}
+
+/**
+ * Rewrites a box's UVs so one tile covers `metres` of real surface.
+ *
+ * `BoxGeometry` lays its faces out in a fixed order — +X, −X, +Y, −Y, +Z, −Z,
+ * four vertices each — and each face's U runs along one axis and V along
+ * another. Which two depends on the face, so the scale factors do too.
+ */
+export function scaleBoxUVs(
+  geo: THREE.BoxGeometry,
+  w: number, h: number, d: number,
+  metres: number
+): void {
+  const uv = geo.getAttribute('uv');
+  if (!uv || uv.count < 24) return;
+  const spans: [number, number][] = [
+    [d, h], [d, h],   // ±X: across the depth, up the height
+    [w, d], [w, d],   // ±Y: across the width, along the depth
+    [w, h], [w, h],   // ±Z: across the width, up the height
+  ];
+  for (let face = 0; face < 6; face++) {
+    const [su, sv] = spans[face];
+    for (let i = 0; i < 4; i++) {
+      const k = face * 4 + i;
+      uv.setXY(k, uv.getX(k) * (su / metres), uv.getY(k) * (sv / metres));
+    }
+  }
+  uv.needsUpdate = true;
 }

@@ -29,7 +29,7 @@
 
 import * as THREE from 'three';
 import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor } from './surfaces';
-import { Owned, box, matt, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
 import { AREAS, SHOP_STEP, STREET_FACES } from '@/story/areas';
 
 /**
@@ -139,9 +139,20 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   /* ---- the terraces ---- */
 
-  const brickTex = surfaceOf(own, () => brick('#8a5344'), 3, 2.2, anisotropy);
-  const brickAlt = surfaceOf(own, () => brick('#6f6257'), 3, 2.2, anisotropy);
-  const renderTex = surfaceOf(own, () => render('#b9ae97'), 2.2, 2, anisotropy);
+  /*
+   * Repeat 1 : the scale lives in the geometry now.
+   *
+   * These used to carry 3 x 2.2, which means "three tiles across whatever face
+   * you land on" — so brick came out a different size on every differently-sized
+   * wall in the street, and a different size on the two faces of the same wall.
+   * `tiled` and `scaleBoxUVs` in `kit.ts` replace that with a fixed size in
+   * metres, which is what makes the wall either side of the arch match the wall
+   * it joins.
+   */
+  const brickTex = surfaceOf(own, () => brick('#8a5344'), 1, 1, anisotropy);
+  const brickAlt = surfaceOf(own, () => brick('#6f6257'), 1, 1, anisotropy);
+  const renderTex = surfaceOf(own, () => render('#b9ae97'), 1, 1, anisotropy);
+  const brickWall = () => tiled(matt(own, '#ffffff', brickAlt));
   const litWindow = glow(own, '#c2954f');
   const darkWindow = own.keep(new THREE.MeshStandardMaterial({
     color: '#1b2028', roughness: 0.25, metalness: 0,
@@ -176,7 +187,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
     const zc = faceZ + facing * depth / 2;
     const out = -facing;
     const skin = rnd() > 0.62 ? renderTex : (rnd() > 0.5 ? brickTex : brickAlt);
-    const body = matt(own, '#ffffff', skin);
+    const body = tiled(matt(own, '#ffffff', skin));
     root.add(box(own, w, height, depth, body, cx, height / 2, zc));
 
     /* Cornice and parapet, which is what stops a building looking like a box. */
@@ -295,7 +306,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   const shopX = 2.6;
   const shopW = 7.0;
-  const shopSkin = matt(own, '#ffffff', surfaceOf(own, () => plaster('#c2b498'), 2, 2, anisotropy));
+  const shopSkin = tiled(matt(own, '#ffffff', surfaceOf(own, () => plaster('#c2b498'), 1, 1, anisotropy)));
   root.add(box(own, shopW, 9.0, 8, shopSkin, shopX, 4.5, NORTH_FACE - 4));
   root.add(box(own, shopW + 0.34, 0.32, 8.34, matt(own, '#4e463d'), shopX, 9.16, NORTH_FACE - 4));
   root.add(box(own, shopW + 0.1, 0.8, 8.1, matt(own, '#5a5048'), shopX, 9.6, NORTH_FACE - 4));
@@ -431,9 +442,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
    */
   /* Same again at this end: these used to run the full depth and swallow the
      backs of both terraces. They close the street between them and stop. */
-  root.add(box(own, 4, 9.5, ARCH_N - NORTH_FACE, matt(own, '#ffffff', brickAlt),
+  root.add(box(own, 4, 9.5, ARCH_N - NORTH_FACE, brickWall(),
                EAST_FACE + 2, 4.75, (NORTH_FACE + ARCH_N) / 2));
-  root.add(box(own, 4, 9.5, SOUTH_FACE - ARCH_S, matt(own, '#ffffff', brickAlt),
+  root.add(box(own, 4, 9.5, SOUTH_FACE - ARCH_S, brickWall(),
                EAST_FACE + 2, 4.75, (ARCH_S + SOUTH_FACE) / 2));
   /*
    * And the wall *above* the opening, which is the whole difference between an
@@ -445,7 +456,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * as a black rectangle hanging over the arch. A gate through a building has
    * building over it.
    */
-  root.add(box(own, 4, 3.1, 4.4, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 7.95, 0.5));
+  root.add(box(own, 4, 3.1, 4.4, brickWall(), EAST_FACE + 2, 7.95, 0.5));
 
   /*
    * The archway is lined, and the lining is plain.
@@ -471,7 +482,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
   root.add(box(own, 4.02, 0.06, 4.32, matt(own, '#7c7161'), EAST_FACE + 2, 6.37, 0.5));
 
   /* The gate: two piers, a header, and the name across it. */
-  const gateStone = matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1.6, 2, anisotropy));
+  const gateStone = tiled(matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1, 1, anisotropy)));
   for (const pz of [-2.25, 3.25]) {
     root.add(box(own, 1.5, 5.6, 1.1, gateStone, EAST_FACE, 2.8, pz));
     root.add(box(own, 1.7, 0.24, 1.3, matt(own, '#5f574c'), EAST_FACE, 5.72, pz));
@@ -548,7 +559,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   for (const fz of [-4.5, 5.5]) {
     const inward = fz < 0 ? 1 : -1;
-    root.add(box(own, 30, 6.2, 2, matt(own, '#ffffff', brickAlt), EAST_FACE + 15, 3.1, fz));
+    root.add(box(own, 30, 6.2, 2, brickWall(), EAST_FACE + 15, 3.1, fz));
     /* Four lit fronts down each side. Warm and cold alternating, the same mix
        the arcade itself is lit by — see `market.ts` on why that matters. */
     for (let i = 0; i < 4; i++) {
@@ -566,7 +577,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* The lid, which is the thing that says "covered" from out here. */
   root.add(box(own, 30, 0.3, 11.4, matt(own, '#242930'), EAST_FACE + 15, 6.35, 0.5));
   /* And the far end, thirty metres off and already going into the fog. */
-  root.add(box(own, 2, 6.4, 12.4, matt(own, '#ffffff', brickAlt), EAST_FACE + 31, 3.2, 0.5));
+  root.add(box(own, 2, 6.4, 12.4, brickWall(), EAST_FACE + 31, 3.2, 0.5));
 
   for (let i = 0; i < 3; i++) {
     const beyond = new THREE.PointLight('#ffbe7c', 88, 15, 2);
@@ -639,16 +650,30 @@ export function buildStreet(anisotropy: number): BuiltArea {
   }
 
   /* A vending machine, lit — the other warm thing on the street. */
-  /* Against the building, not in it. At 17.6 a metre-wide machine reached to
-     18.1 and the brickwork starts at 18 — the fridge in the wall. */
-  root.add(box(own, 1.0, 1.9, 0.7, matt(own, '#2f3a4a'), 17.4, 1.09, -4.0));
-  root.add(box(own, 0.78, 1.15, 0.05, glow(own, '#5f93bc'), 17.4, 1.35, -4.36));
+  /*
+   * Turned to face the street, which is the whole of "the fridge in the wall".
+   *
+   * It stands against the east building and it was facing *north*, along the
+   * wall — so from anywhere on the street you saw its blank dark side and never
+   * its front. A featureless slab the size of a door, flat against brickwork,
+   * reads as something half sunk into it, and the blue spill from its own light
+   * washing the bricks behind made it worse. It was never actually inside the
+   * wall; it was never actually facing anybody either.
+   *
+   * A quarter turn puts the glass, the light and the rows of cans towards the
+   * road, where a vending machine points, and the thing stops being a mystery
+   * slab and becomes a vending machine.
+   */
+  root.add(box(own, 0.7, 1.9, 1.0, matt(own, '#2f3a4a'), 17.62, 1.09, -4.0));
+  root.add(box(own, 0.05, 1.15, 0.78, glow(own, '#5f93bc'), 17.22, 1.35, -4.0));
   for (let i = 0; i < 8; i++) {
-    root.add(box(own, 0.14, 0.22, 0.02, matt(own, ['#c44', '#4c4', '#44c', '#cc4'][i % 4]),
-                 17.08 + (i % 4) * 0.22, 1.72 - Math.floor(i / 4) * 0.4, -4.4));
+    root.add(box(own, 0.02, 0.22, 0.14, matt(own, ['#c44', '#4c4', '#44c', '#cc4'][i % 4]),
+                 17.16, 1.72 - Math.floor(i / 4) * 0.4, -4.33 + (i % 4) * 0.22));
   }
+  /* A brand board across the top, so it reads at a distance. */
+  root.add(box(own, 0.06, 0.26, 0.84, matt(own, '#c0452f'), 17.24, 1.86, -4.0));
   const vend = new THREE.PointLight('#8fc8ff', 40, 9, 2);
-  vend.position.set(17.0, 1.5, -4.5);
+  vend.position.set(17.0, 1.5, -4.0);
   root.add(vend);
 
   /* A post box, and two bins. */

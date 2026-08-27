@@ -50,7 +50,7 @@ import * as THREE from 'three';
 import {
   arcadeFloor, shutter, brick, render, plaster, darkWood, signBoard,
 } from './surfaces';
-import { Owned, box, matt, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
 import { MARKET_GOODS, type Goods, type GoodsKind } from '@/story/areas';
 
 const MR_W = 23;        // half-length, matching `areas.ts`
@@ -202,10 +202,12 @@ export function buildMarket(anisotropy: number): BuiltArea {
   /* the two rows of units                                             */
   /* ---------------------------------------------------------------- */
 
-  const brickTex = surfaceOf(own, () => brick('#645749'), 4, 2.4, anisotropy);
-  const renderTex = surfaceOf(own, () => render('#8c8170'), 3, 2, anisotropy);
-  const upperSkin = matt(own, '#ffffff', renderTex);
-  const blockSkin = matt(own, '#ffffff', brickTex);
+  /* Repeat 1: `tiled` puts the scale in the geometry, so every brick in the city
+     is the same brick whatever size the wall it is on. See `kit.ts`. */
+  const brickTex = surfaceOf(own, () => brick('#645749'), 1, 1, anisotropy);
+  const renderTex = surfaceOf(own, () => render('#8c8170'), 1, 1, anisotropy);
+  const upperSkin = tiled(matt(own, '#ffffff', renderTex));
+  const blockSkin = tiled(matt(own, '#ffffff', brickTex));
   const timber = matt(own, '#ffffff', surfaceOf(own, darkWood, 2, 1, anisotropy));
   const dimGlass = own.keep(new THREE.MeshStandardMaterial({
     color: '#161b22', roughness: 0.3, metalness: 0,
@@ -698,7 +700,7 @@ export function buildMarket(anisotropy: number): BuiltArea {
    * it reaches the building. Those are the dimensions it is built to, and not a
    * centimetre more.
    */
-  const beyondSkin = matt(own, '#ffffff', surfaceOf(own, () => brick('#6d5f54'), 3, 3, anisotropy));
+  const beyondSkin = tiled(matt(own, '#ffffff', surfaceOf(own, () => brick('#6d5f54'), 1, 1, anisotropy)));
   const beyondRoad = new THREE.Mesh(
     own.keep(new THREE.PlaneGeometry(9, 20)),
     matt(own, '#33353a')
