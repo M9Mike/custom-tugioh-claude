@@ -93,31 +93,34 @@ const audit = async (label) => {
           const over1 = Math.min(a.hi[o1], b.hi[o1]) - Math.max(a.lo[o1], b.lo[o1]);
           const over2 = Math.min(a.hi[o2], b.hi[o2]) - Math.max(a.lo[o2], b.lo[o2]);
           if (over1 < 0.05 || over2 < 0.05) continue;
+          /*
+           * And they must share real area, not just an edge.
+           *
+           * An awning and the arm holding it up touch along a line: one axis
+           * overlaps by the width of the arm and the other by nothing at all.
+           * Sixteen of those in Market Row alone, every one reported at 0.00 m².
+           * A hundred square centimetres is the floor for something anybody
+           * could see.
+           */
+          if (over1 * over2 < 0.01) continue;
           for (const fa of [a.lo[axis], a.hi[axis]]) {
             for (const fb of [b.lo[axis], b.hi[axis]]) {
               if (Math.abs(fa - fb) > gap) continue;
               /*
-               * Only a *thin* thing can be seen fighting.
+               * There used to be a thinness rule here — skip the pair unless one
+               * side is under 60 cm through — on the reasoning that two thick
+               * solids meeting share a face buried between them.
                *
-               * Two thick solids meeting — a building sitting on the road, a wall
-               * standing on the floor — share a face that is buried inside the
-               * pair and never rendered. What flickers is something flat laid on
-               * a surface: a decal, a panel, a step, a bill. So one side has to
-               * be thin along the contact axis, and both have to reach that face
-               * from opposite directions rather than one containing the other.
+               * The reasoning is right and the rule was the wrong way to get it.
+               * Two solids *meeting* are handled below by `stacked`, which asks
+               * whether they sit on opposite sides of the contact; two solids
+               * that **interpenetrate** are not meeting at all, and both faces
+               * are drawn. That is what the passage walls beyond Market Row's
+               * arch were doing: 30 m long and 2 m thick, running back through
+               * the wall the arch is cut into, with their end faces on exactly
+               * its plane. Six metres tall, brick on brick, and skipped for
+               * being thick.
                */
-              /*
-               * 0.6, not 0.3.
-               *
-               * The rule is right — two thick solids meeting share a face buried
-               * between them that is never drawn — but 30 cm was too tight. The
-               * lamp housings on Market Row's arch are 30 cm deep and were hung
-               * exactly flush with the pier, so their front faces fought over a
-               * 30 cm square, twice, in plain sight. The check skipped them
-               * because neither side was under the threshold.
-               */
-              const thin = Math.min(a.size[axis], b.size[axis]) < 0.6;
-              if (!thin) continue;
 
               /*
                * Something standing on the ground is not a fight.

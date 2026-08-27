@@ -456,7 +456,8 @@ export function buildMarket(anisotropy: number): BuiltArea {
 
   /* Eaves beams, running the full length on both sides. */
   for (const s of [-1, 1] as const) {
-    root.add(box(own, MR_W * 2, 0.4, 0.36, steel, 0, EAVE_Y, s * (MR_FRONT + 0.25)));
+    /* A hair shorter than the block behind it, so their ends are not one face. */
+    root.add(box(own, MR_W * 2 - 0.12, 0.4, 0.36, steel, 0, EAVE_Y, s * (MR_FRONT + 0.25)));
   }
   /* Ridge. */
   root.add(box(own, MR_W * 2, 0.3, 0.3, steel, 0, RIDGE_Y + 0.1, 0));
@@ -627,7 +628,8 @@ export function buildMarket(anisotropy: number): BuiltArea {
    * their minds as the camera moves. Dropping it 5 cm buries that face inside
    * the cap instead. Interpenetration is invisible; alignment flickers.
    */
-  root.add(box(own, 1.5, 1.0, 6.6, stone, archX, 6.0, 0));
+  /* Inset from the piers, as the street's header is: flush is a shared face. */
+  root.add(box(own, 1.42, 1.0, 6.52, stone, archX, 6.0, 0));
   root.add(box(own, 1.8, 0.26, 7.0, matt(own, '#5f574c'), archX, 6.56, 0));
 
   /*
@@ -765,7 +767,11 @@ export function buildMarket(anisotropy: number): BuiltArea {
   for (const s of [-1, 1] as const) {
     root.add(box(own, 6, 8.6, 4, blockSkin, gateX + 4, 4.3, s * (MR_FRONT + 2)));
   }
-  root.add(box(own, 1.4, 8.6, MR_FRONT * 2 + 8, blockSkin, gateX + 6.4, 4.3, 0));
+  /* A little taller than the blocks it stands behind: at a shared 8.6 their
+     roofs were one plane over five square metres. */
+  /* Also a little short of the blocks in front of it, so their ends and its
+     ends are not the same two planes. */
+  root.add(box(own, 1.4, 8.74, MR_FRONT * 2 + 7.88, blockSkin, gateX + 6.4, 4.37, 0));
   /* Starting past the arcade floor's own edge at x 23 rather than under it:
      two planes at y 0 sharing 40 cm of ground is z-fighting by definition, and
      `npm run coplanar` found it as four square metres of it. */

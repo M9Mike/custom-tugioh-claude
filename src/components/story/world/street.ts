@@ -171,7 +171,11 @@ export function buildStreet(anisotropy: number): BuiltArea {
     cx: number, w: number, faceZ: number, facing: 1 | -1, height: number,
     opts: { shopfront?: boolean; awning?: string } = {}
   ) => {
-    const depth = 8;
+    /* Each building its own depth. At a flat 8 every neighbour's cornice and
+       parapet met its own back to back at exactly z −17, and an overhang wide
+       enough to overlap the building next door made that a shared face. Varying
+       it is also simply what a terrace looks like from above. */
+    const depth = 7.7 + rnd() * 0.6;
     /*
      * `facing` points from the front face *into* the building — that is what
      * places the slab. Everything on the front therefore hangs off `out`, the
@@ -191,8 +195,16 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(box(own, w, height, depth, body, cx, height / 2, zc));
 
     /* Cornice and parapet, which is what stops a building looking like a box. */
-    root.add(box(own, w + 0.34, 0.32, depth + 0.34, matt(own, '#4e4a43'), cx, height + 0.16, zc));
-    root.add(box(own, w + 0.1, 0.7, depth + 0.1, matt(own, '#5a544c'), cx, height + 0.5, zc));
+    /* The overhang is its own on each building. A terrace wants a continuous
+       cornice line and a continuous cornice line is a shared face: neighbours
+       overlap sideways by the overhang, so their fronts landed on one plane. A
+       couple of centimetres of variation breaks that and reads as a terrace
+       built at different times, which is what a terrace is. */
+    const eave = 0.28 + rnd() * 0.14;
+    root.add(box(own, w + eave, 0.32, depth + eave, matt(own, '#4e4a43'),
+                 cx, height + 0.16, zc + out * (eave - 0.34) / 2));
+    root.add(box(own, w + eave * 0.3, 0.7, depth + eave * 0.3, matt(own, '#5a544c'),
+                 cx, height + 0.5, zc + out * (eave * 0.3 - 0.1) / 2));
 
     const zf = faceZ + out * 0.06;
     const floors = Math.max(1, Math.floor((height - 3.2) / 2.6));
@@ -351,7 +363,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   /* Sign board over the door, and a hanging turtle sign at right angles to it —
      the shop is "the little one with the turtle over the door". */
-  root.add(box(own, shopW - 0.3, 1.45, 0.22, matt(own, '#2f4a3a'), shopX, 3.42, zf + 0.08));
+  root.add(box(own, shopW - 0.5, 1.45, 0.22, matt(own, '#2f4a3a'), shopX, 3.42, zf + 0.08));
   /* The fascia, and it says what the shop is called. */
   /*
    * The board is taller, and the lettering is drawn at the shape it is shown at.
@@ -484,7 +496,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* The gate: two piers, a header, and the name across it. */
   const gateStone = tiled(matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1, 1, anisotropy)));
   for (const pz of [-2.25, 3.25]) {
-    root.add(box(own, 1.5, 5.6, 1.1, gateStone, EAST_FACE, 2.8, pz));
+    root.add(box(own, 1.5, 5.6, 1.1, gateStone, EAST_FACE, 2.8, pz + Math.sign(pz - 0.5) * 0.04));
     root.add(box(own, 1.7, 0.24, 1.3, matt(own, '#5f574c'), EAST_FACE, 5.72, pz));
   }
   /* Set into the pier caps rather than resting on them — see the same gate in
@@ -492,7 +504,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* Its top at 6.5 was exactly the underside of the canopy over the arcade
      beyond — five square metres of two surfaces on one plane, seen straight down
      the archway. The header is a little shallower than the opening it crowns. */
-  root.add(box(own, 1.5, 0.86, 6.6, gateStone, EAST_FACE, 5.93, 0.5));
+  /* Narrower and shallower than the piers it lands on, so a header and the
+     pier under it never present the same face on the same plane. */
+  root.add(box(own, 1.42, 0.86, 6.52, gateStone, EAST_FACE, 5.93, 0.5));
   root.add(box(own, 1.8, 0.26, 7.0, matt(own, '#5f574c'), EAST_FACE, 6.56, 0.5));
 
   /* Facing back down the street, because that is the only side of it anybody
@@ -559,11 +573,27 @@ export function buildStreet(anisotropy: number): BuiltArea {
 
   for (const fz of [-4.5, 5.5]) {
     const inward = fz < 0 ? 1 : -1;
-    root.add(box(own, 30, 6.2, 2, brickWall(), EAST_FACE + 15, 3.1, fz));
+    /*
+     * Starting where the blocks stop, at x 22 — not at 18, where they start.
+     *
+     * These are the walls of the passage you see through the arch, and they used
+     * to run the whole way from the street's east face. So their west end face
+     * landed on exactly the plane of the wall the arch is cut into: two brick
+     * surfaces at one depth, both facing the street, six metres tall and two
+     * across. That is the pair of full-height bands that spike as you walk — one
+     * above the vending machine, one the same distance the other side, because
+     * the passage has a wall each side and they are symmetrical about the arch.
+     *
+     * `npm run coplanar` could not see them either. It skips a pair unless one
+     * side is thin, reasoning that two thick solids meeting share a face buried
+     * between them — but these do not meet. They interpenetrate, with both faces
+     * pointing the same way and both drawn.
+     */
+    root.add(box(own, 26, 6.2, 2, brickWall(), EAST_FACE + 17, 3.1, fz));
     /* Four lit fronts down each side. Warm and cold alternating, the same mix
        the arcade itself is lit by — see `market.ts` on why that matters. */
     for (let i = 0; i < 4; i++) {
-      const fx = EAST_FACE + 4 + i * 7;
+      const fx = EAST_FACE + 7 + i * 7;
       root.add(box(own, 5.4, 2.3, 0.12, matt(own, '#20252c'), fx, 1.7, fz + inward * 1.02));
       root.add(box(own, 5.0, 2.1, 0.05,
                    glow(own, (i + (fz < 0 ? 0 : 1)) % 2 ? '#6f8479' : '#8a6534'),
@@ -575,7 +605,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
   }
 
   /* The lid, which is the thing that says "covered" from out here. */
-  root.add(box(own, 30, 0.3, 11.4, matt(own, '#242930'), EAST_FACE + 15, 6.35, 0.5));
+  root.add(box(own, 26, 0.3, 11.4, matt(own, '#242930'), EAST_FACE + 17, 6.35, 0.5));
   /* And the far end, thirty metres off and already going into the fog. */
   root.add(box(own, 2, 6.4, 12.4, brickWall(), EAST_FACE + 31, 3.2, 0.5));
 
@@ -638,14 +668,36 @@ export function buildStreet(anisotropy: number): BuiltArea {
   for (const px of [-14.5, 15.5]) {
     root.add(box(own, 1.7, 0.7, 1.7, matt(own, '#7b746a'), px, 0.49, -7.5));
     root.add(box(own, 1.5, 0.1, 1.5, matt(own, '#3a2f22'), px, 0.85, -7.5));
+    /*
+     * Foliage on a spiral rather than a scatter.
+     *
+     * Seven cubes thrown at random into a planter 85 cm across land on each
+     * other, and two boxes that land on each other land on each other's *faces*
+     * — four of the last coplanar pairs in the world were two leaves agreeing on
+     * a plane. Random does not stop doing that by being told to jitter less; it
+     * just does it slightly less often.
+     *
+     * A golden-angle spiral gives a cluster that still looks unplanned while
+     * putting every cube somewhere no other cube is, and every size and angle
+     * comes off the index rather than the generator — so nothing here shares a
+     * round number with anything, which is what a coincidence is made of.
+     *
+     * They stay inside the planter, too: the old scatter reached a metre and a
+     * quarter from the middle of a planter that is 85 cm across, and the leaves
+     * went through the rim.
+     */
     for (let i = 0; i < 7; i++) {
-      const s = 0.4 + rnd() * 0.45;
-      /* Clear of the soil's own top face at 0.9 — one of these used to land with
-         its underside exactly on it. */
-      const b = box(own, s, s, s, matt(own, i % 2 ? '#3f6b3a' : '#4f7d46'),
-                    px + (rnd() - 0.5) * 0.9, 0.94 + s / 2 + rnd() * 0.4, -7.5 + (rnd() - 0.5) * 0.9);
-      b.rotation.set(rnd(), rnd(), rnd());
-      root.add(b);
+      const s = 0.33 + ((i * 0.137) % 0.27);
+      const angle = i * 2.39996;
+      const reach = 0.09 + (i % 3) * 0.085;
+      const leaf = box(own, s, s, s, matt(own, i % 2 ? '#3f6b3a' : '#4f7d46'),
+                       px + Math.cos(angle) * reach,
+                       /* Clear of the soil's own top face at 0.9 — one of these
+                          used to land with its underside exactly on it. */
+                       0.945 + s / 2 + (i % 4) * 0.073,
+                       -7.5 + Math.sin(angle) * reach);
+      leaf.rotation.set(0.31 + i * 0.71, 0.53 + i * 1.13, 0.17 + i * 0.89);
+      root.add(leaf);
     }
   }
 

@@ -673,12 +673,17 @@ export const WORLD_NPCS: WorldNpc[] = [
      */
     x: 0.9,
     /*
-     * Behind the counter, not in it. The counter runs from z −3.15 to −2.05, and
-     * he was at −2.95 — inside its own volume, so he read as a head sitting on
-     * the worktop. Half a metre clear of the back edge shows him from the waist
-     * up, which is how you see somebody serving.
+     * Behind the counter, not in it. The counter runs from z −3.15 to −2.05.
+     *
+     * He was at −2.95, inside its volume, reading as a head on the worktop. Then
+     * −3.3, which is his *centre* 15 cm clear of the back edge — and a person is
+     * not a point. A torso is a good 25 cm deep, so his front was still in the
+     * woodwork and he stood in the table rather than behind it.
+     *
+     * 45 cm of clearance puts the whole of him on his own side, and still shows
+     * him from the waist up, which is how you see somebody serving.
      */
-    z: -3.3,
+    z: -3.6,
     /* Facing +Z: towards the door, so he is looking at you as you come in. */
     facing: 0,
     /* Wider than the counter is deep, so the prompt is live from anywhere a
