@@ -248,7 +248,10 @@ export function buildMarket(anisotropy: number): BuiltArea {
         root.add(box(own, 0.12, 2.7, 0.22, matt(own, '#4e4a44'),
                      cx + gx * (w / 2 - 0.1), 1.65, faceZ + out * 0.2));
       }
-      root.add(box(own, w - 0.1, 0.42, 0.34, matt(own, '#403c37'), cx, 3.14, faceZ + out * 0.22));
+      /* The shutter box sits back from the fascia above it. At `out * 0.22` with
+         0.34 of depth the two shared their front face over a square metre and a
+         half, on every shuttered unit in the arcade. */
+      root.add(box(own, w - 0.1, 0.42, 0.30, matt(own, '#403c37'), cx, 3.14, faceZ + out * 0.18));
       /* A bill pasted on it, because a shut shutter is where bills end up. */
       if (rnd() > 0.4) {
         root.add(box(own, 0.5, 0.7, 0.02, decal(own, '#b8ae94'),
@@ -646,13 +649,26 @@ export function buildMarket(anisotropy: number): BuiltArea {
 
   /* A lamp on each pier, throwing light down onto the threshold. */
   for (const s of [-1, 1] as const) {
-    root.add(box(own, 0.3, 0.5, 0.3, matt(own, '#3f4348'), archX + 0.6, 4.5, s * 2.75));
+    /*
+    * Mounted proud of the pier, not flush with it.
+    *
+    * At `archX + 0.6` the housing's front face landed on exactly the pier's, so
+    * two surfaces 30 cm across were arguing for the same depth — one on each
+    * side of the arch. They are the two grey rectangles that flicker as you walk
+    * out of the arcade.
+    *
+    * `npm run coplanar` could not see them: it only considers a pair where one
+    * side is under 30 cm deep, because two *thick* solids meeting share a face
+    * that is buried between them and never drawn. A 30 cm box hung on a wall is
+    * the case that rule was not written for, and the threshold has moved.
+    */
+    root.add(box(own, 0.3, 0.5, 0.3, matt(own, '#3f4348'), archX + 0.75, 4.5, s * 2.75));
     /* Clear of the housing above it by 6 cm. At 1 cm these two — one on each
        pier — are the grey rectangles that flicker on the wall as you walk out
        of the arcade. */
     const lens = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(0.24, 0.24)), glow(own, '#e0b47e'));
     lens.rotation.x = Math.PI / 2;
-    lens.position.set(archX + 0.6, 4.19, s * 2.75);
+    lens.position.set(archX + 0.75, 4.19, s * 2.75);
     root.add(lens);
   }
   /*
@@ -737,8 +753,11 @@ export function buildMarket(anisotropy: number): BuiltArea {
     root.add(box(own, 0.1, 0.1, MR_FRONT * 2, barMat, gateX, ry, 0));
   }
   /* The box the gate rolls into, and the runner it hangs off. */
-  root.add(box(own, 0.6, 0.5, MR_FRONT * 2 + 0.4, matt(own, '#4a443c'), gateX, 3.44, 0));
-  root.add(box(own, 0.9, 0.9, MR_FRONT * 2 + 0.6, matt(own, '#3a352e'), gateX, 4.1, 0));
+  /* The lintel and the beam over it are *seated* on the walls, not driven 20 and
+     30 cm into them. Six centimetres of bearing each side is enough to read as
+     carried, and leaves no long intersection line down either wall. */
+  root.add(box(own, 0.6, 0.5, MR_FRONT * 2 + 0.08, matt(own, '#4a443c'), gateX, 3.44, 0));
+  root.add(box(own, 0.9, 0.9, MR_FRONT * 2 + 0.08, matt(own, '#3a352e'), gateX, 4.1, 0));
 
   /* The vestibule on the far side: walls, floor, and a wall to stop the view. */
   for (const s of [-1, 1] as const) {

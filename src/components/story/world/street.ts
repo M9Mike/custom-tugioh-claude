@@ -51,7 +51,17 @@ const PLATFORMS = AREAS['starting-area'].platforms ?? [];
 const PAVEMENTS = PLATFORMS.filter((p) => p !== SHOP_STEP);
 
 const ST_W = 22;
-const ST_D = 17;
+
+/**
+ * The two edges of the archway into Market Row.
+ *
+ * The same 4.4 m gap `areas.ts` leaves in the east wall, on the same centre —
+ * the road's, not the street's. Everything that closes this end is measured
+ * between these and the terrace faces, so no piece of it can run on past the
+ * building it is supposed to stop at.
+ */
+const ARCH_N = -1.7;
+const ARCH_S = 2.7;
 
 /* Where the buildings' front faces are — from `areas.ts`, which needs them
    too so a door's threshold can say which wall it is in. */
@@ -104,7 +114,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
      * Nothing below y 0 is ever seen, so the fix costs a number.
      */
     const kerbTop = slab.y + 0.02;
-    const kerb = box(own, slab.hw * 2, kerbTop + 0.2, 0.3, matt(own, '#8b8d90'),
+    /* Stopping at the buildings rather than running under them: at the full
+       width its ends were 16 cm inside the blocks at either end of the street. */
+    const kerb = box(own, Math.min(slab.hw, 17.9) * 2, kerbTop + 0.2, 0.3, matt(own, '#8b8d90'),
                      slab.x, kerbTop - (kerbTop + 0.2) / 2,
                      roadside + (slab.z < 0 ? -0.15 : 0.15));
     root.add(kerb);
@@ -370,8 +382,21 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* ---- the ends ---- */
 
   /* West: a hoarding round a building site, plastered with bills. */
+  /*
+   * Across the open street only, not the full thirty-four metres.
+   *
+   * At `ST_D * 2` it ran from one end of the area to the other — straight through
+   * both terraces, whose buildings reach back to x −20 and whose awnings and sign
+   * bands were therefore standing a foot inside it. Nothing you could name, and
+   * everything you could see: interpenetrating solids share a line, and that line
+   * crawls as you walk past it.
+   *
+   * It only ever needed to close the gap between the two terraces, which is what
+   * it does now.
+   */
   const hoard = matt(own, '#4a5a52');
-  root.add(box(own, 4, 3.6, ST_D * 2, hoard, WEST_FACE - 2, 1.8, 0));
+  root.add(box(own, 4, 3.6, SOUTH_FACE - NORTH_FACE, hoard,
+               WEST_FACE - 2.4, 1.8, (NORTH_FACE + SOUTH_FACE) / 2));
   /*
    * Bills pasted on the hoarding, and they sit *proud* of it.
    *
@@ -382,13 +407,13 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * Five centimetres clear, and a decal material on top of that.
    */
   for (let i = 0; i < 9; i++) {
-    const z = -ST_D + 2 + i * 3.6;
+    const z = -8 + i * 2.2;
     root.add(box(own, 0.05, 1.1, 0.8, decal(own, ['#8a4a4a', '#4a5a8a', '#8a7a4a', '#5a8a5a'][i % 4]),
                  WEST_FACE + 0.05, 1.5 + (i % 3) * 0.5, z));
   }
   /* Scaffolding poles above it, so something is clearly going on back there. */
   for (let i = 0; i < 6; i++) {
-    root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -ST_D + 3 + i * 5.6));
+    root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -8 + i * 3.5));
   }
 
   /*
@@ -404,8 +429,12 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * shopping street always meets the traffic — the carriageway ends, bollards
    * stop the cars, and people carry on.
    */
-  root.add(box(own, 4, 9.5, ST_D - 1.7, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 4.75, -9.35));
-  root.add(box(own, 4, 9.5, ST_D - 2.7, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 4.75, 9.85));
+  /* Same again at this end: these used to run the full depth and swallow the
+     backs of both terraces. They close the street between them and stop. */
+  root.add(box(own, 4, 9.5, ARCH_N - NORTH_FACE, matt(own, '#ffffff', brickAlt),
+               EAST_FACE + 2, 4.75, (NORTH_FACE + ARCH_N) / 2));
+  root.add(box(own, 4, 9.5, SOUTH_FACE - ARCH_S, matt(own, '#ffffff', brickAlt),
+               EAST_FACE + 2, 4.75, (ARCH_S + SOUTH_FACE) / 2));
   /*
    * And the wall *above* the opening, which is the whole difference between an
    * archway and a hole.
@@ -449,7 +478,10 @@ export function buildStreet(anisotropy: number): BuiltArea {
   }
   /* Set into the pier caps rather than resting on them — see the same gate in
      `market.ts` for why two faces at one depth is the bug and not the fix. */
-  root.add(box(own, 1.5, 1.0, 6.6, gateStone, EAST_FACE, 6.0, 0.5));
+  /* Its top at 6.5 was exactly the underside of the canopy over the arcade
+     beyond — five square metres of two surfaces on one plane, seen straight down
+     the archway. The header is a little shallower than the opening it crowns. */
+  root.add(box(own, 1.5, 0.86, 6.6, gateStone, EAST_FACE, 5.93, 0.5));
   root.add(box(own, 1.8, 0.26, 7.0, matt(own, '#5f574c'), EAST_FACE, 6.56, 0.5));
 
   /* Facing back down the street, because that is the only side of it anybody
@@ -607,14 +639,16 @@ export function buildStreet(anisotropy: number): BuiltArea {
   }
 
   /* A vending machine, lit — the other warm thing on the street. */
-  root.add(box(own, 1.0, 1.9, 0.7, matt(own, '#2f3a4a'), 17.6, 1.09, -4.0));
-  root.add(box(own, 0.78, 1.15, 0.05, glow(own, '#5f93bc'), 17.6, 1.35, -4.36));
+  /* Against the building, not in it. At 17.6 a metre-wide machine reached to
+     18.1 and the brickwork starts at 18 — the fridge in the wall. */
+  root.add(box(own, 1.0, 1.9, 0.7, matt(own, '#2f3a4a'), 17.4, 1.09, -4.0));
+  root.add(box(own, 0.78, 1.15, 0.05, glow(own, '#5f93bc'), 17.4, 1.35, -4.36));
   for (let i = 0; i < 8; i++) {
     root.add(box(own, 0.14, 0.22, 0.02, matt(own, ['#c44', '#4c4', '#44c', '#cc4'][i % 4]),
-                 17.28 + (i % 4) * 0.22, 1.72 - Math.floor(i / 4) * 0.4, -4.4));
+                 17.08 + (i % 4) * 0.22, 1.72 - Math.floor(i / 4) * 0.4, -4.4));
   }
   const vend = new THREE.PointLight('#8fc8ff', 40, 9, 2);
-  vend.position.set(17.2, 1.5, -4.5);
+  vend.position.set(17.0, 1.5, -4.5);
   root.add(vend);
 
   /* A post box, and two bins. */

@@ -524,12 +524,25 @@ export function shutter(tint: string): THREE.CanvasTexture | null {
       const y = i * h;
       /* Each slat is a little cylinder: dark at the top where it turns away,
          bright across its belly, and a hard shadow in the join below. */
+      /*
+       * Softer than it was, for the reason brick is.
+       *
+       * Twenty-six slats across half a metre puts a hard dark band every couple
+       * of centimetres, and at any distance that is a stack of high-contrast
+       * lines about a pixel apart — the frequency that crawls whatever the
+       * filtering does. It is the brown thing at the top-left of the bakery.
+       *
+       * The shading is the same shape; there is simply less of it, and the joins
+       * ease in rather than starting black.
+       */
       const g = ctx.createLinearGradient(0, y, 0, y + h);
-      const lit = 1.06 + rnd() * 0.1;
-      g.addColorStop(0, `rgba(0,0,0,0.34)`);
-      g.addColorStop(0.32, `rgb(${Math.round(col.r * 255 * lit)},${Math.round(col.g * 255 * lit)},${Math.round(col.b * 255 * lit)})`);
-      g.addColorStop(0.62, `rgb(${Math.round(col.r * 235)},${Math.round(col.g * 235)},${Math.round(col.b * 235)})`);
-      g.addColorStop(1, 'rgba(0,0,0,0.42)');
+      const lit = 1.04 + rnd() * 0.06;
+      g.addColorStop(0, 'rgba(0,0,0,0.17)');
+      g.addColorStop(0.18, 'rgba(0,0,0,0.05)');
+      g.addColorStop(0.4, `rgb(${Math.round(col.r * 255 * lit)},${Math.round(col.g * 255 * lit)},${Math.round(col.b * 255 * lit)})`);
+      g.addColorStop(0.7, `rgb(${Math.round(col.r * 244)},${Math.round(col.g * 244)},${Math.round(col.b * 244)})`);
+      g.addColorStop(0.88, 'rgba(0,0,0,0.08)');
+      g.addColorStop(1, 'rgba(0,0,0,0.2)');
       ctx.fillStyle = g;
       ctx.fillRect(0, y, s, h);
     }

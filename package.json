@@ -65,7 +65,9 @@
     "doors": "tsx scripts/door-check.ts",
     "footing": "tsx scripts/footing-check.ts",
     "stale": "tsx scripts/stale-check.ts",
-    "shimmer": "tsx scripts/shimmer-check.ts"
+    "shimmer": "tsx scripts/shimmer-check.ts",
+    "walk": "tsx scripts/walk-record.ts",
+    "embedded": "tsx scripts/embedded-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

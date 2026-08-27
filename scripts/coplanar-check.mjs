@@ -106,7 +106,17 @@ const audit = async (label) => {
                * be thin along the contact axis, and both have to reach that face
                * from opposite directions rather than one containing the other.
                */
-              const thin = Math.min(a.size[axis], b.size[axis]) < 0.3;
+              /*
+               * 0.6, not 0.3.
+               *
+               * The rule is right — two thick solids meeting share a face buried
+               * between them that is never drawn — but 30 cm was too tight. The
+               * lamp housings on Market Row's arch are 30 cm deep and were hung
+               * exactly flush with the pier, so their front faces fought over a
+               * 30 cm square, twice, in plain sight. The check skipped them
+               * because neither side was under the threshold.
+               */
+              const thin = Math.min(a.size[axis], b.size[axis]) < 0.6;
               if (!thin) continue;
 
               /*
@@ -123,6 +133,17 @@ const audit = async (label) => {
                * outer face is level with the hoarding it is pasted to. So the
                * test is whether both objects lie on the same side of the contact.
                */
+              /*
+               * Two things standing on the same floor is not a fight.
+               *
+               * Their undersides are both at y 0 and neither is ever drawn — the
+               * floor is over them. It only started showing up when the
+               * thinness threshold moved to 60 cm and swept in every crate,
+               * counter and stallboard in the world.
+               */
+              if (axis === 1 && Math.abs(fa) < 0.001 && Math.abs(fb) < 0.001
+                  && a.hi[1] > 0.001 && b.hi[1] > 0.001) continue;
+
               const aAbove = a.hi[axis] > fa + gap;
               const bAbove = b.hi[axis] > fb + gap;
               const aBelow = a.lo[axis] < fa - gap;
