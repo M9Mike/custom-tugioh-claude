@@ -1174,6 +1174,18 @@ export interface CardInstance {
    */
   summonedBy?: string;
   /**
+   * How many Tributes were paid to Set this monster face-down.
+   *
+   * Public information, recorded rather than remembered: the tributes were
+   * paid in the open, and any player watching knows a face-down that cost one
+   * is Level 5 or higher while one that cost nothing can only be Level 4 or
+   * lower. The AI's world-building conditions its guesses on exactly this —
+   * which is reading the table, not the card. Unset for the ordinary Set.
+   * Cleared by `resetInstance`; meaningless once the card is face-up, where
+   * the real Level is showing.
+   */
+  setTributes?: number;
+  /**
    * How many times this card has clawed its own way back out of the Graveyard.
    *
    * Crawling Dragon returns 200 heavier EVERY time battle kills it, so the

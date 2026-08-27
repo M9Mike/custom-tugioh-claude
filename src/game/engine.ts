@@ -867,6 +867,8 @@ function resetInstance(c: CardInstance) {
      revived by Time Machine must not still be wearing Zoa's name. Cleared on
      every arrival; only the Special Summon that caused it writes it back. */
   c.summonedBy = undefined;
+  // And what its Set was seen to cost — a fresh arrival is a fresh question.
+  c.setTributes = undefined;
   /* And Crawling Dragon's running tally of its own returns, which is why its
      ATK reverts to the printed body the moment it leaves the field any way but
      battle: this ceremony is performed on every road off a zone — Graveyard,
@@ -5130,6 +5132,11 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       p.hand.splice(hi, 1);
       c.position = action.face === 'down' ? 'def' : action.position;
       c.face = action.face;
+      /* What the Set was seen to cost, kept on the card. The tributes were
+         paid in the open, so a face-down that ate one is public knowledge a
+         Level 5 body could be under there — the AI's guesses condition on
+         this, and conditioning on what the table showed is not peeking. */
+      c.setTributes = action.face === 'down' && tributes.length ? tributes.length : undefined;
       c.summonedOnTurn = state.turn;
       // This one paid its Tributes. A God summoned properly stays.
       c.specialSummonedOnTurn = undefined;

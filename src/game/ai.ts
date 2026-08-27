@@ -116,9 +116,38 @@ const EXODIA = new Set([
 /**
  * A face-down monster's stats are not knowable, so it is treated as an average
  * body rather than peeked at. Roughly the mean across the season-one decks.
+ *
+ * Conditioned on the one public fact a Set carries: what it cost. A face-down
+ * that arrived without Tributes can only be Level 4 or lower — the rules say
+ * so — and one that visibly ate a Tribute is Level 5 or higher, so it reads
+ * as a big body. Watching what was paid is reading the table, not the card.
  */
-const UNKNOWN_ATK = 1250;
-const UNKNOWN_DEF = 1300;
+const unknownMeans = (() => {
+  const small = { atk: 0, def: 0, n: 0 };
+  const big = { atk: 0, def: 0, n: 0 };
+  for (const def of Object.values(CARDS)) {
+    if (def.kind !== 'monster' || def.slug === 'facedown' || def.type === 'Divine-Beast') continue;
+    const into = (def.level ?? 0) <= 4 ? small : big;
+    into.atk += Math.max(0, def.atk ?? 0);
+    into.def += Math.max(0, def.def ?? 0);
+    into.n += 1;
+  }
+  const mean = (t: { atk: number; def: number; n: number }) => ({
+    atk: Math.round(t.atk / Math.max(1, t.n) / 50) * 50,
+    def: Math.round(t.def / Math.max(1, t.n) / 50) * 50,
+  });
+  return { small: mean(small), big: mean(big) };
+})();
+/* Derived, not written: the constants here were hand-set as "roughly the mean
+   across the season-one decks" and the card pool walked away from them — the
+   same rot that left UNKNOWN_PROXY pointing at a 2400/2000 wall. An untributed
+   Set can only be Level 4 or lower, so it averages over that half of the pool;
+   a Set that visibly cost a Tribute averages over the other. Gods excluded:
+   they cannot be Set. */
+const UNKNOWN_ATK = unknownMeans.small.atk;
+const UNKNOWN_DEF = unknownMeans.small.def;
+const TRIBUTED_UNKNOWN_ATK = unknownMeans.big.atk;
+const TRIBUTED_UNKNOWN_DEF = unknownMeans.big.def;
 
 interface Body {
   atk: number;
@@ -139,8 +168,9 @@ interface Body {
 function bodyOf(state: DuelState, m: CardInstance, ctrl: PlayerId, viewer: PlayerId): Body {
   const hidden = m.face === 'down' && ctrl !== viewer;
   const f = effFlags(state, m, ctrl);
-  const atk = hidden ? UNKNOWN_ATK : effAtk(state, m, ctrl);
-  const def = hidden ? UNKNOWN_DEF : effDef(state, m, ctrl);
+  const tributed = hidden && (m.setTributes ?? 0) > 0;
+  const atk = hidden ? (tributed ? TRIBUTED_UNKNOWN_ATK : UNKNOWN_ATK) : effAtk(state, m, ctrl);
+  const def = hidden ? (tributed ? TRIBUTED_UNKNOWN_DEF : UNKNOWN_DEF) : effDef(state, m, ctrl);
   /* The engine refuses a frozen or held-down attack, and only a Divine-Beast
      walks through the lock — `canAttackWith`'s exact rule, mirrored. Without
      this, the threat model kept counting attacks the engine would never
@@ -445,7 +475,15 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     const b = bodyOf(state, m, foe, me);
     score -= b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
     if (m.face === 'up') score -= menace(m.slug) * 0.6;
-    if (m.face === 'down') score -= 120;
+    /* An unrevealed card of theirs is worth more than its average body: the
+       flip effect that might be loaded inside it, and the information they
+       hold that we do not. Priced near what OUR face-downs carry (120 plus
+       half a flip effect) rather than the bare 120 it was — the asymmetry
+       made flipping their card worth almost nothing, so a probing attack
+       that killed a Set monster clean scored barely above passing, and the
+       margin sat inside sampling noise. Removing this card — by battle or by
+       forcing it face-up — is what buys the information back. */
+    if (m.face === 'down') score -= 240;
     if (m.rentPerTurn && m.owner !== foe) score += m.rentPerTurn * 0.8;
   }
 
@@ -836,21 +874,38 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
       if (direct) acts.push({ type: 'attack', uid: m.uid, targetUid: null });
       // Prefer targets this monster actually beats, weakest-kill first.
       const atk = effAtk(state, m, pid);
+      /* What the viewer is allowed to believe this target defends with. A
+         face-down is the conditioned unknown, never its real numbers — the
+         old sort read `effDef` straight off the hidden card, which quietly
+         ordered the beam by information the player does not have. */
+      const wallOf = (t: CardInstance): number =>
+        t.face === 'down'
+          ? (t.setTributes ?? 0) > 0
+            ? TRIBUTED_UNKNOWN_DEF
+            : UNKNOWN_DEF
+          : t.position === 'atk'
+            ? effAtk(state, t, foe)
+            : effDef(state, t, foe);
       const ranked = uids
         .map((u) => state.players[foe].monsters.find((x) => x?.uid === u)!)
         .filter(Boolean)
-        /* A losing attack in this game does not even trade — the attacker
-           survives and its controller simply pays the difference in Life
-           Points. Pure donation, never once the right line in this pool, and
-           the knife-edge scoring around it is exactly where sampling noise
-           used to pick one. Not offered at all: kills and even trades only. */
-        .filter((t) => {
-          const wall = t.face === 'down' ? UNKNOWN_DEF : t.position === 'atk' ? effAtk(state, t, foe) : effDef(state, t, foe);
-          return swingAtk(m, t.face === 'down' || t.position === 'def') >= wall;
-        })
+        /* A losing attack into a FACE-UP body does not even trade — the
+           attacker survives and its controller simply pays the difference in
+           Life Points. Pure donation, never once the right line, and not
+           offered at all: kills and even trades only.
+
+           A face-down is a different sentence. The same rule applied through
+           a flat unknown deleted every probe an attacker under 1300 could
+           make — Lady of Faith beside a lone Set monster, 9000 Life Points
+           behind her, and the computer ending the turn, reported by the
+           owner. The move is generated now and the worlds price it: each
+           sampled world deals the Set card a real identity from their unseen
+           pool, so the swing is charged its true odds — kills, bounces and
+           flip effects alike — instead of being unthinkable. */
+        .filter((t) => t.face === 'down' || swingAtk(m, t.position === 'def') >= wallOf(t))
         .sort((a, b) => {
-          const av = a.position === 'atk' ? effAtk(state, a, foe) : effDef(state, a, foe);
-          const bv = b.position === 'atk' ? effAtk(state, b, foe) : effDef(state, b, foe);
+          const av = wallOf(a);
+          const bv = wallOf(b);
           const aKill = av < atk ? 0 : 1;
           const bKill = bv < atk ? 0 : 1;
           // Among kills, the monster that threatens the most goes down first.
@@ -893,6 +948,24 @@ const UNKNOWN_PROXY: string = (() => {
   }
   return best;
 })();
+
+/**
+ * A proxy whose BODY matches what the evaluation assumes an unknown is worth.
+ *
+ * "The effectless monster closest to the unknown-average stats" was true the
+ * day it was written and quietly stopped being true as the card pool grew:
+ * today exactly one monster in the database is effectless — Thousand Dragon,
+ * 2400/2000 — so every face-down in the expectation world stood as a wall
+ * two-thirds of the game could not break, while the evaluation priced the
+ * same card at 1250/1300. The anchor world and the judge disagreeing about
+ * what an unknown IS was the deeper half of the owner's report; the modifiers
+ * close the gap, whatever monster the pool leaves as the proxy.
+ */
+function proxyBody(c: CardInstance, atk = UNKNOWN_ATK, def = UNKNOWN_DEF): void {
+  reidentify(c, UNKNOWN_PROXY);
+  c.atkMod = atk - (CARDS[UNKNOWN_PROXY].atk ?? 0);
+  c.defMod = def - (CARDS[UNKNOWN_PROXY].def ?? 0);
+}
 
 /**
  * Turns a card instance into `slug` while keeping everything about it that is
@@ -1000,12 +1073,30 @@ function shuffleWith<T>(arr: T[], rnd: () => number): void {
  * real one rather than a preview of it. Card counts in every zone are public
  * information and are preserved exactly.
  */
+/**
+ * The cards among the opponent's unseen that could actually answer from a Set
+ * zone — anything carrying a trap-window effect, whatever kind the card is: a
+ * Trap proper, or a quick-play Spell that fires from face-down.
+ *
+ * The pool includes the Set card ITSELF, and that inclusion is the fix for a
+ * fear that outlived its object: with both Mirror Forces visible in the
+ * Graveyard the old pool read hand+deck, found no trap, and still feared —
+ * while the opposite corner was worse, a deck whose LAST trap was the very
+ * card Set, which hand+deck alone counted as zero. The unseen multiset is
+ * hand + deck + the face-down card, and what can be feared is exactly what it
+ * still contains.
+ */
+function unseenAnswers(foe: { hand: CardInstance[]; deck: CardInstance[]; spellTrap: CardInstance | null }): CardInstance[] {
+  const pool = [...foe.hand, ...foe.deck];
+  if (foe.spellTrap && foe.spellTrap.face === 'down') pool.push(foe.spellTrap);
+  return pool.filter((c) => (CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
+}
+
 /** The most punishing trap the opponent's unseen cards could put in that zone. */
-function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[] }): string | null {
+function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[]; spellTrap: CardInstance | null }): string | null {
   let best: string | null = null;
   let bestWorth = 0;
-  for (const c of [...foe.hand, ...foe.deck]) {
-    if (CARDS[c.slug]?.kind !== 'trap') continue;
+  for (const c of unseenAnswers(foe)) {
     const worth = trapWorth(c.slug);
     if (worth > bestWorth) {
       bestWorth = worth;
@@ -1029,14 +1120,19 @@ function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[] })
 function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
   const foe = state.players[other(viewer)];
   if (!foe.spellTrap || foe.spellTrap.face !== 'down') return 0;
-  const pool = [...foe.hand, ...foe.deck];
-  if (!pool.length) return 0;
-  const traps = pool.filter((c) => CARDS[c.slug]?.kind === 'trap').length;
+  const pool = [...foe.hand, ...foe.deck, foe.spellTrap];
+  const answers = unseenAnswers(foe).length;
+  /* Zero when zero could exist. With every answer the deck runs lying visible
+     in the Graveyard, the Set card is a bluff by arithmetic, not by hope —
+     and fearing it anyway was the owner's Tiger Axe report: an attack the
+     computer's own effect had just created, declined to honour a card that
+     could not be anything. Certainty is not paranoia's business. */
+  if (!answers) return 0;
   /* The floor is high because the commitment scaling protects doctrine for
-     it: a lone attack or first summon carries zero fear whatever this says,
-     so the prior only prices what it should — a human who CHOSE to set a
-     card, answered with a whole board. */
-  return Math.max(0.4, Math.min(0.55, (2.5 * traps) / pool.length));
+     it: a lone body risked carries zero fear whatever this says, so the
+     prior only prices what it should — a human who CHOSE to set a card,
+     answered with a whole board. */
+  return Math.max(0.4, Math.min(0.55, (2.5 * answers) / pool.length));
 }
 
 function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean, paranoid = false): DuelState {
@@ -1072,11 +1168,18 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      gets its say in the real duel, where it belongs. */
   if (foe.spellTrap && foe.spellTrap.face === 'down') {
     const trap = paranoid ? scariestUnseenTrap(foe) : null;
-    reidentify(foe.spellTrap, trap ?? UNKNOWN_PROXY);
+    if (trap) reidentify(foe.spellTrap, trap);
+    else proxyBody(foe.spellTrap);
   }
 
   if (!sample) {
-    for (const m of hiddenMonsters) reidentify(m, UNKNOWN_PROXY);
+    /* The conditioned unknown, matching `bodyOf` exactly: a Set that visibly
+       cost a Tribute stands as a big body in the anchor world too, or the
+       judge and the evaluation argue about the same card. */
+    for (const m of hiddenMonsters) {
+      if ((m.setTributes ?? 0) > 0) proxyBody(m, TRIBUTED_UNKNOWN_ATK, TRIBUTED_UNKNOWN_DEF);
+      else proxyBody(m);
+    }
     /* Their hand too. The beam never reads a hand card's identity directly,
        but it was reading one *indirectly*: declaring an attack asks the engine
        for the defender's responses, and a hand-trap they happen to hold opens
@@ -1085,7 +1188,7 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
        expectation world holds a hand of unknowns that answers nothing, and
        the sampled worlds are where a plausible Kuriboh gets its say. Caught
        by ai-honesty-check, not by eye. */
-    for (const h of foe.hand) reidentify(h, UNKNOWN_PROXY);
+    for (const h of foe.hand) proxyBody(h);
     sortHidden(foe.deck);
     shuffleWith(foe.deck, rnd);
     return view;
@@ -1107,8 +1210,21 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      zone announces is not peeking. */
   const monsters = pool.filter((s) => CARDS[s]?.kind === 'monster');
   const rest = pool.filter((s) => CARDS[s]?.kind !== 'monster');
-  for (const m of hiddenMonsters) reidentify(m, monsters.pop() ?? rest.pop()!);
-  const remain = [...monsters, ...rest];
+  /* Conditioned on what the Set was seen to cost. An untributed Set can only
+     be Level 4 or lower — the rules priced it — and one that ate a Tribute is
+     Level 5 or higher, so each face-down draws from the half of the pool the
+     table says it must come from, falling back only when that half is empty.
+     This is what turns "a face-down that cost a Tribute" from a superstition
+     into a sampled fact: the worlds deal it Summoned Skulls, and the swing
+     into it is priced accordingly. */
+  const small = monsters.filter((s) => (CARDS[s]?.level ?? 0) <= 4);
+  const big = monsters.filter((s) => (CARDS[s]?.level ?? 0) >= 5);
+  for (const m of hiddenMonsters) {
+    const tributed = (m.setTributes ?? 0) > 0;
+    const pick = tributed ? big.pop() ?? small.pop() : small.pop() ?? big.pop();
+    reidentify(m, pick ?? rest.pop()!);
+  }
+  const remain = [...small, ...big, ...rest];
   shuffleWith(remain, rnd);
   let at = 0;
   for (const h of foe.hand) reidentify(h, remain[at++]);
@@ -1623,14 +1739,19 @@ function judgeAcrossWorlds(
      line's COMMITMENT: nothing for the first body risked, half for the
      second, full from the third — a tax on stacking the whole board behind
      one card, never a veto on playing the game. */
+  /* BODIES risked, not actions taken. Counting a summon and an attack as two
+     commitments made the same monster pay twice: Tiger Axe summoned, forcing
+     their board to kneel, then swinging at what it beats, was billed as two
+     commits — half the nightmare — for exposing exactly one body. The owner
+     watched it decline the attack its own effect had just created. One uid,
+     one commitment, however many things it did on the way in. */
   const commitsOf = (actions: DuelAction[]): number => {
-    const attackers = new Set<string>();
-    let summons = 0;
+    const bodies = new Set<string>();
     for (const a of actions) {
-      if (a.type === 'attack') attackers.add(a.uid);
-      else if (a.type === 'normalSummon' || a.type === 'handSummon' || a.type === 'fusionSummon') summons += 1;
+      if (a.type === 'attack' || a.type === 'normalSummon' || a.type === 'handSummon') bodies.add(a.uid);
+      else if (a.type === 'fusionSummon') bodies.add(a.extraUid);
     }
-    return attackers.size + summons;
+    return bodies.size;
   };
   const darkWeight = examine.map((l) => prior * Math.min(1, Math.max(0, (commitsOf(l.actions) - 1) / 2)));
   const ends: DuelState[][] = examine.map(() => []);
