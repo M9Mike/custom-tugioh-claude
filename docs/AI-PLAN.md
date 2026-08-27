@@ -223,4 +223,17 @@ at its designed floor. The lesson, recorded where the plan said it would
 be: pins prove positions, only the arena proves strength, and a subsidy is
 not a price.
 
-**D verdicts** are recorded here as they land, per the delete-if-idle rule.
+**D verdicts**, per the delete-if-idle rule. The threat horizon shipped
+with the world-pricing work: the expectation world's phantom threat scales
+with the opponent's actual grip. The other three candidates were built and
+raced against the fixed stack, and none survived. *Initiative* (bodies
+forced to answer or die, counted both ways) died at the pin it broke
+before its race even finished — counting the opponent's dominated bodies
+as a standing bonus taxes killing them, and the 1100-probe pin fell to
+4/10; a term that rewards farming dominated boards is wrong by
+construction. *Cross-zone card advantage* and the *kneeling leak* (the
+mirror of the standing-leak) raced together with every pin green and read
+49.3% ±5.7 over 300 pilot-swapped games — they did not move the race, and
+were deleted rather than kept for plausibility. The evaluation keeps its
+depth where the arena said it mattered: the world priced honestly, the
+cliffs, the leak, the clock.

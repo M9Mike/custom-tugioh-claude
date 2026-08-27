@@ -740,43 +740,6 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     }
   }
 
-  /* D-trial: card advantage counted honestly across zones. Every zone is
-     priced above on its own terms — stats, promise, trap worth — but a
-     two-for-one is invisible to stats the moment the boards look even. The
-     flat count makes trades of CARDS visible as such, at well under one
-     card's weight so it shades trades rather than driving them. */
-  {
-    const live = (p: typeof my) =>
-      p.hand.length + p.monsters.filter(Boolean).length + (p.spellTrap ? 1 : 0) + (p.field ? 1 : 0);
-    score += (live(my) - live(their)) * 55;
-  }
-
-  /* D-trial: the mirror of the standing-leak. A body KNEELING that could
-     safely stand — its ATK clears their best potential attacker and the
-     cheapest guard on their board — is tempo donated: it threatens nothing
-     while it waits. Face-up Defence only; a Set card is a different play. */
-  {
-    let theirBestPotential = 0;
-    for (const fm of their.monsters) {
-      if (!fm || fm.face !== 'up') continue;
-      theirBestPotential = Math.max(theirBestPotential, bodyOf(state, fm, foe, me).atk);
-    }
-    let weakestGuard = Infinity;
-    for (const fm of their.monsters) {
-      if (!fm) continue;
-      const fb = bodyOf(state, fm, foe, me);
-      weakestGuard = Math.min(weakestGuard, fm.face === 'up' && fm.position === 'atk' ? fb.atk : fb.def);
-    }
-    if (weakestGuard === Infinity) weakestGuard = 0; // empty board: standing presses
-    let passive = 0;
-    for (const m of my.monsters) {
-      if (!m || m.face !== 'up' || m.position !== 'def') continue;
-      const b = bodyOf(state, m, me, me);
-      if (b.atk > theirBestPotential && b.atk > weakestGuard) passive += 140;
-    }
-    score -= Math.min(400, passive);
-  }
-
   const pressure = threatAgainst(state, foe, me);
   if (pressure > 0 && pressure < their.lp && their.lp < pressure * 2) score += (pressure * 2 - their.lp) * 0.3 * (1 + 0.3 * (w.styleAggression ?? 0));
   /* "Lethal next turn" is not a fact while a Set card could erase the board
