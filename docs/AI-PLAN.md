@@ -101,7 +101,8 @@ Target curve, honouring the owner's steer without copying its numbers:
 | ~1100 ATK, healthy LP, board to spare | 0/5 | 3–5/5, pool-dependent — the reported position is an attack |
 | ~1700 ATK | 1/5 | 4–5/5 — declines need a nameable reason |
 | ≥ 2000 ATK | 5/5 | 5/5 |
-| any size, into a Set that cost Tributes | — | 1–2/5 |
+| small attacker into a Set that cost Tributes | — | ~0/5 — the unknown averages Level 5+ |
+| big attacker into a Set that cost Tributes | — | high — *corrected by measurement*: Tribute monsters kneel on LOW DEF (Summoned Skull hides 2500 ATK behind 1200), so killing the boss while it is down is a blowout, not a risk. The guessed 1–2/5 assumed walls; the priced worlds knew better, which is the whole argument for pricing |
 | empty board (control) | 5/5 | 5/5, unchanged |
 
 ## Workstream B — fear sized to the facts, and plans that follow through

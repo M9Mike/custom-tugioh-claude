@@ -39,7 +39,11 @@
  * 7/10 and 9/10 where this insists on 10/10.
  */
 import { applyAction, cloneState, createDuel } from '../src/game/engine';
-import { AI_LEVELS, chooseTrapResponse, evaluate, planTurn } from '../src/game/ai';
+import { AI_LEVELS, chooseTrapResponse, commitsOf, evaluate, paranoiaPrior, planTurn, setPureClock } from '../src/game/ai';
+
+/* Same node budget every run, whatever else the machine is doing — see
+   `setPureClock`. Two pinned positions used to flip with load. */
+setPureClock(true);
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -108,6 +112,12 @@ interface Case {
      8000ms and wrong in between is a search pathology, and the only way to pin
      it is to ask at the budget where it bit. */
   budgetMs?: number;
+  /* A probabilistic decision is pinned at a FREQUENCY, not a certainty.
+     Probing a face-down with a small attacker is priced across sampled
+     worlds, so the answer legitimately varies with the deck order — the pin
+     asserts the appetite (at least this many of the ten), where every
+     deterministic case keeps demanding all ten. Omitted = all ten. */
+  minHits?: number;
 }
 
 const did = (plan: DuelAction[], type: string) => plan.some((a) => a.type === type);
@@ -618,6 +628,106 @@ const CASES: Case[] = [
       return !burned || end.winner === ME || end.players[ME].lp > 1;
     },
   },
+  {
+    name: 'probes a lone face-down with an 1100 attacker at healthy Life Points',
+    duelist: 'sarah',
+    because: 'the swing kills most of what can be under there, a bounce costs about a hundred, and the probe buys the whole board back its information',
+    /* The owner's report, as a pin: Lady of Faith beside one Set monster,
+       nothing else on the table, 8000 Life Points behind her. The attack used
+       to be DELETED before pricing — a hard filter on move generation — so
+       the appetite was 0/10 by construction. It is a priced gamble now, so
+       the pin is a frequency, not a certainty. */
+    minHits: 6,
+    build: (s) => {
+      s.players[ME].lp = 8000;
+      s.players[ME].monsters[0] = card(ME, 'lady-of-faith');
+      s.players[ME].normalSummonUsed = true;
+      const hidden = card(FOE, 'mystical-elf', 'def');
+      hidden.face = 'down';
+      s.players[FOE].monsters[0] = hidden;
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
+    name: 'GUARD: will not trade its last blocker into the unknown under a standing 2400',
+    duelist: 'sarah',
+    because: 'a flip effect that eats the attacker leaves the board empty with their 2400 already standing — the probe is not worth the wall',
+    build: (s) => {
+      s.players[ME].lp = 8000;
+      s.players[ME].monsters[0] = card(ME, 'lady-of-faith');
+      s.players[ME].normalSummonUsed = true;
+      const hidden = card(FOE, 'mystical-elf', 'def');
+      hidden.face = 'down';
+      s.players[FOE].monsters[0] = hidden;
+      s.players[FOE].monsters[1] = card(FOE, 'rude-kaiser');
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan) => {
+      const swing = plan.find((a) => a.type === 'attack');
+      // Attacking the face-down risks the blocker; attacking nothing is the play.
+      return !swing;
+    },
+  },
+  {
+    name: 'Tiger Axe follows through on the attack its own effect created',
+    duelist: 'joey',
+    because: 'a card spent to force their board into Defence and then not attacking it is a card spent on nothing — Set card or no Set card',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'tiger-axe')];
+      s.players[FOE].monsters[0] = card(FOE, '7-colored-fish'); // 1800/800: unbeatable standing, dead the moment it kneels
+      s.players[FOE].spellTrap = (() => {
+        const t = card(FOE, 'mirror-force');
+        t.face = 'down';
+        return t;
+      })();
+      s.players[FOE].hand = [card(FOE, 'kuriboh')];
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan) => did(plan, 'normalSummon') && did(plan, 'attack'),
+  },
+  {
+    name: 'fears nothing when no answer can exist behind their Set card',
+    duelist: 'keith',
+    because: 'every trap the deck runs is visible in the Graveyard, so the Set card is a bluff by arithmetic and the whole board commits',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'battle-ox');
+      s.players[ME].monsters[1] = card(ME, 'rude-kaiser');
+      s.players[ME].monsters[2] = card(ME, 'judge-man');
+      s.players[ME].normalSummonUsed = true;
+      const bluff = card(FOE, 'de-spell');
+      bluff.face = 'down';
+      s.players[FOE].spellTrap = bluff;
+      s.players[FOE].grave = [card(FOE, 'mirror-force'), card(FOE, 'mirror-force')];
+      /* Not Kuriboh: its hand-negate is itself a trap-window effect, so a
+         Kuriboh in hand IS an unaccounted answer and the fear is honest. */
+      s.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+      s.players[FOE].deck = s.players[FOE].deck.filter((c) => !(CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan) => plan.filter((a) => a.type === 'attack').length >= 3,
+  },
+  {
+    name: 'GUARD: still does not feed the whole board to a live Set card',
+    duelist: 'keith',
+    because: 'with real answers unaccounted for, at least one body stays out of the all-in — the tax on stacking everything behind one card',
+    minHits: 8,
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'battle-ox');
+      s.players[ME].monsters[1] = card(ME, 'rude-kaiser');
+      s.players[ME].monsters[2] = card(ME, 'judge-man');
+      s.players[ME].normalSummonUsed = true;
+      const live = card(FOE, 'mirror-force');
+      live.face = 'down';
+      s.players[FOE].spellTrap = live;
+      s.players[FOE].hand = [card(FOE, 'kuriboh')];
+      s.players[FOE].lp = 8000; // nowhere near lethal, so the all-in buys nothing
+    },
+    want: (plan) => {
+      const swingers = new Set(plan.filter((a) => a.type === 'attack').map((a) => (a as { uid: string }).uid));
+      return swingers.size < 3;
+    },
+  },
 ];
 
 console.log(`AI play checks — every position over ${SEEDS.length} deck orders\n`);
@@ -641,9 +751,12 @@ for (const c of CASES) {
     }
     if (!c.want(plan, end)) bad.push(`seed ${seed}: ${shown.join(' → ') || '(nothing)'}`);
   }
-  const pass = bad.length === 0;
+  const need = c.minHits ?? SEEDS.length;
+  const hits = SEEDS.length - bad.length;
+  const pass = hits >= need;
   if (!pass) failures += 1;
-  console.log(`  ${pass ? '✅' : '❌'} ${c.name}  ${SEEDS.length - bad.length}/${SEEDS.length}`);
+  const bar = c.minHits ? ` (≥${need})` : '';
+  console.log(`  ${pass ? '✅' : '❌'} ${c.name}  ${hits}/${SEEDS.length}${bar}`);
   if (!pass) {
     console.log(`       expected: ${c.because}`);
     for (const line of bad.slice(0, 4)) console.log(`       ${line}`);
@@ -720,7 +833,52 @@ windowCase(
   if (!pass) console.log('       expected: with their attacks refused by the engine, the threat and the race must both swing hard');
 }
 
-const TOTAL = CASES.length + 3;
+/* The fear machinery, pinned at the unit — these mechanisms only BITE in
+   narrow all-in-versus-wipe margins, so a scenario that discriminates them
+   resists construction, and an unpinned rule is the kind that quietly
+   un-fixes itself. Direct questions, deterministic answers. */
+{
+  const s = fresh(3, 'kaiba');
+  const setCard = card(FOE, 'de-spell');
+  setCard.face = 'down';
+  s.players[FOE].spellTrap = setCard;
+  s.players[FOE].grave = [card(FOE, 'mirror-force'), card(FOE, 'mirror-force')];
+  // Not Kuriboh — its hand-negate is a trap-window effect, an answer.
+  s.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+  s.players[FOE].deck = s.players[FOE].deck.filter((c) => !(CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
+  const zero = paranoiaPrior(s, ME);
+  const pass1 = zero === 0;
+  if (!pass1) failures += 1;
+  console.log(`  ${pass1 ? '✅' : '❌'} fear is zero when zero answers remain unaccounted for  (${zero.toFixed(2)})`);
+
+  /* The last trap the deck runs IS the Set card: hand and deck hold none,
+     and the pool must still fear it — the card itself is unseen. */
+  const t = fresh(3, 'kaiba');
+  const lastTrap = card(FOE, 'mirror-force');
+  lastTrap.face = 'down';
+  t.players[FOE].spellTrap = lastTrap;
+  t.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+  t.players[FOE].deck = t.players[FOE].deck.filter((c) => !(CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
+  const live = paranoiaPrior(t, ME);
+  const pass2 = live > 0;
+  if (!pass2) failures += 1;
+  console.log(`  ${pass2 ? '✅' : '❌'} and alive while the Set card itself could be the last answer  (${live.toFixed(2)})`);
+
+  /* One body, however many things it did on the way in. */
+  const one = commitsOf([
+    { type: 'normalSummon', uid: 'x1', zone: 0, position: 'atk', face: 'up' },
+    { type: 'attack', uid: 'x1', targetUid: 'y1' },
+  ] as DuelAction[]);
+  const two = commitsOf([
+    { type: 'normalSummon', uid: 'x1', zone: 0, position: 'atk', face: 'up' },
+    { type: 'attack', uid: 'x2', targetUid: 'y1' },
+  ] as DuelAction[]);
+  const pass3 = one === 1 && two === 2;
+  if (!pass3) failures += 1;
+  console.log(`  ${pass3 ? '✅' : '❌'} commitment counts bodies risked, not actions taken  (summon+swing=${one}, summon+other=${two})`);
+}
+
+const TOTAL = CASES.length + 6;
 console.log(
   failures
     ? `\n❌ ${failures} of ${TOTAL} positions played wrong.`

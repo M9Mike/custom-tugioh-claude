@@ -145,6 +145,11 @@ const unknownMeans = (() => {
    a Set that visibly cost a Tribute averages over the other. Gods excluded:
    they cannot be Set. */
 const UNKNOWN_ATK = unknownMeans.small.atk;
+/* What a body they have not summoned yet swings for — one number, shared by
+   the threat term's phantom and the expectation world's hand proxies, so the
+   two models of the same idea cannot drift apart. It sits above the Set-mean
+   on purpose: people Set their walls and summon their attackers. */
+const PHANTOM_SUMMON_ATK = 1600;
 const UNKNOWN_DEF = unknownMeans.small.def;
 const TRIBUTED_UNKNOWN_ATK = unknownMeans.big.atk;
 const TRIBUTED_UNKNOWN_DEF = unknownMeans.big.def;
@@ -276,9 +281,9 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
   const p = state.players[att];
   if (p.hand.length > 0 && p.monsters.some((m) => !m) && !monstersFrozen(state, att)) {
     attackers.push({
-      atk: 1600,
+      atk: PHANTOM_SUMMON_ATK,
       def: 0,
-      wall: 1600,
+      wall: PHANTOM_SUMMON_ATK,
       atkPos: true,
       attacks: 1,
       pierce: false,
@@ -1117,7 +1122,7 @@ function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[]; s
  * owner's report priced the old zero-floor version exactly: "I win 100% of
  * the games", by setting a wipe and watching the whole board walk into it.
  */
-function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
+export function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
   const foe = state.players[other(viewer)];
   if (!foe.spellTrap || foe.spellTrap.face !== 'down') return 0;
   const pool = [...foe.hand, ...foe.deck, foe.spellTrap];
@@ -1188,7 +1193,13 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
        expectation world holds a hand of unknowns that answers nothing, and
        the sampled worlds are where a plausible Kuriboh gets its say. Caught
        by ai-honesty-check, not by eye. */
-    for (const h of foe.hand) proxyBody(h);
+    /* A hand card is tomorrow's ATTACKER, not an average Set: proxied at the
+       same phantom the threat term uses, or the in-world replies collapse to
+       utility-monster size and every fear-shaped margin tips over. The first
+       cut of this proxied hands at the Set-mean and two pinned positions —
+       Swords with the duel on the line, the outgunned board kneeling — went
+       from certain to coin-flip exactly there. */
+    for (const h of foe.hand) proxyBody(h, PHANTOM_SUMMON_ATK, UNKNOWN_DEF);
     sortHidden(foe.deck);
     shuffleWith(foe.deck, rnd);
     return view;
@@ -1217,14 +1228,27 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      This is what turns "a face-down that cost a Tribute" from a superstition
      into a sampled fact: the worlds deal it Summoned Skulls, and the swing
      into it is priced accordingly. */
-  const small = monsters.filter((s) => (CARDS[s]?.level ?? 0) <= 4);
-  const big = monsters.filter((s) => (CARDS[s]?.level ?? 0) >= 5);
+  /* Popped from the END of each half so that with no face-downs on the table
+     the arrays are untouched and `remain` reassembles in exactly the order the
+     old dealer built it. That is deliberate stream-stability, not tidiness: a
+     semantically identical refactor that reorders this array reshuffles every
+     sampled world, and a knife-edge pinned position flipped on precisely that
+     — the same plans, the same rules, a different run of luck. */
+  const isSmall = (sl: string) => (CARDS[sl]?.level ?? 0) <= 4;
+  const takeFrom = (want: (sl: string) => boolean): string | undefined => {
+    for (let k = monsters.length - 1; k >= 0; k--) {
+      if (want(monsters[k])) return monsters.splice(k, 1)[0];
+    }
+    return undefined;
+  };
   for (const m of hiddenMonsters) {
     const tributed = (m.setTributes ?? 0) > 0;
-    const pick = tributed ? big.pop() ?? small.pop() : small.pop() ?? big.pop();
+    const pick = tributed
+      ? takeFrom((sl) => !isSmall(sl)) ?? takeFrom(() => true)
+      : takeFrom(isSmall) ?? takeFrom(() => true);
     reidentify(m, pick ?? rest.pop()!);
   }
-  const remain = [...small, ...big, ...rest];
+  const remain = [...monsters, ...rest];
   shuffleWith(remain, rnd);
   let at = 0;
   for (const h of foe.hand) reidentify(h, remain[at++]);
@@ -1269,10 +1293,26 @@ interface Clock {
 /** Simulated actions per millisecond, calibrated on the dev machine. */
 const NODES_PER_MS = 5;
 
+/**
+ * Test harnesses think in nodes, the serving path thinks in milliseconds too.
+ *
+ * The wall cap is what keeps a live room responsive on a busy server — and it
+ * is also what made two pinned positions flip verdicts with MACHINE LOAD: a
+ * knife-edge case lost its judge rounds to a concurrent build and answered
+ * differently on the same seed. A pin that wobbles with the weather proves
+ * nothing, so the batteries switch the cap off and spend the same node budget
+ * every run, on every machine. Serving keeps the cap; a player waiting on a
+ * hung search is worse than a slightly shallower one.
+ */
+let PURE_CLOCK = false;
+export function setPureClock(on: boolean): void {
+  PURE_CLOCK = on;
+}
+
 function clockFor(budgetMs: number): Clock {
   return {
     left: Math.max(150, Math.round(budgetMs * NODES_PER_MS)),
-    wallCap: Date.now() + Math.max(150, budgetMs * 1.6),
+    wallCap: PURE_CLOCK ? Number.MAX_SAFE_INTEGER : Date.now() + Math.max(150, budgetMs * 1.6),
   };
 }
 
@@ -1584,6 +1624,55 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
     if (round >= 1 && merged.size === before) break;
     width *= 2;
   }
+  /* The expendable attacker leads. When their Set card is watching, the order
+     of a battle phase is an information play: a single-target answer eats
+     whichever body swings first, so the cheapest one tests the water and the
+     army walks in behind it. The beam cannot learn this — the Set card is an
+     inert stand-in in every bright world, so every ordering scores the same —
+     and a policy is applied where pricing has nothing to say. Reordering the
+     actions of a found line is sound without replaying it: each attack keeps
+     its own attacker and target, and order only changes the outcome in the
+     worlds that respond, which replay the reordered list. Strongest-first
+     stays everywhere else, where kills want the best body on the biggest
+     threat. */
+  if (state.players[other(pid)].spellTrap?.face === 'down') {
+    const attackerWorth = (uid: string): number => {
+      const onField = state.players[pid].monsters.find((m) => m?.uid === uid);
+      if (onField) return effAtk(state, onField, pid);
+      const inHand = state.players[pid].hand.find((h) => h.uid === uid);
+      return inHand ? baseAtk(inHand.slug) : 0;
+    };
+    const reordered = new Map<string, Line>();
+    for (const line of merged.values()) {
+      const actions = [...line.actions];
+      for (let i = 0; i < actions.length; ) {
+        if (actions[i].type !== 'attack') {
+          i += 1;
+          continue;
+        }
+        let j = i;
+        while (j < actions.length && actions[j].type === 'attack') j += 1;
+        const run = actions.slice(i, j) as Extract<DuelAction, { type: 'attack' }>[];
+        /* Only a run of independent swings may be shuffled. A direct attack
+           is order-DEPENDENT — it is legal only once the blocker ahead of it
+           in the plan is dead — and the first cut of this reorder moved one
+           to the front, where the engine refused it and the whole battle
+           phase died on an error. Distinct monster targets are the only
+           attacks whose legality survives any order. */
+        const independent = run.every((a) => a.targetUid != null) && new Set(run.map((a) => a.targetUid)).size === run.length;
+        if (independent) {
+          run.sort((a, b) => attackerWorth(a.uid) - attackerWorth(b.uid));
+          actions.splice(i, j - i, ...run);
+        }
+        i = j;
+      }
+      const key = actions.map(actionKey).join('|');
+      const have = reordered.get(key);
+      if (!have || line.score > have.score) reordered.set(key, { ...line, actions });
+    }
+    merged.clear();
+    for (const [k, v] of reordered) merged.set(k, v);
+  }
   const all = [...merged.values()].sort((a, b) => b.score - a.score);
   if (!all.length) return [{ type: 'endTurn' }];
 
@@ -1712,6 +1801,23 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
  * face-down card is harmless, or when the coin lands heads, stops outranking
  * the plan that works everywhere.
  */
+/**
+ * BODIES risked by a plan, not actions taken. Counting a summon and an attack
+ * as two commitments made the same monster pay twice: Tiger Axe summoned,
+ * forcing their board to kneel, then swinging at what it beats, was billed as
+ * two commits — half the nightmare — for exposing exactly one body. The owner
+ * watched it decline the attack its own effect had just created. One uid, one
+ * commitment, however many things it did on the way in.
+ */
+export function commitsOf(actions: DuelAction[]): number {
+  const bodies = new Set<string>();
+  for (const a of actions) {
+    if (a.type === 'attack' || a.type === 'normalSummon' || a.type === 'handSummon') bodies.add(a.uid);
+    else if (a.type === 'fusionSummon') bodies.add(a.extraUid);
+  }
+  return bodies.size;
+}
+
 function judgeAcrossWorlds(
   state: DuelState,
   pid: PlayerId,
@@ -1739,20 +1845,6 @@ function judgeAcrossWorlds(
      line's COMMITMENT: nothing for the first body risked, half for the
      second, full from the third — a tax on stacking the whole board behind
      one card, never a veto on playing the game. */
-  /* BODIES risked, not actions taken. Counting a summon and an attack as two
-     commitments made the same monster pay twice: Tiger Axe summoned, forcing
-     their board to kneel, then swinging at what it beats, was billed as two
-     commits — half the nightmare — for exposing exactly one body. The owner
-     watched it decline the attack its own effect had just created. One uid,
-     one commitment, however many things it did on the way in. */
-  const commitsOf = (actions: DuelAction[]): number => {
-    const bodies = new Set<string>();
-    for (const a of actions) {
-      if (a.type === 'attack' || a.type === 'normalSummon' || a.type === 'handSummon') bodies.add(a.uid);
-      else if (a.type === 'fusionSummon') bodies.add(a.extraUid);
-    }
-    return bodies.size;
-  };
   const darkWeight = examine.map((l) => prior * Math.min(1, Math.max(0, (commitsOf(l.actions) - 1) / 2)));
   const ends: DuelState[][] = examine.map(() => []);
 
@@ -1868,11 +1960,16 @@ function judgeAcrossWorlds(
        share of the clock lasts. */
     if (cfg.depth > 0) {
       const order = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
+      /* One slice, cut before the loop: computing it per line let every
+         rollout shrink the next line's budget, so the current leader was
+         always judged by a fatter, steadier playout than its rivals — a
+         thumb on the scale that grew as the clock drained, and pure noise
+         on a knife-edge decision. Same worlds, same food. */
+      const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 5));
       for (const i of order.slice(0, 5)) {
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
-        const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 5));
         roll[i].sum += end.winner
           ? evaluate(end, pid, w)
           : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);

@@ -11425,6 +11425,42 @@ console.log('\nOne question, asked the same way down every road');
   );
 }
 
+console.log('\nWhat a Set was seen to cost is written on the card');
+{
+  /* Public information, recorded rather than remembered: the tributes were
+     paid in the open, and any player watching knows a face-down that cost one
+     is Level 5 or higher. The AI's world-building conditions on exactly this
+     — reading the table, not the card — so the engine records it at Set time
+     and wipes it with everything else on the way out. */
+  const s = fresh();
+  const fodder = card(ME, 'battle-ox');
+  s.players[ME].monsters[0] = fodder;
+  const big = card(ME, 'summoned-skull'); // Level 6 — one Tribute
+  s.players[ME].hand = [big];
+  const set = act(s, ME, { type: 'normalSummon', uid: big.uid, zone: 0, position: 'def', face: 'down', tributes: [fodder.uid] });
+  const down = set.players[ME].monsters.find((m) => m?.uid === big.uid);
+  ok(down?.face === 'down', 'a Tributed Set lands face-down', down?.face ?? 'gone');
+  ok(down?.setTributes === 1, 'and the card remembers what was paid for it', `${down?.setTributes}`);
+
+  const s2 = fresh();
+  const small = card(ME, 'kuriboh');
+  s2.players[ME].hand = [small];
+  const plain = act(s2, ME, { type: 'normalSummon', uid: small.uid, zone: 0, position: 'def', face: 'down', tributes: [] });
+  ok(
+    plain.players[ME].monsters.find((m) => m?.uid === small.uid)?.setTributes === undefined,
+    'an ordinary Set records nothing',
+    `${plain.players[ME].monsters.find((m) => m?.uid === small.uid)?.setTributes}`
+  );
+
+  /* And it dies with the body: destroyed and revived, the card owes the old
+     Set nothing. */
+  const hole = card(ME, 'dark-hole');
+  set.players[ME].hand.push(hole);
+  const swept = act(set, ME, { type: 'activateSpell', uid: hole.uid, targets: [] });
+  const buried = swept.players[ME].grave.find((c) => c.uid === big.uid);
+  ok(buried?.setTributes === undefined, 'and it is wiped on the way to the Graveyard', `${buried?.setTributes}`);
+}
+
 console.log('\nA card lying face-down is not named until it turns over');
 {
   /* Reported: "when attacking a facedown monster if the opponent has a trap

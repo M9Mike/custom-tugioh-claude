@@ -18,7 +18,9 @@
  */
 import { writeFileSync } from 'node:fs';
 import { createDuel } from '../src/game/engine';
-import { planTurn } from '../src/game/ai';
+import { planTurn, setPureClock } from '../src/game/ai';
+
+setPureClock(true);
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
@@ -192,20 +194,30 @@ measure(
     s.players[ME].monsters[2] = card(ME, 'judge-man');
     s.players[FOE].spellTrap = card(FOE, 'de-spell', 'down');
     s.players[FOE].grave = [card(FOE, 'mirror-force'), card(FOE, 'mirror-force')];
-    s.players[FOE].hand = [card(FOE, 'kuriboh')];
-    s.players[FOE].deck = s.players[FOE].deck.filter((c) => CARDS[c.slug]?.kind !== 'trap').slice(0, 12);
+    /* Not Kuriboh — its hand-negate is a trap-window effect, an answer. */
+    s.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+    s.players[FOE].deck = s.players[FOE].deck.filter((c) => !(CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
   },
   (plan) => plan.filter((a) => a.type === 'attack').length >= 3
 );
 
-/* Two attackers, one Set card, one weak monster of theirs: the expendable
-   body tests the water first. */
+/* Two attackers, one Set card. What doctrine promises is that the whole
+   board is never fed to one unknown — and what the priced answer turns out
+   to be is one better than the policy first guessed at: the strong body
+   lands the profitable blow (the first is always fear-free), and the cheap
+   one either leads the way in as the expendable probe or stays out of the
+   line of fire entirely. What it must never do is march in behind the
+   strong one, or be the only one to swing. */
+let strongUid = '';
+let weakUid = '';
 measure(
   'backrow fear',
-  'the expendable attacker leads',
+  'one blow tests the water, the cheap body stays safe or leads',
   (s) => {
-    const weak = card(ME, 'kuriboh');
     const strong = card(ME, 'summoned-skull');
+    const weak = card(ME, 'kuriboh');
+    strongUid = strong.uid;
+    weakUid = weak.uid;
     s.players[ME].monsters[0] = strong;
     s.players[ME].monsters[1] = weak;
     s.players[FOE].spellTrap = card(FOE, 'mirror-force', 'down');
@@ -213,21 +225,11 @@ measure(
   },
   (plan) => {
     const swings = plan.filter((a) => a.type === 'attack') as { uid: string }[];
-    if (swings.length < 2) return false;
-    const weakUid = undefined; // resolved below by exclusion: kuriboh is the 300
-    void weakUid;
-    // The first swing is the smaller body's.
-    const first = swings[0].uid;
-    const s2 = swings.find((a) => a.uid !== first);
-    return !!s2 && first !== s2.uid && firstIsWeaker(first, s2.uid);
+    if (!swings.length) return false;
+    if (swings.length === 1) return swings[0].uid === strongUid;
+    return swings[0].uid === weakUid;
   }
 );
-/* Uid ordering helper for the scenario above — the weak body was minted
-   second, so its uid is the larger suffix. */
-function firstIsWeaker(a: string, b: string): boolean {
-  const n = (u: string) => Number(u.replace(/^sf/, ''));
-  return n(a) > n(b);
-}
 
 /* ---------------- the table ---------------- */
 let section = '';
