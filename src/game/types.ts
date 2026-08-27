@@ -383,6 +383,21 @@ export type Op =
   /** `scale` multiplies `amount` the same way `gainAtk`'s does — the Perfectly
    *  Ultimate Great Moth counts every card in both Graveyards, in both stats. */
   | { op: 'gainDef'; amount: number; scale?: 'perCardInGrave' | 'perCardInEitherGrave'; target: Selector; duration: Duration }
+  /**
+   * Everything you have left, poured into one body.
+   *
+   * The controller pays Life Points down to `leave`, and the target gains
+   * exactly what was paid. One op rather than a cost beside a scaled `gainAtk`,
+   * because the amount is only knowable at the moment it is spent and threading
+   * it from a cost into an op that runs afterwards would be a second mechanism
+   * for one sentence.
+   *
+   * The whole of it is the trade: Ra becomes the biggest thing on the table and
+   * its owner becomes something any burn effect or unanswered swing can finish.
+   * Nothing gives the Life Points back yet — the card that would is Diffusion,
+   * and it is not in this game.
+   */
+  | { op: 'burnLifeForAtk'; leave: number; target: Selector; duration: Duration }
   | { op: 'setAtk'; value: number; target: Selector }
   | { op: 'halveAtk'; target: Selector }
   | { op: 'swapAtkDef'; target: Selector }
@@ -919,6 +934,17 @@ export interface EffectCondition {
   summonedIs?: CardFilter;
   /** Controller's LP must be at or below this. */
   ownLpBelow?: number;
+  /**
+   * Controller's LP must be at or above this — the mirror of `ownLpBelow`, and
+   * the gate on an effect whose price is the Life Points themselves.
+   *
+   * Ra pours everything it has into its own ATK and leaves 1, so at 1 there is
+   * nothing left to pour: without this the button was still offered, spent the
+   * once-per-turn, and announced that nothing had happened. A card is never
+   * spent on nothing — see `activationIsDead`, which is the same rule asked
+   * about targets rather than about Life Points.
+   */
+  ownLpAtLeast?: number;
   /** Requires at least this many cards in own Graveyard. */
   graveAtLeast?: number;
   /**

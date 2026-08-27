@@ -11425,5 +11425,141 @@ console.log('\nOne question, asked the same way down every road');
   );
 }
 
+console.log('\nA card lying face-down is not named until it turns over');
+{
+  /* Reported: "when attacking a facedown monster if the opponent has a trap
+     that would stop the attack like spellbinding circle it reveals in the text
+     it says monster a attacks monster b ... the attack is negated and never
+     lands the monster b won't flip (correctly) but it is revealed in the text."
+
+     The declaration is written before the trap window opens, so the log named
+     the card a beat before anything could have turned it over — and when the
+     attack was answered, nothing ever did. */
+  const arena = (hidden: string, withTrap: boolean) => {
+    const s = fresh('battle');
+    s.active = ME;
+    const ox = card(ME, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[ME].monsters[0] = ox;
+    const face = card(FOE, hidden);
+    face.face = 'down';
+    face.position = 'def';
+    face.summonedOnTurn = 0;
+    s.players[FOE].monsters[0] = face;
+    if (withTrap) {
+      const circle = card(FOE, 'spellbinding-circle');
+      circle.face = 'down';
+      circle.summonedOnTurn = 1;
+      s.players[FOE].spellTrap = circle;
+    }
+    return { s, ox, face };
+  };
+  const said = (s: DuelState, from: number) =>
+    s.log.slice(from).map((l) => (typeof l === 'string' ? l : (l as { text: string }).text)).join(' | ');
+
+  // The reported case: negated, so it never flips, so it is never named.
+  const a = arena('man-eater-bug', true);
+  const from = a.s.log.length;
+  let r = act(a.s, ME, { type: 'attack', uid: a.ox.uid, targetUid: a.face.uid });
+  if (r.pending) r = act(r, r.pending.player, { type: 'respondTrap', uid: r.players[FOE].spellTrap!.uid });
+  ok(said(r, from).includes('attacks the face-down monster'), 'the declaration names it by what it is, not by what it says', said(r, from));
+  ok(!said(r, from).includes('Man-Eater Bug'), 'and a negated attack never reveals what was lying there', said(r, from));
+  ok(r.players[FOE].monsters[0]?.face === 'down', 'CONTROL: it really is still face-down', r.players[FOE].monsters[0]?.face ?? 'gone');
+
+  // The attack lands: the flip line reveals it, one beat later, as it always did.
+  const b = arena('mystical-elf', false);
+  const fromB = b.s.log.length;
+  const landed = act(b.s, ME, { type: 'attack', uid: b.ox.uid, targetUid: b.face.uid });
+  ok(said(landed, fromB).includes('attacks the face-down monster'), 'an attack that lands is declared the same way', said(landed, fromB));
+  ok(said(landed, fromB).includes('Mystical Elf is flipped face-up'), 'and the flip is what names it', said(landed, fromB));
+  ok(
+    said(landed, fromB).indexOf('attacks the face-down') < said(landed, fromB).indexOf('flipped face-up'),
+    'in that order — the reveal belongs to the flip, not to the declaration'
+  );
+
+  // CONTROL: a monster standing face-up is named at declaration, as ever.
+  const c = arena('mystical-elf', false);
+  c.face.face = 'up';
+  const fromC = c.s.log.length;
+  const open = act(c.s, ME, { type: 'attack', uid: c.ox.uid, targetUid: c.face.uid });
+  ok(said(open, fromC).includes('attacks Mystical Elf'), 'CONTROL: a face-up defender is named as it always was', said(open, fromC));
+}
+
+console.log('\nRa pours everything it has into the sun');
+{
+  /* Asked for by the owner: "Ra should have another effect ... so all the
+     player's LP are transfered to ra's atk but 1." Diffusion — the card that
+     would hand the Life Points back — does not exist in this game yet, so this
+     is one way only, and that is the whole trade. */
+  const withRa = (lp: number, mod = 0) => {
+    const s = fresh();
+    const ra = card(ME, 'the-winged-dragon-of-ra');
+    ra.atkMod = mod;
+    s.players[ME].monsters = [ra, null, null];
+    s.players[ME].lp = lp;
+    s.players[ME].normalSummonUsed = true;
+    return { s, ra };
+  };
+  const burnIndex = (s: DuelState, ra: CardInstance) =>
+    ignitionOptions(s, ME, ra).find((o) => o.label.includes('sun'))?.index;
+
+  const { s, ra } = withRa(8000, 2400); // as if Tribute Summoned off three ordinary bodies
+  const offers = ignitionOptions(s, ME, ra);
+  ok(offers.length === 2, 'Ra carries two ignitions — the Phoenix and the sun', offers.map((o) => o.label).join(' / '));
+  const idx = burnIndex(s, ra);
+  const after = act(s, ME, { type: 'ignition', uid: ra.uid, effectIndex: idx });
+  ok(after.players[ME].lp === 1, 'it pays down to exactly one Life Point', `${after.players[ME].lp}`);
+  const burning = after.players[ME].monsters[0]!;
+  ok(
+    effAtk(after, burning, ME) === 2400 + 7999,
+    'and every point of it arrives on the God, on top of what it was already worth',
+    `${effAtk(after, burning, ME)} (want ${2400 + 7999})`
+  );
+
+  /* One way only, and the limit is the card rather than a marker: the total is
+     spent, so there is nothing left to spend. */
+  const spent = structuredClone(after);
+  spent.turn += 2;
+  spent.players[ME].monsters[0]!.effectUsedOnTurn = -1;
+  ok(
+    burnIndex(spent, spent.players[ME].monsters[0]!) === undefined,
+    'and it is not offered again on a later turn, because there is nothing left to give'
+  );
+  ok(
+    !!applyAction(spent, ME, { type: 'ignition', uid: ra.uid, effectIndex: idx }).error,
+    'pressed anyway, it is refused rather than spending the turn on nothing'
+  );
+
+  /* Two Life Points is the smallest board where it does anything at all. */
+  const thin = withRa(2);
+  ok(burnIndex(thin.s, thin.ra) !== undefined, 'at two Life Points it is still worth one', 'not offered');
+  const gone = act(thin.s, ME, { type: 'ignition', uid: thin.ra.uid, effectIndex: burnIndex(thin.s, thin.ra) });
+  ok(
+    gone.players[ME].lp === 1 && effAtk(gone, gone.players[ME].monsters[0]!, ME) === 1,
+    'and one point is what moves',
+    `${gone.players[ME].lp} LP, ${effAtk(gone, gone.players[ME].monsters[0]!, ME)} ATK`
+  );
+
+  /* CONTROL: the God Phoenix is untouched — still a flat thousand, still the
+     board sweep, and still its own separate once per turn. */
+  const phoenix = withRa(8000);
+  phoenix.s.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+  const pIdx = ignitionOptions(phoenix.s, ME, phoenix.ra).find((o) => o.label.includes('Phoenix'))?.index;
+  const swept = act(phoenix.s, ME, { type: 'ignition', uid: phoenix.ra.uid, effectIndex: pIdx });
+  ok(swept.players[ME].lp === 7000, 'CONTROL: the God Phoenix still costs its flat thousand', `${swept.players[ME].lp}`);
+  ok(!on(swept, FOE).length, 'CONTROL: and still burns their board clean', on(swept, FOE).map((m) => m.slug).join(','));
+
+  /* And the trade is real: 1 Life Point is a duel anybody can finish. Pinned so
+     nobody later "fixes" the drawback out of it. */
+  const fragile = act(gone, ME, { type: 'endTurn' });
+  const ox = card(FOE, 'battle-ox');
+  ox.summonedOnTurn = 0;
+  fragile.players[FOE].monsters = [ox, null, null];
+  fragile.players[ME].monsters = [null, null, null];
+  fragile.phase = 'battle';
+  const dead = act(fragile, FOE, { type: 'attack', uid: ox.uid, targetUid: null });
+  ok(dead.winner === FOE, 'a player at one Life Point loses to the next thing that connects', String(dead.winner));
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

@@ -122,6 +122,12 @@ let mofUid = '';
 let goatUid = '';
 let sdUid = '';
 let kneelUid = '';
+let raUid = '';
+/* Which of Ra's two ignitions is the sun — read off the card rather than
+   written as a number, because the day a third is added the number moves. */
+const RA_SUN = CARDS['the-winged-dragon-of-ra'].effects.findIndex(
+  (e) => e.trigger === 'ignition' && e.ops.some((o) => o.op === 'burnLifeForAtk')
+);
 
 const CASES: Case[] = [
   {
@@ -568,6 +574,48 @@ const CASES: Case[] = [
         | undefined;
       // Playing it at all is optional; aiming it at the standing monster is not.
       return !cast || cast.targets?.includes(kneelUid) === true;
+    },
+  },
+  {
+    name: 'pours everything into Ra when the swing that follows is lethal',
+    duelist: 'yamimarik',
+    because: 'a God at 10,000 ATK swinging into an empty board ends the duel this turn, and Life Points you keep after losing are worth nothing',
+    build: (s) => {
+      raUid = (s.players[ME].monsters[0] = card(ME, 'the-winged-dragon-of-ra')).uid;
+      s.players[ME].monsters[0]!.atkMod = 2400; // as if paid for with three ordinary bodies
+      s.players[ME].monsters[0]!.summonedOnTurn = 0;
+      s.players[ME].normalSummonUsed = true;
+      s.players[ME].hand = [];
+      s.players[FOE].monsters = [null, null, null];
+      s.players[FOE].hand = [];
+      s.players[FOE].spellTrap = null;
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan, end) => end.winner === ME || did(plan, 'ignition'),
+  },
+  {
+    name: 'CONTROL: does not burn itself to one Life Point with nothing to show for it',
+    duelist: 'yamimarik',
+    because: 'a 3000 DEF wall means the swing lands on nothing, so the only thing the effect buys is a duel the next attack ends',
+    /* The card is enormously strong and enormously stupid to press at the wrong
+       moment, which is exactly the shape the search has to get right on its
+       own — there is no gate on it beyond having the Life Points. */
+    build: (s) => {
+      raUid = (s.players[ME].monsters[0] = card(ME, 'the-winged-dragon-of-ra')).uid;
+      s.players[ME].monsters[0]!.atkMod = 2400;
+      s.players[ME].monsters[0]!.summonedOnTurn = 0;
+      s.players[ME].normalSummonUsed = true;
+      s.players[ME].hand = [];
+      // 2600 DEF, and no pierce on a God: the swing that follows lands on nothing.
+      s.players[FOE].monsters[0] = card(FOE, 'big-shield-gardna', 'def');
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan, end) => {
+      const burned = plan.some(
+        (a) => a.type === 'ignition' && (a as { uid?: string }).uid === raUid && (a as { effectIndex?: number }).effectIndex === RA_SUN
+      );
+      // Either it left the Life Points alone, or it found a win anyway.
+      return !burned || end.winner === ME || end.players[ME].lp > 1;
     },
   },
 ];

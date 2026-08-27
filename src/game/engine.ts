@@ -1776,6 +1776,32 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       }
+      case 'burnLifeForAtk': {
+        const p = state.players[ctx.controller];
+        const spend = p.lp - op.leave;
+        /* Nothing left to give is not a cost of nothing — it is the effect
+           failing, and it says so rather than resolving into a 0 ATK gain that
+           looks like the card did something. */
+        if (spend <= 0) {
+          emptyHanded(state, ctx, `${p.name} has nothing left to give.`);
+          break;
+        }
+        p.lp = op.leave;
+        log(state, `${p.name} pours ${spend} Life Points into the sun.`, 'effect', ctx.controller, logSlug(ctx.source));
+        /* Announced as damage because that is what the number is doing to the
+           total, and this file's rule is that Life Points never move with
+           nothing on screen saying why. */
+        anim(state, { kind: 'damage', player: ctx.controller, amount: spend });
+        for (const t of resolveTargets(ctx, op.target)) {
+          if (op.duration === 'permanent') t.atkMod += spend;
+          else t.turnAtkMod += spend;
+          log(state, `${displayName(state, t)} burns with all of it — ${effAtk(state, t, ctx.controller)} ATK.`, 'effect', ctx.controller, logSlug(t));
+          /* Its own beat on the field, so the number arriving on the God is
+             shown rather than inferred from the Life Points that just left. */
+          anim(state, { kind: 'note', uid: t.uid, slug: t.slug, player: ctx.controller, reports: true, text: `+${spend} ATK` });
+        }
+        break;
+      }
       case 'setAtk':
         for (const t of resolveTargets(ctx, op.target)) t.atkMod = op.value - baseAtk(t.slug);
         break;
@@ -2906,6 +2932,7 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     if (n < cond.controlsCopies.atLeast) return false;
   }
   if (cond.ownLpBelow != null && p.lp > cond.ownLpBelow) return false;
+  if (cond.ownLpAtLeast != null && p.lp < cond.ownLpAtLeast) return false;
   if (cond.graveAtLeast != null && p.grave.length < cond.graveAtLeast) return false;
   if (cond.countersAtLeast != null && c.counters < cond.countersAtLeast) return false;
   if (cond.faceDown != null && (c.face === 'down') !== cond.faceDown) return false;
@@ -3500,7 +3527,19 @@ function beginAttack(state: DuelState, attackerUid: string, targetUid: string | 
   fireTriggers(state, attacker, controller, 'onDeclareAttack', { attackerUid, targetUid: targetUid ?? undefined });
   if (state.winner) return;
 
-  const targetName = targetUid ? displayName(state, findOnField(state, targetUid)?.c ?? attacker) : state.players[defender].name;
+  /* A card lying face-down is not named, because the declaration comes *before*
+     the attack lands and before anything flips. Reported by the owner: an
+     attack answered by Spellbinding Circle is negated, the monster correctly
+     never turns over — and the duel log had already said what it was.
+     `displayName` neither knows nor cares which way up a card is, which is
+     right everywhere else it is used and wrong here alone. The reveal belongs
+     to the flip, one beat later, which has always had its own line. */
+  const hit = targetUid ? findOnField(state, targetUid)?.c : undefined;
+  const targetName = !targetUid
+    ? state.players[defender].name
+    : hit?.face === 'down'
+      ? 'the face-down monster'
+      : displayName(state, hit ?? attacker);
   log(state, `${displayName(state, attacker)} attacks ${targetName}!`, 'attack', controller, logSlug(attacker));
 
   state.suspendedAttack = { attackerUid, targetUid };

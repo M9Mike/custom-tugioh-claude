@@ -3291,6 +3291,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'Requires 3 Tributes. This monster\'s ATK and DEF become the combined ATK and DEF of the monsters Tributed to Summon it. ' +
       'This monster gains 300 ATK for each monster in your Graveyard. ' +
       'Once per turn: pay 1000 Life Points; destroy every monster your opponent controls. ' +
+      'Once per turn: pay Life Points until you have 1 left; this monster gains that much ATK. ' +
       "This monster cannot be targeted by your opponent's card effects. " +
       "A God is above everything: this monster's attacks and effects ignore your opponent's protections. " +
       'If this monster is Special Summoned, it returns to the Graveyard at the end of that turn.',
@@ -3333,6 +3334,34 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         oncePerTurn: true,
         cost: { lp: 1000 },
         ops: [{ op: 'destroy', target: OPP_ALL }],
+      },
+      {
+        /* Everything you have left, poured into the sun — the anime's one-turn
+           kill, and the reason Ra is frightening rather than merely large.
+           Asked for by the owner.
+
+           Written as one op rather than a Life Point cost beside a scaled
+           `gainAtk`, because the amount is only knowable at the instant it is
+           spent: a cost pays first and an op runs afterwards, and threading the
+           figure between them would be a second mechanism for one sentence.
+
+           No `oncePerTurn` marker is needed and none is given — the effect
+           empties the total, so the second press has nothing to pay with and
+           `burnLifeForAtk` refuses it out loud. The limit is the card.
+
+           The trade is the whole card. Ra becomes the biggest thing anyone has
+           ever put on this table and its owner becomes something a single burn
+           effect finishes: Coffin Seller alone is 300 a body, and one
+           unanswered swing is the duel. Nothing gives the Life Points back —
+           Diffusion is the card that would, and it is not in this game yet. */
+        trigger: 'ignition',
+        label: 'Pour everything into the sun',
+        /* At 1 Life Point there is nothing left to pour, and a button that
+           does nothing is worse than no button — it spends the turn's use and
+           announces the emptiness. `ownLpAtLeast` is the same rule
+           `activationIsDead` applies to targets, asked about Life Points. */
+        condition: { ownLpAtLeast: 2 },
+        ops: [{ op: 'burnLifeForAtk', leave: 1, target: SELF, duration: 'permanent' }],
       },
     ],
   },
