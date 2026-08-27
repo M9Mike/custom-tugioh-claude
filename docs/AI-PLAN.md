@@ -223,6 +223,23 @@ at its designed floor. The lesson, recorded where the plan said it would
 be: pins prove positions, only the arena proves strength, and a subsidy is
 not a price.
 
+**E paid, and the plan ships.** The final gate, all of it on the exact
+configuration merged: a 600-game pilot-swapped race against the pre-plan
+AI reads **50.0% ±4.0 (300W–300L)** — not worse at the 95% band, with the
+journal kept; all 41 pinned positions and every unit pin green;
+`ai-honesty` green; the decision surface on target (1100 → 3/5 healthy,
+1700 → 4/5, controls 5/5, last-blocker 0/5, a Tributed Set feared by the
+small and blown up by the big, Tiger Axe 5/5, fear-of-nothing 0, the
+stagger doctrine 5/5); the serving clock measured inside its caps
+(`scripts/.bench/wall-clock.ts`); rules 1451, text, audit, picker,
+playable, gods, Ra, premade, invariants, race, sim, build, and all three
+end-to-end suites green. What the game bought: a computer that pays for
+the unknown instead of forbidding it, fears what can still exist instead
+of what once could, follows through on the plans its own cards start, and
+plays the deck it was handed from the first turn — at exactly the
+strength it had, which is what "no regression" was always going to cost
+in a fair arena.
+
 **D verdicts**, per the delete-if-idle rule. The threat horizon shipped
 with the world-pricing work: the expectation world's phantom threat scales
 with the opponent's actual grip. The other three candidates were built and
