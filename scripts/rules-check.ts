@@ -10,7 +10,7 @@
  */
 import { KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
 import { revivable } from '../src/game/targeting';
-import { choiceResponses } from '../src/game/engine';
+import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, summonChoiceSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
@@ -5954,18 +5954,56 @@ console.log('\nKaiba: the Ultimate Dragon spends a brother, and the Sea Horse fi
     'CONTROL: with no Blue-Eyes in the Graveyard the ignition is refused'
   );
 
-  /* Kaiser Sea Horse counts as two Tributes for a LIGHT monster. Reported as
-     broken from a real duel — the sentence had never been implemented. */
+  /* "This monster counts as two tributes for the Tribute Summon of a LIGHT
+     monster" — a claim about the body being SPENT, and it was implemented as a
+     standing discount. Reported by the owner: "check if when Kaiser Sea Horse
+     any monster can be tributed (just 1) for summoning a blue eyes?" It could:
+     he lowered the price and a Battle Ox paid it, and he was still standing
+     beside the dragon afterwards.
+
+     The price is counted in Tributes now, not in heads. Blue-Eyes costs two,
+     and he is worth two of them. */
   const light = 'blue-eyes-white-dragon'; // Level 8 LIGHT — two Tributes
   ok(CARDS[light].attribute === 'LIGHT', 'CONTROL: Blue-Eyes is the LIGHT monster this is about');
   const board = fresh();
   const horse = card(ME, 'kaiser-sea-horse');
   board.players[ME].monsters = [horse, null, null];
   ok(
-    tributesRequired(light, board, ME) === 1,
-    'with Kaiser Sea Horse standing, a LIGHT Level 8 needs only one Tribute',
+    tributesRequired(light, board, ME) === 2,
+    'the dragon still costs two Tributes with a Sea Horse standing',
     `needs ${tributesRequired(light, board, ME)}`
   );
+  ok(tributeUnits(horse, light) === 2, 'and the Sea Horse is worth both of them', `${tributeUnits(horse, light)}`);
+  ok(
+    summonAffordable(board, ME, light),
+    'so a board holding nothing but him can pay for it',
+  );
+  const alone = act(board, ME, (() => {
+    const d = card(ME, light);
+    board.players[ME].hand = [d];
+    return { type: 'normalSummon', uid: d.uid, zone: 1, position: 'atk', face: 'up', tributes: [horse.uid] } as DuelAction;
+  })());
+  ok(on(alone, ME).some((m) => m.slug === light), 'he pays for the dragon on his own', on(alone, ME).map((m) => m.slug).join(','));
+  ok(!on(alone, ME).some((m) => m.slug === 'kaiser-sea-horse'), 'and he is spent doing it, not left standing beside it');
+
+  /* The reported bug, in one assertion: he is not a discount somebody else can
+     spend. */
+  {
+    const cheat = fresh();
+    const seahorse = card(ME, 'kaiser-sea-horse');
+    const ox = card(ME, 'battle-ox');
+    cheat.players[ME].monsters = [seahorse, ox, null];
+    const dragon = card(ME, light);
+    cheat.players[ME].hand = [dragon];
+    const r = applyAction(cheat, ME, {
+      type: 'normalSummon', uid: dragon.uid, zone: 2, position: 'atk', face: 'up', tributes: [ox.uid],
+    });
+    ok(!!r.error, 'an ordinary body cannot pay the short price while he watches', r.error ?? 'it was allowed');
+    ok(
+      !r.state.players[ME].monsters.some((m) => m?.slug === light),
+      'and no dragon arrives on the strength of a body that was never worth two'
+    );
+  }
 
   const bare = fresh();
   bare.players[ME].monsters = [card(ME, 'battle-ox'), null, null];
@@ -5974,16 +6012,33 @@ console.log('\nKaiba: the Ultimate Dragon spends a brother, and the Sea Horse fi
     'CONTROL: without him it is still two',
     `needs ${tributesRequired(bare ? light : light, bare, ME)}`
   );
+  ok(!summonAffordable(bare, ME, light), 'CONTROL: and one ordinary body cannot pay it');
 
   // And it is LIGHT only — a DARK Level 7 pays full price.
   const dark = fresh();
-  dark.players[ME].monsters = [card(ME, 'kaiser-sea-horse'), null, null];
+  const horse2 = card(ME, 'kaiser-sea-horse');
+  dark.players[ME].monsters = [horse2, null, null];
   ok(
-    CARDS['gaia-the-fierce-knight'].attribute !== 'LIGHT' &&
-      tributesRequired('gaia-the-fierce-knight', dark, ME) === 2,
-    'CONTROL: he does nothing for a non-LIGHT monster',
-    `needs ${tributesRequired('gaia-the-fierce-knight', dark, ME)}`
+    CARDS['gaia-the-fierce-knight'].attribute !== 'LIGHT' && tributeUnits(horse2, 'gaia-the-fierce-knight') === 1,
+    'CONTROL: he is worth one body towards a non-LIGHT monster',
+    `${tributeUnits(horse2, 'gaia-the-fierce-knight')}`
   );
+  ok(
+    !summonAffordable(dark, ME, 'gaia-the-fierce-knight'),
+    'CONTROL: so he cannot pay for one on his own'
+  );
+
+  /* Double Coston must NOT change with him. Its text is a different sentence —
+     "while you control this face-up card" — and it says what it does. */
+  {
+    const twin = fresh();
+    twin.players[ME].monsters = [{ ...card(ME, 'double-coston'), face: 'up' as const }, card(ME, 'battle-ox'), null];
+    ok(
+      tributesRequired('obelisk-the-tormentor', twin, ME) === 2,
+      'CONTROL: Double Coston is still a standing discount, exactly as its text says',
+      `${tributesRequired('obelisk-the-tormentor', twin, ME)}`
+    );
+  }
 
   // Saggi finds the virus.
   const clown = fresh();

@@ -4058,19 +4058,26 @@ export function tributesRequired(
      longest-running lesson is what happens when one rule is copied into
      several places: `summonBlocked` had already drifted in two of them. */
   if (need > 1 && state && pid && faceUpOnSide(state, pid, 'double-coston')) need -= 1;
-  /* Kaiser Sea Horse is the same bargain one attribute over — "counts as two
-     tributes for the Tribute Summon of a LIGHT monster" — and it had never
-     been implemented at all. Reported from a real duel: tributing him towards
-     a two-tribute monster still asked for a second body, so the only sentence
-     on the card that does anything did nothing.
+  /* Kaiser Sea Horse used to be a second copy of the line above, and it should
+     never have been: read the two card texts side by side.
 
-     A discount for the same reason Double Coston is one, and the reason is
-     written above: five separate places pick the tributes to pay, and a
-     tribute that counted double would have to be understood by every one of
-     them. LIGHT is read off the monster being Summoned, not off him. */
-  if (need > 1 && state && pid && def?.attribute === 'LIGHT' && faceUpOnSide(state, pid, 'kaiser-sea-horse')) {
-    need -= 1;
-  }
+     Double Coston says "*While you control this face-up card*, a Divine-Beast
+     monster you Tribute Summon requires 1 less Tribute" — a standing discount,
+     deliberately worded that way so the text describes what the engine does.
+
+     Kaiser Sea Horse says "*This monster* counts as two tributes". That is a
+     claim about the body being spent, not about the body standing there, and
+     implementing it as a discount meant he lowered the price and then watched
+     some other monster pay it — one Battle Ox tributed, a Blue-Eyes on the
+     board, and the Sea Horse still standing beside it. Reported by the owner:
+     "check if when Kaiser Sea Horse any monster can be tributed (just 1) for
+     summoning a blue eyes?" It could.
+
+     So he is worth two Tributes rather than making everything cost one less,
+     and the price below is counted in Tribute *units*, not bodies. The
+     objection the comment above raises — five separate places pick the
+     tributes — is answered by `tributeSetFor`, which all five now ask instead
+     of slicing a list themselves. */
   // Toon monsters need no tribute while their controller has Toon World up —
   // this is the engine that makes Pegasus's deck work.
   // Asked of the whole side rather than the Spell/Trap Zone alone: Toon World
@@ -4123,7 +4130,10 @@ export function tributesRequired(
  */
 export function summonAffordable(state: DuelState, pid: PlayerId, slug: string): boolean {
   const need = tributesRequired(slug, state, pid, true);
-  if (need > 0) return tributableBodies(state, pid).length >= need;
+  /* Counted in Tributes rather than in heads — a lone Kaiser Sea Horse is one
+     body and two Tributes, so a board holding nothing else can still pay for a
+     Blue-Eyes. This line counted bodies and refused. */
+  if (need > 0) return tributePower(tributableBodies(state, pid), slug) >= need;
   return state.players[pid].monsters.some((m) => !m);
 }
 
@@ -4254,6 +4264,75 @@ export function tributableBodies(state: DuelState, pid: PlayerId): CardInstance[
  */
 export function tributePayable(state: DuelState, pid: PlayerId, uid: string): CardInstance | null {
   return tributableBodies(state, pid).find((m) => m.uid === uid) ?? null;
+}
+
+/**
+ * Bodies that are worth more than one Tribute, and towards what.
+ *
+ * One entry, and it is meant to stay small: a card only belongs here when its
+ * own text says *this monster* counts as two, which is a different sentence
+ * from Double Coston's "while you control this face-up card" and gets a
+ * different mechanism. See `tributesRequired`.
+ */
+const COUNTS_AS_TWO: Record<string, string> = { 'kaiser-sea-horse': 'LIGHT' };
+
+/**
+ * What this body is worth towards Summoning that monster — one Tribute, or two.
+ *
+ * The attribute is read off the monster being Summoned, never off the body
+ * paying: Kaiser Sea Horse is worth double towards a LIGHT monster and worth
+ * exactly one towards anything else, whatever he is himself.
+ */
+export function tributeUnits(body: CardInstance, summoning: string): number {
+  const wants = COUNTS_AS_TWO[body.slug];
+  if (!wants) return 1;
+  return CARDS[summoning]?.attribute === wants ? 2 : 1;
+}
+
+/** What a set of bodies comes to, in Tributes rather than in heads. */
+export function tributePower(bodies: CardInstance[], summoning: string): number {
+  return bodies.reduce((n, b) => n + tributeUnits(b, summoning), 0);
+}
+
+/**
+ * The bodies that pay for this Summon, or null when the board cannot.
+ *
+ * The one function every tribute picker asks — the interface, the AI, autoplay,
+ * the simulator, the engine's own payment. They used to take `need` bodies off
+ * the front of a sorted list, which is correct only while every body is worth
+ * exactly one; the day one of them counted double, five separate places would
+ * have had to learn it, and this file's longest-running lesson is what happens
+ * then.
+ *
+ * `pool` arrives already in the caller's preference order — the AI sorts by
+ * what it can bear to lose, autoplay does not care — and that order is kept,
+ * except that a body worth two is tried first when two or more are owed. That
+ * is not a preference, it is the only way the short route is ever found: taking
+ * the cheapest body first and the Sea Horse second reaches the price with two
+ * bodies, and never notices that one would have done.
+ */
+export function tributeSetFor(
+  state: DuelState,
+  pid: PlayerId,
+  summoning: string,
+  pool: CardInstance[] = tributableBodies(state, pid),
+  /** Bodies the player has already named. Kept, and kept in front. */
+  chosen: CardInstance[] = []
+): CardInstance[] | null {
+  const need = tributesRequired(summoning, state, pid, true);
+  if (need <= 0) return [];
+  const paid: CardInstance[] = [];
+  let power = 0;
+  const take = (b: CardInstance) => {
+    if (power >= need || paid.some((p) => p.uid === b.uid)) return;
+    paid.push(b);
+    power += tributeUnits(b, summoning);
+  };
+  for (const b of chosen) take(b);
+  const rest = pool.filter((b) => !chosen.some((c) => c.uid === b.uid));
+  if (need - power >= 2) for (const b of rest) if (tributeUnits(b, summoning) > 1) take(b);
+  for (const b of rest) take(b);
+  return power >= need ? paid : null;
 }
 
 /** True when the controller can pay an effect's activation cost right now. */
@@ -4930,16 +5009,33 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          Serket at all. Reported by the owner. */
       const bodies = tributesRequired(c.slug, state, pid, true);
       const need = (action.tributes ?? []).length > 0 ? bodies : tributesRequired(c.slug, state, pid);
-      const tributes = (action.tributes ?? []).slice(0, need);
+      const named = (action.tributes ?? []).map((u) => tributePayable(state, pid, u));
+      if (named.some((m) => !m)) return { state: prev, error: 'Invalid tribute.' };
+      /* Counted in Tributes, not in heads. Slicing the list to `need` was right
+         only while every body was worth exactly one, and it is what let Kaiser
+         Sea Horse lower the price while a Battle Ox paid it: the slice took the
+         Ox, the count said one, and the Sea Horse was never spent.
+         `tributeSetFor` keeps the bodies the player named, in the order they
+         named them, and stops the moment the price is met — so a lone Sea Horse
+         pays for a Blue-Eyes on his own and two ordinary bodies still pay for
+         anything else. */
+      const paying = need > 0
+        ? tributeSetFor(state, pid, c.slug, tributableBodies(state, pid), named as CardInstance[])
+        : [];
+      const tributes = (paying ?? []).map((m) => m.uid);
       /* Parrot Dragon's bargain: come out now for none of the price and half of
          the body. Only the whole cost may be skipped — paying one of two and
          keeping full stats is not on offer — and only by a card that says so. */
-      const forgoing = need > 0 && tributes.length === 0 && !!def.mayForgoTributes;
-      if (tributes.length < need && !forgoing) {
+      const forgoing = need > 0 && (action.tributes ?? []).length === 0 && !!def.mayForgoTributes;
+      if (!paying && !forgoing) {
         return { state: prev, error: `This monster requires ${need} tribute(s).` };
       }
-      for (const tu of tributes) {
-        if (!tributePayable(state, pid, tu)) return { state: prev, error: 'Invalid tribute.' };
+      /* What the player named must be enough on its own. Topping a short list
+         up out of the rest of the board would spend a monster nobody pointed
+         at — see `tributeSetFor`, which is allowed to reach past the named
+         bodies only when nothing was named at all. */
+      if (named.length > 0 && tributePower(named as CardInstance[], c.slug) < need) {
+        return { state: prev, error: `This monster requires ${need} tribute(s).` };
       }
       // The destination may currently hold a monster that is about to be
       // tributed — that is legal, and is the normal case on a full field.

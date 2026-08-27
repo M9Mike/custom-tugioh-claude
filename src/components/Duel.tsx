@@ -28,6 +28,7 @@ import {
   summonBlocked,
   tributableBodies,
   tributesRequired,
+  tributePower,
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
@@ -894,6 +895,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     finishSummon(uid, position, face, []);
   };
 
+  /**
+   * What the bodies picked so far come to, in Tributes.
+   *
+   * A head count was right only while every monster was worth one. Kaiser Sea
+   * Horse says "this monster counts as two tributes" and means it, so the modal
+   * asks the engine rather than counting its own list — the same helper the
+   * till uses, because a picker that closes at two while the engine wants three
+   * is a summon refused after the player has already paid attention to it.
+   */
+  const tributesPaid = (picked: string[]): number => {
+    if (mode.kind !== 'tributes') return picked.length;
+    const slug = mine.hand.find((h) => h.uid === mode.uid)?.slug ?? '';
+    const bodies = picked
+      .map((u) => tributableBodies(state, me).find((m) => m.uid === u))
+      .filter((m): m is CardInstance => !!m);
+    return tributePower(bodies, slug);
+  };
+
   /** Sends the summon, first collecting targets if the monster's own effect asks for one. */
   const finishSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down', tributes: string[], targets?: string[]) => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
@@ -1230,7 +1249,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             else if (mode.kind === 'tributes') {
               const picked = [...mode.picked, c.uid];
               sfx.click();
-              if (picked.length >= mode.need) finishSummon(mode.uid, mode.position, mode.face, picked);
+              /* Counted in Tributes, not in heads — Kaiser Sea Horse is worth
+                 two towards a LIGHT monster, so picking him alone finishes the
+                 payment for a Blue-Eyes. Asked of the engine's own helper so
+                 the modal and the till cannot disagree about what a body is
+                 worth. */
+              if (tributesPaid(picked) >= mode.need) finishSummon(mode.uid, mode.position, mode.face, picked);
               else setMode({ ...mode, picked });
             }
             return;
@@ -2164,7 +2188,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
               {mode.kind === 'target'
                 ? `${mode.spec.prompt} (${mode.picked.length}/${mode.spec.count})`
                 : mode.kind === 'tributes'
-                  ? `Choose ${mode.need} monster(s) to tribute (${mode.picked.length}/${mode.need})`
+                  ? `Choose monsters worth ${mode.need} tribute(s) (${tributesPaid(mode.picked)}/${mode.need})`
                   : canDirect
                     ? 'Choose a target, or attack directly'
                     : 'Choose a monster to attack'}

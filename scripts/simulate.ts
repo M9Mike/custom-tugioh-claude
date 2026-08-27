@@ -18,8 +18,7 @@ import {
   legalAttackTargets,
   other,
   summonBlocked,
-  tributesRequired,
-} from '../src/game/engine';
+  tributesRequired, tributeSetFor } from '../src/game/engine';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 let rngState = 12345;
@@ -74,14 +73,14 @@ function legalActions(state: DuelState, pid: PlayerId): DuelAction[] {
         if (need === 0) {
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up' });
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'def', face: 'down' });
-        } else if (ownMonsters.length >= need) {
+        } else if (tributeSetFor(state, pid, h.slug, ownMonsters)) {
           acts.push({
             type: 'normalSummon',
             uid: h.uid,
             zone: freeZone,
             position: 'atk',
             face: 'up',
-            tributes: ownMonsters.slice(0, need).map((m) => m.uid),
+            tributes: tributeSetFor(state, pid, h.slug, ownMonsters)!.map((m) => m.uid),
           });
         }
       }

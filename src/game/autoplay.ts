@@ -16,8 +16,7 @@ import {
   legalAttackTargets,
   other,
   summonBlocked,
-  tributesRequired,
-} from './engine';
+  tributesRequired, tributeSetFor } from './engine';
 import { summonTargetSpec, targetSpecFor } from './ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from './types';
 
@@ -63,8 +62,8 @@ export function legalActions(state: DuelState, pid: PlayerId, rnd: () => number)
           const targets = targetsFor(state, pid, h.slug, 'onSummon', rnd);
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', targets });
           acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'def', face: 'down' });
-        } else if (need > 0 && bodies.length >= need) {
-          const tributes = bodies.slice(0, need).map((m) => m.uid);
+        } else if (need > 0 && tributeSetFor(state, pid, h.slug, bodies)) {
+          const tributes = tributeSetFor(state, pid, h.slug, bodies)!.map((m) => m.uid);
           const zone = freeZone >= 0 ? freeZone : p.monsters.findIndex((m) => m && tributes.includes(m.uid));
           if (zone >= 0) {
             acts.push({

@@ -43,8 +43,7 @@ import {
   other,
   summonBlocked,
   tributableBodies,
-  tributesRequired,
-} from './engine';
+  tributesRequired, tributeSetFor } from './engine';
 import { changesAnything, matchesFilter } from './targeting';
 import { summonTargetSpec, targetSpecFor } from './ui';
 import { type AiLevel } from './ai-levels';
@@ -686,9 +685,15 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
              table with a third option, which is a cheat however sound it was.
              Face-up Defence is still reached the way everyone reaches it — by
              turning a monster that is already standing. */
-        } else if (need > 0 && fodder.length >= need) {
-          const tributes = fodder.slice(0, need).map((m) => m.uid);
-          const zone = freeZone >= 0 ? freeZone : p.monsters.findIndex((m) => m && tributes.includes(m.uid));
+        } else if (need > 0) {
+          /* `tributeSetFor` rather than `fodder.slice(0, need)`: the price is
+             counted in Tributes and Kaiser Sea Horse is worth two of them, so
+             the front of a list sorted by what we can bear to lose reaches the
+             price with two bodies and never notices that one would have done.
+             The sort above is still the preference — it is passed straight in. */
+          const set = tributeSetFor(state, pid, h.slug, fodder);
+          const tributes = (set ?? []).map((m) => m.uid);
+          const zone = !set ? -1 : freeZone >= 0 ? freeZone : p.monsters.findIndex((m) => m && tributes.includes(m.uid));
           if (zone >= 0) {
             for (const t of targetsFor(state, pid, h.slug, 'onSummon')) {
               acts.push({ type: 'normalSummon', uid: h.uid, zone, position: 'atk', face: 'up', tributes, targets: t });
@@ -702,9 +707,9 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
            it would rather keep the shrine. */
         if (need === 0 && freeZone >= 0) {
           const bodies = tributesRequired(h.slug, state, pid, true);
-          if (bodies > 0 && fodder.length >= bodies) {
-            const tributes = fodder.slice(0, bodies).map((m) => m.uid);
-            acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', tributes });
+          const set = bodies > 0 ? tributeSetFor(state, pid, h.slug, fodder) : null;
+          if (set) {
+            acts.push({ type: 'normalSummon', uid: h.uid, zone: freeZone, position: 'atk', face: 'up', tributes: set.map((m) => m.uid) });
           }
         }
       }
