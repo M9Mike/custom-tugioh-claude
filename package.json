@@ -64,7 +64,8 @@
     "areas": "tsx scripts/area-check.ts",
     "doors": "tsx scripts/door-check.ts",
     "footing": "tsx scripts/footing-check.ts",
-    "stale": "tsx scripts/stale-check.ts"
+    "stale": "tsx scripts/stale-check.ts",
+    "shimmer": "tsx scripts/shimmer-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

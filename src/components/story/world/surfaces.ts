@@ -250,28 +250,57 @@ export function plaster(tint: string): THREE.CanvasTexture | null {
   });
 }
 
-/** Brick, for the buildings outside. */
+/**
+ * Brick, for the buildings outside.
+ *
+ * ## Why the bricks barely differ from each other
+ *
+ * Because they used to, and it shimmered.
+ *
+ * Every brick was drawn at its own value across a range of ±22%, on a light grey
+ * mortar quite unlike either — so a wall was a dense grid of high-contrast
+ * rectangles about a centimetre and a half of screen apart at normal walking
+ * distance. That is almost exactly the size a pixel is at that distance, which is
+ * the one frequency no amount of filtering can settle: too fine to render
+ * cleanly, too coarse for the mipmap to have averaged away. Move a millimetre and
+ * a different set of bricks wins. It reads as the wall crawling.
+ *
+ * It is not z-fighting and no geometry change touches it — the filtering was
+ * already as good as it gets, sixteen-times anisotropic on trilinear mipmaps.
+ * The fix is to stop drawing detail at that frequency: the spread is ±10% now,
+ * and the mortar is mixed from the brick colour rather than being its own grey,
+ * so what is left to alias is small enough not to matter. Close up it still reads
+ * as brick, because brick is mostly a *pattern* and only a little a contrast.
+ *
+ * `npm run shimmer` measures this directly — it renders each area twice 1.2 mm
+ * apart and counts how much of the frame changes.
+ */
 export function brick(base: string): THREE.CanvasTexture | null {
   return surface(512, (ctx, s) => {
     const rnd = seeded(0x5eed04);
-    /* Mortar first; the bricks are laid on top with a gap left round each. */
-    ctx.fillStyle = '#8d8378';
+    const col = new THREE.Color(base);
+    /* Mortar mixed from the brick rather than picked independently: a joint is
+       the same sand as the wall, and a grey that owes it nothing is a second
+       high-contrast edge round every brick. */
+    const mortar = col.clone().lerp(new THREE.Color('#cfc7ba'), 0.55);
+    ctx.fillStyle = `rgb(${Math.round(mortar.r * 255)},${Math.round(mortar.g * 255)},${Math.round(mortar.b * 255)})`;
     ctx.fillRect(0, 0, s, s);
     const rows = 16;
     const h = s / rows;
     const w = h * 2.3;
-    const col = new THREE.Color(base);
     for (let row = 0; row < rows; row++) {
       const y = row * h;
       const offset = (row % 2) * (w / 2);
       for (let x = -w; x < s + w; x += w) {
-        const tone = 0.78 + rnd() * 0.44;
+        const tone = 0.90 + rnd() * 0.20;
         ctx.fillStyle = `rgb(${Math.round(col.r * 255 * tone)},${Math.round(col.g * 255 * tone)},${Math.round(col.b * 255 * tone)})`;
-        ctx.fillRect(x + offset + 1.4, y + 1.4, w - 2.8, h - 2.8);
+        ctx.fillRect(x + offset + 1.6, y + 1.6, w - 3.2, h - 3.2);
       }
     }
-    grime(ctx, s, rnd, 16, 0.22);
-    speckle(ctx, s, rnd, 2400, 0.05);
+    grime(ctx, s, rnd, 16, 0.16);
+    /* Per-texel noise is the same problem one step finer down, so there is less
+       of it and it is fainter. */
+    speckle(ctx, s, rnd, 1600, 0.03);
   });
 }
 

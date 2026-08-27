@@ -418,6 +418,29 @@ export function buildStreet(anisotropy: number): BuiltArea {
    */
   root.add(box(own, 4, 3.1, 4.4, matt(own, '#ffffff', brickAlt), EAST_FACE + 2, 7.95, 0.5));
 
+  /*
+   * The archway is lined, and the lining is plain.
+   *
+   * Its side walls are the two blocks either side, and from the street you look
+   * straight down the four metres between them — so those faces are seen almost
+   * exactly edge-on. That is the one angle anisotropic filtering cannot rescue: a
+   * grazing surface needs far more than the sixteen samples the hardware will
+   * give, so which part of the brick pattern wins changes with any movement at
+   * all. `npm run shimmer` had the arch at 0.75% of the frame flipping on a
+   * millimetre of camera, and these two walls were nearly all of it.
+   *
+   * Lining them with flat render fixes it completely, because there is no pattern
+   * left to be unstable — and it is what an archway looks like anyway. Nobody
+   * leaves bare brick inside an opening they have gone to the trouble of putting
+   * a stone surround on.
+   */
+  const revealMat = matt(own, '#8e8271');
+  root.add(box(own, 4.02, 6.4, 0.06, revealMat, EAST_FACE + 2, 3.2, -1.66));
+  root.add(box(own, 4.02, 6.4, 0.06, revealMat, EAST_FACE + 2, 3.2, 2.66));
+  /* And the soffit over them, so the tunnel has a ceiling rather than the
+     underside of the spandrel. */
+  root.add(box(own, 4.02, 0.06, 4.32, matt(own, '#7c7161'), EAST_FACE + 2, 6.37, 0.5));
+
   /* The gate: two piers, a header, and the name across it. */
   const gateStone = matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1.6, 2, anisotropy));
   for (const pz of [-2.25, 3.25]) {
