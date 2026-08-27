@@ -57,7 +57,8 @@ const IN = flag('in', '');
 const ID = flag('id', '');
 const BORROW = flag('borrow', '');
 const OUT_DIR = flag('outDir', 'public/models/duelists');
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 /* SMD is authored at 30fps and says so nowhere in the file. */
 const FPS = 30;
 

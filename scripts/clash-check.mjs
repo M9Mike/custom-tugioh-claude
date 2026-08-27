@@ -26,7 +26,8 @@ if (!Number.isInteger(SEED) || SEED < 0) {
   console.error(`clash: --seed wants a non-negative integer, got "${flag('seed', '0')}"`);
   process.exit(1);
 }
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 
 const browser = await chromium.launch({ executablePath: EXEC });
 let bad = 0;

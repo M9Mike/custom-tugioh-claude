@@ -59,7 +59,8 @@ if (!Number.isInteger(SEED) || SEED < 0) {
 
 /* The same pinned binary the other browser checks use: this sandbox has one
    Chromium at a known path and no download step. */
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 
 await fs.mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: EXEC });

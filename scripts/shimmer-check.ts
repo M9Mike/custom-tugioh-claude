@@ -82,6 +82,16 @@ const VANTAGES: Vantage[] = [
      put bare brick inside the street's archway on this list in the first place. */
   { name: 'along the north shopfronts', area: 'market-row', x: -4, z: -3.6, facing: Math.PI / 2 },
   { name: 'the arch from inside', area: 'market-row', x: -18.5, z: 0, facing: -Math.PI / 2 },
+  /*
+   * And two looking *along* a brick wall rather than at it.
+   *
+   * Grazing is where a repeating pattern aliases worst — each pixel covers a
+   * long thin strip of texture, so the filter has the most averaging to do and
+   * the least budget to do it with. Facing a wall square on, brick was already
+   * within tolerance while it was still crawling from the side.
+   */
+  { name: 'along the east wall', area: 'starting-area', x: 16.4, z: 7.5, facing: Math.PI },
+  { name: 'along the north terrace', area: 'starting-area', x: -14, z: -7.6, facing: Math.PI / 2 },
   { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
 ];
 

@@ -34,7 +34,8 @@ const CALIB = has('calib');
 const BARE = has('bare');
 const MODELS = flag('models', '');
 const ONLY = flag('only', '');
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 
 await fs.mkdir(OUT, { recursive: true });
 

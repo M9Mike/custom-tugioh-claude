@@ -30,7 +30,7 @@ const shot = async (page, name) => {
 const main = async () => {
   await fs.mkdir(OUT, { recursive: true });
   // The sandbox ships a pinned Chromium; point at it rather than downloading one.
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
   launched = browser;
 
   const ctxA = await browser.newContext({ viewport: { width: 1440, height: 900 } });

@@ -121,17 +121,27 @@ export default function NpcLab({
     renderer.domElement.style.height = `${height}px`;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#6f7f96');
+    /*
+     * A studio, not a field.
+     *
+     * This used to stand the whole cast on grass under a blue sky, because the
+     * world it was built for was a grass field and the point was to judge a
+     * colour in the light it would actually appear in. That field has not
+     * existed since the shop arrived, so the backdrop was a picture of a place
+     * that is gone — and one Mike walked into and reasonably asked why it was
+     * still in the game at all.
+     *
+     * Neutral grey and even light is the better bench anyway. A face is judged
+     * against a ground that adds nothing to it, and there is no green bounce
+     * from a lawn tinting every jaw.
+     */
+    scene.background = new THREE.Color('#2a313d');
 
-    /* The field's own lights, so a colour judged here is the colour that turns
-       up in the grass. Copied deliberately rather than imported: OpenWorld
-       builds them inside its mount effect, and a lab that reaches into a
-       renderer to borrow them is a lab that breaks when the renderer changes. */
-    const sun = new THREE.DirectionalLight('#fff2d8', 2.05);
+    const sun = new THREE.DirectionalLight('#ffffff', 1.9);
     sun.position.set(4, 8, 5);
     sun.castShadow = true;
     scene.add(sun);
-    scene.add(new THREE.HemisphereLight('#cfe0f2', '#3f5227', 0.95));
+    scene.add(new THREE.HemisphereLight('#dfe4ea', '#3a3f47', 0.95));
     /* A fill the field does not have, and this bench cannot do without.
        The sun sits front-right, which leaves the profile and the back of the
        head in shadow — the two views that exist precisely to check the shapes

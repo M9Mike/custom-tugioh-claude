@@ -60,6 +60,72 @@ function surface(size: number, draw: (ctx: Ctx, s: number) => void): THREE.Canva
   return tex;
 }
 
+/**
+ * Takes the hardest edges off a drawn surface, without breaking its tiling.
+ *
+ * ## Why a texture needs softening at all
+ *
+ * Canvas draws a rectangle with a perfectly hard edge — one texel light, the
+ * next dark, nothing between. On a brick wall that is a grid of hard lines about
+ * a pixel wide once the wall is a few metres away, and a hard line at that size
+ * is the one thing filtering cannot settle: whether a given screen pixel lands on
+ * the joint or the brick changes as you walk, and the wall reads as very slightly
+ * crawling. Softening the joints by a fraction of a texel gives the mipmap
+ * something continuous to average, and the crawl goes away.
+ *
+ * It is invisible up close, which is the other half of why it works. At three
+ * metres of wall across a 512 canvas one texel is six millimetres, so a
+ * three-quarter-texel blur is four millimetres of softening on a mortar joint —
+ * which is what a mortar joint looks like anyway.
+ *
+ * ## Why it is padded rather than tiled
+ *
+ * A blur samples outside the pixels it is given, and at the edge of a canvas
+ * there is nothing there — so a naive pass darkens all four borders, and a
+ * texture that repeats then shows a grid of dark seams across the whole wall,
+ * which is worse than the problem. The fix is to give every edge the neighbour
+ * it will actually have.
+ *
+ * The obvious way is to tile the source three by three, blur that, and cut the
+ * middle out. It is also three times the width and three times the height —
+ * 1536 square for a 512 texture, twice over, five times per area — and it wedged
+ * the browser hard enough that page loads timed out. Only a few pixels of
+ * neighbour are ever read for a blur this small, so it pads by a few pixels of
+ * wrapped content instead. Same result, a fortieth of the pixels.
+ */
+function soften(ctx: Ctx, w: number, h: number, px: number): void {
+  const pad = Math.ceil(px * 3) + 2;
+  const src = document.createElement('canvas');
+  src.width = w;
+  src.height = h;
+  const from = src.getContext('2d');
+  if (!from) return;
+  from.drawImage(ctx.canvas, 0, 0);
+
+  const padded = document.createElement('canvas');
+  padded.width = w + pad * 2;
+  padded.height = h + pad * 2;
+  const onto = padded.getContext('2d');
+  if (!onto) return;
+  /* Nine placements, but into a canvas barely bigger than the original — eight
+     of them are clipped away to the strip of neighbour the blur will read. */
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) onto.drawImage(src, pad + i * w, pad + j * h);
+  }
+
+  const blurred = document.createElement('canvas');
+  blurred.width = padded.width;
+  blurred.height = padded.height;
+  const out = blurred.getContext('2d');
+  if (!out) return;
+  out.filter = `blur(${px}px)`;
+  out.drawImage(padded, 0, 0);
+  out.filter = 'none';
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(blurred, pad, pad, w, h, 0, 0, w, h);
+}
+
 /** Deterministic noise, so a reload gives the same floor rather than a new one. */
 function seeded(seed: number): () => number {
   let s = seed >>> 0;
@@ -301,6 +367,8 @@ export function brick(base: string): THREE.CanvasTexture | null {
     /* Per-texel noise is the same problem one step finer down, so there is less
        of it and it is fainter. */
     speckle(ctx, s, rnd, 1600, 0.03);
+    /* And the joints stop being knife edges, which is the last of the crawl. */
+    soften(ctx, s, s, 0.85);
   });
 }
 

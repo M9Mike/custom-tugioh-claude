@@ -37,6 +37,23 @@ import { COOLDOWN_MS, RESUME_KEY, STALE_KEY, isStaleBuild, shouldReload } from '
 
 export default function StaleBuild() {
   useEffect(() => {
+    /*
+     * Take the cache-buster back out of the address bar.
+     *
+     * It exists to make the rescue's request miss the browser cache and has no
+     * meaning after that, so it should not survive into a bookmark, a share, or
+     * the next reload — where it would quietly defeat caching for good.
+     */
+    try {
+      const here = new URL(window.location.href);
+      if (here.searchParams.has('rebuilt')) {
+        here.searchParams.delete('rebuilt');
+        window.history.replaceState(null, '', here.pathname + here.search + here.hash);
+      }
+    } catch {
+      /* No history API worth the name; the parameter is harmless either way. */
+    }
+
     const recover = (message: unknown, name?: unknown) => {
       if (!isStaleBuild(message, name)) return;
       let last: string | null = null;
@@ -61,7 +78,26 @@ export default function StaleBuild() {
         'stale build: a chunk from this build is gone, reloading once ' +
         `(and not again for ${COOLDOWN_MS / 1000}s)`
       );
-      window.location.reload();
+      /*
+       * A fresh URL, not `location.reload()`.
+       *
+       * A reload revalidates the document but the browser is free to answer
+       * from its cache, and for a prerendered page it often does — so the
+       * rescue can fetch back exactly the stale HTML that named the missing
+       * chunk, and the player lands on a build just as dead as the one they
+       * were on. That is what "it asked me to sign in and then opened the old
+       * world" was: the reload worked and changed nothing.
+       *
+       * A query nobody reads cannot be served from cache. `replace` rather than
+       * `assign` so the broken page does not sit in the back history.
+       */
+      try {
+        const fresh = new URL(window.location.href);
+        fresh.searchParams.set('rebuilt', String(Date.now()));
+        window.location.replace(fresh.toString());
+      } catch {
+        window.location.reload();
+      }
     };
 
     const onError = (e: ErrorEvent) => recover(e.message, (e.error as Error | undefined)?.name);

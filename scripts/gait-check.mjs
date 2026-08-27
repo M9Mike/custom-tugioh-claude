@@ -38,7 +38,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 
 /** Below this fraction of body height, the stride is too narrow to read. */
 const FLOOR = 0.02;

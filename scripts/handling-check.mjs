@@ -35,7 +35,8 @@ const flag = (name, fallback) => {
 const BASE = flag('base', 'http://localhost:3000');
 const OUT = flag('out', '/tmp/handling');
 const ONLY = flag('only', '');
-const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXEC = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined /* let Playwright find its own:
+  the hard-coded container path does not exist on a developer's machine */;
 
 const PHONES = {
   iphone14: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
