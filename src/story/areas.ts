@@ -38,7 +38,7 @@
  */
 
 /** Every area that exists. Names here are the ones to use when talking about them. */
-export type AreaId = 'grandpa-shop' | 'starting-area' | 'market-row';
+export type AreaId = 'grandpa-shop' | 'starting-area' | 'market-row' | 'step-lane';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -177,6 +177,15 @@ export interface Area {
    * of the shopfront. From the player's side a closed shopfront is a wall
    * whether or not there is a door in it, and this is where that is said.
    */
+  /**
+   * The lowest thing over this area's head, if it has one.
+   *
+   * Exteriors let the camera climb as far as it likes, which is right under an
+   * open sky and wrong under a roof: pitch up hard in Market Row and the camera
+   * passes through the arcade canopy at 6.2 m and looks down on the world from
+   * above its own ceiling. An area with a lid says where it is.
+   */
+  ceiling?: number;
   camSolids?: Rect[];
   doors: Door[];
   /** Where a player with no saved position starts. */
@@ -503,6 +512,25 @@ const STARTING_AREA: Area = {
       arrive: { x: 12.5, z: 0.5, facing: -Math.PI / 2 },
       label: 'Market Row',
     },
+    {
+      id: 'street-to-steps',
+      /* Across the alley mouth, deep enough to cover the whole of it. */
+      trigger: { x: -16.9, z: 4, hw: 0.9, hd: 1.7 },
+      to: 'step-lane',
+      seam: { x: STREET_FACES.west, z: 4 },
+      /*
+       * Coming back down the hill: turned east, along the street towards the
+       * shop, which is where anybody coming down is going.
+       *
+       * x −13, not −15.2. The alley mouth is closed to the camera and that
+       * `camSolid` is at −18, so an arrival at −15.2 put the camera two and a
+       * half metres back and lifted almost overhead — `npm run doors` measured
+       * camLift 0.43 against an allowance of 0.06. Five metres of clearance
+       * gives it the full distance.
+       */
+      arrive: { x: -13, z: 4, facing: Math.PI / 2 },
+      label: 'Step Lane',
+    },
   ],
   /* On the pavement outside the shop — the same place the shop's door lands
      you, so arriving here by either route puts you in the same spot, looking
@@ -677,6 +705,9 @@ const MARKET_ROW: Area = {
        nine entries, read twice. */
     ...MARKET_GOODS,
   ],
+  /* The arcade has a roof on it, and the camera is not allowed through it —
+     the canopy's underside is at 6.2. */
+  ceiling: 5.9,
   camSolids: [
     /* The archway, closed to the camera. Standing just inside it and turning
        back west would otherwise put the camera through the wall and into the
@@ -738,10 +769,230 @@ const MARKET_ROW: Area = {
   spawn: { x: -15.0, z: 0, facing: Math.PI / 2 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Step Lane                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The residential hill, up the alley at the west end of Turtle Lane.
+ *
+ * Thirty-six metres of stepped alley climbing five and three-quarter metres
+ * between houses. No shops, nobody selling anything: doors, meter boxes, bicycles
+ * chained to railings, pot plants on the steps, a jizo in a niche, and the
+ * power lines that hang over every residential street in Japan.
+ *
+ * ## The one new thing it asks for
+ *
+ * **Ground that is not at zero.** Every area so far has been flat — the shop's
+ * floor, the street's road, the arcade's paving, all at y 0 with a 14 cm kerb as
+ * the single exception, and that kerb is what `platforms` and `groundAt` were
+ * built for. A kerb you step onto. A hill you *climb*, for thirty seconds, and
+ * everything that assumed a floor at zero has to stop assuming it.
+ *
+ * The duelist was already fine: `groundAt` answers per position and `OpenWorld`
+ * eases towards it. The camera was not — it sat at a flat `1.55 + …` measured
+ * from zero, so on this lane it would have stayed down at street level looking
+ * up through the hillside while the player walked away over the top. It rides
+ * `groundY` now, and clamps against the ground under *itself* rather than the
+ * ground under the player, because walking down a flight the camera is behind
+ * and therefore above.
+ *
+ * ## Why steps rather than a slope
+ *
+ * `platforms` are flat rectangles, so a ramp would have to be a staircase of
+ * very small ones pretending to be smooth, and it would still be a staircase to
+ * `groundAt`. A stepped alley is the honest version of the same geometry — and
+ * it is what these lanes actually are, because you cannot get a car up one and
+ * nobody ever tried.
+ *
+ * Eighteen centimetres a step, half a metre of tread. That is a real, slightly
+ * shallow stair, gentle enough that the ease in `OpenWorld` reads as walking up
+ * rather than as being lifted.
+ */
+const SL_W = 18;       // half-length, so 36 m from the mouth to the top
+const SL_D = 7;        // half-depth, so 14 m including the houses
+
+/** Half the width of the walkable alley, houses either side of it. */
+export const STEP_LANE_HALF = 2.3;
+
+/** One step. Everything about the climb is a multiple of this. */
+export const STEP_LANE_RISE = 0.18;
+
+/** A stretch of the lane: level where `from` and `to` match, a flight where they do not. */
+export interface Run {
+  /** Along x, east (down the hill) to west (up it). */
+  east: number;
+  west: number;
+  from: number;
+  to: number;
+}
+
+/**
+ * The climb, written as the runs it is made of.
+ *
+ * Both the collision and the geometry come from this one list — `platforms`
+ * below turns it into the surfaces you stand on, and `world/steplane.ts` draws
+ * the stone off the same numbers. Two copies of a staircase is two staircases,
+ * and the second one is always the one you are standing in.
+ *
+ * Four flights of eight with a landing between each, which is how a long stair
+ * is actually built: nobody lays thirty-two steps in one run, because nobody
+ * wants to climb thirty-two steps without somewhere to stop.
+ */
+export const STEP_LANE_CLIMB: Run[] = [
+  /* The mouth, level with the street, and six metres of it — long enough that
+     you arrive on flat ground with the camera at its full distance behind you,
+     looking up the whole climb. See the door's `arrive`. */
+  { east: 18, west: 12, from: 0, to: 0 },
+  { east: 12, west: 8, from: 0, to: 1.44 },
+  { east: 8, west: 6, from: 1.44, to: 1.44 },
+  { east: 6, west: 2, from: 1.44, to: 2.88 },
+  { east: 2, west: 0, from: 2.88, to: 2.88 },
+  { east: 0, west: -4, from: 2.88, to: 4.32 },
+  { east: -4, west: -6, from: 4.32, to: 4.32 },
+  { east: -6, west: -10, from: 4.32, to: 5.76 },
+  { east: -10, west: -SL_W, from: 5.76, to: 5.76 },  // the top, and the gate across it
+];
+
+/** How high the lane is at the top of it. */
+export const STEP_LANE_TOP = STEP_LANE_CLIMB[STEP_LANE_CLIMB.length - 1].to;
+
+/**
+ * The climb as things to stand on.
+ *
+ * A level run is one rectangle. A flight is one rectangle per step, each at the
+ * height of its own tread — so walking west off a landing puts you 18 cm up
+ * immediately, which is what a step is.
+ */
+export function climbPlatforms(): Platform[] {
+  const out: Platform[] = [];
+  for (const run of STEP_LANE_CLIMB) {
+    const length = run.east - run.west;
+    if (run.from === run.to) {
+      out.push({ x: (run.east + run.west) / 2, z: 0, hw: length / 2, hd: STEP_LANE_HALF, y: run.to });
+      continue;
+    }
+    const steps = Math.round((run.to - run.from) / STEP_LANE_RISE);
+    const tread = length / steps;
+    for (let i = 0; i < steps; i++) {
+      out.push({
+        x: run.east - tread * (i + 0.5),
+        z: 0,
+        hw: tread / 2,
+        hd: STEP_LANE_HALF,
+        y: run.from + STEP_LANE_RISE * (i + 1),
+      });
+    }
+  }
+  return out;
+}
+
+/** What is left out along the lane, and what the builder draws on each. */
+export interface LaneThing {
+  kind: 'planter' | 'bicycles' | 'bin' | 'jizo' | 'crates' | 'pole';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+}
+
+/**
+ * Kept against the houses, never in the middle.
+ *
+ * The lane is 4.6 m across and a stair is a bad place to meet an obstacle, so
+ * everything sits within 80 cm of a wall and the walking line stays clear the
+ * whole way up. `npm run areas` holds them to the lane's own width.
+ */
+export const STEP_LANE_THINGS: LaneThing[] = [
+  { kind: 'planter',  x: 11.5, z: -1.85, hw: 0.4,  hd: 0.35 },
+  { kind: 'bicycles', x: 8.0,  z: 1.85,  hw: 1.1,  hd: 0.35 },
+  { kind: 'pole',     x: 5.0,  z: -1.95, hw: 0.18, hd: 0.18 },
+  { kind: 'bin',      x: 2.0,  z: -1.85, hw: 0.34, hd: 0.34 },
+  { kind: 'planter',  x: -1.5, z: 1.85,  hw: 0.4,  hd: 0.35 },
+  { kind: 'jizo',     x: -4.0, z: -1.9,  hw: 0.45, hd: 0.3 },
+  { kind: 'planter',  x: -7.5, z: -1.85, hw: 0.4,  hd: 0.35 },
+  { kind: 'pole',     x: -9.0, z: 1.95,  hw: 0.18, hd: 0.18 },
+  { kind: 'bicycles', x: -11.5, z: 1.85, hw: 1.1,  hd: 0.35 },
+  { kind: 'crates',   x: -14.5, z: -1.85, hw: 0.6, hd: 0.35 },
+];
+
+const STEP_LANE: Area = {
+  id: 'step-lane',
+  name: 'Step Lane',
+  kind: 'exterior',
+  /*
+   * West of Turtle Lane, through the gap beside the hoarding.
+   *
+   * The street's west face is at −18 and the alley opens at z 4, so with the
+   * lane's own mouth at its local (18, 0) the origin lands 36 m west of the
+   * street's. Nothing above ground is shared: the street stops at x −22 and this
+   * begins at −18 in the street's own coordinates, which is the four metres of
+   * wall the mouth is cut through.
+   */
+  world: { x: -36, z: 4 },
+  bounds: { x: 0, z: 0, hw: SL_W - 0.6, hd: SL_D - 1 },
+  solids: [
+    /* The houses, one run each side. Collision only needs to know the lane is a
+       corridor; `world/steplane.ts` draws them as the terrace of separate
+       two-storey houses stepping up the hill that they are. */
+    { x: 0, z: -(STEP_LANE_HALF + SL_D) / 2, hw: SL_W, hd: (SL_D - STEP_LANE_HALF) / 2, tall: true },
+    { x: 0, z: (STEP_LANE_HALF + SL_D) / 2, hw: SL_W, hd: (SL_D - STEP_LANE_HALF) / 2, tall: true },
+
+    /*
+     * The top of the lane, closed.
+     *
+     * The steps genuinely continue towards Domino Park and one day this becomes
+     * a doorway. Until then it is a gate across them with the hill behind it, and
+     * it is closed *visibly* — you can see the lane carry on and see why you
+     * cannot. A dead end you can see the reason for is a place.
+     */
+    { x: -SL_W + 1, z: 0, hw: 1, hd: SL_D, tall: true },
+
+    ...STEP_LANE_THINGS,
+  ],
+  /* The mouth, closed to the camera: turning back east at the bottom would
+     otherwise put it through the alley and into the void where the street is
+     not built. */
+  camSolids: [{ x: SL_W - 0.3, z: 0, hw: 0.3, hd: STEP_LANE_HALF }],
+  platforms: climbPlatforms(),
+  doors: [
+    {
+      id: 'steps-to-street',
+      /* Across the mouth and as deep as the lane is wide, so walking down out of
+         the alley always crosses it. */
+      trigger: { x: 16.6, z: 0, hw: 0.9, hd: STEP_LANE_HALF - 0.4 },
+      to: 'starting-area',
+      seam: { x: SL_W, z: 0 },
+      /*
+       * Coming up off the street: two metres in, looking straight up the hill.
+       *
+       * Which is the whole reason the lane runs this way round. You step out of
+       * a gap beside a hoarding and the thing in front of you is a stair going
+       * up between houses, four flights of it, with the top lit and the rest in
+       * shadow. Arriving side-on would waste the only view this area has.
+       */
+      /*
+       * Twelve metres in, not fifteen.
+       *
+       * The mouth is closed to the camera — it has to be, or turning round at the
+       * bottom looks out into the void where Turtle Lane is not built — and that
+       * `camSolid` is three metres behind an arrival at 14.6. The camera arrived
+       * squeezed to two metres and lifted almost overhead, which is the one shot
+       * this area cannot afford to get wrong: the whole point of arriving here is
+       * that the stair opens up in front of you.
+       */
+      arrive: { x: 12.4, z: 0, facing: -Math.PI / 2 },
+      label: 'Turtle Lane',
+    },
+  ],
+  spawn: { x: 12.4, z: 0, facing: -Math.PI / 2 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
   'market-row': MARKET_ROW,
+  'step-lane': STEP_LANE,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

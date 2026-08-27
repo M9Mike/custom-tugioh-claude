@@ -660,6 +660,85 @@ export function ceiling(): THREE.CanvasTexture | null {
 }
 
 /**
+ * Poured concrete: the steps, the retaining walls, the poles.
+ *
+ * Not paving — paving is slabs with joints, and a stair cast in place has none.
+ * What it has instead is the record of how it was made and what has happened
+ * since: the faint horizontal lines where the shuttering met, aggregate showing
+ * through where the surface has worn, hairline cracks, and a darkening at the
+ * bottom of anything vertical where the rain runs off.
+ *
+ * Low contrast throughout, and softened at the end, for the reason brick is —
+ * a stair is seen at a grazing angle by definition, so anything sharp in here
+ * would crawl as you climb.
+ */
+export function concrete(tint: string): THREE.CanvasTexture | null {
+  return surface(512, (ctx, s) => {
+    const rnd = seeded(0x5eed0c);
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, s, s);
+
+    /* Broad tonal drift, so a large pour is never one value. */
+    for (let i = 0; i < 22; i++) {
+      const x = rnd() * s;
+      const y = rnd() * s;
+      const r = s * (0.12 + rnd() * 0.3);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${rnd() > 0.5 ? '0,0,0' : '255,255,255'},${0.025 + rnd() * 0.04})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    /* Shutter lines: where one board met the next. */
+    for (let i = 0; i < 3; i++) {
+      const y = (i + 0.5) * (s / 3) + (rnd() - 0.5) * 20;
+      ctx.strokeStyle = `rgba(0,0,0,${0.05 + rnd() * 0.04})`;
+      ctx.lineWidth = 1.6;
+      wobbleLine(ctx, 0, y, s, y, rnd, 2.2);
+    }
+
+    /* Aggregate showing through, in patches rather than everywhere. */
+    for (let patch = 0; patch < 6; patch++) {
+      const px = rnd() * s;
+      const py = rnd() * s;
+      const pr = s * (0.05 + rnd() * 0.11);
+      for (let i = 0; i < 420; i++) {
+        const a = rnd() * Math.PI * 2;
+        const d = rnd() * pr;
+        const v = rnd() > 0.5 ? 0.05 : -0.05;
+        ctx.fillStyle = `rgba(${v > 0 ? '255,255,255' : '0,0,0'},${0.04 + rnd() * 0.05})`;
+        ctx.fillRect(px + Math.cos(a) * d, py + Math.sin(a) * d, 1.6, 1.6);
+      }
+    }
+
+    /* Hairline cracks, and a wash at the foot. */
+    for (let i = 0; i < 4; i++) {
+      ctx.strokeStyle = `rgba(0,0,0,${0.05 + rnd() * 0.05})`;
+      ctx.lineWidth = 0.9;
+      let x = rnd() * s;
+      let y = rnd() * s;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let k = 0; k < 8; k++) {
+        x += (rnd() - 0.5) * 46;
+        y += rnd() * 26;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    const foot = ctx.createLinearGradient(0, s * 0.78, 0, s);
+    foot.addColorStop(0, 'rgba(0,0,0,0)');
+    foot.addColorStop(1, 'rgba(0,0,0,0.1)');
+    ctx.fillStyle = foot;
+    ctx.fillRect(0, s * 0.78, s, s * 0.22);
+
+    speckle(ctx, s, rnd, 1400, 0.025);
+    soften(ctx, s, s, 0.8);
+  });
+}
+
+/**
  * Sets a texture's tiling and sharpens it at grazing angles.
  *
  * Anisotropy matters most on the ground, which is always seen at a glancing

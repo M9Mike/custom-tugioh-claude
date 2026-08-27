@@ -38,6 +38,7 @@ import type { BuiltArea } from './world/kit';
 import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
 import { buildMarket } from './world/market';
+import { buildStepLane } from './world/steplane';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -287,6 +288,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'grandpa-shop': buildShop,
       'starting-area': buildStreet,
       'market-row': buildMarket,
+      'step-lane': buildStepLane,
     };
 
     let built: BuiltArea | null = null;
@@ -735,8 +737,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         /* All the way to the speaker, not half way: they are the subject. */
         lookX = p.x + (near.x - p.x) * talkBlend;
         lookZ = p.z + (near.z - p.z) * talkBlend;
-        /* Their head, and above the panel that covers the bottom third. */
-        lookY = 1.15 + 0.05 * talkBlend;
+        /* Their head, and above the panel that covers the bottom third. Off the
+           ground they are standing on, not off zero — see the camera below. */
+        lookY = groundY + 1.15 + 0.05 * talkBlend;
         dist = 4.6 - 1.7 * talkBlend;
       }
 
@@ -782,15 +785,41 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       camLift += (squeezed - camLift) * Math.min(1, dt * 6);
       const pitch = camPitch + camLift * 0.55;
 
+      /*
+       * The camera rides the ground the duelist is standing on.
+       *
+       * It used to sit at a flat `1.55 + …`, measured from zero, which is
+       * correct in a world where the floor is at zero everywhere — and every
+       * area so far has been. Step Lane climbs six metres, so the same
+       * arithmetic leaves the camera down at street level looking up through the
+       * hillside while the player walks away over the top of it.
+       *
+       * `groundY` is already the eased height under the duelist, so the shot
+       * follows them up a flight of steps the way it follows them along a
+       * pavement — which is to say invisibly. On flat ground this changes the
+       * camera by the height of a kerb.
+       */
       camPos.set(
         p.x + Math.sin(camYaw) * Math.cos(pitch) * camDist,
-        1.55 + Math.sin(pitch) * camDist + camLift * 1.15,
+        groundY + 1.55 + Math.sin(pitch) * camDist + camLift * 1.15,
         p.z + Math.cos(camYaw) * Math.cos(pitch) * camDist
       );
-      /* Never through the floor, however far the camera is pushed down, and
-         never through a ceiling either. */
-      const ceilingLimit = area.kind === 'interior' ? 3.05 : 40;
-      camera.position.set(camPos.x, Math.max(0.5, Math.min(ceilingLimit, camPos.y)), camPos.z);
+      /*
+       * Never through the floor *under the camera*, which on a slope is not the
+       * floor under the player.
+       *
+       * Walking down a flight, the camera is behind and therefore over ground
+       * higher than the duelist's — so a clamp measured at their feet would let
+       * it sink into the steps it is looking over. This asks what is under the
+       * camera itself and keeps a knee's height above it.
+       */
+      const underCamera = groundAt(area, camPos.x, camPos.z);
+      const ceilingLimit = area.kind === 'interior' ? groundY + 3.05 : (area.ceiling ?? 40);
+      camera.position.set(
+        camPos.x,
+        Math.max(underCamera + 0.45, Math.min(ceilingLimit, camPos.y)),
+        camPos.z
+      );
       lookAt.set(lookX, lookY, lookZ);
       camera.lookAt(lookAt);
 

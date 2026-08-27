@@ -92,6 +92,10 @@ const VANTAGES: Vantage[] = [
    */
   { name: 'along the east wall', area: 'starting-area', x: 16.4, z: 7.5, facing: Math.PI },
   { name: 'along the north terrace', area: 'starting-area', x: -14, z: -7.6, facing: Math.PI / 2 },
+  /* And the hill, from the bottom looking up it and from the top looking back
+     down — the two shots that only exist because the ground is not flat. */
+  { name: 'up the steps', area: 'step-lane', x: 14.6, z: 0, facing: -Math.PI / 2 },
+  { name: 'down the steps', area: 'step-lane', x: -12, z: 0, facing: Math.PI / 2 },
   { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
 ];
 

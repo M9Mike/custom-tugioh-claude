@@ -418,8 +418,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * it does now.
    */
   const hoard = matt(own, '#4a5a52');
-  root.add(box(own, 4, 3.6, SOUTH_FACE - NORTH_FACE, hoard,
-               WEST_FACE - 2.4, 1.8, (NORTH_FACE + SOUTH_FACE) / 2));
+  /* The hoarding keeps the northern two-thirds of the end; Step Lane's alley
+     takes the rest, and is built below. */
+  root.add(box(own, 4, 3.6, 11, hoard, WEST_FACE - 2.4, 1.8, -3.5));
   /*
    * Bills pasted on the hoarding, and they sit *proud* of it.
    *
@@ -430,13 +431,13 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * Five centimetres clear, and a decal material on top of that.
    */
   for (let i = 0; i < 9; i++) {
-    const z = -8 + i * 2.2;
+    const z = -8 + i * 1.2;
     root.add(box(own, 0.05, 1.1, 0.8, decal(own, ['#8a4a4a', '#4a5a8a', '#8a7a4a', '#5a8a5a'][i % 4]),
                  WEST_FACE + 0.05, 1.5 + (i % 3) * 0.5, z));
   }
   /* Scaffolding poles above it, so something is clearly going on back there. */
   for (let i = 0; i < 6; i++) {
-    root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -8 + i * 3.5));
+    root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -8 + i * 2.0));
   }
 
   /*

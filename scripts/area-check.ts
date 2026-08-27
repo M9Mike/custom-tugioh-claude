@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs';
 import {
   AREAS, FIRST_AREA, MARKET_GOODS, MARKET_GOODS_LIMIT, PLAYER_RADIUS, SEAM_TOLERANCE,
+  STEP_LANE_CLIMB, STEP_LANE_HALF, STEP_LANE_RISE, STEP_LANE_THINGS, climbPlatforms, groundAt,
   arrivalThrough, partnerOf, settle, toWorld, inside,
   type Area, type AreaId, type Rect,
 } from '../src/story/areas';
@@ -309,6 +310,78 @@ console.log('\nMarket Row');
 }
 
 /* ---------------------------------------------------------------- */
+console.log('\nthe climb is a climb');
+{
+  /*
+   * Step Lane is the first ground in this world that is not at zero, so it is
+   * the first that can be wrong in these particular ways: a flight that does not
+   * meet the landing above it, a step too tall to walk up, or a gap between two
+   * treads that you would drop through.
+   *
+   * All three are arithmetic over `STEP_LANE_CLIMB`, which is also what the
+   * geometry is drawn from — so a stair that passes here is a stair the renderer
+   * cannot disagree with.
+   */
+  const runs = STEP_LANE_CLIMB;
+  check(runs.length > 0, 'the lane has a climb');
+
+  const joins = runs.every((r, i) =>
+    i === 0 || (Math.abs(runs[i - 1].west - r.east) < 1e-9 && Math.abs(runs[i - 1].to - r.from) < 1e-9)
+  );
+  check(joins, 'every run starts where the one below it ended');
+
+  check(
+    runs.every((r) => r.east > r.west),
+    'and every run climbs westward',
+    runs.filter((r) => r.east <= r.west).map((r) => `${r.east}->${r.west}`).join(', ')
+  );
+
+  const stepped = runs.filter((r) => r.to !== r.from);
+  check(
+    stepped.every((r) => Math.abs((r.to - r.from) / STEP_LANE_RISE - Math.round((r.to - r.from) / STEP_LANE_RISE)) < 1e-9),
+    'every flight is a whole number of steps'
+  );
+
+  const platforms = climbPlatforms();
+  const tallest = platforms.reduce((worst, p) => {
+    const below = platforms
+      .filter((q) => q.x + q.hw <= p.x - p.hw + 1e-9 || q.x - q.hw >= p.x + p.hw - 1e-9)
+      .filter((q) => Math.abs(q.x - p.x) < p.hw + q.hw + 1e-6);
+    const near = below.map((q) => Math.abs(q.y - p.y));
+    return Math.max(worst, near.length ? Math.min(...near) : 0);
+  }, 0);
+  check(tallest <= 0.25 + 1e-9, 'no step is taller than a person can walk up',
+        `worst ${tallest.toFixed(3)} m`);
+
+  /* Sorted end to end, the treads must tile the lane without a gap — a gap is a
+     hole you fall through, and `groundAt` would quietly answer 0 in it. */
+  const sorted = [...platforms].sort((a, b) => (b.x + b.hw) - (a.x + a.hw));
+  let gaps = 0;
+  for (let i = 0; i + 1 < sorted.length; i++) {
+    if (Math.abs((sorted[i].x - sorted[i].hw) - (sorted[i + 1].x + sorted[i + 1].hw)) > 1e-6) gaps++;
+  }
+  check(gaps === 0, 'and the treads tile the lane with no gap to fall through', `${gaps} gap(s)`);
+
+  const lane = AREAS['step-lane'];
+  check(
+    platforms.every((p) => Math.abs(p.hd - STEP_LANE_HALF) < 1e-9),
+    'every tread spans the full width of the lane'
+  );
+  const spill = STEP_LANE_THINGS.filter((t) => Math.abs(t.z) + t.hd > STEP_LANE_HALF + 1e-9);
+  check(spill.length === 0, 'and nothing left out on it reaches past the lane',
+        spill.map((t) => t.kind).join(', '));
+  check(
+    STEP_LANE_THINGS.every((t) => Math.abs(t.z) - t.hd > 0.9),
+    'and the middle of the lane stays clear the whole way up',
+    STEP_LANE_THINGS.filter((t) => Math.abs(t.z) - t.hd <= 0.9).map((t) => t.kind).join(', ')
+  );
+  check(
+    lane.spawn.x < lane.bounds.hw && groundAt(lane, lane.spawn.x, lane.spawn.z) < 0.01,
+    'and you arrive at the bottom of it, not part way up'
+  );
+}
+
+/* ---------------------------------------------------------------- */
 console.log('\nevery shadow has a normal bias');
 {
   /*
@@ -326,7 +399,7 @@ console.log('\nevery shadow has a normal bias');
    * this looks for, and it wants a `shadow.normalBias` for each one.
    */
   const dir = new URL('../src/components/story/world/', import.meta.url);
-  for (const file of ['shop.ts', 'street.ts', 'market.ts']) {
+  for (const file of ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts']) {
     const src = readFileSync(new URL(file, dir), 'utf8');
     const casters = [...src.matchAll(/(\w+)\.shadow\.mapSize/g)].map((m) => m[1]);
     const unique = [...new Set(casters)];

@@ -58,6 +58,7 @@ const ROUTES: Route[] = [
   { name: 'out under the arch', area: 'market-row', from: { x: -8, z: 0, facing: -Math.PI / 2 }, key: 'w', frames: 34 },
   { name: 'past the bakery', area: 'market-row', from: { x: -21, z: 2.4, facing: Math.PI / 2 }, key: 'w', frames: 34 },
   { name: 'east to the arch', area: 'starting-area', from: { x: -4, z: 0.5, facing: Math.PI / 2 }, key: 'w', frames: 34 },
+  { name: 'up step lane', area: 'step-lane', from: { x: 14.6, z: 0, facing: -Math.PI / 2 }, key: 'w', frames: 40 },
 ];
 
 /** A step this big between frames is a real change, not dithering. */

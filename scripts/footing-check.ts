@@ -120,13 +120,28 @@ async function boxesOf(page: Page): Promise<Box[]> {
 }
 
 /** The highest thing drawn under a point that anybody could stand on. */
-function surfaceUnder(boxes: Box[], x: number, z: number): number | null {
+function surfaceUnder(boxes: Box[], x: number, z: number, told: number): number | null {
   let best: number | null = null;
   for (const b of boxes) {
     if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
-    /* Its top has to be underfoot, not overhead: an awning contains the point
-       too, and standing on one is not what is being measured. */
-    if (b.maxY > KNEE || b.maxY < -0.5) continue;
+    /*
+     * Underfoot, not overhead — and *underfoot* is relative to where the ground
+     * is, not to zero.
+     *
+     * This used to reject anything whose top was above 0.6 m absolute, so that
+     * an awning containing the point could not be mistaken for the floor. That
+     * is correct in a world whose floor is at zero, and every area was, until
+     * Step Lane climbed 5.76 m: from the second flight upward *the stair itself*
+     * is above the line, so every tread was thrown away and the check compared
+     * `groundAt` against whatever it found further down the hill. 1647 cells,
+     * all of them fine.
+     *
+     * A knee above what the area says the ground is, and a stride below it. The
+     * window still excludes awnings and still catches a floor drawn at the wrong
+     * height, because a floor wrong by more than a knee shows up in the other
+     * direction as a duelist standing in mid-air.
+     */
+    if (b.maxY > told + KNEE || b.maxY < told - 1.2) continue;
     if (best === null || b.maxY > best) best = b.maxY;
   }
   return best;
@@ -171,8 +186,8 @@ async function main() {
     let firstHole = '';
 
     for (const p of cells) {
-      const drawn = surfaceUnder(boxes, p.x, p.z);
       const told = groundAt(area, p.x, p.z);
+      const drawn = surfaceUnder(boxes, p.x, p.z, told);
       if (drawn === null) {
         holes++;
         if (!firstHole) firstHole = `(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`;

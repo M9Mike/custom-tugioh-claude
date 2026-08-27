@@ -247,7 +247,7 @@ const visit = async (area) => {
 };
 
 let total = 0;
-for (const area of ['grandpa-shop', 'starting-area', 'market-row']) {
+for (const area of ['grandpa-shop', 'starting-area', 'market-row', 'step-lane']) {
   total += await visit(area);
 }
 
