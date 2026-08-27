@@ -194,12 +194,24 @@ async function main() {
       check(false, `${v.area}: ${v.name}`, 'the area never finished building');
       continue;
     }
-    /* If the camera did not come to rest in the same place both times, whatever
-       the pixels say is about that and not about the world. */
+    /*
+     * If the camera did not come to rest in the same place both times, whatever
+     * the pixels say is about that and not about the world — so take the frames
+     * again rather than reporting a number that means nothing.
+     *
+     * It happens under load: run this behind three other browser jobs sharing
+     * one dev server and two views will fail on timing that pass on their own,
+     * seconds later, by a factor of six. A check that cries wolf when the
+     * machine is busy is a check people learn to ignore.
+     */
     if (Math.abs(distA - distB) > 0.01) {
-      check(false, `${v.area}: ${v.name}`,
-            `the camera settled ${((distA - distB) * 100).toFixed(1)} cm apart — not comparable`);
-      continue;
+      const againA = await frame(page, v, 0, a);
+      const againB = await frame(page, v, NUDGE, b);
+      if (!Number.isFinite(againA) || !Number.isFinite(againB) || Math.abs(againA - againB) > 0.01) {
+        check(false, `${v.area}: ${v.name}`,
+              `the camera would not settle in the same place twice — not comparable`);
+        continue;
+      }
     }
 
     const A = await sharp(a).greyscale().raw().toBuffer({ resolveWithObject: true });
