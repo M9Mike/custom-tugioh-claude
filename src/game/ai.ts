@@ -1076,7 +1076,14 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
            sampled world deals the Set card a real identity from their unseen
            pool, so the swing is charged its true odds — kills, bounces and
            flip effects alike — instead of being unthinkable. */
-        .filter((t) => t.face === 'down' || swingAtk(m, t.position === 'def') >= wallOf(t))
+        /* A probe must beat the MAJORITY world to be worth a beam slot: the
+           wall it is measured against is the pool median the anchor resolves
+           at, so a swing that bounces in most of their worlds is cut here —
+           at thin serving budgets only two sampled worlds ever price it, and
+           speculative below-median probes were beam pollution the real
+           opponent punished with real cards. Above the median, the move
+           generates and the samples decide. */
+        .filter((t) => swingAtk(m, t.face === 'down' || t.position === 'def') >= wallOf(t))
         .sort((a, b) => {
           const av = wallOf(a);
           const bv = wallOf(b);
