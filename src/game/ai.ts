@@ -622,11 +622,13 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     if (m.face === 'up') score -= menace(m.slug) * 0.6;
     /* An unrevealed card of theirs is worth more than its average body: the
        flip effect that might be loaded inside it, and the information they
-       hold that we do not. HOW much more is under measurement: the doubled
-       charge (240) that shipped with the probing work is one suspect in the
-       arena regression — a flat bounty on attacking Set monsters that fires
-       in nearly every game — so it rides at its old value while the
-       attribution races run. The verdict lands here with a number. */
+       hold that we do not. The number is MEASURED: doubling it to 240 (to
+       fatten the probing margin) was a flat bounty on attacking Set monsters
+       that fired in nearly every game, and the arena priced it at seven
+       points of win rate — 43.2% ±3.2 against the pre-plan AI, back to
+       51.0% ±5.7 the moment this line alone went back to 120. Every probe
+       pin passes at 120; the sampled worlds, not a subsidy, decide when the
+       unknown is worth hitting. Do not raise this without a race. */
     if (m.face === 'down') score -= 120;
     if (m.rentPerTurn && m.owner !== foe) score += m.rentPerTurn * 0.8;
   }

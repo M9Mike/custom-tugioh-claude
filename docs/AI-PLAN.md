@@ -208,4 +208,19 @@ inside half the learning clamp, Exodia holds back from game one, NEUTRAL
 untouched (rules-pinned). C4's hold-back was measured already present
 (the whole-board GUARD pin at 10/10); nothing further shipped for it.
 
+**The E gate caught a real regression, and the bisection found it.** With
+every pin green, the full stack raced 43.2% ±3.2 against the pre-plan AI
+over 900 games — weaker, and weaker three races in a row while judge-level
+fixes (per-pool medians, knife-edge rollouts, the median gate on probe
+generation) changed nothing. Race-level bisection: reverting a four-piece
+fear/eval cluster read neutral (47.3% ±8.0/150), and racing the pieces
+singly convicted ONE — the face-down evaluation charge, doubled from 120 to
+240 to fatten the probing margin. A flat bounty on attacking Set monsters,
+paid in nearly every game, worth seven points of win rate. Back at 120 —
+with every other piece of the stack kept — the race reads 51.0% ±5.7 over
+300 pilot-swapped games, and the full battery is green, the 1100-probe pin
+at its designed floor. The lesson, recorded where the plan said it would
+be: pins prove positions, only the arena proves strength, and a subsidy is
+not a price.
+
 **D verdicts** are recorded here as they land, per the delete-if-idle rule.
