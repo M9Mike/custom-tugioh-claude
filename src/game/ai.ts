@@ -740,37 +740,6 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     }
   }
 
-  /* D-trial: initiative — who is forced to answer whom. The clock counts
-     damage-turns; this counts BODIES the other side must answer or lose.
-     Best attacker either side could field next turn (face-up, either
-     posture — turns start with a free switch) against each body's current
-     guard, from visible stats only, at well under one card a body. */
-  {
-    let myBest = 0;
-    for (const m of my.monsters) {
-      if (!m || m.face !== 'up') continue;
-      myBest = Math.max(myBest, bodyOf(state, m, me, me).atk);
-    }
-    let theirBestPotential = 0;
-    for (const fm of their.monsters) {
-      if (!fm || fm.face !== 'up') continue;
-      theirBestPotential = Math.max(theirBestPotential, bodyOf(state, fm, foe, me).atk);
-    }
-    let forcedTheirs = 0;
-    let forcedMine = 0;
-    for (const fm of their.monsters) {
-      if (!fm) continue;
-      const fb = bodyOf(state, fm, foe, me);
-      if (myBest > (fm.face === 'up' && fm.position === 'atk' ? fb.atk : fb.def)) forcedTheirs += 1;
-    }
-    for (const m of my.monsters) {
-      if (!m) continue;
-      const b = bodyOf(state, m, me, me);
-      if (theirBestPotential > (m.face === 'up' && m.position === 'atk' ? b.atk : b.def)) forcedMine += 1;
-    }
-    score += (forcedTheirs - forcedMine) * 80;
-  }
-
   /* D-trial: card advantage counted honestly across zones. Every zone is
      priced above on its own terms — stats, promise, trap worth — but a
      two-for-one is invisible to stats the moment the boards look even. The
