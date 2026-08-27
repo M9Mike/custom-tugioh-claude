@@ -28,7 +28,7 @@
  */
 
 import * as THREE from 'three';
-import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor } from './surfaces';
+import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor, concrete } from './surfaces';
 import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
 import { AREAS, SHOP_STEP, STREET_FACES } from '@/story/areas';
 
@@ -61,6 +61,19 @@ const ST_W = 22;
  * building it is supposed to stop at.
  */
 const ARCH_N = -1.7;
+
+/**
+ * The two edges of the alley into Step Lane, at the west end.
+ *
+ * The same 3.4 m gap `areas.ts` leaves in the west wall, on the same centre.
+ * Everything that closes this end is measured between these and the terrace
+ * faces, so no part of it can be missing and no part can overlap.
+ */
+const ALLEY_N = 2.3;
+const ALLEY_S = 5.7;
+
+/** How far the area runs north and south. `areas.ts` owns it; this reads it. */
+const ST_END = AREAS['starting-area'].bounds.hd + 1;
 const ARCH_S = 2.7;
 
 /* Where the buildings' front faces are — from `areas.ts`, which needs them
@@ -417,10 +430,31 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * It only ever needed to close the gap between the two terraces, which is what
    * it does now.
    */
+  /*
+   * The whole west end, in three pieces, and every metre of it drawn.
+   *
+   * The collision was opened for Step Lane's alley and the *geometry* was not:
+   * nothing was ever built for the 3.4 m of opening, and the hoarding was cut
+   * back to z 2 with nothing put south of it either. So from the road you looked
+   * west at a hole in the world with a green fence beside it — the alley reading
+   * as one black nothing and half the end simply absent.
+   *
+   * Three pieces now, and they meet: the hoarding from the north terrace down to
+   * the alley, the alley mouth itself, and the wall the alley is cut through
+   * carrying on to the south terrace.
+   */
   const hoard = matt(own, '#4a5a52');
-  /* The hoarding keeps the northern two-thirds of the end; Step Lane's alley
-     takes the rest, and is built below. */
-  root.add(box(own, 4, 3.6, 11, hoard, WEST_FACE - 2.4, 1.8, -3.5));
+  const hoardN = -ST_END;
+  const hoardS = ALLEY_N;
+  root.add(box(own, 4, 3.6, hoardS - hoardN, hoard,
+               WEST_FACE - 2.4, 1.8, (hoardN + hoardS) / 2));
+  /* Above it, the site it hides: a blank flank wall so nothing shows past the
+     hoarding's own three and a half metres. */
+  /* Its own height and its own ends: at a shared 9.5 its roof was one plane with
+     the terrace beside it, and at the same z span its ends were one plane with
+     the hoarding in front of it. */
+  root.add(box(own, 3.8, 9.16, hoardS - hoardN + 0.1, brickWall(),
+               WEST_FACE - 2.7, 4.58, (hoardN + hoardS) / 2 - 0.15));
   /*
    * Bills pasted on the hoarding, and they sit *proud* of it.
    *
@@ -432,13 +466,100 @@ export function buildStreet(anisotropy: number): BuiltArea {
    */
   for (let i = 0; i < 9; i++) {
     const z = -8 + i * 1.2;
+    /* On the hoarding's own face at −18.4, not at −17.95 where `WEST_FACE` is:
+       moving the hoarding back left every bill floating 45 cm off it, which is
+       the red rectangle standing in mid-air beside the alley. */
     root.add(box(own, 0.05, 1.1, 0.8, decal(own, ['#8a4a4a', '#4a5a8a', '#8a7a4a', '#5a8a5a'][i % 4]),
-                 WEST_FACE + 0.05, 1.5 + (i % 3) * 0.5, z));
+                 WEST_FACE - 0.35, 1.5 + (i % 3) * 0.5, z));
   }
   /* Scaffolding poles above it, so something is clearly going on back there. */
   for (let i = 0; i < 6; i++) {
     root.add(box(own, 0.1, 6, 0.1, matt(own, '#7a7266'), WEST_FACE - 1.2, 3 + 3.6 / 2, -8 + i * 2.0));
   }
+
+  /* ---- the alley up to Step Lane ---- */
+
+  /*
+   * The wall south of the alley, carrying on to the terrace.
+   *
+   * Between the alley and the south terrace there was nothing at all — eight
+   * metres of end wall that existed in the collision and not in the world.
+   */
+  root.add(box(own, 3.8, 9.34, ST_END - ALLEY_S, brickWall(),
+               WEST_FACE - 2.1, 4.67, (ALLEY_S + ST_END) / 2));
+
+  /*
+   * The mouth itself: two jambs, a head over them, and a name on it.
+   *
+   * Cut through a building rather than left as a gap between two, which is what
+   * these alleys are — the wall carries straight over the top and you walk under
+   * somebody's first floor to reach the steps.
+   */
+  const alleyStone = tiled(matt(own, '#ffffff', surfaceOf(own, () => plaster('#9c9081'), 1, 1, anisotropy)));
+  const alleyMid = (ALLEY_N + ALLEY_S) / 2;
+  for (const az of [ALLEY_N, ALLEY_S]) {
+    const inward = az === ALLEY_N ? 1 : -1;
+    root.add(box(own, 3.4, 4.6, 0.5, alleyStone, WEST_FACE - 1.7, 2.3, az + inward * 0.25));
+  }
+  root.add(box(own, 3.4, 1.1, ALLEY_S - ALLEY_N + 1.0, alleyStone, WEST_FACE - 1.7, 5.15, alleyMid));
+  /* And the building above it, so the alley reads as cut through rather than as
+     a slot with sky in it. */
+  /* Set back from the walls either side of it on both faces, not just the one:
+     fixing the west face alone left the east face still sharing a plane. */
+  root.add(box(own, 3.7, 3.8, ALLEY_S - ALLEY_N + 1.0, brickWall(), WEST_FACE - 2.2, 7.6, alleyMid));
+
+  const alleySignW = 2.0;
+  const alleySign = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(alleySignW, alleySignW / 5.4)),
+    own.keep(new THREE.MeshBasicMaterial({
+      map: surfaceOf(own, () => signBoard('STEP LANE', '#e6dcc2', '#2f3a33', undefined, 5.4), 1, 1, anisotropy),
+      color: '#cfc4a6',
+    }))
+  );
+  alleySign.rotation.y = -Math.PI / 2;
+  alleySign.position.set(WEST_FACE + 0.02, 5.15, alleyMid);
+  root.add(alleySign);
+
+  /* A lamp under the head, because an alley you are meant to notice is a lit one. */
+  root.add(box(own, 0.28, 0.3, 0.28, matt(own, '#3f4348'), WEST_FACE - 0.7, 4.32, alleyMid));
+  const alleyLens = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(0.24, 0.24)), glow(own, '#f0c98a'));
+  alleyLens.rotation.x = Math.PI / 2;
+  alleyLens.position.set(WEST_FACE - 0.7, 4.11, alleyMid);
+  root.add(alleyLens);
+  const alleyLight = new THREE.PointLight('#ffcf90', 46, 12, 2);
+  alleyLight.position.set(WEST_FACE - 0.4, 3.9, alleyMid);
+  root.add(alleyLight);
+
+  /*
+   * And what you see through it: the bottom of Step Lane.
+   *
+   * Not the real area — that is built when you walk in — but enough of it that
+   * the opening reads as a way up rather than a hole. Flat ground, walls each
+   * side, the first flight starting where it really does, and a wall across the
+   * far end so nothing shows past.
+   */
+  const alleyFloor = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(14, ALLEY_S - ALLEY_N)),
+    matt(own, '#ffffff', surfaceOf(own, () => concrete('#78766f'), 5, 1.2, anisotropy))
+  );
+  alleyFloor.rotation.x = -Math.PI / 2;
+  /* Beginning where the road's own plane ends at −22, not four metres under it. */
+  alleyFloor.position.set(WEST_FACE - 11, 0.006, alleyMid);
+  root.add(alleyFloor);
+  /* The passage walls, two centimetres inside the opening and stopping short of
+     the wall at the far end — a lining that lands on exactly the planes of the
+     things it meets is a lining that fights all of them. */
+  for (const az of [ALLEY_N - 0.32, ALLEY_S + 0.32] as const) {
+    root.add(box(own, 11.2, 7, 0.6, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#6e6c67'), 1, 1, anisotropy))),
+                 WEST_FACE - 10, 3.5, az));
+  }
+  for (let i = 0; i < 7; i++) {
+    const y = 0.18 * (i + 1);
+    root.add(box(own, 0.5, y, ALLEY_S - ALLEY_N, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#7c7a74'), 1, 1, anisotropy))),
+                 WEST_FACE - 8.25 - i * 0.5, y / 2, alleyMid));
+  }
+  root.add(box(own, 2, 8, ALLEY_S - ALLEY_N + 1.4, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#6e6c67'), 1, 1, anisotropy))),
+               WEST_FACE - 15, 4, alleyMid));
 
   /*
    * East: the arch into Market Row.
@@ -730,8 +851,17 @@ export function buildStreet(anisotropy: number): BuiltArea {
   root.add(vend);
 
   /* A post box, and two bins. */
-  root.add(box(own, 1.0, 1.5, 1.0, matt(own, '#8a3a3a'), -17.2, 0.89, 2.5));
-  root.add(box(own, 0.6, 0.1, 0.14, matt(own, '#2a2a2a'), -17.2, 1.42, 2.0));
+  /*
+   * On the pavement, and out of the alley.
+   *
+   * It stood at z 2.5, which is the middle of the road *and* the middle of the
+   * opening Step Lane's alley was later cut at — so a red box a metre and a half
+   * tall sat in the entrance looking like part of the wall. It was also drawn
+   * from y 0.14 to 1.64, which is right on a kerb and 14 cm in the air on
+   * tarmac, so it had been floating since the day it was placed.
+   */
+  root.add(box(own, 1.0, 1.5, 1.0, matt(own, '#8a3a3a'), -17.4, 0.89, -7.3));
+  root.add(box(own, 0.6, 0.1, 0.14, matt(own, '#2a2a2a'), -17.4, 1.42, -7.8));
   for (const [bx, bz] of [[-11.5, -7.6], [6.0, 8.4]]) {
     root.add(box(own, 0.6, 0.9, 0.6, matt(own, '#3f443f'), bx, 0.59, bz));
     root.add(box(own, 0.68, 0.08, 0.68, matt(own, '#2f342f'), bx, 1.07, bz));

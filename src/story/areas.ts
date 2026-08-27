@@ -432,7 +432,7 @@ const STARTING_AREA: Area = {
     { x: -14.5, z: -7.5, hw: 0.9, hd: 0.9 },    // planter
     { x: 15.5, z: -7.5, hw: 0.9, hd: 0.9 },     // planter
     { x: 17.62, z: -4.0, hw: 0.42, hd: 0.62 },  // vending machine, facing the road
-    { x: -17.2, z: 2.5, hw: 0.55, hd: 0.55 },   // post box
+    { x: -17.4, z: -7.3, hw: 0.55, hd: 0.55 },  // post box, on the north pavement
   ],
   /*
    * Both pavements, which sit a kerb above the road. The numbers come from
