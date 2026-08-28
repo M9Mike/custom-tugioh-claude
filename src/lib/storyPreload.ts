@@ -29,23 +29,31 @@
  * is the *parsed* model — the geometry, the skeleton and the clips — and not
  * just the browser's copy of the file.
  *
- * ## Why the sizes are asked for first
+ * ## Why the sizes come from the catalogue and not from the server
  *
- * Because progress has to be in bytes, and bytes are not known until somebody
- * says so.
+ * Progress has to be in bytes. The catalogue runs from a 564 kB Joey to a
+ * 9.0 MB Sarah, so counted off by file the bar reaches forty per cent on four
+ * duelists worth six per cent of the download.
  *
- * The catalogue runs from a 183 kB Joey to a 6.8 MB Sarah. Counted off by file
- * the bar would reach forty per cent on four duelists worth three per cent of
- * the download. Counted in bytes but with only the files that have *reported* a
- * length in the denominator, it does something worse: the four small ones
- * finish, they are the whole of what is known, and the bar reads 100% — and
- * then stands there for seven seconds while the real thirty-nine megabytes
- * arrive behind a number that says there is nothing left to do. Which is the
- * one thing a number is there to prevent, and is exactly what it did on the
- * first deploy of this file.
+ * The first version of this asked the server and built the denominator out of
+ * whatever had answered so far — which meant the four small ones finishing were
+ * briefly the whole of what was known, the fraction came out at one, and the
+ * bar read 100% for seven seconds while thirty-nine megabytes arrived behind a
+ * number saying there was nothing left to do.
  *
- * So: a HEAD apiece before anything starts, one round trip, all ten in
- * parallel. After that the denominator is the truth from the first frame.
+ * Asking up front does not fix it, because the server will not say. These are
+ * served Brotli-encoded, and a browser hides `content-length` from script
+ * whenever `content-encoding` is set: the header is the encoded length and the
+ * body handed to JS is not. A range request gives the encoded length too. And
+ * the encoded length is not a usable substitute, because progress events count
+ * *decoded* bytes and the ratio is nothing like constant — Sarah compresses to
+ * 77%, Joey to 33%, so the same denominator is wrong by a different amount for
+ * every file.
+ *
+ * So each model's size is written down beside it in `premade.ts`, which is a
+ * fact about the file that is perfectly well known at build time and only
+ * unavailable at runtime. `npm run models` fails if one drifts, and this widens
+ * a file's share on its own if the bytes overrun what was declared.
  *
  * ## And the second of silence at the end
  *
@@ -82,41 +90,6 @@ export type StoryPreload =
  */
 const GIVE_UP_AFTER = 90_000;
 
-/**
- * How big a file says it is, or null if it will not say.
- *
- * Two ways of asking, because one of them stops working the moment anything
- * compresses the response: a browser hides `content-length` from script when
- * `content-encoding` is set, since the number is the encoded length and the
- * body handed to JS is not. The Next dev server gzips these, so locally the
- * header is simply not there — while production serves them raw, `.glb` being
- * compressed already, and the header is exact.
- *
- * So if the header is missing, ask for one byte and read the total off
- * `content-range`. That works wherever ranges do, and costs a byte. It is only
- * used on a 206: a server that ignores `Range` answers 200 with the entire
- * file, and downloading everything twice to find out how big it is would be a
- * poor trade.
- */
-async function askSize(url: string): Promise<number | null> {
-  const ok = (n: number | null) => (n !== null && Number.isFinite(n) && n > 0 ? n : null);
-  try {
-    const head = await fetch(url, { method: 'HEAD' });
-    const len = ok(Number(head.headers.get('content-length')));
-    if (len !== null) return len;
-  } catch {
-    /* fall through to the range */
-  }
-  try {
-    const part = await fetch(url, { headers: { Range: 'bytes=0-0' } });
-    if (part.status !== 206) return null;
-    const range = part.headers.get('content-range');
-    return ok(range ? Number(range.split('/')[1]) : null);
-  } catch {
-    return null;
-  }
-}
-
 export function preloadStory(report: (p: StoryPreload) => void): () => void {
   let live = true;
   const finish = () => {
@@ -151,18 +124,9 @@ export function preloadStory(report: (p: StoryPreload) => void): () => void {
     const models = premade.DUELIST_MODELS;
     report({ phase: 'cast', pct: 0 });
 
-    /*
-     * Every size before any download. A file that will not give one is carried
-     * at the average of those that did, so it still occupies about its share of
-     * the bar instead of nothing at all.
-     */
-    const sizes = await Promise.all(models.map((m) => askSize(m.file)));
-    if (!live) return;
-    const known = sizes.filter((n): n is number => n !== null);
-    const guess = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 1;
-    const size = models.map((_, i) => sizes[i] ?? guess);
-    const all = size.reduce((a, b) => a + b, 0);
-
+    /* Known before a byte moves, so the fraction is right from the first frame
+       and there is no round trip in front of the download. */
+    const size = models.map((m) => Math.max(1, m.bytes));
     const loaded = new Map<string, number>();
     /* Counted from the progress events rather than from the promises, because
        a promise resolves after its model is *parsed* — which is the very wait
@@ -172,6 +136,7 @@ export function preloadStory(report: (p: StoryPreload) => void): () => void {
       if (!live) return;
       if (arrived.size >= models.length) return report({ phase: 'parse' });
       const got = [...loaded.values()].reduce((a, b) => a + b, 0);
+      const all = size.reduce((a, b) => a + b, 0);
       report({ phase: 'cast', pct: Math.min(1, got / all) });
     };
 
@@ -182,7 +147,11 @@ export function preloadStory(report: (p: StoryPreload) => void): () => void {
             /* `total` is 0 when the response carried no length. The HEAD above
                is the number that matters; this one is only used to notice that
                a file has finished arriving. */
-            loaded.set(m.id, Math.min(got, size[i]));
+            /* If a model has been re-exported and the catalogue not updated,
+               the bar must not stall at its old size — the declared figure is a
+               starting weight, and what actually arrives wins. */
+            if (got > size[i]) size[i] = got;
+            loaded.set(m.id, got);
             if (got >= (total || size[i])) arrived.add(m.id);
             tick();
           })

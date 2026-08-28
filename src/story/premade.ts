@@ -110,6 +110,21 @@ export interface DuelistModel {
   note: string;
   /** Under `public/`, so also the URL it is fetched from. */
   file: string;
+  /**
+   * How many bytes the file is, so a loading bar can be weighted before a
+   * single one of them has arrived.
+   *
+   * Written down because nothing will tell us at runtime. Vercel serves these
+   * Brotli-encoded, and a browser hides `content-length` from script whenever
+   * `content-encoding` is set — the header is the encoded length and the body
+   * handed to JS is not. What comes back from a range request is the encoded
+   * length too, and the ratio is nothing like constant: Sarah compresses to 77%
+   * and Joey to 33%, so weighting by it puts the bar wrong by different amounts
+   * per file. Progress events count decoded bytes, which is this number.
+   *
+   * `npm run models` fails if any of these has drifted from the file on disk.
+   */
+  bytes: number;
   /** Standing height to scale the model to, in metres, at stature 0.5. */
   height: number;
   /**
@@ -215,6 +230,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Sandra Afrika',
     note: 'Red dress, street duelist',
     file: '/models/players/sandra-afrika.glb',
+    bytes: 5014904,
     height: 1.72,
     /* Her own, measured by `scripts/blender/gait.py` at the height she is
        rendered at. Never copied from another character: the bundles are
@@ -237,6 +253,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Robert Barathion',
     note: 'Black leather, longsword',
     file: '/models/players/robert.glb',
+    bytes: 6626628,
     height: 1.9,
     walkSpeed: 2.34,
     runSpeed: 5.4,
@@ -265,6 +282,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Yugi Muto',
     note: 'Domino High uniform',
     file: '/models/duelists/yugi.glb',
+    bytes: 598408,
     height: 1.53,
     walkSpeed: 1.35,
     runSpeed: 3.1,
@@ -276,6 +294,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Yami Yugi',
     note: 'The Pharaoh',
     file: '/models/duelists/yami.glb',
+    bytes: 660016,
     height: 1.75,
     walkSpeed: 1.5,
     runSpeed: 3.4,
@@ -287,6 +306,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Seto Kaiba',
     note: 'White coat, Kaiba Corp',
     file: '/models/duelists/kaiba.glb',
+    bytes: 617336,
     height: 1.86,
     walkSpeed: 1.6,
     runSpeed: 3.6,
@@ -298,6 +318,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Joey Wheeler',
     note: 'Green jacket, blond',
     file: '/models/duelists/joey.glb',
+    bytes: 564040,
     height: 1.78,
     walkSpeed: 1.55,
     runSpeed: 3.5,
@@ -322,6 +343,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Solomon Muto',
     note: 'Kame Game Shop, orange bandana',
     file: '/models/cast/solomon.glb',
+    bytes: 4756836,
     height: 1.6,
     walkSpeed: 1.55,
     runSpeed: 3.63,
@@ -333,6 +355,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Mai Valentine',
     note: 'Purple jacket, blonde',
     file: '/models/cast/mai.glb',
+    bytes: 5607352,
     height: 1.72,
     /* Measured off her own clips, scaled to the height she is rendered at. */
     walkSpeed: 1.88,
@@ -356,6 +379,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Sarah',
     note: 'Clockwork Vanguard, purple plate',
     file: '/models/cast/sarah.glb',
+    bytes: 8995712,
     height: 1.7,
     walkSpeed: 1.87,
     runSpeed: 4.23,
@@ -378,6 +402,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Tony',
     note: 'Forest Ambush, tactical vest',
     file: '/models/cast/tony.glb',
+    bytes: 7538316,
     height: 1.86,
     walkSpeed: 2.22,
     runSpeed: 4.51,
