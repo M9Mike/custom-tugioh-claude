@@ -990,7 +990,21 @@ export function buildMarket(anisotropy: number): BuiltArea {
    * Not one light in this game set it. All five do now.
    */
   overhead.shadow.bias = -0.0009;
-  overhead.shadow.normalBias = 0.05;
+  /*
+   * One texel, not two.
+   *
+   * `normalBias` buys its way out of acne by sampling the shadow map off the
+   * surface, into the air in front of it — so whatever it is set to is also how
+   * far a shadow slides away from the thing casting it. On the ground that shows
+   * as a gap under the duelist's feet, with the shadow keeping its own company a
+   * hand's width away: a figure standing on nothing.
+   *
+   * The amount needed is one shadow texel, which is what the note above works
+   * out and is not what any of these were set to — every one of them was at
+   * about twice it, and paid for it in daylight under everybody's shoes.
+   */
+  /* 50 m across 2048 is 2.4 cm. */
+  overhead.shadow.normalBias = 0.027;
   root.add(overhead);
   root.add(overhead.target);
   lights.push(overhead);

@@ -112,7 +112,10 @@ export function buildStepLane(anisotropy: number): BuiltArea {
     if (t.y <= 0.001) continue;
     const isStep = t.hw < 0.4;
     if (!isStep) continue;
-    root.add(box(own, 0.07, 0.05, t.hd * 2, nosing, t.x + t.hw - 0.02, t.y - 0.02, t.z));
+    /* Wholly on its own tread — see the same fix in `shrine.ts`. At `+ hw - 0.02`
+       it overhung the step below by 15 mm and drew ground 18 cm above where
+       `groundAt` said it was. */
+    root.add(box(own, 0.07, 0.05, t.hd * 2, nosing, t.x + t.hw - 0.036, t.y - 0.02, t.z));
   }
 
   /* A worn strip down the middle of each landing, where everybody walks. */
@@ -581,8 +584,10 @@ export function buildStepLane(anisotropy: number): BuiltArea {
   moon.shadow.camera.far = 70;
   moon.shadow.bias = -0.0009;
   /* See `market.ts` on `normalBias`: every wall here is edge-on to a light
-     coming down the hill, which is the case a constant bias cannot cover. */
-  moon.shadow.normalBias = 0.05;
+     coming down the hill, which is the case a constant bias cannot cover.
+     44 m across 2048 is 2.1 cm, and 2.1 is what it takes — at 5 every shadow
+     in the lane stood a hand's width clear of whatever threw it. */
+  moon.shadow.normalBias = 0.024;
   root.add(moon);
   root.add(moon.target);
 
@@ -614,7 +619,7 @@ export function buildStepLane(anisotropy: number): BuiltArea {
   top.castShadow = true;
   top.shadow.mapSize.set(1024, 1024);
   top.shadow.bias = -0.0025;
-  top.shadow.normalBias = 0.04;
+  top.shadow.normalBias = 0.024;
   root.add(top);
   lamps.push(top);
 

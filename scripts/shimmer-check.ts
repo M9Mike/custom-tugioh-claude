@@ -96,6 +96,18 @@ const VANTAGES: Vantage[] = [
      down — the two shots that only exist because the ground is not flat. */
   { name: 'up the steps', area: 'step-lane', x: 14.6, z: 0, facing: -Math.PI / 2 },
   { name: 'down the steps', area: 'step-lane', x: -12, z: 0, facing: Math.PI / 2 },
+  /* And the precinct: the first area with a real horizon in three directions,
+     and the first whose gravel is thousands of small things at once. */
+  { name: 'up the shrine steps', area: 'domino-shrine', x: 0, z: -21.4, facing: 0 },
+  { name: 'across the precinct', area: 'domino-shrine', x: -6, z: 0, facing: Math.PI / 2 },
+  { name: 'the hall', area: 'domino-shrine', x: 0, z: 2, facing: 0 },
+  /* The off-path finds. This area is big enough that the path is a small part
+     of it, and the corners nobody is steered towards get looked at hardest. */
+  { name: 'the basin, west', area: 'domino-shrine', x: -12.4, z: -6.5, facing: -Math.PI / 2 },
+  { name: 'the plaque rack, east', area: 'domino-shrine', x: 12.2, z: -9, facing: Math.PI / 2 },
+  { name: 'the lantern avenue, along it', area: 'domino-shrine', x: -5.6, z: -15.5, facing: 0 },
+  { name: 'the little shrine in the trees', area: 'domino-shrine', x: 22.5, z: 8.6, facing: 0 },
+  { name: 'the stone behind the hall', area: 'domino-shrine', x: 0, z: 18.2, facing: 0 },
   { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
 ];
 
@@ -121,7 +133,7 @@ const check = (ok: boolean, what: string, detail = '') => {
  */
 async function settled(page: Page): Promise<number> {
   let last = Number.NaN;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 120; i++) {
     const now = await page
       .evaluate(() => (window as unknown as { __probe?: { camDist?: number } }).__probe?.camDist ?? Number.NaN)
       .catch(() => Number.NaN);
@@ -188,7 +200,14 @@ async function main() {
 
   console.log(`\nShimmer — ${(NUDGE * 1000).toFixed(1)} mm of camera, and what it costs\n`);
 
-  for (const v of VANTAGES) {
+  /* `npm run shimmer -- steps` for just the views whose name says "steps".
+     Twenty vantages is three minutes, which is three minutes per attempt at
+     one of them. */
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const chosen = only.length
+    ? VANTAGES.filter((v) => only.some((o) => v.name.includes(o) || v.area.includes(o)))
+    : VANTAGES;
+  for (const v of chosen) {
     const slug = v.name.replace(/[^a-z]+/gi, '-').toLowerCase();
     const a = `/tmp/shimmer/${slug}-a.png`;
     const b = `/tmp/shimmer/${slug}-b.png`;
@@ -208,14 +227,19 @@ async function main() {
      * seconds later, by a factor of six. A check that cries wolf when the
      * machine is busy is a check people learn to ignore.
      */
-    if (Math.abs(distA - distB) > 0.01) {
-      const againA = await frame(page, v, 0, a);
-      const againB = await frame(page, v, NUDGE, b);
-      if (!Number.isFinite(againA) || !Number.isFinite(againB) || Math.abs(againA - againB) > 0.01) {
-        check(false, `${v.area}: ${v.name}`,
-              `the camera would not settle in the same place twice — not comparable`);
-        continue;
-      }
+    let okA = distA;
+    let okB = distB;
+    /* Three goes, not one. Twenty vantages back to back is exactly the load
+       this is describing, and one retry was still losing a view to it about
+       half the time — while the same view passes alone, three times running. */
+    for (let tries = 0; tries < 3 && Math.abs(okA - okB) > 0.01; tries++) {
+      okA = await frame(page, v, 0, a);
+      okB = await frame(page, v, NUDGE, b);
+    }
+    if (!Number.isFinite(okA) || !Number.isFinite(okB) || Math.abs(okA - okB) > 0.01) {
+      check(false, `${v.area}: ${v.name}`,
+            `the camera would not settle in the same place twice — not comparable`);
+      continue;
     }
 
     const A = await sharp(a).greyscale().raw().toBuffer({ resolveWithObject: true });

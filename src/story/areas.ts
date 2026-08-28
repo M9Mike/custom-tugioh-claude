@@ -38,7 +38,12 @@
  */
 
 /** Every area that exists. Names here are the ones to use when talking about them. */
-export type AreaId = 'grandpa-shop' | 'starting-area' | 'market-row' | 'step-lane';
+export type AreaId =
+  | 'grandpa-shop'
+  | 'starting-area'
+  | 'market-row'
+  | 'step-lane'
+  | 'domino-shrine';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -397,8 +402,17 @@ const STARTING_AREA: Area = {
     { x: -10.1, z: -ST_D + 4, hw: 11.9, hd: 4, tall: true },
     { x: 12.7, z: -ST_D + 4, hw: 9.3, hd: 4, tall: true },
 
-    /* The terrace opposite, along the south side (+Z). Unbroken. */
-    { x: 0, z: ST_D - 3.5, hw: ST_W, hd: 3.5, tall: true },
+    /*
+     * The terrace opposite, along the south side (+Z).
+     *
+     * Broken once, five metres wide, for the path up to the shrine. It was the
+     * last unbroken edge of this street and it is the right one to give up: the
+     * shop is north, Market Row is east, Step Lane is west, and a street with a
+     * way out of every side is a street you are *in* rather than one you pass
+     * along.
+     */
+    { x: -17.45, z: ST_D - 3.5, hw: 4.55, hd: 3.5, tall: true },
+    { x: 7.05, z: ST_D - 3.5, hw: 14.95, hd: 3.5, tall: true },
 
     /* West end: a hoarding across a building site. */
     { x: -ST_W + 2, z: 0, hw: 2, hd: ST_D, tall: true },
@@ -454,6 +468,9 @@ const STARTING_AREA: Area = {
     /* The archway into Market Row, closed to the camera for the same reason the
        shop's door is: from outside, a way through is still a wall to look at. */
     { x: ST_W - 2, z: 0.5, hw: 2, hd: 2.2 },
+
+    /* And the gap through the south terrace, up to the shrine. */
+    { x: -10.4, z: ST_D - 3.5, hw: 2.5, hd: 3.5 },
 
     /* And the terraces' awnings, for the reason Market Row's are stopped: the
        scalloped edges hang at 2.8 m, which is exactly where the walking camera
@@ -530,6 +547,24 @@ const STARTING_AREA: Area = {
        */
       arrive: { x: -13, z: 4, facing: Math.PI / 2 },
       label: 'Step Lane',
+    },
+    {
+      id: 'street-to-shrine',
+      /* Inside the gap through the terrace, so walking south into it always
+         crosses. */
+      trigger: { x: -10.4, z: 12.5, hw: 2.2, hd: 1.2 },
+      to: 'domino-shrine',
+      /* The far side of the terrace, which is where the precinct starts. */
+      seam: { x: -10.4, z: STREET_FACES.south + 8 },
+      /*
+       * Coming back down: out on the road, turned east along the street.
+       *
+       * z 6.8 rather than 8.6, which is on the pavement and a metre from a lamp
+       * post — close enough that `cameraReach` clipped the shot to 3.94 m and
+       * lifted it, so you came out of the passage looking at your own shoulders.
+       */
+      arrive: { x: -10.4, z: 6.8, facing: Math.PI / 2 },
+      label: 'Domino Shrine',
     },
   ],
   /* On the pavement outside the shop — the same place the shop's door lands
@@ -854,6 +889,67 @@ export const STEP_LANE_CLIMB: Run[] = [
   { east: -10, west: -SL_W, from: 5.76, to: 5.76 },  // the top, and the gate across it
 ];
 
+/**
+ * A run of ground as things to stand on, level or climbing, along either axis.
+ *
+ * Step Lane needed this along x and the shrine needs it along z, which is the
+ * moment to stop writing it twice. A level run is one rectangle; a flight is one
+ * rectangle per step, each at the height of its own tread — so walking onto the
+ * first step puts you a step up immediately, which is what a step is.
+ *
+ * `from` and `to` may run in either direction along the axis: `climbPlatforms`
+ * builds Step Lane east to west, downhill values first.
+ */
+export function flightPlatforms(o: {
+  along: 'x' | 'z';
+  /** Where the run begins and ends along `along`. */
+  start: number;
+  end: number;
+  /** The height at each of those. */
+  from: number;
+  to: number;
+  /** Half-extent across the other axis, and where it is centred. */
+  half: number;
+  cross?: number;
+  /** Step height. The world's stairs are all the same stair unless told. */
+  rise?: number;
+}): Platform[] {
+  const cross = o.cross ?? 0;
+  const rise = o.rise ?? STEP_LANE_RISE;
+  const span = o.end - o.start;
+  const put = (mid: number, halfSpan: number, y: number): Platform =>
+    o.along === 'x'
+      ? { x: mid, z: cross, hw: halfSpan, hd: o.half, y }
+      : { x: cross, z: mid, hw: o.half, hd: halfSpan, y };
+
+  if (o.from === o.to) return [put((o.start + o.end) / 2, Math.abs(span) / 2, o.to)];
+
+  const steps = Math.round(Math.abs(o.to - o.from) / rise);
+  const tread = span / steps;
+  const out: Platform[] = [];
+  for (let i = 0; i < steps; i++) {
+    out.push(put(
+      o.start + tread * (i + 0.5),
+      /*
+       * Two millimetres over half, so consecutive treads *overlap* rather than
+       * abut.
+       *
+       * Abutting exactly leaves a boundary, and a boundary is a place where
+       * `groundAt` answers one step and the box drawn there is the other — 18 cm
+       * of daylight under the feet, forty cells wide, at every tread whose edge
+       * happens to fall on the sampling grid. `npm run footing` found 475 of
+       * them on a twelve-step flight.
+       *
+       * Overlapping, `groundAt` takes the taller of the two, which is the one
+       * whose box covers that point. Nothing is ever on an edge.
+       */
+      Math.abs(tread) / 2 + 0.002,
+      o.from + ((o.to - o.from) / steps) * (i + 1)
+    ));
+  }
+  return out;
+}
+
 /** How high the lane is at the top of it. */
 export const STEP_LANE_TOP = STEP_LANE_CLIMB[STEP_LANE_CLIMB.length - 1].to;
 
@@ -865,26 +961,16 @@ export const STEP_LANE_TOP = STEP_LANE_CLIMB[STEP_LANE_CLIMB.length - 1].to;
  * immediately, which is what a step is.
  */
 export function climbPlatforms(): Platform[] {
-  const out: Platform[] = [];
-  for (const run of STEP_LANE_CLIMB) {
-    const length = run.east - run.west;
-    if (run.from === run.to) {
-      out.push({ x: (run.east + run.west) / 2, z: 0, hw: length / 2, hd: STEP_LANE_HALF, y: run.to });
-      continue;
-    }
-    const steps = Math.round((run.to - run.from) / STEP_LANE_RISE);
-    const tread = length / steps;
-    for (let i = 0; i < steps; i++) {
-      out.push({
-        x: run.east - tread * (i + 0.5),
-        z: 0,
-        hw: tread / 2,
-        hd: STEP_LANE_HALF,
-        y: run.from + STEP_LANE_RISE * (i + 1),
-      });
-    }
-  }
-  return out;
+  return STEP_LANE_CLIMB.flatMap((run) =>
+    flightPlatforms({
+      along: 'x',
+      start: run.east,
+      end: run.west,
+      from: run.from,
+      to: run.to,
+      half: STEP_LANE_HALF,
+    })
+  );
 }
 
 /** What is left out along the lane, and what the builder draws on each. */
@@ -988,11 +1074,263 @@ const STEP_LANE: Area = {
   spawn: { x: 12.4, z: 0, facing: -Math.PI / 2 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Domino Shrine                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The shrine, up the steps through the south terrace of Turtle Lane.
+ *
+ * Sixty-four metres by fifty-two, which is nearly five times the floor of Market
+ * Row and about eight times Step Lane. That is the point of it.
+ *
+ * ## Why this one is big
+ *
+ * Everything built so far is a corridor. Turtle Lane, Market Row and Step Lane
+ * are all "walk from one end to the other", and each of them is good at being
+ * that — but a city made only of corridors reads as a series of hallways however
+ * well each one is dressed. Mike said so, in those words, looking at Step Lane
+ * and liking it: *some areas need to feel like a huge playing world on their
+ * own.*
+ *
+ * A shrine precinct is the natural first one, because a shrine is not a route.
+ * It is grounds. You come up the steps and the place opens out, and from there
+ * nothing tells you where to go: the approach runs to the hall, but the basin is
+ * off to the west, the ema rack and the bell are east, there is a smaller shrine
+ * in the trees that you only find by leaving the path, and a way round the back
+ * of the hall to a stone that has been there longer than the hall has.
+ *
+ * **Explorable means the player chooses**, not that the area is long. So the
+ * middle is deliberately empty — gravel, and the avenue of lanterns to give it
+ * a spine — and everything worth finding is off to a side.
+ */
+const SH_W = 32;   // half-width, so 64 m across
+const SH_D = 26;   // half-depth, so 52 m from the gate to the trees
+
+/** How wide the way in is, from the street up to the precinct. */
+const SH_APPROACH = 5;
+
+/** The floor of the precinct, and the hall's platform above it. */
+export const SHRINE_FLOOR = 2.16;
+export const SHRINE_PLATFORM = 3.24;
+
+/**
+ * The ground, in the four heights it comes in.
+ *
+ * The passage through the terrace is still the street's level; twelve steps lift
+ * the precinct above it; six more lift the hall above that. The precinct itself
+ * is one enormous rectangle, which is what makes it a place to wander rather
+ * than a path to follow.
+ */
+export const SHRINE_GROUND: Platform[] = [
+  { x: 0, z: -23.25, hw: SH_APPROACH, hd: 2.75, y: 0 },
+  ...flightPlatforms({ along: 'z', start: -20.5, end: -15, from: 0, to: SHRINE_FLOOR, half: SH_APPROACH }),
+  { x: 0, z: 4.5, hw: 28, hd: 19.5, y: SHRINE_FLOOR },
+  ...flightPlatforms({ along: 'z', start: 6, end: 9, from: SHRINE_FLOOR, to: SHRINE_PLATFORM, half: 7 }),
+  { x: 0, z: 14.25, hw: 9.5, hd: 5.25, y: SHRINE_PLATFORM },
+];
+
+/** What stands in the precinct, and what the builder makes of each. */
+export interface ShrineThing {
+  kind: 'torii' | 'lantern' | 'chozuya' | 'ema' | 'komainu' | 'subshrine' | 'marker' | 'notice' | 'tree';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  /**
+   * Whether there is a flame in it. Lanterns only.
+   *
+   * Said here rather than worked out from the index in this array, which is what
+   * it used to be: `i % 2` meant that adding one fixture anywhere above a
+   * lantern put out every lamp below it and lit every dark one. Which lights are
+   * burning is a decision about the place, not an accident of list order.
+   */
+  lit?: boolean;
+}
+
+/**
+ * Everything in the grounds, and every one of them solid.
+ *
+ * The trees especially. A grove drawn as one block you cannot enter is scenery;
+ * a grove of trunks you can walk between is somewhere to go, and the difference
+ * costs one rectangle each. There are two of them here and the smaller shrine is
+ * inside the eastern one, which is the whole reason to push through it.
+ */
+export const SHRINE_THINGS: ShrineThing[] = [
+  /* The two gates on the approach. */
+  { kind: 'torii', x: 0, z: -20.9, hw: 3.6, hd: 0.4 },
+  { kind: 'torii', x: 0, z: -9, hw: 3.2, hd: 0.36 },
+
+  /* The avenue of lanterns, which is the only thing giving the middle a line. */
+  /* Lit down one side then the other, rather than all of one side, so the
+     avenue has light on both hands as you walk it. */
+  { kind: 'lantern', x: -5.6, z: -12, hw: 0.42, hd: 0.42, lit: true },
+  { kind: 'lantern', x: 5.6, z: -12, hw: 0.42, hd: 0.42 },
+  { kind: 'lantern', x: -5.6, z: -6.5, hw: 0.42, hd: 0.42 },
+  { kind: 'lantern', x: 5.6, z: -6.5, hw: 0.42, hd: 0.42, lit: true },
+  { kind: 'lantern', x: -5.6, z: -1, hw: 0.42, hd: 0.42, lit: true },
+  { kind: 'lantern', x: 5.6, z: -1, hw: 0.42, hd: 0.42 },
+
+  /* And a pair at the foot of the great flight. These are the only lights in
+     the area low enough and far enough south to reach the risers, which face
+     squarely back down the steps and are otherwise black the whole climb. */
+  { kind: 'lantern', x: -3.6, z: -21.4, hw: 0.42, hd: 0.42, lit: true },
+  { kind: 'lantern', x: 3.6, z: -21.4, hw: 0.42, hd: 0.42, lit: true },
+
+  /* Off the path, west: the basin you rinse your hands at. */
+  { kind: 'chozuya', x: -16, z: -6.5, hw: 2.1, hd: 1.5 },
+  /* Off the path, east: the rack the wooden plaques hang on. */
+  { kind: 'ema', x: 15.5, z: -9, hw: 1.9, hd: 0.5 },
+  /* And the board by the gate that tells you whose shrine this is. */
+  { kind: 'notice', x: -9.4, z: -13.4, hw: 1.0, hd: 0.3 },
+
+  /* The pair at the foot of the hall's steps. */
+  { kind: 'komainu', x: -6.6, z: 4.4, hw: 0.5, hd: 0.5 },
+  { kind: 'komainu', x: 6.6, z: 4.4, hw: 0.5, hd: 0.5 },
+  /* And a lit pair outside them, for the same reason as the pair at the foot of
+     the great flight: these six risers face south and every other light in the
+     precinct is north of them. */
+  { kind: 'lantern', x: -8.4, z: 4.6, hw: 0.42, hd: 0.42, lit: true },
+  { kind: 'lantern', x: 8.4, z: 4.6, hw: 0.42, hd: 0.42, lit: true },
+
+  /* In the eastern trees, which you have to leave the path to find. */
+  { kind: 'subshrine', x: 22.5, z: 12.5, hw: 1.6, hd: 1.4 },
+  /* And behind the hall, which you have to go round it to find. */
+  { kind: 'marker', x: 0, z: 21.6, hw: 0.6, hd: 0.6 },
+
+  /* The western grove. */
+  { kind: 'tree', x: -24.5, z: -9, hw: 0.5, hd: 0.5 },
+  { kind: 'tree', x: -21, z: -4.5, hw: 0.45, hd: 0.45 },
+  { kind: 'tree', x: -25.5, z: -1, hw: 0.55, hd: 0.55 },
+  { kind: 'tree', x: -20.5, z: 3.5, hw: 0.45, hd: 0.45 },
+  { kind: 'tree', x: -24, z: 8, hw: 0.5, hd: 0.5 },
+  { kind: 'tree', x: -19.5, z: 12.5, hw: 0.48, hd: 0.48 },
+  { kind: 'tree', x: -24.5, z: 16.5, hw: 0.52, hd: 0.52 },
+  { kind: 'tree', x: -19, z: 20, hw: 0.46, hd: 0.46 },
+
+  /* The eastern grove, thicker, with the small shrine inside it. */
+  { kind: 'tree', x: 19.5, z: -3, hw: 0.48, hd: 0.48 },
+  { kind: 'tree', x: 24, z: 0.5, hw: 0.52, hd: 0.52 },
+  { kind: 'tree', x: 19, z: 5, hw: 0.45, hd: 0.45 },
+  { kind: 'tree', x: 24.5, z: 7.5, hw: 0.5, hd: 0.5 },
+  { kind: 'tree', x: 18.5, z: 11, hw: 0.47, hd: 0.47 },
+  { kind: 'tree', x: 25.5, z: 15, hw: 0.55, hd: 0.55 },
+  { kind: 'tree', x: 20, z: 17.5, hw: 0.46, hd: 0.46 },
+  { kind: 'tree', x: 24, z: 20.5, hw: 0.5, hd: 0.5 },
+
+  /* And a band of them across the back, behind everything. */
+  { kind: 'tree', x: -12, z: 21.5, hw: 0.5, hd: 0.5 },
+  { kind: 'tree', x: -6, z: 22.5, hw: 0.46, hd: 0.46 },
+  { kind: 'tree', x: 7, z: 22.5, hw: 0.48, hd: 0.48 },
+  { kind: 'tree', x: 13, z: 21.5, hw: 0.52, hd: 0.52 },
+];
+
+/**
+ * The things, as rectangles you bump into.
+ *
+ * Everything is itself except a torii, which is a *gate*: two legs and a lintel
+ * over your head. Taken at face value its rectangle spans the whole opening and
+ * the way in is walled off — which is what happened, and what pushed the arrival
+ * out of its own entrance.
+ */
+export function shrineSolids(): Rect[] {
+  return SHRINE_THINGS.flatMap((t) =>
+    t.kind === 'torii'
+      ? [-1, 1].map((s) => ({ x: t.x + s * (t.hw - 0.3), z: t.z, hw: 0.34, hd: t.hd }))
+      : [{ x: t.x, z: t.z, hw: t.hw, hd: t.hd }]
+  );
+}
+
+const DOMINO_SHRINE: Area = {
+  id: 'domino-shrine',
+  name: 'Domino Shrine',
+  kind: 'exterior',
+  /*
+   * South of Turtle Lane, behind its terrace.
+   *
+   * The gap through the terrace runs from z 10 to 18 and the precinct starts
+   * where it ends, so with this area's own entrance at its local (0, −26) the
+   * origin lands at z 44. Nothing overlaps: the street stops at 17, Step Lane is
+   * west and Market Row east, and both of them end well north of here.
+   */
+  world: { x: -10.4, z: 44 },
+  /*
+   * The depth runs to the full 26 rather than stopping a metre short.
+   *
+   * The way in is a passage 5.5 m long and the arrival stands in it, so a metre
+   * of margin at that end is a metre the camera does not have — it clipped to
+   * 3.8 m and lifted, and you came up the steps looking at your own shoulders.
+   * Nothing can walk off the end: the passage is closed by the terrace.
+   */
+  bounds: { x: 0, z: 0, hw: SH_W - 1, hd: SH_D },
+  platforms: SHRINE_GROUND,
+  solids: [
+    /* The way in, walled both sides until the precinct opens out. */
+    /* To −14.7 rather than −15, so the kerb along the front of the precinct is
+       behind them and not something you can stand on and sink into. */
+    { x: -18.5, z: -20.35, hw: 13.5, hd: 5.65, tall: true },
+    { x: 18.5, z: -20.35, hw: 13.5, hd: 5.65, tall: true },
+
+    /* The precinct wall, three sides of it. */
+    { x: -30, z: 0, hw: 2, hd: SH_D, tall: true },
+    { x: 30, z: 0, hw: 2, hd: SH_D, tall: true },
+    /* Reaching forward to 23.4, for the same reason: the kerb is part of the
+       wall, not a step. */
+    { x: 0, z: 24.7, hw: SH_W, hd: 1.3, tall: true },
+
+    /*
+     * The hall, and the edge of the platform it stands on.
+     *
+     * The platform is a metre above the precinct and the steps up to it are only
+     * on the north side, so without an edge you could walk onto it sideways and
+     * be lifted a metre in one frame. The edge is what makes the steps the way
+     * up rather than one option among four — and a raised hall with a stone kerb
+     * round it is what a shrine looks like anyway.
+     */
+    { x: 0, z: 14.5, hw: 7.5, hd: 4, tall: true },
+    { x: -9.5, z: 14.25, hw: 0.4, hd: 5.25 },
+    { x: 9.5, z: 14.25, hw: 0.4, hd: 5.25 },
+    { x: 0, z: 19.5, hw: 9.5, hd: 0.4 },
+    { x: -8.25, z: 9, hw: 1.25, hd: 0.4 },
+    { x: 8.25, z: 9, hw: 1.25, hd: 0.4 },
+
+    ...shrineSolids(),
+  ],
+  /* The way in, closed to the camera: turning back at the top of the steps
+     would otherwise put it through the terrace and into the void where Turtle
+     Lane is not built. */
+  camSolids: [{ x: 0, z: -24, hw: SH_APPROACH, hd: 2 }],
+  doors: [
+    {
+      id: 'shrine-to-street',
+      /* Across the passage, deep enough that walking north out of the grounds
+         always crosses it. */
+      trigger: { x: 0, z: -24.4, hw: SH_APPROACH - 0.6, hd: 1.2 },
+      to: 'starting-area',
+      seam: { x: 0, z: -SH_D },
+      /*
+       * Coming up from the street: at the foot of the great flight, looking up
+       * it.
+       *
+       * The whole area is arranged around this one view — the steps, the outer
+       * torii at the top of them, the avenue of lanterns beyond, and the hall at
+       * the far end of it. Everything else in the precinct is off to a side on
+       * purpose, so that the first thing you see is the one thing that tells you
+       * where you are.
+       */
+      arrive: { x: 0, z: -22.1, facing: 0 },
+      label: 'Turtle Lane',
+    },
+  ],
+  spawn: { x: 0, z: -22.1, facing: 0 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
   'market-row': MARKET_ROW,
   'step-lane': STEP_LANE,
+  'domino-shrine': DOMINO_SHRINE,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

@@ -320,12 +320,106 @@ export function buildStreet(anisotropy: number): BuiltArea {
   building(9.55, 6.9, NORTH_FACE, -1, 8.8, { shopfront: true, awning: '#3f5f7a' });
   building(15.6, 5.2, NORTH_FACE, -1, 9.8);
 
-  /* South terrace, opposite. Unbroken, and taller, so the street feels held in. */
-  building(-17, 9, SOUTH_FACE, 1, 10.5, { shopfront: true, awning: '#4a6a4a' });
-  building(-8.5, 8, SOUTH_FACE, 1, 9.2);
-  building(0, 8.5, SOUTH_FACE, 1, 11.2, { shopfront: true });
-  building(8.5, 8, SOUTH_FACE, 1, 9.6, { awning: '#6a4a6a' });
-  building(17, 9, SOUTH_FACE, 1, 10.8, { shopfront: true });
+  /*
+   * South terrace, opposite. Taller than the north, so the street feels held in,
+   * and broken once for the path up to the shrine.
+   *
+   * The five metres between the first two are the gap `areas.ts` leaves in the
+   * collision. Collision without geometry is a wall you walk through; geometry
+   * without collision is a wall you cannot. They are laid out from the same two
+   * numbers so they cannot disagree.
+   */
+  building(-17.2, 8.6, SOUTH_FACE, 1, 10.5, { shopfront: true, awning: '#4a6a4a' });
+  building(-5.15, 5.5, SOUTH_FACE, 1, 9.2);
+  building(2.85, 10.5, SOUTH_FACE, 1, 11.2, { shopfront: true });
+  building(11.05, 5.9, SOUTH_FACE, 1, 9.6, { awning: '#6a4a6a' });
+  building(18, 8, SOUTH_FACE, 1, 10.8, { shopfront: true });
+
+  /* ---- the way up to the shrine ---- */
+
+  /*
+   * A passage cut through the terrace, and what you see down it.
+   *
+   * The same shape as Market Row's arch and Step Lane's alley: jambs, a head,
+   * the building carrying on above, and enough of what is on the other side that
+   * the opening reads as somewhere to go. Here that is the bottom of the shrine's
+   * own steps and the outer torii standing at the top of them, lit — which is the
+   * only advertisement this area gets and the reason anybody walks up.
+   */
+  const SHRINE_W = -12.9;
+  const SHRINE_E = -7.9;
+  const shrineMid = (SHRINE_W + SHRINE_E) / 2;
+  const shrineStone = tiled(matt(own, '#ffffff', surfaceOf(own, () => plaster('#a89d88'), 1, 1, anisotropy)));
+
+  for (const sx of [SHRINE_W, SHRINE_E]) {
+    const inward = sx === SHRINE_W ? 1 : -1;
+    root.add(box(own, 0.5, 5.0, 8, shrineStone, sx + inward * 0.25, 2.5, SOUTH_FACE + 4));
+  }
+  /* Pulled back 20 cm from the terrace face, which the buildings either side
+     already occupy. */
+  root.add(box(own, SHRINE_E - SHRINE_W + 1.0, 1.0, 7.8, shrineStone, shrineMid, 5.5, SOUTH_FACE + 4.1));
+  root.add(box(own, SHRINE_E - SHRINE_W + 1.4, 4.4, 8.2, brickWall(), shrineMid, 8.2, SOUTH_FACE + 4));
+
+  const shrineSignW = 2.2;
+  const shrineSign = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(shrineSignW, shrineSignW / 5.6)),
+    own.keep(new THREE.MeshBasicMaterial({
+      map: surfaceOf(own, () => signBoard('DOMINO SHRINE', '#e6dcc2', '#2f3a33', undefined, 5.6), 1, 1, anisotropy),
+      color: '#cfc4a6',
+    }))
+  );
+  shrineSign.position.set(shrineMid, 5.5, SOUTH_FACE - 0.02);
+  shrineSign.rotation.y = Math.PI;
+  root.add(shrineSign);
+
+  const shrineLamp = new THREE.PointLight('#ffcf90', 44, 12, 2);
+  shrineLamp.position.set(shrineMid, 4.4, SOUTH_FACE + 0.6);
+  root.add(shrineLamp);
+
+  /* Beyond: paving, walls, the first steps, and the torii at the top of them. */
+  /*
+   * From the terrace face, not from four metres behind it.
+   *
+   * The gap through the terrace is walkable the moment the collision opens, and
+   * this began at z 14 — so the first four metres of it, the part you actually
+   * stand in, had no floor drawn under you at all. `npm run footing` counted 112
+   * cells standing over nothing.
+   */
+  const upFloor = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(SHRINE_E - SHRINE_W, 22)),
+    matt(own, '#ffffff', surfaceOf(own, paving, 2, 8, anisotropy))
+  );
+  upFloor.rotation.x = -Math.PI / 2;
+  upFloor.position.set(shrineMid, 0.006, SOUTH_FACE + 11);
+  root.add(upFloor);
+  /* Clear of the terrace buildings' own side faces at −12.9 and −7.9. */
+  for (const sx of [SHRINE_W - 0.6, SHRINE_E + 0.6]) {
+    root.add(box(own, 0.8, 7, 14, shrineStone, sx, 3.5, SOUTH_FACE + 13));
+  }
+  for (let i = 0; i < 9; i++) {
+    const y = 0.18 * (i + 1);
+    root.add(box(own, SHRINE_E - SHRINE_W, y, 0.5, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#7c7a74'), 1, 1, anisotropy))),
+                 shrineMid, y / 2, SOUTH_FACE + 14.5 + i * 0.5));
+  }
+  /* The torii, seen end-on through the passage and lit from below. */
+  for (const s of [-1, 1] as const) {
+    root.add(box(own, 0.42, 4.4, 0.42, matt(own, '#8b8578'), shrineMid + s * 1.9, 3.9, SOUTH_FACE + 19.4));
+  }
+  root.add(box(own, 5.4, 0.38, 0.66, matt(own, '#8b8578'), shrineMid, 5.94, SOUTH_FACE + 19.4));
+  root.add(box(own, 5.8, 0.18, 0.38, matt(own, '#6f6a60'), shrineMid, 6.24, SOUTH_FACE + 19.4));
+  root.add(box(own, 4.4, 0.26, 0.46, matt(own, '#8b8578'), shrineMid, 5.0, SOUTH_FACE + 19.4));
+  const torLamp = new THREE.PointLight('#ffb469', 60, 15, 2);
+  torLamp.position.set(shrineMid, 2.6, SOUTH_FACE + 18);
+  root.add(torLamp);
+  /* And a wall behind it, so the way up ends in trees rather than in nothing. */
+  root.add(box(own, SHRINE_E - SHRINE_W + 2, 9, 2, brickWall(), shrineMid, 4.5, SOUTH_FACE + 22));
+  for (let i = 0; i < 7; i++) {
+    const t = box(own, 3 + (i % 3) * 0.8, 2.6, 3 + (i % 2) * 0.7,
+                  matt(own, i % 2 ? '#2c4230' : '#35503a'),
+                  shrineMid - 3 + ((i * 2.3) % 6), 7.4 + ((i * 0.7) % 1.8), SOUTH_FACE + 21 + (i % 3));
+    t.rotation.set(0.2 + i * 0.4, 0.3 + i * 0.8, 0.1 + i * 0.6);
+    root.add(t);
+  }
 
   /* ---- the Kame Game Shop frontage ---- */
 
@@ -764,7 +858,7 @@ export function buildStreet(anisotropy: number): BuiltArea {
        stands against. With the normal offset doing that work the constant can
        come down, which takes the shadows back under the things casting them. */
     light.shadow.bias = -0.0025;
-    light.shadow.normalBias = 0.04;
+    light.shadow.normalBias = 0.025;
     root.add(light);
     lamps.push(light);
   }
@@ -885,7 +979,8 @@ export function buildStreet(anisotropy: number): BuiltArea {
   dusk.shadow.camera.far = 70;
   dusk.shadow.bias = -0.0009;
   /* One shadow texel at this scale: 52 m across 2048. See `market.ts`. */
-  dusk.shadow.normalBias = 0.05;
+  /* 52 m across 2048 is 2.5 cm; see `market.ts`. */
+  dusk.shadow.normalBias = 0.029;
   root.add(dusk);
   root.add(dusk.target);
 

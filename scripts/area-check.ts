@@ -358,7 +358,9 @@ console.log('\nthe climb is a climb');
   const sorted = [...platforms].sort((a, b) => (b.x + b.hw) - (a.x + a.hw));
   let gaps = 0;
   for (let i = 0; i + 1 < sorted.length; i++) {
-    if (Math.abs((sorted[i].x - sorted[i].hw) - (sorted[i + 1].x + sorted[i + 1].hw)) > 1e-6) gaps++;
+    /* A gap is a hole to fall through; an overlap is deliberate — treads are
+       built to overlap so no point ever lands on a boundary. */
+    if ((sorted[i].x - sorted[i].hw) - (sorted[i + 1].x + sorted[i + 1].hw) > 1e-6) gaps++;
   }
   check(gaps === 0, 'and the treads tile the lane with no gap to fall through', `${gaps} gap(s)`);
 
@@ -399,7 +401,7 @@ console.log('\nevery shadow has a normal bias');
    * this looks for, and it wants a `shadow.normalBias` for each one.
    */
   const dir = new URL('../src/components/story/world/', import.meta.url);
-  for (const file of ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts']) {
+  for (const file of ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts', 'shrine.ts']) {
     const src = readFileSync(new URL(file, dir), 'utf8');
     const casters = [...src.matchAll(/(\w+)\.shadow\.mapSize/g)].map((m) => m[1]);
     const unique = [...new Set(casters)];

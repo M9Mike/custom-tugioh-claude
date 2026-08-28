@@ -50,8 +50,15 @@ import { BASE, NAME, ensurePlayer, enterStory } from './story-setup';
 const OBJECT_M3 = 5;
 /** Over this in its narrowest direction, it is an object rather than trim. */
 const OBJECT_MIN_M = 0.4;
-/** Over this, it is a building. */
-const STRUCTURE_M3 = 50;
+/**
+ * Over this, it is a building.
+ *
+ * 220, not 50. A tree's canopy is a hundred and sixty cubic metres once its
+ * rotation is boxed, and its own trunk goes a good way into it — which is what a
+ * tree is, and which at the old threshold read as a post driven into a wall.
+ * Every real building in this world is over 270.
+ */
+const STRUCTURE_M3 = 220;
 /** How far into a building an object may reach, in metres. */
 const ALLOWED = 0.05;
 
@@ -101,6 +108,12 @@ async function main() {
           colour: string;
           size: number[];
           at: number[];
+          frame: {
+            axes: number[][];
+            origin: number[];
+            lo: number[];
+            hi: number[];
+          } | null;
         }[] = [];
         w.__scene?.updateMatrixWorld(true);
         w.__scene?.traverse((o) => {
@@ -128,6 +141,33 @@ async function main() {
               hi[k] = Math.max(hi[k], p[k]);
             }
           }
+          /*
+           * Kept so a turned thing can be asked about in its own frame.
+           *
+           * A pitched roof is a thin slab standing at an angle. Boxed to the
+           * world axes it becomes a solid the height of the whole pitch, and
+           * anything under the eaves reads as buried in it. In its own frame it
+           * is 36 cm thick again and the question has an honest answer.
+           *
+           * Only for a rigid placement: with a scale on it the columns are not
+           * unit length, the shortcut inverse below is wrong, and the world box
+           * — too fat, but never too thin — is the safe thing to fall back on.
+           */
+          const rigid = [0, 4, 8].every(
+            (c) => Math.abs(Math.hypot(m[c], m[c + 1], m[c + 2]) - 1) < 1e-6
+          );
+          const frame = rigid
+            ? {
+                axes: [
+                  [m[0], m[1], m[2]],
+                  [m[4], m[5], m[6]],
+                  [m[8], m[9], m[10]],
+                ],
+                origin: [m[12], m[13], m[14]],
+                lo: [bb.min.x, bb.min.y, bb.min.z],
+                hi: [bb.max.x, bb.max.y, bb.max.z],
+              }
+            : null;
           const size = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
           /* Anything flat is a panel, a decal or a plane; it cannot be "inside"
              something in the sense this is looking for. */
@@ -135,6 +175,7 @@ async function main() {
           boxes.push({
             lo,
             hi,
+            frame,
             vol: size[0] * size[1] * size[2],
             colour: o.material?.color ? '#' + o.material.color.getHexString() : '?',
             size: size.map((n) => +n.toFixed(2)),
@@ -156,7 +197,30 @@ async function main() {
               Math.min(small.hi[k], big.hi[k]) - Math.max(small.lo[k], big.lo[k])
             );
             if (spans.some((v) => v <= 0)) continue;
-            const depth = Math.min(...spans);
+            /* Past the cheap world-axis reject, ask the container in its own
+               frame — for anything square that is the same answer, and for
+               anything turned it is the true one. */
+            const f = big.frame;
+            let real = spans;
+            if (f) {
+              const lo2 = [Infinity, Infinity, Infinity];
+              const hi2 = [-Infinity, -Infinity, -Infinity];
+              for (let i = 0; i < 8; i++) {
+                const d = [
+                  (i & 1 ? small.hi[0] : small.lo[0]) - f.origin[0],
+                  (i & 2 ? small.hi[1] : small.lo[1]) - f.origin[1],
+                  (i & 4 ? small.hi[2] : small.lo[2]) - f.origin[2],
+                ];
+                for (let k = 0; k < 3; k++) {
+                  const v = f.axes[k][0] * d[0] + f.axes[k][1] * d[1] + f.axes[k][2] * d[2];
+                  lo2[k] = Math.min(lo2[k], v);
+                  hi2[k] = Math.max(hi2[k], v);
+                }
+              }
+              real = [0, 1, 2].map((k) => Math.min(hi2[k], f.hi[k]) - Math.max(lo2[k], f.lo[k]));
+              if (real.some((v) => v <= 0)) continue;
+            }
+            const depth = Math.min(...real);
             if (depth > deepest) {
               deepest = depth;
               host = `${big.size.join('x')} @ ${big.at.join(',')}`;

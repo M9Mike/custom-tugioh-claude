@@ -18,7 +18,16 @@ import { STARTER_POOL } from '../src/story/roster';
  * to do to somebody's real save.
  */
 
-const BASE_ARG = process.argv.slice(2).find((a) => !a.startsWith('--'));
+/*
+ * A URL, or nothing. Not "the first argument that is not a flag".
+ *
+ * Scripts that share this also take arguments of their own — `npm run walk --
+ * gates`, `npm run shimmer -- "up the steps"` — and under the old rule the first
+ * of those became the target host. `walk -- gates` set BASE to `gates`, which
+ * the guard below then refused as a deployment. The filter that was documented
+ * in both of those scripts did not work and could not have.
+ */
+const BASE_ARG = process.argv.slice(2).find((a) => /^https?:\/\//.test(a));
 export const BASE = BASE_ARG ?? 'http://localhost:3000';
 export const NAME = 'Mike';
 

@@ -75,7 +75,29 @@ const audit = async (label) => {
          instruction "resolve me in front, whatever the depth says". */
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       const offset = mats.some((m) => m && m.polygonOffset);
-      boxes.push({ name: o.name || o.type, lo, hi, offset, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] });
+      /*
+       * Whether this mesh is square to the world.
+       *
+       * This matters because the plane comparison below is about *faces*. On a
+       * mesh that sits square, the sides of the bounding box are the faces, and
+       * two of them in the same plane is exactly the thing that z-fights. On a
+       * mesh that is turned — a canopy given a tumble, a roof pitched up — the
+       * bounding box touches the geometry along an edge or at a single corner,
+       * and there is no face in that plane at all. Comparing those planes finds
+       * pairs of leaves that share nothing but a tangent, which is not a fault
+       * and cannot be fixed, only jittered until it lands somewhere else.
+       *
+       * Square means each column of the rotation is one axis: one entry with
+       * length in it and the other two at nothing.
+       */
+      const m = o.matrixWorld.elements;
+      const square = [0, 1, 2].every((c) => {
+        const col = [m[c * 4], m[c * 4 + 1], m[c * 4 + 2]].map(Math.abs);
+        const len = Math.hypot(...col);
+        return len > 1e-9 && col.filter((v) => v > len * 1e-4).length === 1;
+      });
+      boxes.push({ name: o.name || o.type, lo, hi, offset, square,
+                   size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] });
     });
 
     const out = [];
@@ -85,6 +107,7 @@ const audit = async (label) => {
         const a = boxes[i];
         const b = boxes[j];
         if (a.offset || b.offset) continue;
+        if (!a.square || !b.square) continue;
         for (let axis = 0; axis < 3; axis++) {
           const o1 = (axis + 1) % 3;
           const o2 = (axis + 2) % 3;
@@ -247,7 +270,7 @@ const visit = async (area) => {
 };
 
 let total = 0;
-for (const area of ['grandpa-shop', 'starting-area', 'market-row', 'step-lane']) {
+for (const area of ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine']) {
   total += await visit(area);
 }
 

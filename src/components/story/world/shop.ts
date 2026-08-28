@@ -392,7 +392,7 @@ export function buildShop(anisotropy: number): BuiltArea {
        everything is close and the light is above it — but the walls are still
        edge-on to a ceiling lamp. */
     lamp.shadow.bias = -0.002;
-    lamp.shadow.normalBias = 0.025;
+    lamp.shadow.normalBias = 0.017;
     root.add(lamp);
     lamps.push(lamp);
   }
@@ -414,7 +414,7 @@ export function buildShop(anisotropy: number): BuiltArea {
   day.shadow.camera.near = 0.5;
   day.shadow.camera.far = 22;
   day.shadow.bias = -0.0009;
-  day.shadow.normalBias = 0.03;
+  day.shadow.normalBias = 0.018;
   root.add(day);
   root.add(day.target);
 

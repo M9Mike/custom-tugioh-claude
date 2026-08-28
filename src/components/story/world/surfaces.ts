@@ -447,7 +447,21 @@ export function asphalt(): THREE.CanvasTexture | null {
 }
 
 /** Paving slabs, for the pavement. Big, grey, stained at the joints. */
-export function paving(): THREE.CanvasTexture | null {
+/**
+ * Flagstones.
+ *
+ * Two knobs, both for the same reason: everything in this tile that is bigger
+ * than a speckle repeats at the tile, and the longer the run the more that
+ * repetition is the thing you actually see.
+ *
+ * `dirt` scales the stains — the largest feature of all, fine across a shopfront
+ * and a stencilled pattern down forty metres of path. `vary` scales how far the
+ * slabs differ from each other in tone, which is what makes flagstones read as
+ * flagstones up close and, laid end to end, as a chequerboard.
+ */
+export function paving(o?: { dirt?: number; vary?: number }): THREE.CanvasTexture | null {
+  const dirt = o?.dirt ?? 1;
+  const vary = o?.vary ?? 1;
   return surface(1024, (ctx, s) => {
     const rnd = seeded(0x5eed07);
     ctx.fillStyle = '#6f7176';
@@ -456,7 +470,7 @@ export function paving(): THREE.CanvasTexture | null {
     const c = s / n;
     for (let ix = 0; ix < n; ix++) {
       for (let iz = 0; iz < n; iz++) {
-        const tone = 0.86 + rnd() * 0.28;
+        const tone = 1 + (rnd() - 0.5) * 0.28 * vary;
         const v = Math.round(118 * tone);
         ctx.fillStyle = `rgb(${v},${v + 2},${v + 6})`;
         ctx.fillRect(ix * c + 2, iz * c + 2, c - 4, c - 4);
@@ -482,7 +496,7 @@ export function paving(): THREE.CanvasTexture | null {
       wobbleLine(ctx, i * c, 0, i * c, s, rnd, 2);
       wobbleLine(ctx, 0, i * c, s, i * c, rnd, 2);
     }
-    grime(ctx, s, rnd, 20, 0.14);
+    grime(ctx, s, rnd, Math.round(20 * dirt), 0.14 * dirt);
   });
 }
 
@@ -735,6 +749,62 @@ export function concrete(tint: string): THREE.CanvasTexture | null {
 
     speckle(ctx, s, rnd, 1400, 0.025);
     soften(ctx, s, s, 0.8);
+  });
+}
+
+/**
+ * Raked gravel: the floor of the shrine precinct.
+ *
+ * Thousands of small stones and almost no contrast between them, which is both
+ * what gravel looks like and the only way a surface made of thousands of small
+ * things can be walked over without crawling — the lesson brick taught. The
+ * variation that carries it is in the *rake lines*, which are broad and low
+ * frequency, and in the patches where feet have scuffed the pattern away.
+ */
+/**
+ * Raked gravel, for ground you see acres of at once.
+ *
+ * ## Why there is nothing big in here
+ *
+ * This started with nine soft patches "where the rake has been walked out" and
+ * a dozen stains, which look right on a canvas and are a disaster on the floor
+ * of a fifty-metre precinct: the tile repeats, so those nine patches repeat, and
+ * a player reads a regular grid of identical smudges long before they read
+ * gravel. Anything wider than a few centimetres is a signature of the tile.
+ *
+ * So the only things in here are grain and rake furrows, both far smaller than
+ * the tile, and the large-scale variation is left to the light — which does not
+ * repeat.
+ */
+export function gravel(): THREE.CanvasTexture | null {
+  return surface(1024, (ctx, s) => {
+    const rnd = seeded(0x5eed0d);
+    ctx.fillStyle = '#a09a8c';
+    ctx.fillRect(0, 0, s, s);
+
+    /* The stones. Wider tonal range than looks right on the canvas, because
+       this ends up under a strong warm light that flattens the middle of it. */
+    for (let i = 0; i < 34000; i++) {
+      const v = 138 + rnd() * 58;
+      ctx.fillStyle = `rgba(${v},${v - 4},${v - 14},${0.34 + rnd() * 0.44})`;
+      const r = 1.1 + rnd() * 2.4;
+      ctx.fillRect(rnd() * s, rnd() * s, r, r);
+    }
+
+    /* Rake furrows: the one thing here with any scale, and the thing that says
+       somebody keeps this. Cut deeper than is comfortable on the canvas — at a
+       hand's width apart on the ground they are nearly gone by ten metres. */
+    for (let i = 0; i < 26; i++) {
+      const y = (i + 0.5) * (s / 26);
+      ctx.strokeStyle = `rgba(0,0,0,${0.17 + rnd() * 0.07})`;
+      ctx.lineWidth = 3.2;
+      wobbleLine(ctx, 0, y, s, y, rnd, 7);
+      ctx.strokeStyle = `rgba(255,255,255,${0.13 + rnd() * 0.05})`;
+      ctx.lineWidth = 2.6;
+      wobbleLine(ctx, 0, y + 3.4, s, y + 3.4, rnd, 7);
+    }
+
+    soften(ctx, s, s, 0.55);
   });
 }
 
