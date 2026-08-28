@@ -2562,6 +2562,18 @@ const rolloutTrust = (nodes: number) => Math.max(0, Math.min(1, nodes / ROLLOUT_
  */
 function rollout(clock: Clock, nodes: number, state: DuelState, me: PlayerId, turns: number, w: EvalWeights, masked = false): number {
   let cur = masked ? state : buildWorld(state, me, 7, true);
+  /* The worldBlind mark binds the PLAN — the turn being decided may not
+     spend a card it has not seen. A rollout is the opposite instrument: it
+     plays plausible FUTURES, and a future that draws a card gets to play
+     it, the way the real room will after a real draw. Left in place, the
+     marks rode the flipped Jar's five drawn cards into every modelled
+     turn as permanently dead weight, and the judge learned that draw
+     engines were garbage — two Set-the-flip pins fell in one battery. */
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    for (const zone of [cur.players[pid].hand, cur.players[pid].deck]) {
+      for (const c of zone) if (c.turnFlags.worldBlind) delete c.turnFlags.worldBlind;
+    }
+  }
   const floor = clock.left - Math.min(nodes, clock.left);
   /* The reply model earns width with budget. A starved slice plays the narrow
      model the old rollouts always did; a fed one models the opponent's turn
