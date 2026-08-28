@@ -1556,6 +1556,10 @@ interface Line {
 interface Clock {
   left: number;
   wallCap: number;
+  /** The nominal budget's wall deadline. Overtime rounds may finish past it
+   *  but never START past it — the emergency `wallCap` stays the only hard
+   *  stop, and the batteries (pure clock) leave both switched off. */
+  soft?: number;
 }
 
 /** Simulated actions per millisecond, calibrated on the dev machine. */
@@ -1581,6 +1585,7 @@ function clockFor(budgetMs: number): Clock {
   return {
     left: Math.max(150, Math.round(budgetMs * NODES_PER_MS)),
     wallCap: PURE_CLOCK ? Number.MAX_SAFE_INTEGER : Date.now() + Math.max(150, budgetMs * 1.6),
+    soft: PURE_CLOCK ? Number.MAX_SAFE_INTEGER : Date.now() + budgetMs,
   };
 }
 
@@ -2183,7 +2188,10 @@ function judgeAcrossWorlds(
   let leaderStable = 0;
   let prevLeader = -1;
   for (let round = 0; round < maxRounds; round++) {
-    if (round > 0 && (clock.left <= 300 || Date.now() > clock.wallCap)) break;
+    /* A round may FINISH past the nominal budget; none may START past it.
+       The emergency cap alone let a judge round begin at 1.4x and stretch
+       the serving turn past 12 seconds — the wall-clock probe's catch. */
+    if (round > 0 && (clock.left <= 300 || Date.now() > clock.wallCap || Date.now() > (clock.soft ?? Number.MAX_SAFE_INTEGER))) break;
     const world = buildWorld(state, pid, salt, true);
     salt += 1;
     for (let i = 0; i < M; i++) {
@@ -2324,6 +2332,11 @@ function judgeAcrossWorlds(
      overtime is spent. */
   for (let extra = 0; extra < 3; extra++) {
     if (drained(clock) || clock.left <= 2 * ROLLOUT_FLOOR) break;
+    /* Overtime never STARTS past the nominal budget: the emergency cap is
+       for finishing a round already underway, not for scheduling three
+       more — the wall-clock probe caught serving turns stretching to 1.6x
+       exactly here. Pure-clock batteries keep soft switched off. */
+    if (Date.now() > (clock.soft ?? Number.MAX_SAFE_INTEGER)) break;
     const ranked = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
     if (ranked.length < 2) break;
     const [a, b] = [ranked[0], ranked[1]];

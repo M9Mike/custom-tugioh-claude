@@ -240,6 +240,61 @@ plays the deck it was handed from the first turn — at exactly the
 strength it had, which is what "no regression" was always going to cost
 in a fair arena.
 
+## The day after (2026-08-28)
+
+The plan shipped and the owner played — and came back with two turns and a
+rule. Morphing Jar summoned face-up over three Sheep Tokens, attacking
+nothing; Lady of Faith declining a Leghul she beat dry; and "a stolen card
+goes home to its owner's Graveyard." The diagnosis went eight layers deep,
+every one a universal rule, every one pinned and falsified:
+
+- **The token protection racket.** The phantom hand-threat switched OFF over
+  a full enemy board, so killing a blocker "let them summon" and the
+  computer guarded their chaff. Now the phantom counts zones honestly: in
+  space the hand adds its average body, on a full board it Tributes over
+  their weakest attacker — and stands down when that would be a downgrade.
+- **The race term's shout.** "One 700 attacker versus none" read as the full
+  ±4-turn clamp whether the kill was three turns out or seventeen. Urgency
+  now falls with the square of the shorter clock past the horizon.
+- **Flip effects at face value**, count-aware (draw-5 is not a cantrip), and
+  a draw engine is worth more the emptier the hand that holds it — all read
+  off the ops.
+- **The near-tie tiebreak** measured only Life Points KEPT, inside a band
+  ten times wider than its comment claimed: 800 dealt counted for nothing,
+  400 hypothetically saved for everything. It reads the LP differential now,
+  inside a true near-tie band.
+- **The hallucinated draw.** The beam built turns around cards it drew
+  inside its own imagined world (Sonic Maid's draw supplied a fantasy trap;
+  the real draw differed; the plan died mid-sequence in front of lethal).
+  A plan may not spend a card it has not seen — worldBlind marks bind the
+  planned turn and are stripped at rollout entry, because futures play
+  their draws.
+- **The dominance lift**, narrowed to what it can prove: only between a line
+  and the same line plus trailing attacks may unanimity silence a playout —
+  everywhere else the playout's horizon testimony is the point of having
+  one. Its first, wider cut walked a self-healing 800 into a piercing 2500.
+- **Overtime for a hung jury.** Vote-reweighting (by scatter, by direction)
+  traded pinned positions for pinned positions; the honest instrument is
+  more throws. When the top two end inside one authority, extra rounds feed
+  exactly that pair until they separate.
+- **The commitment discount prices bodies, never the duel.** The lone-body
+  zero-fear doctrine sent one attacker into a Set card whose nightmare read
+  the duel LOST, with Swords in hand. A dark branch that reads a loss now
+  applies the prior at full weight whatever the line committed; Tiger Axe,
+  whose nightmare only ever loses the axe, follows through untouched.
+
+And the engine grew the owner's rule verbatim: every route to the Graveyard
+goes through one door that sends a card home to its OWNER — the cast
+borrowed Spell, the revived enemy body, the stolen card discarded from
+hand, the fusion material paid from the wrong side. Five new rules
+regressions (1456 total), three new AI positions, `CASE_FILTER` for
+stream-exact extraction of a failing pin, faces on the battery trace, and
+sample counts on the judge's debug line.
+
+**The bill, paid in full: all 44 pinned positions green on every deck
+order, and a 600-game pilot-swapped race against the shipped AI at
+48.8% ±4.0 — no measurable difference, with every reported misplay gone.**
+
 **D verdicts**, per the delete-if-idle rule. The threat horizon shipped
 with the world-pricing work: the expectation world's phantom threat scales
 with the opponent's actual grip. The other three candidates were built and
