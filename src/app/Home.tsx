@@ -378,7 +378,9 @@ export default function Home() {
               ? 'Loading the world…'
               : story.phase === 'cast'
                 ? `Loading the cast… ${Math.round(story.pct * 100)}%`
-                : 'Enter Story Mode'}
+                : story.phase === 'parse'
+                  ? 'Preparing the cast…'
+                  : 'Enter Story Mode'}
         </button>
 
         <div className="my-4 flex items-center gap-3">
