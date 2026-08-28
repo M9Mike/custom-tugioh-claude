@@ -513,7 +513,12 @@ function flipWorth(slug: string): number {
       if (op.op === 'destroy') worth += 'target' in op && op.target?.pick === 'all' ? 600 : 350;
       else if (op.op === 'bounce') worth += 300;
       else if (op.op === 'damage') worth += Math.min(400, ('amount' in op ? (op.amount ?? 0) : 0) * 0.4);
-      else if (op.op === 'draw' || op.op === 'stealFromGrave' || op.op === 'search') worth += 240;
+      /* Count-aware: Morphing Jar's flip draws FIVE, and the flat 240 priced
+         it like a cantrip — which is how the Jar kept walking onto the table
+         face-up to trade 700 ATK for a Sheep Token instead of Setting the
+         strongest draw engine in the deck. */
+      else if (op.op === 'draw') worth += Math.min(500, 100 * ('count' in op ? (op.count ?? 1) : 1) + 40);
+      else if (op.op === 'stealFromGrave' || op.op === 'search') worth += 240;
       else if (op.op === 'specialSummon' || op.op === 'summonToken') worth += 260;
       else worth += 80;
     }
@@ -2074,7 +2079,7 @@ function judgeAcrossWorlds(
      `roll` is where the following turns take it — kept apart because the
      rollout is a noisier instrument and gets a bounded vote at the end. */
   const imm = examine.map(() => ({ sum: 0, n: 0, vals: [] as number[] }));
-  const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0 }));
+  const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0, vals: [] as number[] }));
   const dark = examine.map(() => ({ sum: 0, n: 0 }));
   const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
   /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
@@ -2116,8 +2121,24 @@ function judgeAcrossWorlds(
     const anchor = Math.abs(beamScore) >= WIN / 2 && brokenWin ? Math.sign(beamScore) * 14_000 : beamScore;
     const immA = Math.abs(anchor) >= WIN / 2 ? immAvg : Math.min(immAvg, Math.abs(anchor) + 2_000);
     const base = Math.abs(anchor) >= WIN / 2 ? immAvg : blendRollout(anchor, immA, cfg.voteMix ?? 0.6);
+    /* A vote earns its authority by AGREEMENT. One playout per line was
+       allowed to move the verdict by thousands, and on quiet boards two
+       futures that differ by one dead body were decided by which line's
+       single die came up ugly — the flip-engine Set with an 800-point
+       priced edge lost three deck orders to exactly that. Playouts that
+       land together keep their full bounded voice; playouts that scatter
+       across rounds are reporting chaos, and chaos is not testimony. A
+       single uncorroborated playout keeps full authority (the pins were
+       tuned with it), and the knife-edge doubling above guarantees the
+       contested pair is never judged on one throw. */
+    let agreement = 1;
+    if (roll[i].vals.length >= 2) {
+      const avg = roll[i].sum / roll[i].n;
+      const sd = Math.sqrt(roll[i].vals.reduce((s, v) => s + (v - avg) * (v - avg), 0) / roll[i].vals.length);
+      agreement = ROLLOUT_AUTHORITY / (ROLLOUT_AUTHORITY + 2 * sd);
+    }
     const bright = roll[i].n
-      ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(roll[i].nodes / roll[i].n))
+      ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(roll[i].nodes / roll[i].n) * agreement)
       : base;
     /* The nightmare is not a vote, it is a BRANCH: with probability `prior`
        their Set card is the answer they chose it to be, and the plan lives in
@@ -2226,10 +2247,12 @@ function judgeAcrossWorlds(
         if (clock.left <= ROLLOUT_FLOOR) break;
         const end = ends[i][ends[i].length - 1];
         if (!end) continue;
-        roll[i].sum += end.winner
+        const seenRoll = end.winner
           ? evaluate(end, pid, w)
           : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);
+        roll[i].sum += seenRoll;
         roll[i].n += 1;
+        roll[i].vals.push(seenRoll);
         /* A line whose playouts were all run at the floor has seen less than
            one that was fed, and says less. Averaged rather than summed: what
            earns authority is how well EACH playout was run. */

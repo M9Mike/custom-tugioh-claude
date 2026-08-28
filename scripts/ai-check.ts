@@ -825,7 +825,11 @@ for (const c of CASES) {
         break;
       }
       end = res.state;
-      shown.push(a.type);
+      /* Summons carry their face and posture in the trace: "normalSummon"
+         alone cannot tell a Set from the face-up summon a pin forbids, and a
+         stream-sensitive miss was undiagnosable without rebuilding the whole
+         battery context by hand. */
+      shown.push(a.type === 'normalSummon' ? `${a.type}:${a.face}/${a.position}` : a.type);
     }
     if (!c.want(plan, end)) bad.push(`seed ${seed}: ${shown.join(' → ') || '(nothing)'}`);
   }
