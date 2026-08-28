@@ -502,6 +502,22 @@ function trapWorth(slug: string): number {
  * search saw no reason not to. Own monsters only: reading the opponent's
  * face-down would be reading the card.
  */
+/** How many cards this monster's FLIP draws its controller, if any. */
+const FLIP_DRAWS = new Map<string, number>();
+function flipDrawCount(slug: string): number {
+  const cached = FLIP_DRAWS.get(slug);
+  if (cached !== undefined) return cached;
+  let n = 0;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.trigger !== 'onFlip') continue;
+    for (const op of eff.ops) {
+      if (op.op === 'draw' && (!('who' in op) || op.who !== 'opp')) n += 'count' in op ? (op.count ?? 1) : 1;
+    }
+  }
+  FLIP_DRAWS.set(slug, n);
+  return n;
+}
+
 const FLIP_WORTH = new Map<string, number>();
 function flipWorth(slug: string): number {
   const cached = FLIP_WORTH.get(slug);
@@ -642,7 +658,16 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
        Summon, or their attack walking into it), so the old half-price
        haircut treated a certainty as a maybe, and Morphing Jar walked onto
        the table face-up with its whole card thrown away. */
-    if (m.face === 'down') score += 120 + flipWorth(m.slug);
+    if (m.face === 'down') {
+      score += 120 + flipWorth(m.slug);
+      /* A draw engine is worth more the emptier the hand that holds it: the
+         Jar at zero cards in hand is a four-card swing waiting under the
+         card back, and the static price read it like a mid-game cantrip.
+         Scaled by the deficit and gone entirely at a full grip, derived
+         from the ops like everything else. */
+      const draws = flipDrawCount(m.slug);
+      if (draws) score += Math.max(0, 4 - my.hand.length) * draws * 30;
+    }
     if (b.pierce) score += 120;
     if (b.direct) score += 260;
     if (b.wallProof) score += 220;
@@ -2121,24 +2146,14 @@ function judgeAcrossWorlds(
     const anchor = Math.abs(beamScore) >= WIN / 2 && brokenWin ? Math.sign(beamScore) * 14_000 : beamScore;
     const immA = Math.abs(anchor) >= WIN / 2 ? immAvg : Math.min(immAvg, Math.abs(anchor) + 2_000);
     const base = Math.abs(anchor) >= WIN / 2 ? immAvg : blendRollout(anchor, immA, cfg.voteMix ?? 0.6);
-    /* A vote earns its authority by AGREEMENT. One playout per line was
-       allowed to move the verdict by thousands, and on quiet boards two
-       futures that differ by one dead body were decided by which line's
-       single die came up ugly — the flip-engine Set with an 800-point
-       priced edge lost three deck orders to exactly that. Playouts that
-       land together keep their full bounded voice; playouts that scatter
-       across rounds are reporting chaos, and chaos is not testimony. A
-       single uncorroborated playout keeps full authority (the pins were
-       tuned with it), and the knife-edge doubling above guarantees the
-       contested pair is never judged on one throw. */
-    let agreement = 1;
-    if (roll[i].vals.length >= 2) {
-      const avg = roll[i].sum / roll[i].n;
-      const sd = Math.sqrt(roll[i].vals.reduce((s, v) => s + (v - avg) * (v - avg), 0) / roll[i].vals.length);
-      agreement = ROLLOUT_AUTHORITY / (ROLLOUT_AUTHORITY + 2 * sd);
-    }
+    /* No reweighting of the vote: both cuts of it — damp by magnitude
+       scatter, damp by straddled direction — traded one set of pinned
+       positions for another, because a playout's chaos and its testimony
+       arrive in the same shapes. The honest instrument against noise is
+       MORE SAMPLES, not a thumb on the scale: the overtime rounds below
+       feed the contested pair until the average itself settles. */
     const bright = roll[i].n
-      ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(roll[i].nodes / roll[i].n) * agreement)
+      ? blendRollout(base, roll[i].sum / roll[i].n, cfg.rolloutMix ?? DEFAULT_ROLLOUT_MIX, rolloutTrust(roll[i].nodes / roll[i].n))
       : base;
     /* The nightmare is not a vote, it is a BRANCH: with probability `prior`
        their Set card is the answer they chose it to be, and the plan lives in
@@ -2289,12 +2304,47 @@ function judgeAcrossWorlds(
     }
   }
 
+  /* Overtime for a hung jury. When the scheduled rounds end with the top two
+     inside one authority of each other, the verdict is standing on one or
+     two playouts' worth of luck — and the measured failure mode was exactly
+     that: a free token kill, a flip engine's Set, a wall in front of lethal,
+     each flipped in one deck order by one ugly die. Chaos averages toward
+     zero and testimony persists, so the honest fix is more throws, only
+     where the decision lives, only while the clock allows: fresh worlds,
+     both leaders replayed and rolled out, until they separate or the
+     overtime is spent. */
+  for (let extra = 0; extra < 3; extra++) {
+    if (drained(clock) || clock.left <= 2 * ROLLOUT_FLOOR) break;
+    const ranked = examine.map((_, i) => i).sort((a, b) => score(b) - score(a));
+    if (ranked.length < 2) break;
+    const [a, b] = [ranked[0], ranked[1]];
+    if (Math.abs(score(a)) >= WIN / 2 || Math.abs(score(b)) >= WIN / 2) break;
+    if (Math.abs(score(a) - score(b)) >= ROLLOUT_AUTHORITY) break;
+    const world = buildWorld(state, pid, 500 + salt, true);
+    salt += 1;
+    const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 6));
+    for (const i of [a, b]) {
+      if (drained(clock)) break;
+      const end = playOutPlan(clock, world, pid, examine[i].actions, w);
+      ends[i].push(end);
+      const seen = evaluate(end, pid, w);
+      imm[i].sum += seen;
+      imm[i].n += 1;
+      imm[i].vals.push(seen);
+      const seenRoll = end.winner ? evaluate(end, pid, w) : rollout(clock, slice, end, pid, Math.min(2, cfg.depth), w, true);
+      roll[i].sum += seenRoll;
+      roll[i].n += 1;
+      roll[i].vals.push(seenRoll);
+      roll[i].nodes += end.winner ? ROLLOUT_TRUSTED : slice;
+    }
+  }
+
   if (process.env.DEBUG_AI === '1') {
     for (let i = 0; i < M; i++) {
       const atk = examine[i].actions.filter((a) => a.type === 'attack').length;
       const pos = examine[i].actions.filter((a) => a.type === 'changePosition').length;
       console.log(
-        `    [judge] line ${i}: attacks=${atk} defswitch=${pos} beam=${Math.round(examine[i].score)} imm=${imm[i].n ? Math.round(imm[i].sum / imm[i].n) : '-'} dark=${dark[i].n ? Math.round(dark[i].sum / dark[i].n) : '-'} final=${Math.round(score(i))}`
+        `    [judge] line ${i}: attacks=${atk} defswitch=${pos} beam=${Math.round(examine[i].score)} imm=${imm[i].n ? Math.round(imm[i].sum / imm[i].n) : '-'}(n${imm[i].n},r${roll[i].n}) dark=${dark[i].n ? Math.round(dark[i].sum / dark[i].n) : '-'} final=${Math.round(score(i))}`
       );
     }
     console.log(`    [judge] prior=${prior.toFixed(2)}`);
