@@ -2132,7 +2132,16 @@ function judgeAcrossWorlds(
        to mortal scale and weighed like everything else, where the dark
        branch can speak. When nothing is Set (prior 0), the pure decided
        path is untouched — the Ra coin-lethal pricing depends on it. */
-    const wDark = darkWeight[i];
+    /* The commitment discount prices BODIES, never the duel. "A lone body
+       risked carries zero fear" is doctrine because losing one probe to one
+       trap is a fair price for the game the doctrine wants played — but a
+       line whose nightmare ends with the duel LOST is not risking a body,
+       it is risking everything, and the discount walked a lone attacker
+       into a lethal answer with Swords sitting in hand. When the paranoid
+       branch reads a loss, the prior applies at full strength whatever the
+       line committed. */
+    const darkLoss = dark[i].n > 0 && dark[i].sum / dark[i].n <= -WIN / 2;
+    const wDark = darkLoss ? prior : darkWeight[i];
     /* A gambling line whose sampled worlds do not ALL land the win is a coin,
        not a verdict — the audit caught Time Wizard betting a dominant board
        because the one expectation world happened to flip heads into the

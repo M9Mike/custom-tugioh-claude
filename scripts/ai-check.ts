@@ -815,6 +815,11 @@ for (const c of CASES) {
   for (const seed of SEEDS) {
     const start = fresh(seed, c.duelist ?? 'kaiba');
     c.build(start);
+    /* CASE_FILTER narrows the REPORT, never the uid stream: every build
+       above still runs, so the filtered case sees exactly the world salts
+       the full battery deals it — which is the whole point of extracting a
+       failing stream instead of rebuilding it by hand. */
+    if (process.env.CASE_FILTER && !c.name.includes(process.env.CASE_FILTER)) continue;
     const plan = planTurn(start, ME, AI_LEVELS.champion, c.budgetMs ?? 2500);
     let end = start;
     const shown: string[] = [];
