@@ -358,25 +358,45 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
      and have somewhere to put one; it makes the AI keep a real blocker or a
      Life Point buffer where it used to end the turn naked. */
   const p = state.players[att];
-  /* A full board is not a locked door. Gating the phantom on an empty zone
-     made KEEPING their zones jammed with harmless bodies read as safety —
-     the computer refused to break a board of Sheep Tokens because killing
-     one "let them summon", a protection racket the owner caught from one
-     screen. Their own chaff is Tribute fodder; the hand can pay for a body
-     by one route or another whenever it holds cards, so the phantom stays
-     on the table and clearing a blocker keeps its honest, positive price. */
-  if (p.hand.length > 0 && !monstersFrozen(state, att)) {
-    /* D1 of the plan: the phantom's size scales gently with the grip. One
-       card might be anything; a full hand almost certainly holds a real
-       summon, and the flat phantom read both as the same threat — which is
-       how a player tapped completely out and a player sitting on five cards
-       came to press the same amount of respect out of the computer. Gentle
-       on purpose: ±200 around the shared constant, never a new attacker. */
-    const grip = Math.min(4, p.hand.length);
+  /* A full board is not a locked door — and it is not extra space either.
+     Gating the phantom on an empty zone made KEEPING their zones jammed
+     with harmless bodies read as safety: the computer refused to break a
+     board of Sheep Tokens because killing one "let them summon", a
+     protection racket the owner caught from one screen. But simply leaving
+     the phantom ON over a full board counted a hypothetical body their
+     zones cannot hold as a NEW attacker, and the walls-in-front-of-lethal
+     pin fell to 0/10 — survival math where every wall was already dead to
+     a summon that could not fit. The honest arithmetic: in space the hand
+     ADDS its average body; on a full board it can only Tribute over its
+     weakest attacker, so the phantom REPLACES that one. Clearing a blocker
+     still toggles nothing — the threat reads the same both sides of the
+     kill — and the racket stays dead. */
+  /* D1 of the plan: the phantom's size scales gently with the grip. One
+     card might be anything; a full hand almost certainly holds a real
+     summon, and the flat phantom read both as the same threat — which is
+     how a player tapped completely out and a player sitting on five cards
+     came to press the same amount of respect out of the computer. Gentle
+     on purpose: ±200 around the shared constant, never a new attacker. */
+  const grip = Math.min(4, p.hand.length);
+  const phantomAtk = PHANTOM_SUMMON_ATK - 200 + grip * 100;
+  let fieldable = p.hand.length > 0 && !monstersFrozen(state, att);
+  if (fieldable && !p.monsters.some((m) => !m)) {
+    if (!attackers.length) {
+      // All their bodies kneel: the tribute spends one of those, off-calc.
+    } else {
+      let weakest = 0;
+      for (let i = 1; i < attackers.length; i++) if (attackers[i].atk < attackers[weakest].atk) weakest = i;
+      // Tributing over a body BIGGER than the average summon is a downgrade
+      // nobody performs; the phantom stands down instead of shrinking them.
+      if (attackers[weakest].atk >= phantomAtk) fieldable = false;
+      else attackers.splice(weakest, 1);
+    }
+  }
+  if (fieldable) {
     attackers.push({
-      atk: PHANTOM_SUMMON_ATK - 200 + grip * 100,
+      atk: phantomAtk,
       def: 0,
-      wall: PHANTOM_SUMMON_ATK - 200 + grip * 100,
+      wall: phantomAtk,
       atkPos: true,
       attacks: 1,
       pierce: false,
