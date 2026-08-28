@@ -1051,6 +1051,78 @@ console.log('\nMagician of Faith reaches for your own Graveyard first');
   ok(!took.includes('monster-reborn'), 'and leaves your own Graveyard alone', took.join(', '));
 }
 
+console.log("\nA stolen card goes home to its owner's Graveyard");
+{
+  /* The owner's rule, verbatim: "when going to the graveyard it needs to go
+     to the original owner's graveyard" — a card Magician of Faith lifted, a
+     monster Monster Reborn raised across the table, a stolen card discarded
+     out of hand. One door (`landInGrave`) routes by the card's OWNER; the
+     seat that spent it only names the trigger's point of view. */
+
+  // A borrowed Spell, cast: crosses the table on its way down.
+  const s1 = fresh();
+  const borrowed = card(FOE, 'dark-hole');
+  s1.players[ME].hand = [borrowed];
+  s1.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  const cast = act(s1, ME, { type: 'activateSpell', uid: borrowed.uid });
+  ok(
+    cast.players[FOE].grave.some((c) => c.uid === borrowed.uid),
+    "a borrowed Spell lands in its owner's pile when it is spent",
+    cast.players[ME].grave.some((c) => c.uid === borrowed.uid) ? "landed in the caster's" : 'vanished'
+  );
+
+  // A revived enemy monster: fights for the thief, is buried at home.
+  const s2 = fresh();
+  const reborn = card(ME, 'monster-reborn');
+  const theirs = card(FOE, 'battle-ox');
+  s2.players[ME].hand = [reborn];
+  s2.players[FOE].grave = [theirs];
+  let mid = act(s2, ME, { type: 'activateSpell', uid: reborn.uid, targets: [theirs.uid] });
+  ok(
+    mid.players[ME].monsters.some((m) => m?.uid === theirs.uid && m.owner === FOE),
+    'Monster Reborn hands the body across the table with its ownership intact',
+    mid.players[ME].monsters.map((m) => m?.slug ?? '·').join(', ')
+  );
+  mid.phase = 'battle';
+  mid.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+  const buried = act(mid, ME, { type: 'attack', uid: theirs.uid, targetUid: mid.players[FOE].monsters[0]!.uid });
+  ok(
+    buried.players[FOE].grave.some((c) => c.uid === theirs.uid),
+    "and when it dies it goes home to its owner's Graveyard",
+    buried.players[ME].grave.some((c) => c.uid === theirs.uid) ? "buried on the thief's side" : 'not buried at all'
+  );
+
+  // A stolen card discarded out of the thief's hand — the Jar's own effect.
+  const s3 = fresh('battle');
+  s3.active = FOE;
+  const jar = card(ME, 'morphing-jar');
+  jar.face = 'down';
+  jar.position = 'def';
+  const lifted = card(FOE, 'mystical-elf');
+  s3.players[ME].monsters[0] = jar;
+  s3.players[ME].hand = [lifted];
+  const ox = card(FOE, 'battle-ox');
+  s3.players[FOE].monsters[0] = ox;
+  const flipped = act(s3, FOE, { type: 'attack', uid: ox.uid, targetUid: jar.uid });
+  ok(
+    flipped.players[FOE].grave.some((c) => c.uid === lifted.uid),
+    'a stolen card discarded from the hand crosses back too',
+    flipped.players[ME].grave.some((c) => c.uid === lifted.uid) ? "kept on the thief's side" : 'still in hand'
+  );
+
+  // CONTROL: your own cards still land on your own side of the table.
+  const s4 = fresh();
+  const mine = card(ME, 'dark-hole');
+  s4.players[ME].hand = [mine];
+  s4.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+  const ownCast = act(s4, ME, { type: 'activateSpell', uid: mine.uid });
+  ok(
+    ownCast.players[ME].grave.some((c) => c.uid === mine.uid),
+    'CONTROL: your own spent Spell still rests in your own Graveyard',
+    ownCast.players[FOE].grave.some((c) => c.uid === mine.uid) ? 'crossed for no reason' : 'vanished'
+  );
+}
+
 console.log('\nA moth places its own counters as it arrives');
 {
   /* The ladder used to be climbed in place — every instance was born already

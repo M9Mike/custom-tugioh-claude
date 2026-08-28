@@ -358,7 +358,14 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
      and have somewhere to put one; it makes the AI keep a real blocker or a
      Life Point buffer where it used to end the turn naked. */
   const p = state.players[att];
-  if (p.hand.length > 0 && p.monsters.some((m) => !m) && !monstersFrozen(state, att)) {
+  /* A full board is not a locked door. Gating the phantom on an empty zone
+     made KEEPING their zones jammed with harmless bodies read as safety —
+     the computer refused to break a board of Sheep Tokens because killing
+     one "let them summon", a protection racket the owner caught from one
+     screen. Their own chaff is Tribute fodder; the hand can pay for a body
+     by one route or another whenever it holds cards, so the phantom stays
+     on the table and clearing a blocker keeps its honest, positive price. */
+  if (p.hand.length > 0 && !monstersFrozen(state, att)) {
     /* D1 of the plan: the phantom's size scales gently with the grip. One
        card might be anything; a full hand almost certainly holds a real
        summon, and the flat phantom read both as the same threat — which is
@@ -605,7 +612,12 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     const b = bodyOf(state, m, me, me);
     score += b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
     if (m.face === 'up') score += menace(m.slug) * 0.6;
-    if (m.face === 'down') score += 120 + flipWorth(m.slug) * 0.5; // unknown to them, loaded for us
+    /* Unknown to them, loaded for us — and the load is priced at face value:
+       a FLIP effect fires on every road out of face-down (our own Flip
+       Summon, or their attack walking into it), so the old half-price
+       haircut treated a certainty as a maybe, and Morphing Jar walked onto
+       the table face-up with its whole card thrown away. */
+    if (m.face === 'down') score += 120 + flipWorth(m.slug);
     if (b.pierce) score += 120;
     if (b.direct) score += 260;
     if (b.wallProof) score += 220;
@@ -690,7 +702,17 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
   if (w.clock) {
     const myClock = clock(state, me, foe, me) - (state.active === me ? 0.5 : 0);
     const theirClock = clock(state, foe, me, me) - (state.active === foe ? 0.5 : 0);
-    score += Math.max(-4, Math.min(4, theirClock - myClock)) * w.clock;
+    /* At full voice only when somebody's kill is actually in sight. The
+       clamp read "one 700 attacker versus none" as the same +4 whether the
+       finish was three turns out or seventeen, and that 3600-point shout
+       drowned every value judgment in quiet positions — a flip engine
+       stayed in hand because a vanilla body "was winning the race" it
+       could not finish this side of a dozen draws. Urgency falls with the
+       SQUARE of the shorter clock past the clamp horizon: a real race is
+       still the whole game, a distant one is background. */
+    const soon = Math.max(1, Math.min(myClock, theirClock));
+    const urgency = Math.min(1, (4 / soon) * (4 / soon));
+    score += Math.max(-4, Math.min(4, theirClock - myClock)) * w.clock * urgency;
   }
 
   // Standing in front of lethal, or having lethal, still gets a hard cliff:
@@ -2013,7 +2035,7 @@ function judgeAcrossWorlds(
      as the clock allows. `imm` is where a plan lands the moment the turn ends,
      `roll` is where the following turns take it — kept apart because the
      rollout is a noisier instrument and gets a bounded vote at the end. */
-  const imm = examine.map(() => ({ sum: 0, n: 0 }));
+  const imm = examine.map(() => ({ sum: 0, n: 0, vals: [] as number[] }));
   const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0 }));
   const dark = examine.map(() => ({ sum: 0, n: 0 }));
   const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
@@ -2085,8 +2107,10 @@ function judgeAcrossWorlds(
       if (round > 0 && drained(clock)) break;
       const end = playOutPlan(clock, world, pid, examine[i].actions, w);
       ends[i].push(end);
-      imm[i].sum += evaluate(end, pid, w);
+      const seen = evaluate(end, pid, w);
+      imm[i].sum += seen;
       imm[i].n += 1;
+      imm[i].vals.push(seen);
     }
 
     /* The paranoid vote, every round: the same plans replayed in a world
@@ -2271,12 +2295,58 @@ function judgeAcrossWorlds(
     if (!bestFoe) return 0;
     return mine.monsters.filter((m) => m && m.face === 'up' && m.position === 'atk' && effAtk(s, m, pid) < bestFoe).length;
   };
-  if (out.length > 1 && out[0].score - out[1].score < 3000 && Math.abs(out[0].score) < WIN / 2) {
-    const band = out.filter((l) => out[0].score - l.score < 3000 && Math.abs(l.score) < WIN / 2);
-    band.sort((a, b) => lpAfterBlow(b.state) - lpAfterBlow(a.state) || exposure(a.state) - exposure(b.state));
+  /* The band is the sampling's real error bar — a few hundred points, as the
+     note above says — not a policy lever. At 3000 it silently outranked the
+     judge across differences the judge was RIGHT about, and it measured only
+     Life Points KEPT: dealing 800 with a free attack counted for nothing,
+     kneeling to save a hypothetical 400 counted for everything, and the
+     owner watched Lady of Faith turn away from a Leghul she beat dry. Both
+     halves fixed: the band holds only true near-ties, and the metric is the
+     LP DIFFERENTIAL after the queued blow — damage dealt is worth exactly
+     what damage kept is worth, which is what Life Points mean. */
+  if (out.length > 1 && out[0].score - out[1].score < 700 && Math.abs(out[0].score) < WIN / 2) {
+    const band = out.filter((l) => out[0].score - l.score < 700 && Math.abs(l.score) < WIN / 2);
+    const lpDiff = (s: DuelState): number => lpAfterBlow(s) - s.players[other(pid)].lp;
+    band.sort((a, b) => lpDiff(b.state) - lpDiff(a.state) || exposure(a.state) - exposure(b.state));
     if (band[0] !== out[0]) {
       out.splice(out.indexOf(band[0]), 1);
       out.unshift(band[0]);
+    }
+  }
+
+  /* A rollout may reorder judgment calls, never unanimity. With nothing Set
+     (no paranoid branch to hear) and no coin in any plan, a line that beats
+     another in the expectation world AND in every sampled world's immediate
+     eval is simply better — the only voice left that could demote it is the
+     playout, and a playout's chaos between two futures that differ by one
+     dead body is weather, not testimony. Measured on the owner's report: a
+     free +110 token kill was outvoted 2785 points by a single playout pair.
+     The lift walks leaders-first so a chain of dominated lines settles in
+     one pass, and it touches nothing decided, feared, or gambled. */
+  if (paranoiaPrior(state, pid) === 0 && !gambling) {
+    /* Keyed by the actions array: `out` holds spread copies of the lines,
+       and the actions reference is the one thing a spread carries through. */
+    const idx = new Map(examine.map((l, i) => [l.actions, i] as const));
+    const dominates = (a: Line, b: Line): boolean => {
+      const i = idx.get(a.actions);
+      const j = idx.get(b.actions);
+      if (i === undefined || j === undefined) return false;
+      if (Math.abs(a.score) >= WIN / 2 || Math.abs(b.score) >= WIN / 2) return false;
+      if (examine[i].score <= examine[j].score) return false;
+      const n = Math.min(imm[i].vals.length, imm[j].vals.length);
+      if (n < 1) return false;
+      for (let k = 0; k < n; k++) if (imm[i].vals[k] <= imm[j].vals[k]) return false;
+      return true;
+    };
+    for (let pos = 1; pos < out.length; pos++) {
+      for (let above = 0; above < pos; above++) {
+        if (dominates(out[pos], out[above])) {
+          const [lifted] = out.splice(pos, 1);
+          lifted.score = Math.max(lifted.score, out[above].score + 1);
+          out.splice(above, 0, lifted);
+          break;
+        }
+      }
     }
   }
 

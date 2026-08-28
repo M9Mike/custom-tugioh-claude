@@ -987,9 +987,14 @@ export function makesSeven(dice: number[]): boolean {
  * goes through it. `toGrave` calls this too, for the field route, alongside the
  * field-only trigger it has always fired.
  */
-function landInGrave(state: DuelState, c: CardInstance, owner: PlayerId) {
-  state.players[owner].grave.push(c);
-  fireTriggers(state, c, owner, 'onAnyToGrave', {});
+function landInGrave(state: DuelState, c: CardInstance, controller: PlayerId) {
+  /* WHICH pile is the card's own business, not the spender's: a stolen or
+     retrieved card goes home to its owner's Graveyard however it was used —
+     Magician of Faith lifts an enemy Spell, the Spell is cast, and the card
+     crosses the table again on its way down. The controller seat is kept
+     for the trigger's point of view only. */
+  state.players[c.owner].grave.push(c);
+  fireTriggers(state, c, controller, 'onAnyToGrave', {});
 }
 
 function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
@@ -3502,7 +3507,9 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
   const isContinuous = def.subKind === 'Continuous' || isEquipSpell(c.slug);
   if (fromHand) {
     const i = p.hand.findIndex((h) => h.uid === uid);
-    if (i >= 0) p.grave.push(p.hand.splice(i, 1)[0]);
+    /* Through the one door, so a borrowed Spell goes home when it is spent
+       and "sent to the Graveyard in any way" stays true from this route. */
+    if (i >= 0) landInGrave(state, p.hand.splice(i, 1)[0], pid);
   } else if (isContinuous) {
     c.face = 'up';
   } else {
@@ -5508,13 +5515,15 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          *last* card in hand — so an unguarded spend would quietly eat a random
          card every time Valkyrion assembled. A free assembly also never spends
          a Polymerization the player happens to be holding. */
-      if (route.spendPoly >= 0) p.grave.push(p.hand.splice(route.spendPoly, 1)[0]);
+      /* Both spends go through the one door: a borrowed Polymerization or a
+         stolen material spent from hand still goes home to its owner's pile. */
+      if (route.spendPoly >= 0) landInGrave(state, p.hand.splice(route.spendPoly, 1)[0], pid);
       for (const m of chosen) {
         const onField = !!findOnField(state, m.uid);
         if (onField) toGrave(state, m.uid, true);
         else {
           const hi = p.hand.findIndex((h) => h.uid === m.uid);
-          if (hi >= 0) p.grave.push(p.hand.splice(hi, 1)[0]);
+          if (hi >= 0) landInGrave(state, p.hand.splice(hi, 1)[0], pid);
         }
       }
       const zone = p.monsters[action.zone] ? p.monsters.findIndex((m) => !m) : action.zone;

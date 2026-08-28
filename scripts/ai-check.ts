@@ -708,6 +708,84 @@ const CASES: Case[] = [
     want: (plan) => plan.filter((a) => a.type === 'attack').length >= 3,
   },
   {
+    name: 'Sets the flip engine instead of throwing it away face-up',
+    duelist: 'bakura',
+    because: "a FLIP effect only exists on the way out of face-down — Morphing Jar summoned face-up is the whole card thrown away, the owner's report verbatim",
+    /* The reported turn: Morphing Jar alone in hand, an empty own board,
+       their three Sheep Tokens, not a Set card anywhere. The wrong turn was
+       "summon it face-up, attack nothing". Both halves pinned: the Jar is
+       NEVER summoned face-up here, and it usually gets Set — tolerant,
+       because with the whole deck behind it the search sometimes finds a
+       different legitimate first play. */
+    minHits: 8,
+    build: (s) => {
+      s.players[ME].lp = 8500;
+      s.players[ME].monsters = [null, null, null];
+      const jar = card(ME, 'morphing-jar');
+      s.players[ME].hand = [jar];
+      for (const t of [0, 1, 2]) {
+        const sheep = card(FOE, 'scapegoat', 'def');
+        (sheep as CardInstance & { isToken: boolean }).isToken = true;
+        (sheep as CardInstance & { tokenName?: string }).tokenName = 'Sheep Token';
+        (sheep as CardInstance & { tokenAtk?: number }).tokenAtk = 0;
+        (sheep as CardInstance & { tokenDef?: number }).tokenDef = 500;
+        s.players[FOE].monsters[t] = sheep;
+      }
+      s.players[FOE].lp = 8200;
+      s.players[FOE].spellTrap = null;
+    },
+    want: (plan) =>
+      plan.every((a) => !(a.type === 'normalSummon' && a.face === 'up')) &&
+      plan.some((a) => a.type === 'normalSummon' && a.face === 'down'),
+  },
+  {
+    name: 'spends the spare attack on the free kill',
+    duelist: 'bakura',
+    because: 'a 700 body over three 0-ATK tokens with no Set card anywhere risks exactly nothing — an attack left unused is a card spent on nothing',
+    /* The same reported board one decision later: the Jar already stands
+       face-up. Killing a Sheep is worth little and costs less; declining it
+       was the judge letting one noisy playout outvote a strict, fully
+       visible gain. The dominance lift closes that door. */
+    minHits: 8,
+    build: (s) => {
+      s.players[ME].lp = 8500;
+      const jar = card(ME, 'morphing-jar');
+      jar.summonedOnTurn = s.turn;
+      s.players[ME].monsters[0] = jar;
+      s.players[ME].normalSummonUsed = true;
+      s.players[ME].hand = [];
+      for (const t of [0, 1, 2]) {
+        const sheep = card(FOE, 'scapegoat', 'def');
+        (sheep as CardInstance & { isToken: boolean }).isToken = true;
+        (sheep as CardInstance & { tokenName?: string }).tokenName = 'Sheep Token';
+        (sheep as CardInstance & { tokenAtk?: number }).tokenAtk = 0;
+        (sheep as CardInstance & { tokenDef?: number }).tokenDef = 500;
+        s.players[FOE].monsters[t] = sheep;
+      }
+      s.players[FOE].lp = 8200;
+      s.players[FOE].spellTrap = null;
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
+    name: 'Lady of Faith takes the Leghul she beats dry',
+    duelist: 'sarah',
+    because: 'an 1100 over a face-up 300 with no Set card is eight hundred Life Points for free — kneeling to "save" a hypothetical four hundred was the tiebreak reading only its own side of the table',
+    minHits: 8,
+    build: (s) => {
+      s.players[ME].lp = 7000;
+      s.players[ME].monsters[0] = card(ME, 'lady-of-faith');
+      s.players[ME].normalSummonUsed = true;
+      s.players[ME].hand = [];
+      s.players[FOE].monsters[0] = card(FOE, 'sonic-maid');
+      s.players[FOE].monsters[1] = card(FOE, 'ground-attacker-bugroth');
+      s.players[FOE].monsters[2] = card(FOE, 'leghul');
+      s.players[FOE].spellTrap = null;
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan, end) => plan.some((a) => a.type === 'attack') && end.players[FOE].lp <= 7200,
+  },
+  {
     name: 'GUARD: still does not feed the whole board to a live Set card',
     duelist: 'keith',
     because: 'with real answers unaccounted for, at least one body stays out of the all-in — the tax on stacking everything behind one card',
