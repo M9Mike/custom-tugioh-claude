@@ -142,7 +142,19 @@ async function main() {
   const page = await context.newPage();
   page.on('pageerror', (err) => check(false, 'the world threw', err.message));
 
-  const ids = Object.keys(AREAS) as AreaId[];
+  /*
+   * `npm run doors -- shrine` for one area's doors, or one door's name.
+   *
+   * Every door in the city is nine minutes, because each one is a real page
+   * load and a real walk into a trigger. That is the right thing to run before
+   * a release and the wrong thing to run eleven times while building one area,
+   * which is what it was being used for.
+   */
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a));
+  const ids = (Object.keys(AREAS) as AreaId[]).filter(
+    (id) => !only.length || only.some((o) => id.includes(o) || AREAS[id].doors.some((d) => d.id.includes(o)))
+  );
+  if (only.length) console.log(`  (only ${ids.join(', ')})\n`);
   for (const id of ids) {
     for (const door of AREAS[id].doors) {
       const from = approach(door);

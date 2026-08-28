@@ -403,6 +403,44 @@ export function render(tint: string): THREE.CanvasTexture | null {
 /* ------------------------------------------------------------------ */
 
 /** Asphalt: the road surface. Coarse, patched, faintly oily. */
+/**
+ * Bare earth, for the bed a tree stands in.
+ *
+ * Coarser and darker than anything else that gets walked on, because that is
+ * the whole job: it appears only inside a stone kerb in the middle of a paved
+ * precinct, and it has to read as *not paving* at a glance and from above.
+ * A little leaf litter, since it is under a tree.
+ */
+export function soil(): THREE.CanvasTexture | null {
+  return surface(512, (ctx, s) => {
+    const rnd = seeded(0x50117);
+    /* Lighter than earth looks in daylight, for the same reason everything else
+       here is: at night a material's colour is nearly all of what you see of
+       it, and true soil-brown comes out as a hole in the box. */
+    ctx.fillStyle = '#584a3a';
+    ctx.fillRect(0, 0, s, s);
+    /* Clods, in a wide enough tonal range to read as turned earth. */
+    for (let i = 0; i < 9000; i++) {
+      const v = 72 + rnd() * 54;
+      ctx.fillStyle = `rgba(${v + 12},${v},${v - 8},${0.4 + rnd() * 0.5})`;
+      const r = 1.6 + rnd() * 4.2;
+      ctx.fillRect(rnd() * s, rnd() * s, r, r);
+    }
+    /* Fallen leaves, dry rather than green. */
+    for (let i = 0; i < 90; i++) {
+      ctx.save();
+      ctx.translate(rnd() * s, rnd() * s);
+      ctx.rotate(rnd() * Math.PI);
+      ctx.fillStyle = ['#6b5730', '#7a5f33', '#55492c'][i % 3];
+      ctx.globalAlpha = 0.45 + rnd() * 0.35;
+      ctx.fillRect(-4 - rnd() * 4, -1.6, 8 + rnd() * 8, 3.2 + rnd() * 1.6);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    soften(ctx, s, s, 0.6);
+  });
+}
+
 export function asphalt(): THREE.CanvasTexture | null {
   return surface(1024, (ctx, s) => {
     const rnd = seeded(0x5eed06);
@@ -868,8 +906,30 @@ export function signBoard(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = ink;
-    /* Sized off the *height* of the board, which is what the type has to fit. */
-    ctx.font = `bold ${Math.round(h * (sub ? 0.42 : 0.62))}px Georgia, "Times New Roman", serif`;
+
+    /*
+     * Sized off the height of the board, then brought in until it fits the
+     * width of it.
+     *
+     * Height alone is only half the constraint and the half that never fails
+     * loudly. A long name on a narrow board runs straight off the end: DOMINO
+     * SHRINE over the passage lost its E entirely, and DOMINO on the notice
+     * board inside pushed out through its own border. Both looked like the
+     * board was the wrong size, which it was not — the type was.
+     *
+     * One proportional pass is exact, because `measureText` scales linearly
+     * with the pixel size for a given string.
+     */
+    const face = '"Georgia", "Times New Roman", serif';
+    const room = s - h * 0.24;
+    const fitted = (px: number, str: string, weight: string): string => {
+      const at = (n: number) => `${weight}${Math.max(8, Math.round(n))}px ${face}`;
+      ctx.font = at(px);
+      const w = ctx.measureText(str).width;
+      return w > room ? at(px * (room / w)) : at(px);
+    };
+
+    ctx.font = fitted(h * (sub ? 0.42 : 0.62), text, 'bold ');
     const mid = sub ? h * 0.36 : h * 0.5;
     const chars = [...text];
     const width = ctx.measureText(text).width;
@@ -886,7 +946,7 @@ export function signBoard(
     if (sub) {
       ctx.fillStyle = ink;
       ctx.globalAlpha = 0.8;
-      ctx.font = `${Math.round(h * 0.26)}px Georgia, "Times New Roman", serif`;
+      ctx.font = fitted(h * 0.26, sub, '');
       ctx.fillText(sub, s / 2, h * 0.74);
       ctx.globalAlpha = 1;
     }

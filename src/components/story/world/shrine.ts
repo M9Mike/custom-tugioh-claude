@@ -28,7 +28,7 @@
  */
 
 import * as THREE from 'three';
-import { gravel, concrete, paving, darkWood, brick, plaster, signBoard } from './surfaces';
+import { gravel, concrete, paving, darkWood, brick, plaster, asphalt, soil, signBoard } from './surfaces';
 import {
   Owned, box, matt, tiled, glow, surfaceOf, seeded, type BuiltArea,
 } from './kit';
@@ -55,6 +55,7 @@ export function buildShrine(anisotropy: number): BuiltArea {
   const stoneTex = surfaceOf(own, () => concrete('#847f74'), 1, 1, anisotropy);
   const wallTex = surfaceOf(own, () => plaster('#b6ab95'), 1, 1, anisotropy);
   const timberTex = surfaceOf(own, darkWood, 1, 2, anisotropy);
+  const soilTex = surfaceOf(own, soil, 1, 1, anisotropy);
 
   const stone = () => tiled(matt(own, '#ffffff', stoneTex));
   const plaster_ = () => tiled(matt(own, '#ffffff', wallTex));
@@ -87,6 +88,11 @@ export function buildShrine(anisotropy: number): BuiltArea {
    */
   const far = [matt(own, '#55705c'), matt(own, '#607d68'), matt(own, '#4c6754')];
   const hallWood = matt(own, '#6b5340');
+
+  /* Every light with a shadow map to give back on the way out. Declared up
+     here because the way out of the precinct is lit too, and that is built
+     before anything that stands in the grounds. */
+  const lamps: THREE.PointLight[] = [];
 
   /* ---- the ground ---- */
 
@@ -213,12 +219,83 @@ export function buildShrine(anisotropy: number): BuiltArea {
     root.add(box(own, 1.8, 4.6, 10.6, plaster_(), side * 6.1, 2.3, -20.5));
     root.add(box(own, 2.1, 0.26, 10.9, roofTile, side * 6.1, 4.72, -20.5));
   }
-  /* The back of the street's terrace, over the way in. */
-  root.add(box(own, 40, 11, 4, tiled(matt(own, '#ffffff', surfaceOf(own, () => brick('#7a6357'), 1, 1, anisotropy))),
-               0, 5.5, -28));
+  /*
+   * The back of the street's terrace, and the way out cut through it.
+   *
+   * This was one block of brick forty metres wide with nothing in it. The door
+   * worked — walk south and the street loads — but what you were walking at was
+   * a blank wall, and a wall is what it read as: no opening, no light, nothing
+   * to say there was a city on the other side. The way out of an area has to
+   * look like a way out from the far end of it, or nobody believes there is one.
+   */
+  const terraceBrick = tiled(
+    matt(own, '#ffffff', surfaceOf(own, () => brick('#7a6357'), 1, 1, anisotropy))
+  );
+  /** Half the opening, and how high it goes. */
+  const WAY_W = 3.2;
+  const WAY_H = 4.2;
+  for (const side of [-1, 1] as const) {
+    const w = 20 - WAY_W;
+    root.add(box(own, w, 11, 4, terraceBrick, side * (WAY_W + w / 2), 5.5, -28));
+  }
+  /* The brick carried over the top of it. */
+  root.add(box(own, WAY_W * 2, 11 - WAY_H, 4, terraceBrick, 0, (WAY_H + 11) / 2, -28));
   for (let i = 0; i < 5; i++) {
     root.add(box(own, 6.4, 0.5, 4.6, roofTile, -16 + i * 8, 11.3, -28));
   }
+
+  /*
+   * A stone surround standing proud of the brick, which is what turns a hole
+   * into a doorway. Wholly in front of the face rather than let into it: set
+   * into the wall, every one of these shares a plane with the brick it is
+   * supposed to be sitting on.
+   */
+  for (const side of [-1, 1] as const) {
+    root.add(box(own, 0.5, WAY_H, 0.7, stone(), side * (WAY_W + 0.1), WAY_H / 2, -25.65));
+  }
+  root.add(box(own, WAY_W * 2 + 1.2, 0.5, 0.7, stone(), 0, WAY_H + 0.25, -25.65));
+
+  /* The floor under it, carrying on out of sight. */
+  const throughFloor = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(WAY_W * 2, 4)),
+    matt(own, '#ffffff', surfaceOf(own, () => paving({ dirt: 0.4 }), 2, 1.4, anisotropy))
+  );
+  throughFloor.rotation.x = -Math.PI / 2;
+  throughFloor.position.set(0, 0.008, -28);
+  throughFloor.receiveShadow = true;
+  root.add(throughFloor);
+
+  /*
+   * And a piece of Turtle Lane at the end of it.
+   *
+   * You cannot see into the next area — it is a different scene — but you can
+   * see that there *is* one. The road surface, the far side of the street, and
+   * a lit window on it: three boxes that turn the end of the passage from a
+   * black stop into somewhere the passage goes.
+   */
+  const road = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(30, 6)),
+    matt(own, '#ffffff', surfaceOf(own, asphalt, 6, 1.4, anisotropy))
+  );
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(0, 0.004, -33);
+  root.add(road);
+  root.add(box(own, 30, 10, 0.8, terraceBrick, 0, 5, -36.4));
+  for (const wx of [-3.4, 3.4]) {
+    root.add(box(own, 1.5, 1.8, 0.14, glow(own, '#c9a05c'), wx, 3.1, -35.95));
+  }
+  const beyond = new THREE.PointLight('#ffd0a0', 30, 20, 2);
+  beyond.position.set(0, 4.4, -33.6);
+  root.add(beyond);
+  lamps.push(beyond);
+
+  /* A lamp in the mouth of it, so the way out is the brightest thing on this
+     side of the precinct rather than the darkest. */
+  root.add(box(own, 0.34, 0.5, 0.24, glow(own, '#d9a25e'), 0, WAY_H - 0.5, -26.1));
+  const wayOut = new THREE.PointLight('#ffbc78', 34, 15, 2);
+  wayOut.position.set(0, WAY_H - 0.7, -26.6);
+  root.add(wayOut);
+  lamps.push(wayOut);
 
   /* ---- the precinct wall and the trees behind it ---- */
 
@@ -265,8 +342,6 @@ export function buildShrine(anisotropy: number): BuiltArea {
   }
 
   /* ---- what stands in the grounds ---- */
-
-  const lamps: THREE.PointLight[] = [];
 
   const torii = (t: (typeof SHRINE_THINGS)[number]) => {
     const y = at(t.x, t.z);
@@ -476,6 +551,64 @@ export function buildShrine(anisotropy: number): BuiltArea {
     const y = at(t.x, t.z);
     const h = 4.6 + ((i * 0.73) % 2.8);
     /*
+     * The planter it grows out of. Something somebody built, not a hole.
+     *
+     * Nothing grows out of gravel, and every one of these was pushed straight
+     * through it like a post. The first attempt at fixing that sank a square of
+     * earth four centimetres into the ground behind a 1.5 cm lip, so as not to
+     * put an obstacle where the collision was only the trunk — and from standing
+     * height it read as a dark square painted on the floor, which is not what a
+     * tree in a paved courtyard looks like either.
+     *
+     * So it is a box: four walls, a moulded cap sitting proud of them all round
+     * the way a coping does, earth filled to six centimetres under the rim, and
+     * the soil mounded a little where it meets the trunk. The tree's footprint
+     * in `SHRINE_THINGS` was widened to the box so you walk round it rather than
+     * through it.
+     */
+    const bed = t.hw;
+    const WALL = 0.26;
+    const RIM = 0.44;
+    /* How far the coping oversails the wall it sits on, which is the whole
+       difference between a built box and four blocks stood on end. */
+    const CAP = 0.07;
+    /*
+     * Laid like brickwork: the two walls along x run the full width, and the
+     * two along z fit between them. Their copings are cut the same way — the
+     * long pair oversail on all sides, the short pair stop just shy of them.
+     * Run the short coping full length instead and the four of them overlap at
+     * every corner, which is eighty coincident faces across the two groves.
+     */
+    const inner = bed - WALL - CAP;
+    for (const dz of [-1, 1] as const) {
+      const cz = t.z + dz * (bed - WALL / 2);
+      root.add(box(own, bed * 2, RIM, WALL, stone(), t.x, y + RIM / 2, cz));
+      root.add(box(own, bed * 2 + CAP * 2, 0.09, WALL + CAP * 2, stone(),
+                   t.x, y + RIM + 0.045, cz));
+    }
+    for (const dx of [-1, 1] as const) {
+      const cx = t.x + dx * (bed - WALL / 2);
+      root.add(box(own, WALL, RIM, (bed - WALL) * 2, stone(), cx, y + RIM / 2, t.z));
+      root.add(box(own, WALL + CAP * 2, 0.09, inner * 2 - 0.04, stone(),
+                   cx, y + RIM + 0.045, t.z));
+    }
+    /*
+     * The earth, and a mound of it round the trunk.
+     *
+     * Filled nearly to the rim and taking no shadow. Sunk 15 cm with the canopy
+     * shadowing it, the inside of every box was black, and twenty boxes with a
+     * black hole in each is worse to look at than the bare gravel was.
+     */
+    const fill = (m: THREE.Mesh) => {
+      m.receiveShadow = false;
+      root.add(m);
+    };
+    fill(box(own, (bed - WALL) * 2 - 0.04, RIM, (bed - WALL) * 2 - 0.04,
+             matt(own, '#ffffff', soilTex), t.x, y + RIM / 2 + 0.02, t.z));
+    /* No mound heaped round the trunk. Turned to keep it off the plane of the
+       earth below it, a flat box reads as a plank laid across the bed rather
+       than as soil piled up, and the bed is better plain. */
+    /*
      * A tree does not shadow itself here.
      *
      * The canopy sits directly over the trunk, so with the trunk receiving, its
@@ -484,7 +617,13 @@ export function buildShrine(anisotropy: number): BuiltArea {
      * the screen. Both groves read as a row of them. The canopies still cast
      * onto the gravel, which is where that shadow is worth having.
      */
-    const trunk = box(own, t.hw * 1.6, h, t.hd * 1.6, bark, t.x, y + h / 2, t.z);
+    /* Its own width, and not `t.hw` any more — `t.hw` is the planter now, and
+       reading the trunk off it would give a two-metre trunk. */
+    const thick = 0.66 + (i % 4) * 0.08;
+    /* Standing *in* the earth, not on the same underside as it: the trunk used
+       to start at the ground and so shared its bottom face with the soil it is
+       supposed to be planted in, twenty times over. */
+    const trunk = box(own, thick, h, thick, bark, t.x, y + 0.1 + h / 2, t.z);
     trunk.receiveShadow = false;
     root.add(trunk);
     /* A branch or two, then the canopy in layers. */

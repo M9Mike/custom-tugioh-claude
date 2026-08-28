@@ -1198,31 +1198,32 @@ export const SHRINE_THINGS: ShrineThing[] = [
   /* And behind the hall, which you have to go round it to find. */
   { kind: 'marker', x: 0, z: 21.6, hw: 0.6, hd: 0.6 },
 
-  /* The western grove. */
-  { kind: 'tree', x: -24.5, z: -9, hw: 0.5, hd: 0.5 },
-  { kind: 'tree', x: -21, z: -4.5, hw: 0.45, hd: 0.45 },
-  { kind: 'tree', x: -25.5, z: -1, hw: 0.55, hd: 0.55 },
-  { kind: 'tree', x: -20.5, z: 3.5, hw: 0.45, hd: 0.45 },
-  { kind: 'tree', x: -24, z: 8, hw: 0.5, hd: 0.5 },
-  { kind: 'tree', x: -19.5, z: 12.5, hw: 0.48, hd: 0.48 },
-  { kind: 'tree', x: -24.5, z: 16.5, hw: 0.52, hd: 0.52 },
-  { kind: 'tree', x: -19, z: 20, hw: 0.46, hd: 0.46 },
+  /* The western grove. Nothing north of z 22.1: each of these now carries a
+     planter 1.2 m out from its trunk, and the back fence starts at 23.55. */
+  { kind: 'tree', x: -24.5, z: -9, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -21, z: -4.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -25.5, z: -1, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -20.5, z: 3.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -24, z: 8, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -19.5, z: 12.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -24.5, z: 16.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -19, z: 20, hw: 1.2, hd: 1.2 },
 
   /* The eastern grove, thicker, with the small shrine inside it. */
-  { kind: 'tree', x: 19.5, z: -3, hw: 0.48, hd: 0.48 },
-  { kind: 'tree', x: 24, z: 0.5, hw: 0.52, hd: 0.52 },
-  { kind: 'tree', x: 19, z: 5, hw: 0.45, hd: 0.45 },
-  { kind: 'tree', x: 24.5, z: 7.5, hw: 0.5, hd: 0.5 },
-  { kind: 'tree', x: 18.5, z: 11, hw: 0.47, hd: 0.47 },
-  { kind: 'tree', x: 25.5, z: 15, hw: 0.55, hd: 0.55 },
-  { kind: 'tree', x: 20, z: 17.5, hw: 0.46, hd: 0.46 },
-  { kind: 'tree', x: 24, z: 20.5, hw: 0.5, hd: 0.5 },
+  { kind: 'tree', x: 19.5, z: -3, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 24, z: 0.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 19, z: 5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 24.5, z: 7.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 18.5, z: 11, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 25.5, z: 15, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 20, z: 17.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 24, z: 20.5, hw: 1.2, hd: 1.2 },
 
   /* And a band of them across the back, behind everything. */
-  { kind: 'tree', x: -12, z: 21.5, hw: 0.5, hd: 0.5 },
-  { kind: 'tree', x: -6, z: 22.5, hw: 0.46, hd: 0.46 },
-  { kind: 'tree', x: 7, z: 22.5, hw: 0.48, hd: 0.48 },
-  { kind: 'tree', x: 13, z: 21.5, hw: 0.52, hd: 0.52 },
+  { kind: 'tree', x: -12, z: 21.5, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: -6, z: 22.1, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 7, z: 22.1, hw: 1.2, hd: 1.2 },
+  { kind: 'tree', x: 13, z: 21.5, hw: 1.2, hd: 1.2 },
 ];
 
 /**
