@@ -10,12 +10,21 @@ import { menuDeckOrder, menuExtraOrder } from '@/story/deckSort';
 import type { CardInstance } from '@/game/types';
 import { joinRoomWithRetry, loadIdentity, loadName, saveIdentity, saveName } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
+import { preloadStory, type StoryPreload } from '@/lib/storyPreload';
 
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | 'spectate' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'solo' | 'tournament' | 'spectate' | 'story' | null>(null);
+  /**
+   * How far Story Mode's assets have got.
+   *
+   * Its button stays shut until this says `ready`, so that walking in is
+   * walking in rather than watching three.js and forty megabytes of duelists
+   * arrive one at a time behind a placeholder. See `storyPreload`.
+   */
+  const [story, setStory] = useState<StoryPreload>({ phase: 'code' });
   /**
    * Whether the page is listening yet.
    *
@@ -61,6 +70,10 @@ export default function Home() {
     primeAudio();
     setReady(true);
   }, []);
+
+  /* Started on arrival, not on hover or on press: the whole point is that it is
+     already done by the time anybody reaches for it. */
+  useEffect(() => preloadStory(setStory), []);
 
   const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament' | 'spectate') => {
     setError(null);
@@ -354,11 +367,18 @@ export default function Home() {
           onClick={() => {
             primeAudio();
             sfx.click();
+            setBusy('story');
             router.push('/story');
           }}
-          disabled={busy !== null || !ready}
+          disabled={busy !== null || !ready || story.phase !== 'ready'}
         >
-          Story Mode
+          {busy === 'story'
+            ? 'Signing in…'
+            : story.phase === 'code'
+              ? 'Loading the world…'
+              : story.phase === 'cast'
+                ? `Loading the cast… ${Math.round(story.pct * 100)}%`
+                : 'Enter Story Mode'}
         </button>
 
         <div className="my-4 flex items-center gap-3">

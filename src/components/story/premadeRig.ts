@@ -168,11 +168,24 @@ const templates = new Map<string, Promise<Template>>();
  * shows twelve of these and the world shows one; nobody should be re-fetching
  * a megabyte because a tint changed.
  */
-export function loadDuelistTemplate(modelId: string): Promise<Template> {
+export function loadDuelistTemplate(
+  modelId: string,
+  /**
+   * Bytes so far, for whoever is showing a bar.
+   *
+   * Only the first caller for a given model gets these: after that the promise
+   * is cached and there is no download left to report on. That suits the one
+   * caller that wants them — the preloader on the home page, which runs before
+   * anything else has asked for a model.
+   */
+  onProgress?: (loaded: number, total: number) => void
+): Promise<Template> {
   const model = modelById(modelId);
   const cached = templates.get(model.id);
   if (cached) return cached;
-  const promise = new GLTFLoader().loadAsync(model.file).then((gltf) => {
+  const promise = new GLTFLoader().loadAsync(model.file, (e) => {
+    if (onProgress) onProgress(e.loaded, e.total);
+  }).then((gltf) => {
     /* Measured before any scaling: the catalog stores a target height in
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
