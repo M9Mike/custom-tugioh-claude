@@ -1062,6 +1062,10 @@ export const INFINITE_ATK = 9_999_999;
 export interface CardFlags {
   /** ATK is not a number this turn — see `INFINITE_ATK`. */
   infiniteAtk?: boolean;
+  /** AI only, never set by the engine: this card was drawn inside a
+   *  simulated world, so its identity is imagined — a plan may count it,
+   *  never spend it. */
+  worldBlind?: boolean;
   pierce?: boolean;
   directAttack?: boolean;
   indestructibleByBattle?: boolean;

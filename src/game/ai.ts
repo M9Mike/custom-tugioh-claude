@@ -905,6 +905,8 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     const freeZone = p.monsters.findIndex((m) => !m);
     if (!p.normalSummonUsed) {
       const summonable = p.hand
+        // A card drawn inside the world is imagined — counted, never spent.
+        .filter((h) => !h.turnFlags.worldBlind)
         .filter((h) => CARDS[h.slug]?.kind === 'monster')
         .filter((h) => !summonBlocked(state, pid, h.slug))
         // Holding the Forbidden One is worth more than summoning it.
@@ -974,6 +976,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
        same gate the hand button reads, so the price and the refusal cannot
        drift apart between the two. */
     for (const h of p.hand) {
+      if (h.turnFlags.worldBlind) continue; // imagined draw — never spent
       const offer = handSummonOffer(state, pid, h);
       if (!offer?.ok) continue;
       /* The price of the summon is a card, and WHICH card is a real decision
@@ -1000,6 +1003,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     }
 
     for (const h of p.hand) {
+      if (h.turnFlags.worldBlind) continue; // imagined draw — never spent
       /* A Field Spell replacing an identical Field Spell buys nothing and
          pays a card — the owner watched Necrovalley land on Necrovalley.
          The spare copy is worth more in hand, as insurance for the day the
@@ -1037,6 +1041,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     // window on the opponent's turn.
     if (!p.spellTrap) {
       for (const h of p.hand) {
+        if (h.turnFlags.worldBlind) continue; // imagined draw — never spent
         const def = CARDS[h.slug];
         if (def && (def.kind === 'trap' || def.effects.some((e) => e.trigger === 'trap'))) {
           acts.push({ type: 'setSpellTrap', uid: h.uid });
@@ -1377,6 +1382,19 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
     cards.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : a.uid < b.uid ? -1 : 1));
   sortHidden(view.players[viewer].deck);
   shuffleWith(view.players[viewer].deck, rnd);
+  /* A plan may not act on a card it has not SEEN. The viewer's own deck is
+     hidden information — that is why it is shuffled here — but an in-world
+     draw effect (Sonic Maid's "draw 1") moved the world's imagined top card
+     into the world's hand, and the beam built whole turns around it: Set
+     the trap it never drew, kneel the monster, attack. In the real duel the
+     draw yields a different card, the plan dies mid-sequence, and whatever
+     was summoned stands stranded where the plan left it. Every deck card is
+     marked, the mark rides the draw into the in-world hand, and candidate
+     generation refuses to SPEND a marked card — it still counts for hand
+     size and everything a card is worth sight unseen. The real room replans
+     after every action, so a genuinely drawn card is plannable one beat
+     later, from reality instead of imagination. */
+  for (const d of view.players[viewer].deck) d.turnFlags = { ...d.turnFlags, worldBlind: true };
 
   const foe = view.players[other(viewer)];
   const hiddenMonsters = foe.monsters.filter((m): m is CardInstance => !!m && m.face === 'down');
@@ -2334,25 +2352,38 @@ function judgeAcrossWorlds(
     }
   }
 
-  /* A rollout may reorder judgment calls, never unanimity. With nothing Set
-     (no paranoid branch to hear) and no coin in any plan, a line that beats
-     another in the expectation world AND in every sampled world's immediate
-     eval is simply better — the only voice left that could demote it is the
-     playout, and a playout's chaos between two futures that differ by one
-     dead body is weather, not testimony. Measured on the owner's report: a
-     free +110 token kill was outvoted 2785 points by a single playout pair.
-     The lift walks leaders-first so a chain of dominated lines settles in
-     one pass, and it touches nothing decided, feared, or gambled. */
+  /* A rollout may reorder judgment calls, never coherence. The narrow claim,
+     learned the hard way: between a line and THE SAME LINE plus trailing
+     attacks, the two futures are identical except for consequences the
+     immediate eval already priced in full — so with nothing Set (no paranoid
+     branch to hear) and no coin in any plan, a playout that ranks the
+     extension BELOW its own prefix is incoherent, and the measured cost of
+     honouring it was a free +110 token kill outvoted by 2785 points of
+     playout chaos. The claim is deliberately no wider: between genuinely
+     different plans — a wall against a healer, a Set against a summon — the
+     playout's horizon testimony is exactly what the judge exists to hear,
+     and the first cut of this lift silenced it and walked a healer into a
+     piercing 2500. Extension pairs only; nothing decided, feared, or
+     gambled. */
   if (paranoiaPrior(state, pid) === 0 && !gambling) {
     /* Keyed by the actions array: `out` holds spread copies of the lines,
        and the actions reference is the one thing a spread carries through. */
     const idx = new Map(examine.map((l, i) => [l.actions, i] as const));
+    const coreOf = (as: DuelAction[]) => as.filter((a) => a.type !== 'toPhase' && a.type !== 'endTurn');
+    const extendsWithAttacks = (long: DuelAction[], short: DuelAction[]): boolean => {
+      const L = coreOf(long);
+      const S = coreOf(short);
+      if (L.length <= S.length) return false;
+      for (let k = 0; k < S.length; k++) if (actionKey(L[k]) !== actionKey(S[k])) return false;
+      return L.slice(S.length).every((a) => a.type === 'attack');
+    };
     const dominates = (a: Line, b: Line): boolean => {
       const i = idx.get(a.actions);
       const j = idx.get(b.actions);
       if (i === undefined || j === undefined) return false;
       if (Math.abs(a.score) >= WIN / 2 || Math.abs(b.score) >= WIN / 2) return false;
       if (examine[i].score <= examine[j].score) return false;
+      if (!extendsWithAttacks(a.actions, b.actions)) return false;
       const n = Math.min(imm[i].vals.length, imm[j].vals.length);
       if (n < 1) return false;
       for (let k = 0; k < n; k++) if (imm[i].vals[k] <= imm[j].vals[k]) return false;
