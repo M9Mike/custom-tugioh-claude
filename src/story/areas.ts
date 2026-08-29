@@ -44,7 +44,8 @@ export type AreaId =
   | 'market-row'
   | 'step-lane'
   | 'domino-shrine'
-  | 'black-crown';
+  | 'black-crown'
+  | 'crown-shop';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -53,6 +54,16 @@ export interface Rect {
   /** Half-extents, so a 4 m wide wall has `hw: 2`. */
   hw: number;
   hd: number;
+  /**
+   * Which floors this is on, when the building has more than one.
+   *
+   * Absent means every floor, which is what a street wants and is what all five
+   * outdoor areas leave it as. A gallery railing says `from`; the counter it
+   * stands on says `to`; a wall that runs the height of the building says
+   * neither. See `settle`.
+   */
+  from?: number;
+  to?: number;
   /**
    * Tall enough to put the camera behind — a wall or a building, not a bench.
    *
@@ -1621,6 +1632,27 @@ const BLACK_CROWN: Area = {
   ],
   doors: [
     {
+      id: 'crown-to-shop',
+      /* Right at the doors, and deep enough that a duelist stopped by the door
+         leaf at x 16.2 is already inside it. */
+      trigger: { x: 16.0, z: 3, hw: 0.45, hd: 1.6 },
+      to: 'crown-shop',
+      seam: { x: 16.5, z: 3 },
+      /*
+       * Out on the podium, looking along it rather than across it.
+       *
+       * Across is the view you want — the square is that way — and across is
+       * exactly what a podium five metres deep cannot give a camera that sits
+       * three and a half metres behind you. Facing west it ends up inside the
+       * shop's own display window; a step to either side and it is on the
+       * flight down. Along the podium it has twenty-three metres to play with,
+       * and you turn to see the square, which is what anybody leaving a shop
+       * does anyway.
+       */
+      arrive: { x: 15.0, z: 6.4, facing: 0 },
+      label: 'Black Crown Games',
+    },
+    {
       id: 'crown-to-market',
       trigger: { x: -19, z: -46.4, hw: 5, hd: 1.2 },
       to: 'market-row',
@@ -1641,6 +1673,225 @@ const BLACK_CROWN: Area = {
   spawn: { x: -19, z: -41, facing: 0 },
 };
 
+
+/* ------------------------------------------------------------------ */
+/* Black Crown — inside                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The shop itself: three floors round an atrium, thirty-four metres by
+ * twenty-six.
+ *
+ * The first interior in this world with a *storey* in it, and the reason
+ * `groundAt` and `settle` both learned about floors. Before this, ground was
+ * simply the highest platform over a spot and a solid applied at every height —
+ * which is exactly right for a street, where a wall runs from the pavement to
+ * the roof and there is nothing above or below it to disagree, and hopeless the
+ * moment there is a gallery over your head.
+ *
+ * ## The shape
+ *
+ * A hall you come into at the west, with the floor open all the way to a
+ * lantern fourteen metres up, and two galleries running round it. You get to
+ * the first by a flight up the east side and to the second by a flight back
+ * down the west, so the walk is a circuit rather than a stack — you see the
+ * whole atrium twice from two heights on the way round.
+ *
+ * ## What is in it
+ *
+ * Shelving, cases, tables and a counter, and nothing for sale. The stock comes
+ * later; what this has to prove now is that a room can have floors.
+ */
+
+const CS_W = 17;   // half-width, so 34 m
+const CS_D = 13;   // half-depth, so 26 m
+
+/** The two galleries. */
+export const CS_G1 = 4.6;
+export const CS_G2 = 9.2;
+/** The underside of the lantern, and what the camera is not allowed through. */
+export const CS_TOP = 13.6;
+
+/** The atrium: open from the floor to the lantern, and never built over. */
+const CS_VOID = { hw: 9, hd: 6 };
+
+export const CS_GROUND: Platform[] = [
+  /*
+   * The first gallery: a ring round the void, with the stairwell cut out of it.
+   *
+   * Written as slabs rather than as one rectangle with holes in it, because a
+   * platform is a rectangle and there are no holes in rectangles. The corners
+   * belong to the long sides, and the south-east corner belongs to neither —
+   * that is the well the flight comes up through.
+   *
+   * The well is not optional. Run a flight under an unbroken gallery and its
+   * top six treads pass through the floor above: you climb into the underside
+   * of it, which `npm run footing` reports as ten cells of feet inside a
+   * building and which is exactly what it is.
+   */
+  { x: 0, z: -9.25, hw: 16, hd: 2.75, y: CS_G1 },
+  { x: -1.7, z: 9.25, hw: 14.3, hd: 2.75, y: CS_G1 },
+  { x: -12.5, z: 0, hw: 3.5, hd: 6.5, y: CS_G1 },
+  { x: 10.8, z: 0, hw: 1.8, hd: 6.5, y: CS_G1 },
+
+  /* And the flight up to it, in the well on the east side. */
+  ...flightPlatforms({ along: 'z', start: 11.5, end: 0.5, from: 0, to: CS_G1, half: 1.6, cross: 14.2 }),
+
+  /* The second gallery, a narrower ring over the first — and its own well, on
+     the opposite side, so the circuit crosses the atrium twice. */
+  { x: 1.7, z: -11, hw: 14.3, hd: 1.5, y: CS_G2 },
+  { x: 0, z: 11, hw: 16, hd: 1.5, y: CS_G2 },
+  { x: -14.5, z: 4.5, hw: 1.5, hd: 5, y: CS_G2 },
+  { x: 14.5, z: 0, hw: 1.5, hd: 9.5, y: CS_G2 },
+
+  ...flightPlatforms({ along: 'z', start: -11.5, end: -0.5, from: CS_G1, to: CS_G2, half: 1.6, cross: -14.2 }),
+];
+
+const CROWN_SHOP: Area = {
+  id: 'crown-shop',
+  name: 'Black Crown Games',
+  kind: 'interior',
+  /*
+   * Behind its own front door.
+   *
+   * The shop's door stands on the podium at Black Crown's local (16.5, 3),
+   * which is world (96.55, 60.5); the same doorway arrives in here at local
+   * (−17, 0). The origin is whatever makes those the same point.
+   */
+  world: { x: 113.55, z: 60.5 },
+  bounds: { x: 0, z: 0, hw: CS_W - 0.6, hd: CS_D - 0.6 },
+  platforms: CS_GROUND,
+  /*
+   * A lantern rather than a ceiling.
+   *
+   * `ceiling` is what the camera is held under, and in a room three storeys
+   * high that is not the roof — it is whatever floor the duelist is standing
+   * on plus a room's worth. The number here is the roof, and the camera's own
+   * clamp against `groundAt` does the rest.
+   */
+  ceiling: CS_TOP,
+  solids: [
+    /* The four walls. */
+    { x: 0, z: -CS_D - 1, hw: CS_W + 2, hd: 1, tall: true },
+    { x: 0, z: CS_D + 1, hw: CS_W + 2, hd: 1, tall: true },
+    { x: CS_W + 1, z: 0, hw: 1, hd: CS_D + 2, tall: true },
+    /* The west wall, in two pieces with the way out between them. */
+    { x: -CS_W - 1, z: -8, hw: 1, hd: 6.5, tall: true },
+    { x: -CS_W - 1, z: 8, hw: 1, hd: 6.5, tall: true },
+
+    /*
+     * The galleries' railings, and the fixtures they stand on.
+     *
+     * The same rectangle read twice: on the ground it is the back of a run of
+     * shelving, four metres up it is the balustrade of the gallery over it. So
+     * the railing says which floors it is on and the shelf says which floors it
+     * is not, and neither of them is in the way on the other's.
+     */
+    { x: 0, z: -CS_VOID.hd, hw: CS_VOID.hw, hd: 0.35, from: CS_G1 },
+    { x: 0, z: CS_VOID.hd, hw: CS_VOID.hw, hd: 0.35, from: CS_G1 },
+    { x: -CS_VOID.hw, z: 0, hw: 0.35, hd: CS_VOID.hd + 0.7, from: CS_G1 },
+    { x: CS_VOID.hw, z: 0, hw: 0.35, hd: CS_VOID.hd + 0.7, from: CS_G1 },
+    /* And round the well the flight comes up through, which is a hole in a
+       floor and wants a rail as much as the atrium does. */
+    { x: 14.3, z: -0.5, hw: 1.7, hd: 0.35, from: CS_G1 },
+    { x: 12.4, z: 5.5, hw: 0.35, hd: 6.5, from: CS_G1 },
+
+    { x: 0.35, z: -9.5, hw: 12.65, hd: 0.35, from: CS_G2 },
+    { x: 0, z: 9.5, hw: 13, hd: 0.35, from: CS_G2 },
+    { x: -13, z: 4.5, hw: 0.35, hd: 5.35, from: CS_G2 },
+    { x: 13, z: 0, hw: 0.35, hd: 9.85, from: CS_G2 },
+    { x: -14.3, z: -0.15, hw: 1.7, hd: 0.35, from: CS_G2 },
+    { x: -12.4, z: -5.5, hw: 0.35, hd: 5.7, from: CS_G2 },
+
+    /*
+     * The shelving, on all three floors, exactly where it is drawn.
+     *
+     * Written as the runs `world/crownshop.ts` builds rather than as blocks in
+     * the corners: the first version put a two-metre island across the inside
+     * of the front door, which nothing draws and which walled the shop's own
+     * entrance off from its own floor. `npm run areas` walks from the spawn and
+     * said so.
+     *
+     * Each run says which floor it is on, so the gallery over a shelf is not
+     * blocked by it and the shelf on the gallery is not in the way below.
+     */
+    ...[0, CS_G1, CS_G2].flatMap((y) => {
+      const to = y + 2.5;
+      const from = y === 0 ? undefined : y;
+      return [
+        { x: 0, z: -12.09, hw: 12.4, hd: 0.31, from, to },
+        { x: 0, z: 12.09, hw: 12.4, hd: 0.31, from, to },
+        { x: 16.09, z: 0, hw: 0.31, hd: 9.4, from, to },
+        /* The west wall is shelved either side of the way out. */
+        { x: -16.09, z: -6.5, hw: 0.31, hd: 2.9, from, to },
+        { x: -16.09, z: 6.5, hw: 0.31, hd: 2.9, from, to },
+      ];
+    }),
+    /*
+     * The open side of each flight, closed on the floor below it.
+     *
+     * A stair is a ramp with a hole under the top of it, and a duelist who
+     * wanders in from the side at the point where the treads are half a metre
+     * up is standing inside one. Both flights are against a wall on one side;
+     * this is the other, and it stops at the floor the flight serves so that
+     * arriving on the gallery you can walk straight off it.
+     */
+    /*
+     * And the understair, boxed in on the floor below.
+     *
+     * A stair is a ramp with a hole under the top of it, and a duelist standing
+     * in that hole is standing inside a building. Real stairs have a cupboard
+     * there; this is the cupboard. It stops a metre short of the foot so the
+     * first two treads — eighteen and thirty-six centimetres — are still
+     * something you walk onto rather than into.
+     */
+    /*
+     * The cupboard applies to somebody standing on the floor and to nobody
+     * else — `to` is five centimetres above it, not the height of the flight.
+     *
+     * At the height of the flight it blocks the flight: a duelist a third of
+     * the way up is below 4.6 and so is inside the cupboard, which is why she
+     * stopped climbing at the eighth tread. Stepping onto the first tread lifts
+     * her past it, and after that the treads are what she is standing on.
+     */
+    { x: 14.2, z: 5.6, hw: 1.7, hd: 5.2, to: 0.05 },
+    { x: -14.2, z: -5.6, hw: 1.7, hd: 5.2, from: CS_G1, to: CS_G1 + 0.05 },
+    /* The open side of each flight, which does hold all the way up it. */
+    { x: 12.3, z: 6, hw: 0.3, hd: 5.6, to: CS_G1 },
+    { x: -12.3, z: -6, hw: 0.3, hd: 5.6, from: CS_G1, to: CS_G2 },
+
+    /* The counter, which is the one thing here you walk up to rather than past. */
+    { x: 9.6, z: 9.4, hw: 4.4, hd: 1.1, to: 2.6 },
+    /* Tables out on the floor of the atrium. */
+    { x: -4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
+    { x: 4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
+    { x: 0, z: 3.5, hw: 2.2, hd: 1.2, to: 2.6 },
+  ],
+  camSolids: [
+    /* The doorway, closed to the camera: turning back at it would otherwise put
+       the camera through the west wall and into the void behind it. */
+    { x: -CS_W - 0.8, z: 0, hw: 1.4, hd: 3 },
+  ],
+  doors: [
+    {
+      id: 'shop-to-crown',
+      trigger: { x: -15.6, z: 0, hw: 1.1, hd: 2.2 },
+      to: 'black-crown',
+      seam: { x: -CS_W, z: 0 },
+      /*
+       * Four metres in, looking down the length of the hall.
+       *
+       * The atrium is the whole point of the room and it is what you should be
+       * looking at from the first frame — the galleries, the lantern, and the
+       * flight going up the far side.
+       */
+      arrive: { x: -11.5, z: 0, facing: Math.PI / 2 },
+      label: 'Black Crown',
+    },
+  ],
+  spawn: { x: -11.5, z: 0, facing: Math.PI / 2 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
@@ -1648,6 +1899,7 @@ export const AREAS: Record<AreaId, Area> = {
   'step-lane': STEP_LANE,
   'domino-shrine': DOMINO_SHRINE,
   'black-crown': BLACK_CROWN,
+  'crown-shop': CROWN_SHOP,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */
@@ -1701,11 +1953,31 @@ export function settle(
   area: Area,
   x: number,
   z: number,
-  radius: number
+  radius: number,
+  /**
+   * Which floor the duelist is on.
+   *
+   * A rectangle is 2D and always was, which is right for a street: a wall runs
+   * from the pavement to the roof and there is nothing above or below it to
+   * disagree with. It is wrong the moment a building has storeys — the railing
+   * round a gallery four metres up is not something you walk into on the ground
+   * floor, and the counter it stands on is not something you walk into on the
+   * gallery.
+   *
+   * So a solid may say which heights it occupies, and this says where you are.
+   * Left out, as every caller outside a multi-storey interior leaves it out,
+   * every solid applies exactly as it always did.
+   */
+  atY = Number.NaN
 ): { x: number; z: number } {
   let px = x;
   let pz = z;
   for (const solid of area.solids) {
+    if (Number.isFinite(atY) && (solid.from !== undefined || solid.to !== undefined)) {
+      /* Half a metre of grace at the bottom, so standing on the top step of a
+         flight does not fall out of the railing it is about to run alongside. */
+      if (atY < (solid.from ?? -Infinity) - 0.5 || atY > (solid.to ?? Infinity)) continue;
+    }
     const fixed = pushOut(solid, px, pz, radius);
     if (fixed) {
       px = fixed.x;
@@ -1796,12 +2068,66 @@ export function cameraReach(
  * that overlapping rectangles — a step onto a terrace, say — behave the way a
  * player expects rather than the way the list happens to be ordered.
  */
-export function groundAt(area: Area, x: number, z: number): number {
-  let y = 0;
-  for (const p of area.platforms ?? []) {
-    if (Math.abs(x - p.x) <= p.hw && Math.abs(z - p.z) <= p.hd && p.y > y) y = p.y;
+/**
+ * The highest step you can be lifted onto in one frame.
+ *
+ * A stair riser is 18 cm and a kerb is 13, so 40 clears everything the world
+ * has and is far below a storey. It is what separates "walked up a step" from
+ * "is standing under a gallery four metres overhead".
+ */
+const CLIMB = 0.4;
+
+/**
+ * How high the ground is at a point — and, in a building with floors, *which*
+ * ground.
+ *
+ * `near` is where the player already is. Without it the answer is simply the
+ * highest platform over that spot, which is right for a precinct with a podium
+ * in it and hopeless for anything with a storey above: walk under a gallery and
+ * the floor jumps to the gallery, because the gallery is over you and is
+ * higher. With it, only floors you could actually step onto are candidates, so
+ * standing under a gallery leaves you on the ground and standing on it leaves
+ * you on it.
+ *
+ * The default is `Infinity`, which is exactly the old behaviour — so every
+ * caller that has no player to speak of (a check sampling a grid, a builder
+ * placing a lamp) gets what it always got.
+ */
+/**
+ * Whether this place has floors stacked over one another.
+ *
+ * Inferred rather than declared, so a new interior cannot forget to say so:
+ * two platforms overlapping in plan at heights further apart than a step is
+ * exactly what a gallery over a shop floor is, and nothing else in this world
+ * is that. A street with a podium in it is not — you cannot be under a podium.
+ *
+ * It exists because floor-awareness has to be opt-in for the *checks*. Their
+ * old answer for a flat area is the right one and has been signed off area by
+ * area; turning a new rule on everywhere at once would re-litigate five of them
+ * at the moment a sixth is being built.
+ */
+export function hasStoreys(area: Area): boolean {
+  const ps = area.platforms ?? [];
+  for (let i = 0; i < ps.length; i++) {
+    for (let j = i + 1; j < ps.length; j++) {
+      const a = ps[i];
+      const b = ps[j];
+      /* More than a person, not more than a step: a podium a metre above the
+         precinct round it is not something you can be underneath. */
+      if (Math.abs(a.y - b.y) <= 2.2) continue;
+      if (Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.z - b.z) < a.hd + b.hd) return true;
+    }
   }
-  return y;
+  return false;
+}
+
+export function groundAt(area: Area, x: number, z: number, near = Infinity): number {
+  const reach = near + CLIMB;
+  let y = reach >= 0 ? 0 : -Infinity;
+  for (const p of area.platforms ?? []) {
+    if (Math.abs(x - p.x) <= p.hw && Math.abs(z - p.z) <= p.hd && p.y <= reach && p.y > y) y = p.y;
+  }
+  return y === -Infinity ? 0 : y;
 }
 
 /** The door whose trigger contains this point, if any. */

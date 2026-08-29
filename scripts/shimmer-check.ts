@@ -119,6 +119,15 @@ const VANTAGES: Vantage[] = [
   { name: 'the alley west', area: 'black-crown', x: -24, z: -1.5, facing: -Math.PI / 2 },
   { name: 'the yard', area: 'black-crown', x: -44, z: -1.5, facing: -Math.PI / 2 },
   { name: 'the square, looking back', area: 'black-crown', x: -8, z: 6, facing: Math.PI },
+
+  /* Inside Black Crown. The galleries cannot be reached by putting a duelist on
+     one — arriving in a building starts you on the floor you walked in on — so
+     these are the views from the floor that have three storeys of geometry in
+     them, which is where a shelf edge would crawl if it were going to. */
+  { name: 'the shop, from the mat', area: 'crown-shop', x: -11.5, z: 0, facing: Math.PI / 2 },
+  { name: 'the shop, under the galleries', area: 'crown-shop', x: -12, z: -8, facing: Math.PI / 2 },
+  { name: 'the shop counter', area: 'crown-shop', x: 6, z: 6, facing: Math.PI / 4 },
+  { name: 'the shop stair', area: 'crown-shop', x: 14.2, z: 12, facing: Math.PI },
   { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
 ];
 

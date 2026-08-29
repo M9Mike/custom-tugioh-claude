@@ -190,7 +190,18 @@ async function main() {
     let firstHole = '';
 
     for (const p of cells) {
-      const told = groundAt(area, p.x, p.z);
+      /*
+       * The floor the cell was *reached* on, not the highest floor over it.
+       *
+       * In a building with storeys those are different numbers, and taking the
+       * second compares the ground floor against the balustrade of a gallery
+       * three floors up — 449 cells of it, all of them fine. The fill already
+       * knows which floor it climbed to; this is that.
+       */
+      /* In a building with storeys, the floor the cell was *reached* on — the
+         highest floor over that spot is the balustrade of a gallery three
+         floors up. Everywhere else, the answer it always gave. */
+      const told = Number.isFinite(p.y) ? p.y : groundAt(area, p.x, p.z);
       const drawn = surfaceUnder(boxes, p.x, p.z, told);
       if (drawn === null) {
         holes++;

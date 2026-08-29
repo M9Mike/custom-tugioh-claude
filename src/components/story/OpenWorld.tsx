@@ -42,6 +42,7 @@ import { buildMarket } from './world/market';
 import { buildStepLane } from './world/steplane';
 import { buildShrine } from './world/shrine';
 import { buildBlackCrown } from './world/blackcrown';
+import { buildCrownShop } from './world/crownshop';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -314,6 +315,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'step-lane': buildStepLane,
       'domino-shrine': buildShrine,
       'black-crown': buildBlackCrown,
+      'crown-shop': buildCrownShop,
     };
 
     let built: BuiltArea | null = null;
@@ -487,7 +489,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * a pavement. Twelve per second covers the step in about a tenth of a second,
      * which reads as stepping up rather than as a glitch.
      */
-    let groundY = groundAt(areaById(areaRef.current), here.current.x, here.current.z);
+    /* From the ground floor up: arriving in a building with storeys has to
+       start on the floor you walked in on, not on whichever gallery happens to
+       be highest over the doormat. See `groundAt`. */
+    let groundY = groundAt(areaById(areaRef.current), here.current.x, here.current.z, 0);
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
@@ -590,7 +595,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * order-dependent in a corner: pushed out of one wall into another, the
          * second pass is what puts you back in the room.
          */
-        const fixed = settle(area, p.x, p.z, PLAYER_RADIUS);
+        /* On their floor: a gallery's railing is not a thing you walk into
+           from underneath it. See `settle`. */
+        const fixed = settle(area, p.x, p.z, PLAYER_RADIUS, groundY);
         p.x = fixed.x;
         p.z = fixed.z;
         /**
@@ -629,7 +636,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         }
       }
 
-      const wantY = groundAt(areaById(areaRef.current), p.x, p.z);
+      /* `groundY` is where the duelist already is, and that is what tells a
+         building with storeys in it which floor they are on: without it,
+         walking under a gallery puts them on top of it. See `groundAt`. */
+      const wantY = groundAt(areaById(areaRef.current), p.x, p.z, groundY);
       groundY += (wantY - groundY) * Math.min(1, dt * 12);
 
       if (rig) {
@@ -849,7 +859,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * it sink into the steps it is looking over. This asks what is under the
        * camera itself and keeps a knee's height above it.
        */
-      const underCamera = groundAt(area, camPos.x, camPos.z);
+      /* The camera is on the duelist's floor too — otherwise it clears the
+         gallery over their head rather than the floor under their feet. */
+      const underCamera = groundAt(area, camPos.x, camPos.z, groundY);
       const ceilingLimit = area.kind === 'interior' ? groundY + 3.05 : (area.ceiling ?? 40);
       camera.position.set(
         camPos.x,

@@ -1,0 +1,432 @@
+/**
+ * Inside Black Crown: three floors round an atrium, thirty-four metres by
+ * twenty-six, and fourteen to the lantern.
+ *
+ * The first room in this world with a storey in it. Everything before it was a
+ * street or a single room, and both of those get by on a flat notion of ground
+ * and a wall that runs the whole height of the world. A gallery is neither: you
+ * walk under it and over it, and the balustrade round it is not something you
+ * bump into from below. `groundAt` and `settle` learned about floors for this
+ * building, and this is the first thing that uses them.
+ *
+ * ## What you see, in the order you see it
+ *
+ * You come in at the west into the full height of the room — no lobby, no
+ * ceiling over the door, the atrium open above you the moment you are through.
+ * The flight up the east side is visible from the mat, which is what makes the
+ * upper floors read as somewhere to go rather than as scenery. The second
+ * flight goes back down the west, so the circuit crosses the atrium twice and
+ * you look at it from two heights on the way round.
+ *
+ * ## The light
+ *
+ * A shop keeps its lights on. `Sky` is given `indoor`, which means the hour
+ * changes the colour and the level of what comes through the front glass and
+ * leaves the pendants alone — so the room is blue at dawn, warm at four, and
+ * lit by nothing but its own lamps after dark, without a single fixture going
+ * out in the middle of the day.
+ *
+ * ## Nothing is for sale
+ *
+ * Deliberately. The shelves have stock on them and none of it is a card you can
+ * buy: the counter is built, the room is built, and what goes on the shelves is
+ * a later job. What this has to prove now is that a room can have floors.
+ */
+
+import * as THREE from 'three';
+import {
+  woodFloor, darkWood, plaster, brick, concrete, paving, signBoard,
+} from './surfaces';
+import {
+  Owned, box, matt, tiled, glow, surfaceOf, seeded, type BuiltArea,
+} from './kit';
+import { Sky, ownSky } from './sky';
+import { AREAS, CS_G1, CS_G2, CS_TOP, CS_GROUND, groundAt } from '@/story/areas';
+
+const AREA = AREAS['crown-shop'];
+const at = (x: number, z: number, near?: number) => groundAt(AREA, x, z, near);
+
+export function buildCrownShop(anisotropy: number): BuiltArea {
+  const own = new Owned();
+  const root = new THREE.Group();
+  root.name = 'crown-shop';
+  const rnd = seeded(0xc0a7);
+
+  /* ---- surfaces ---- */
+
+  /* Fourteen by eleven over thirty-four metres by twenty-six, which is a board
+     about as wide as a board. At six by five each plank was two metres across
+     and the floor read as decking. */
+  const boardTex = surfaceOf(own, woodFloor, 14, 11, anisotropy);
+  const galleryTex = surfaceOf(own, woodFloor, 8, 3, anisotropy);
+  const wallTex = surfaceOf(own, () => plaster('#a8977c'), 1, 1, anisotropy);
+  const brickTex = surfaceOf(own, () => brick('#6f584c'), 1, 1, anisotropy);
+  const stoneTex = surfaceOf(own, () => concrete('#8a8478'), 1, 1, anisotropy);
+  const timberTex = surfaceOf(own, darkWood, 1, 2, anisotropy);
+
+  const walls = () => tiled(matt(own, '#ffffff', wallTex));
+  const brickwork = () => tiled(matt(own, '#ffffff', brickTex));
+  const stone = () => tiled(matt(own, '#ffffff', stoneTex));
+  const timber = matt(own, '#ffffff', timberTex);
+  const dark = matt(own, '#4a3f36');
+  const iron = matt(own, '#413c36');
+  const brass = matt(own, '#9a7d42');
+  const oxblood = matt(own, '#7d3a35');
+  const felt = matt(own, '#2f4a41');
+
+  const W = 17;
+  const D = 13;
+
+  /* ---- the floors ---- */
+
+  /** A run of floor. */
+  const slab = (w: number, d: number, x: number, y: number, z: number, tex: THREE.Texture | null) => {
+    const m = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(w, d)), matt(own, '#ffffff', tex));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    m.receiveShadow = true;
+    root.add(m);
+  };
+
+  /* The shop floor: boards, laid the length of the room. */
+  slab(W * 2, D * 2, 0, 0, 0, boardTex);
+
+  /*
+   * The galleries, and the flights between them, read off `CS_GROUND`.
+   *
+   * Written once in the data and drawn from it here, so the step you can see is
+   * the step `groundAt` answers with. A gallery is drawn as a slab with a
+   * soffit under it; a tread is drawn as a box down to the one below, because a
+   * flight with daylight under every step is a ladder.
+   */
+  for (const t of CS_GROUND) {
+    const wide = t.hw > 2 && t.hd > 2;
+    if (wide) {
+      /* A floor plate with a beam-and-soffit underside. */
+      /* The boards sit fourteen millimetres over the plate they are laid on,
+         not four: at four the two of them are one plane as far as the depth
+         buffer is concerned, and 174 m² of gallery flickers. */
+      root.add(box(own, t.hw * 2, 0.36, t.hd * 2, timber, t.x, t.y - 0.18, t.z));
+      slab(t.hw * 2 - 0.04, t.hd * 2 - 0.04, t.x, t.y + 0.014, t.z, galleryTex);
+    } else {
+      root.add(box(own, t.hw * 2, 0.34, t.hd * 2 + 0.004, timber, t.x, t.y - 0.17, t.z));
+      /* A nosing, wholly on its own tread — see `shrine.ts` on why it must not
+         overhang the one below. */
+      root.add(box(own, t.hw * 2, 0.05, 0.06, dark, t.x, t.y - 0.02, t.z - t.hd + 0.032));
+    }
+  }
+
+  /* ---- the shell ---- */
+
+  /** One wall of the room, with a plinth and a picture rail on it. */
+  const wall = (along: 'x' | 'z', from: number, to: number, face: number, outward: 1 | -1) => {
+    const run = Math.abs(to - from);
+    const mid = (from + to) / 2;
+    const put = (len: number, h: number, thick: number, y: number, c: number, m: THREE.Material) => {
+      const cross = face + outward * c;
+      return along === 'x'
+        ? box(own, len, h, thick, m, mid, y, cross)
+        : box(own, thick, h, len, m, cross, y, mid);
+    };
+    root.add(put(run, CS_TOP + 1, 0.3, (CS_TOP + 1) / 2, 0.15, brickwork()));
+    /* Plaster above the plinth, brick below it, which is what an old shop is. */
+    root.add(put(run - 0.1, CS_TOP - 1.3, 0.16, 1.55 + (CS_TOP - 1.3) / 2, 0.32, walls()));
+    root.add(put(run - 0.16, 1.4, 0.22, 0.68, 0.35, timber));
+    root.add(put(run - 0.22, 0.14, 0.3, 1.47, 0.37, dark));
+    /* And a picture rail at each gallery, which is what stops thirteen metres
+       of wall reading as one flat sheet. */
+    for (const y of [CS_G1 + 2.6, CS_G2 + 2.6]) {
+      root.add(put(run - 0.3, 0.12, 0.26, y, 0.36, dark));
+    }
+  };
+
+  wall('x', -W + 0.5, W - 0.5, -D, 1);
+  wall('x', -W + 0.5, W - 0.5, D, -1);
+  wall('z', -D + 0.5, D - 0.5, W, -1);
+  /* The west wall, in two pieces with the way out between them. */
+  wall('z', -D + 0.5, -2.9, -W, 1);
+  wall('z', 2.9, D - 0.5, -W, 1);
+
+  /*
+   * The way out, dressed as a doorway.
+   *
+   * The same three pieces as every other threshold in this world: a stone
+   * surround standing proud, the floor carrying through it, and something lit
+   * on the other side — you cannot see into another area, but you can see that
+   * this one goes somewhere.
+   */
+  /* Standing proud of the wall rather than flush into it: at x −17 the jambs
+     share a face with the wall they are set in, and at z ±2.9 they share one
+     with where it stops. */
+  for (const s of [-1, 1] as const) {
+    root.add(box(own, 0.7, 4.6, 0.6, stone(), -W + 0.45, 2.3, s * 3.3));
+  }
+  root.add(box(own, 0.7, 0.6, 7.2, stone(), -W + 0.45, 4.9, 0));
+  slab(2.4, 5.6, -W - 1.2, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
+  root.add(box(own, 0.4, 5.4, 5.6, matt(own, '#3a3029'), -W - 2.2, 2.7, 0));
+  const outside = new THREE.PointLight('#ffd2a0', 22, 12, 2);
+  outside.position.set(-W - 1.4, 3, 0);
+  root.add(outside);
+
+  /* The lantern: a coffered roof over the atrium with glass in it, which is
+     where the room's daylight comes from and why the atrium exists. */
+  /* Inside the walls rather than flush with them — the two of them meeting
+     exactly at z ±13 is thirty-three square metres at one depth. */
+  root.add(box(own, W * 2 - 0.7, 0.5, D * 2 - 0.7, timber, 0, CS_TOP + 0.25, 0));
+  root.add(box(own, 20, 0.6, 14, timber, 0, CS_TOP + 0.6, 0));
+  const lantern = glow(own, '#8e7c58');
+  root.add(box(own, 18.4, 0.12, 12.4, lantern, 0, CS_TOP + 0.34, 0));
+  for (let i = 0; i < 5; i++) {
+    root.add(box(own, 0.3, 0.34, 12.8, timber, -8 + i * 4, CS_TOP + 0.42, 0));
+  }
+  const sun = new THREE.PointLight('#ffe6bd', 90, 26, 2);
+  sun.position.set(0, CS_TOP - 1.4, 0);
+  root.add(sun);
+
+  /* ---- what is in it ---- */
+
+  /** A run of shelving: uprights, shelves, and boxes left on them. */
+  const shelving = (
+    along: 'x' | 'z', from: number, to: number, face: number, outward: 1 | -1,
+    y: number, h: number
+  ) => {
+    const run = Math.abs(to - from);
+    const mid = (from + to) / 2;
+    const put = (len: number, hh: number, thick: number, a: number, yy: number, c: number, m: THREE.Material) => {
+      const cross = face + outward * c;
+      return along === 'x'
+        ? box(own, len, hh, thick, m, a, yy, cross)
+        : box(own, thick, hh, len, m, cross, yy, a);
+    };
+    root.add(put(run, h, 0.62, mid, y + h / 2, 0.31, timber));
+    const bays = Math.max(2, Math.round(run / 1.6));
+    const posts: number[] = [];
+    for (let i = 0; i <= bays; i++) {
+      const a = from + (to > from ? 1 : -1) * (run / bays) * i;
+      posts.push(a);
+      /* The uprights and the shelves both stand clear of the carcass's own
+         back rather than flush with it — flush is three boxes in one plane down
+         twenty-five metres of shelving, times three floors. */
+      root.add(put(0.1, h - 0.1, 0.66, a, y + h / 2, 0.37, dark));
+    }
+    const shelves = Math.max(3, Math.floor(h / 0.62));
+    for (let k = 1; k < shelves; k++) {
+      root.add(put(run - 0.06, 0.06, 0.62, mid, y + k * (h / shelves), 0.35, dark));
+      /* Stock. Nothing you can buy — see the note at the top of this file. */
+      const boxes = Math.round(run / 0.55);
+      for (let b = 0; b < boxes; b++) {
+        const t = rnd();
+        if (t < 0.18) continue;
+        /* Nudged off the bay grid. The uprights sit on an even division of the
+           run and the stock on another, so every so often a box lands with one
+           face exactly on an upright's — which is two boxes at one depth, and
+           there are hundreds of them. */
+        const a = from + (to > from ? 1 : -1) * ((b + 0.5) * (run / boxes))
+                + (rnd() - 0.5) * 0.14;
+        /*
+         * Nothing goes right up against an upright.
+         *
+         * The uprights sit on an even division of the run and the stock on
+         * another, so every so often a box lands with one face exactly on a
+         * post's — two boxes at one depth, and there are several hundred of
+         * them across three floors. Jittering only moves which ones; leaving a
+         * hand's width clear of every post removes the case, and is what a
+         * shelf actually looks like anyway.
+         */
+        if (posts.some((q) => Math.abs(q - a) < 0.3)) continue;
+        const bw = 0.26 + rnd() * 0.16;
+        const bh = 0.2 + rnd() * 0.16;
+        const m = matt(own, ['#7d5f3c', '#5f6b4a', '#6d4a44', '#4a5566', '#7a6a4a'][b % 5]);
+        root.add(put(bw, bh, 0.34 + rnd() * 0.1, a, y + k * (h / shelves) + 0.03 + bh / 2, 0.3, m));
+      }
+    }
+  };
+
+  /* Ground floor: the walls are shelved to head height all the way round. */
+  shelving('x', -12.4, 12.4, -D + 0.6, 1, 0, 2.4);
+  shelving('x', -12.4, 12.4, D - 0.6, -1, 0, 2.4);
+  shelving('z', -9.4, 9.4, W - 0.6, -1, 0, 2.4);
+  shelving('z', -9.4, -3.6, -W + 0.6, 1, 0, 2.4);
+  shelving('z', 3.6, 9.4, -W + 0.6, 1, 0, 2.4);
+
+  /* The galleries are shelved on their outer walls too, which is what makes
+     three floors read as one shop rather than three rooms. */
+  for (const y of [CS_G1, CS_G2]) {
+    shelving('x', -12.4, 12.4, -D + 0.6, 1, y, 2.2);
+    shelving('x', -12.4, 12.4, D - 0.6, -1, y, 2.2);
+    shelving('z', -9.4, 9.4, W - 0.6, -1, y, 2.2);
+    shelving('z', -9.4, -3.6, -W + 0.6, 1, y, 2.2);
+    shelving('z', 3.6, 9.4, -W + 0.6, 1, y, 2.2);
+  }
+
+  /*
+   * The balustrades: the same rectangles the collision uses, built as a rail on
+   * turned balusters so the atrium has an edge you can see as well as one you
+   * cannot cross.
+   */
+  const rail = (along: 'x' | 'z', from: number, to: number, cross: number, y: number) => {
+    const run = Math.abs(to - from);
+    const mid = (from + to) / 2;
+    const put = (len: number, h: number, thick: number, a: number, yy: number, m: THREE.Material) =>
+      along === 'x'
+        ? box(own, len, h, thick, m, a, yy, cross)
+        : box(own, thick, h, len, m, cross, yy, a);
+    root.add(put(run, 0.42, 0.4, mid, y + 0.21, timber));
+    root.add(put(run, 0.14, 0.52, mid, y + 1.06, timber));
+    root.add(put(run + 0.06, 0.1, 0.6, mid, y + 1.18, dark));
+    const n = Math.max(3, Math.round(run / 0.62));
+    for (let i = 0; i <= n; i++) {
+      const a = from + (to > from ? 1 : -1) * (run / n) * i;
+      root.add(put(0.09, 0.52, 0.09, a, y + 0.72, iron));
+    }
+  };
+
+  /*
+   * The runs stop short of each other at the corners.
+   *
+   * Two rails meeting at a right angle and overlapping share both their top and
+   * their underside over the square where they cross — small, and there are
+   * sixteen corners. The long runs go through; the short ones stop against
+   * them.
+   */
+  rail('x', -9, 9, -6, CS_G1);
+  rail('x', -9, 9, 6, CS_G1);
+  /* Far enough short that the *caps* clear too — they oversail the rails they
+     sit on, so stopping the rail at the corner still crosses at the cap. */
+  rail('z', -5.3, 5.3, -9, CS_G1);
+  rail('z', -5.3, 5.3, 9, CS_G1);
+  /* And round the well the flight comes up through, clear of the shelving at
+     each end of it. */
+  rail('x', 12.9, 15.4, -0.5, CS_G1);
+  rail('z', 0.2, 11.4, 12.4, CS_G1);
+
+  /* Stopping clear of the well's own rail, which runs north past it. */
+  rail('x', -12.3, 13, -9.5, CS_G2);
+  rail('x', -13, 13, 9.5, CS_G2);
+  rail('z', 0.4, 8.8, -13, CS_G2);
+  rail('z', -8.8, 8.8, 13, CS_G2);
+  rail('x', -15.4, -13.5, -0.15, CS_G2);
+  rail('z', -8.9, -0.6, -12.4, CS_G2);
+
+  /* The counter, which is where the shop would be if there were one. */
+  {
+    const cx = 9.6;
+    const cz = 9.4;
+    root.add(box(own, 8.8, 1.05, 2.2, timber, cx, 0.525, cz));
+    root.add(box(own, 9.1, 0.12, 2.5, dark, cx, 1.11, cz));
+    root.add(box(own, 8.4, 0.7, 0.14, felt, cx, 0.6, cz - 1.05));
+    /* A glass case let into it, with dice in it and no price on anything. */
+    root.add(box(own, 3.6, 0.5, 1.4, matt(own, '#241d18'), cx - 1.8, 1.42, cz));
+    root.add(box(own, 3.3, 0.42, 1.2, glow(own, '#8d7448'), cx - 1.8, 1.42, cz));
+    for (let i = 0; i < 6; i++) {
+      const d = box(own, 0.2, 0.2, 0.2, matt(own, '#ded3ba'),
+                    cx - 3.1 + i * 0.52, 1.28, cz - 0.3 + (i % 2) * 0.5);
+      d.rotation.set(0.3 + i * 0.5, 0.4 + i * 0.7, 0.2 + i * 0.3);
+      root.add(d);
+    }
+    /* And the board over it, which is the only place the name is written
+       inside its own shop. */
+    const board = new THREE.Mesh(
+      own.keep(new THREE.PlaneGeometry(6.4, 1.1)),
+      own.keep(new THREE.MeshBasicMaterial({
+        map: surfaceOf(own, () => signBoard('BLACK CROWN', '#e2c583', '#1a1714', undefined, 6.4 / 1.1),
+                       1, 1, anisotropy),
+        color: '#b6a488',
+      }))
+    );
+    board.position.set(cx, 3.1, cz + 1.18);
+    board.rotation.y = Math.PI;
+    root.add(board);
+    root.add(box(own, 6.8, 1.4, 0.2, dark, cx, 3.1, cz + 1.3));
+    for (const s of [-1, 1] as const) {
+      root.add(box(own, 0.34, 0.4, 0.34, brass, cx + s * 3.6, 3.95, cz + 1.2));
+    }
+  }
+
+  /* Tables out on the floor, with games left half-played on them. */
+  const table = (x: number, z: number, w: number, d: number, i: number) => {
+    const y = at(x, z);
+    root.add(box(own, w, 0.1, d, timber, x, y + 0.78, z));
+    root.add(box(own, w - 0.3, 0.06, d - 0.3, felt, x, y + 0.85, z));
+    for (const sx of [-1, 1] as const) {
+      for (const sz of [-1, 1] as const) {
+        root.add(box(own, 0.11, 0.78, 0.11, dark,
+                     x + sx * (w / 2 - 0.16), y + 0.39, z + sz * (d / 2 - 0.16)));
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      const p = box(own, 0.16, 0.16, 0.16, matt(own, ['#d8cdb4', '#8d4b44', '#3f5a6b'][k % 3]),
+                    x - w / 4 + (k % 3) * (w / 4), y + 0.96, z - d / 5 + Math.floor(k / 3) * (d / 3));
+      p.rotation.y = 0.3 * k + i;
+      root.add(p);
+    }
+  };
+  table(-4.5, -2, 3.2, 2.0, 0);
+  table(4.5, -2, 3.2, 2.0, 1);
+  table(0, 3.5, 4.4, 2.4, 2);
+
+  /* ---- light ---- */
+
+  /*
+   * Pendants over the floor and a lamp on each gallery. These do not go out:
+   * `Sky` is given `indoor`, and a shop with its lights off at noon is a shut
+   * shop.
+   */
+  const pendant = (x: number, z: number, y: number, watts: number) => {
+    root.add(box(own, 0.06, 0.9, 0.06, iron, x, y + 0.45, z));
+    root.add(box(own, 0.62, 0.3, 0.62, oxblood, x, y - 0.05, z));
+    root.add(box(own, 0.46, 0.1, 0.46, glow(own, '#c9954e'), x, y - 0.22, z));
+    const l = new THREE.PointLight('#ffbe78', watts, 16, 2);
+    l.position.set(x, y - 0.4, z);
+    root.add(l);
+  };
+  pendant(-6, -4, 6.2, 30);
+  pendant(6, -4, 6.2, 30);
+  pendant(-6, 4, 6.2, 30);
+  pendant(6, 4, 6.2, 30);
+  pendant(0, 0, 8.6, 34);
+  for (const [gx, gz, gy] of [
+    [-13, -9, CS_G1], [13, -9, CS_G1], [-13, 9, CS_G1], [13, 9, CS_G1],
+    [-15, 0, CS_G2], [15, 0, CS_G2], [0, -11, CS_G2], [0, 11, CS_G2],
+  ] as const) {
+    root.add(box(own, 0.34, 0.42, 0.34, glow(own, '#c9954e'), gx, gy + 2.5, gz));
+    const l = new THREE.PointLight('#ffb469', 16, 9, 2);
+    l.position.set(gx, gy + 2.3, gz);
+    root.add(l);
+  }
+  /* One over the counter, because that is where you would be looking. */
+  const till = new THREE.PointLight('#ffcf96', 26, 10, 2);
+  till.position.set(9.6, 3.4, 8.4);
+  root.add(till);
+
+  /*
+   * The sky, through the front glass and the lantern.
+   *
+   * Fixed rather than swinging: indoors the light comes from where the windows
+   * are, not from where the sun is, so only its colour and its level follow the
+   * hour. That is what makes the same room blue at dawn, warm at four and lit
+   * by nothing but its own lamps after dark.
+   *
+   * See `market.ts` on `normalBias`: 34 m across 2048 is 1.7 cm.
+   */
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 24,
+    half: 18,
+    deep: 15,
+    target: [0, 1.2, 0],
+    fixedKey: [-14, 16, -6],
+    normalBias: 0.017,
+    gain: 1.0,
+    fill: 1.0,
+    indoor: true,
+    hemi: { sky: '#e8dcc0', ground: '#5a4736' },
+  }));
+
+  return {
+    root,
+    setTime: (hour) => { sky.apply(hour); },
+    dispose() {
+      for (const item of own.items) item.dispose();
+    },
+  };
+}

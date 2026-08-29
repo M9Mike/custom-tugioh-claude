@@ -9,14 +9,22 @@
  * same way.
  */
 
-import { PLAYER_RADIUS, inside, settle, type Area } from '../src/story/areas';
+import { PLAYER_RADIUS, groundAt, hasStoreys, inside, settle, type Area } from '../src/story/areas';
 
 /** A quarter of a metre: finer than the player is wide, coarse enough to be quick. */
 export const STEP = 0.25;
 
-/** A point a duelist can occupy — `settle` leaves it exactly where it was put. */
-export function standable(area: Area, x: number, z: number): boolean {
-  const s = settle(area, x, z, PLAYER_RADIUS);
+/**
+ * A point a duelist can occupy — `settle` leaves it exactly where it was put.
+ *
+ * `atY` is which floor they are on, and it matters the moment a building has
+ * more than one: the balustrade round a first-floor gallery is not something
+ * you walk into on the ground floor, and a fill that thinks it is reports the
+ * shop's own front door as walled off from the shop's own floor. Left out, as
+ * every outdoor area leaves it out, every solid applies exactly as before.
+ */
+export function standable(area: Area, x: number, z: number, atY = Number.NaN): boolean {
+  const s = settle(area, x, z, PLAYER_RADIUS, atY);
   return Math.abs(s.x - x) < 1e-9 && Math.abs(s.z - z) < 1e-9;
 }
 
@@ -30,7 +38,11 @@ function snap(area: Area): { ix: number; iz: number } | null {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
         const ix = cx + dx;
         const iz = cz + dz;
-        if (standable(area, ix * STEP, iz * STEP)) return { ix, iz };
+        const x = ix * STEP;
+        const z = iz * STEP;
+        if (standable(area, x, z, hasStoreys(area) ? groundAt(area, x, z, 0) : Number.NaN)) {
+          return { ix, iz };
+        }
       }
     }
   }
@@ -57,20 +69,46 @@ function snap(area: Area): { ix: number; iz: number } | null {
  * occupied by two areas at once. They are not: nobody is ever standing on them.
  * Filling past a door measures a floor plan; stopping at one measures the game.
  */
-export function walkableCells(area: Area): { x: number; z: number }[] {
+export function walkableCells(area: Area): { x: number; z: number; y: number }[] {
   const start = snap(area);
   if (!start) return [];
   const seen = new Set<string>();
-  const out: { x: number; z: number }[] = [];
-  const edges = new Map<string, { x: number; z: number }>();
-  const queue = [start];
+  /* `y` is the floor the cell was reached on, which in a building with storeys
+     is the only thing that says which of the surfaces stacked over that spot is
+     the one under your feet. */
+  const out: { x: number; z: number; y: number }[] = [];
+  const edges = new Map<string, { x: number; z: number; y: number }>();
+  /*
+   * Each cell carries the height it was reached at.
+   *
+   * That is what makes the fill climb: a stair tread is only a candidate from
+   * the tread below it, a gallery only from the flight that serves it, and the
+   * railing round that gallery only applies to somebody standing on it. Walking
+   * *into* an area always starts on the ground floor, which is what the 0 is.
+   */
+  /*
+   * Flat places keep the answer they always had.
+   *
+   * Floor-awareness is only meaningful where floors are stacked, and switching
+   * it on for a street changes what the check says about ground it has already
+   * been signed off on — a podium's edge stops being somewhere the fill can
+   * step onto from below, which is *more* correct and is not this area's
+   * question. `hasStoreys` is the opt-in, and it is inferred so a new interior
+   * cannot forget it.
+   */
+  const storeys = hasStoreys(area);
+  const floorAt = (x: number, z: number, near: number) =>
+    storeys ? groundAt(area, x, z, near) : Number.NaN;
+  const queue: { ix: number; iz: number; y: number }[] = [
+    { ...start, y: floorAt(start.ix * STEP, start.iz * STEP, 0) },
+  ];
   seen.add(`${start.ix},${start.iz}`);
 
   while (queue.length) {
-    const { ix, iz } = queue.pop()!;
+    const { ix, iz, y } = queue.pop()!;
     const x = ix * STEP;
     const z = iz * STEP;
-    out.push({ x, z });
+    out.push({ x, z, y });
     if (area.doors.some((d) => inside(d.trigger, x, z))) continue;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = ix + dx;
@@ -78,8 +116,9 @@ export function walkableCells(area: Area): { x: number; z: number }[] {
       const k = `${nx},${nz}`;
       if (seen.has(k)) continue;
       seen.add(k);
-      if (standable(area, nx * STEP, nz * STEP)) {
-        queue.push({ ix: nx, iz: nz });
+      const ny = floorAt(nx * STEP, nz * STEP, y);
+      if (standable(area, nx * STEP, nz * STEP, ny)) {
+        queue.push({ ix: nx, iz: nz, y: ny });
         continue;
       }
       /*
@@ -101,9 +140,12 @@ export function walkableCells(area: Area): { x: number; z: number }[] {
        * position it settles to — hard against the thing that stopped it — is
        * checked like anywhere else you can stand.
        */
-      const at = settle(area, nx * STEP, nz * STEP, PLAYER_RADIUS);
+      const at = settle(area, nx * STEP, nz * STEP, PLAYER_RADIUS, y);
+      const ay = storeys ? groundAt(area, at.x, at.z, y) : Number.NaN;
       const key = `${Math.round(at.x * 1000)},${Math.round(at.z * 1000)}`;
-      if (!edges.has(key)) edges.set(key, at);
+      /* On the floor it was pushed back onto, which for a duelist walking into
+         a gallery's balustrade is the gallery and not the shop below it. */
+      if (!edges.has(key)) edges.set(key, { ...at, y: ay });
     }
   }
   return out.concat([...edges.values()]);
