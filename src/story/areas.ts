@@ -1416,8 +1416,11 @@ export const BC_STEPS: Platform[] = [
    * The square is arranged around this, so the shop is *approached* rather than
    * merely entered — nine steps is enough that you are aware of climbing them.
    */
-  ...flightPlatforms({ along: 'x', start: 8, end: 12, from: 0, to: BC_PODIUM, half: 12, cross: 2 }),
-  { x: 20.5, z: 2, hw: 8.5, hd: 12, y: BC_PODIUM },
+  /* Stopping at z 13.5 and not 14, which is the building line south of it:
+     `frontage` stands its plinth forty centimetres proud of that line, so a
+     podium reaching the line has a course of stone standing on it. */
+  ...flightPlatforms({ along: 'x', start: 8, end: 12, from: 0, to: BC_PODIUM, half: 11.75, cross: 1.75 }),
+  { x: 20.5, z: 1.75, hw: 8.5, hd: 11.75, y: BC_PODIUM },
 
   /* And up to the court, which is round the corner from it and much lower.
      Stopping at z −21.9 rather than −22: the square's frontage stands its
@@ -1580,14 +1583,26 @@ const BLACK_CROWN: Area = {
     /* North-east: the building between the lane and the court. */
     { x: 27, z: -36, hw: 15, hd: 14, tall: true },
 
-    /* Black Crown, whose front wall is the far side of its own podium, and the
-       wall closing the court behind the sculpture. */
-    { x: 30, z: 3, hw: 12, hd: 13, tall: true },
+    /*
+     * Black Crown, and the wall closing the court behind the sculpture.
+     *
+     * The shop's block used to start at x 18, which is its *structural* line —
+     * and everything that makes it a shopfront stands in front of that: sills
+     * out to 17.34, jambs to 16.55, the door leaf at 16.5. So you could walk
+     * through all of it, stand inside the doorway, and be swallowed to the
+     * shoulders by a jamb. The block starts at the sills now, and the doorway
+     * has its own three rectangles: two jambs and the door between them, which
+     * is what stops you at a shut door instead of inside one.
+     */
+    { x: 29.65, z: 3, hw: 12.35, hd: 13, tall: true },
+    { x: 17.3, z: -0.05, hw: 0.75, hd: 0.55, tall: true },
+    { x: 17.3, z: 6.05, hw: 0.75, hd: 0.55, tall: true },
+    { x: 16.5, z: 3, hw: 0.3, hd: 2.6, tall: true },
     { x: 37, z: -16, hw: 5, hd: 6, tall: true },
 
     /* The south street, and the railway that stops it. */
     { x: -32, z: 30, hw: 18, hd: 14, tall: true },
-    { x: 15, z: 29, hw: 17, hd: 15, tall: true },
+    { x: 15, z: 28.75, hw: 17, hd: 15.25, tall: true },
     { x: -8, z: 46.5, hw: 8, hd: 3, tall: true },
 
     ...blackCrownSolids(),

@@ -368,6 +368,18 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   frontage({ along: 'x', from: -40, to: -21, face: 3, outward: -1, h: 11, bays: 4, lit: 0, shut: true,
              skin: plastered() });
 
+  /*
+   * The yard's east side: the backs of the two terrace blocks.
+   *
+   * These had no face at all. A block's *sides* get drawn because that is where
+   * you obviously stand; its back gets forgotten, and the back of this one is
+   * the whole east wall of a thirty-eight metre yard you can walk into.
+   */
+  frontage({ along: 'z', from: -21.5, to: -6.5, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0,
+             shut: true, skin: plastered() });
+  frontage({ along: 'z', from: 3.5, to: 15.5, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0,
+             shut: true, skin: plastered() });
+
   /* The yard: a blank back wall and a shed at each end. */
   frontage({ along: 'z', from: -21, to: 15, face: -50.5, outward: 1, h: 9, bays: 5, lit: 0, shut: true,
              skin: plastered() });
@@ -381,8 +393,9 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   frontage({ along: 'z', from: 15, to: 43, face: -2, outward: -1, h: 13, bays: 5, lit: 2,
              skin: rendered(), base: 0.13 });
 
-  /* The court, closed behind the sculpture. */
-  frontage({ along: 'x', from: 13, to: 31, face: -22, outward: 1, h: 12, bays: 3, lit: 1,
+  /* The court, closed behind the sculpture. From 12.4 rather than 13, which
+     left three quarters of a metre of nothing at its north-west corner. */
+  frontage({ along: 'x', from: 12.4, to: 31, face: -22, outward: 1, h: 12, bays: 3, lit: 1,
              skin: darkBrick(), base: BC_COURT });
   frontage({ along: 'z', from: -21, to: -11, face: 32, outward: -1, h: 12, bays: 2, lit: 1,
              skin: darkBrick(), base: BC_COURT });
@@ -479,14 +492,17 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.14, 3.0, 6.2, glow(own, '#c0964f'), FRONT - 0.3, BCY + 2.5, cz));
     /* Sills and heads stand proud of the stone they are set in, which is both
        what a sill does and what keeps three boxes out of two planes. */
-    root.add(box(own, 0.56, 0.34, 7.2, stone(), FRONT - 0.38, BCY + 0.6, cz));
+    /* Eighty centimetres deep, not fifty-six. The glass starts at x 17.55 and
+       the sill only reached 17.34, which left twenty-one centimetres of ledge
+       for a forty-six centimetre die — so they sat half off the front of it. */
+    root.add(box(own, 0.8, 0.34, 7.2, stone(), FRONT - 0.5, BCY + 0.6, cz));
     root.add(box(own, 0.64, 0.3, 7.4, stone(), FRONT - 0.4, BCY + 4.4, cz));
     /* Dice on the sill, because the window of a dice shop has dice in it. On
        the sill and not in the glass: at x 17.55 they were inside the pane and
        came out as white wedges growing through it. */
     for (let i = 0; i < 3; i++) {
       const S = 0.46;
-      const px = FRONT - 0.66;
+      const px = FRONT - 0.73;
       const pz = cz - 2.1 + i * 2.1;
       const d = box(own, S, S, S, matt(own, '#ddd2b8'), px, BCY + 1.01, pz);
       d.rotation.set(0.3 + i * 0.4, 0.6 + i * 0.9, 0.2 + i * 0.5);
@@ -547,10 +563,25 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     lamps.push(l);
   }
 
-  /* Its north flank, onto the court: plainer, and with a side door nobody uses. */
-  root.add(box(own, 24, 0.4, 0.5, stone(), 30, BC_COURT + 6.0, -10.25));
-  root.add(box(own, 1.4, 3.2, 0.34, timber, 20.5, BC_COURT + 1.6, -10.32));
-  root.add(box(own, 1.7, 0.3, 0.5, stone(), 20.5, BC_COURT + 3.35, -10.35));
+  /*
+   * Its north flank, onto the court.
+   *
+   * This was a stone band and a side door on nothing: the wall they were fixed
+   * to is a `solid`, and solids are not drawn. From the court you were looking
+   * at twenty-four metres by fifteen of void with a door floating in it.
+   */
+  frontage({ along: 'x', from: 18.6, to: 41.4, face: -10, outward: -1, h: 15, bays: 4, lit: 1,
+             base: BC_COURT });
+  /* And the side door nobody uses, on the wall now that there is one. */
+  root.add(box(own, 1.4, 3.2, 0.34, timber, 20.5, BC_COURT + 1.6, -10.55));
+  root.add(box(own, 1.7, 0.3, 0.5, stone(), 20.5, BC_COURT + 3.35, -10.6));
+
+  /*
+   * And the building south of the podium, which had the same fault: from the
+   * top of the shop's steps you were looking along a terrace at a hole.
+   */
+  frontage({ along: 'x', from: 8.4, to: 17, face: 14, outward: -1, h: 14, bays: 2, lit: 1,
+             skin: rendered() });
 
   /* ---- the dice court ---- */
 
