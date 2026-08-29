@@ -1448,13 +1448,25 @@ export const BC_STEPS: Platform[] = [
    * Every wall round this yard stands *on* it, so an edge that stops exactly
    * where a wall starts is two surfaces at one depth for the whole length of
    * that wall — a metre and a half of flicker along the back, and more down the
-   * east side. So it stops short of the wall closing the court at x 32, keeps
-   * six centimetres clear of the podium it abuts at x 12, and is carried ten
-   * centimetres *under* the shop's north flank at z −10, which is the one edge
-   * where going past is better than stopping short: there is no slot left for
-   * anybody to see down.
+   * east side. So it stops short of the wall closing the court at x 32 and a
+   * couple of centimetres clear of the shop's north flank at z −10, threading
+   * between the five depths that wall's courses stand at.
+   *
+   * Its west edge is the interesting one. It has to *overlap* the top tread of
+   * the flight up out of the court, because a platform is what a duelist stands
+   * on and a gap between two of them is a hole she falls through. Pulled back
+   * to 12.06 to clear the podium's face — which is what fixing a flicker here
+   * first did — it left six centimetres of nothing, and walking up out of the
+   * court dropped her twenty-two centimetres for a frame, every time.
+   * `npm run stairs` is the check that found it; `npm run footing` cannot,
+   * because a hole six centimetres wide never lands on its grid.
+   *
+   * Three centimetres of overlap, then: enough that there is no gap, and small
+   * enough that the strip where this slab's top and the tread's top share a
+   * plane is below the area the coplanar check looks at — the same five
+   * centimetres it applies everywhere, and for the same reason.
    */
-  { x: 21.98, z: -15.85, hw: 9.92, hd: 6.05, y: BC_COURT },
+  { x: 21.935, z: -15.93, hw: 9.965, hd: 5.97, y: BC_COURT },
 ];
 
 /**
@@ -1551,7 +1563,12 @@ export const CROWN_THINGS: CrownThing[] = [
   { kind: 'stall', x: -12.2, z: 31, hw: 1.7, hd: 1.2, face: Math.PI / 2 },
   { kind: 'stall', x: -3.8, z: 26.5, hw: 1.7, hd: 1.2, face: -Math.PI / 2 },
   { kind: 'lamp', x: -12.6, z: 18, hw: 0.3, hd: 0.3, lit: true },
-  { kind: 'lamp', x: -3.4, z: 36, hw: 0.3, hd: 0.3 },
+  /* Both of these burn. The street's far end is thirty metres from the last
+     lit lamp, and what stands at the end of it is a viaduct with a bricked-up
+     arch — which in the dark is not a viaduct, it is a black rectangle where
+     the world stops. */
+  { kind: 'lamp', x: -3.4, z: 36, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -12.6, z: 39.5, hw: 0.3, hd: 0.3, lit: true },
   { kind: 'bollard', x: -6, z: 42, hw: 0.17, hd: 0.17 },
   { kind: 'bollard', x: -10, z: 42, hw: 0.17, hd: 0.17 },
   { kind: 'crate', x: -12.6, z: 39.5, hw: 0.7, hd: 0.7 },
@@ -1563,8 +1580,12 @@ export const CROWN_THINGS: CrownThing[] = [
   { kind: 'crate', x: -35.5, z: -4.4, hw: 0.7, hd: 0.7 },
   { kind: 'lamp', x: -42.5, z: -4.6, hw: 0.3, hd: 0.3, lit: true },
   { kind: 'crate', x: -48, z: 8, hw: 0.9, hd: 0.9 },
-  { kind: 'crate', x: -48, z: -14, hw: 0.9, hd: 0.9 },
-  { kind: 'crate', x: -46, z: -14, hw: 0.9, hd: 0.9 },
+  /* Two metres apart and offset, not one and a half in a line. A crate is
+     turned where it is set down, and a turned 1.8 m box reaches 1.27 m from its
+     middle rather than 0.9 — so at 1.5 m apart these two grew through each
+     other, which is the one thing a stack of crates must not do. */
+  { kind: 'crate', x: -48.2, z: -14, hw: 0.9, hd: 0.9 },
+  { kind: 'crate', x: -45.4, z: -15.4, hw: 0.9, hd: 0.9 },
   { kind: 'bin', x: -43.5, z: 12.5, hw: 0.5, hd: 0.4 },
 ];
 
@@ -1774,7 +1795,11 @@ const CROWN_SHOP: Area = {
    * (−17, 0). The origin is whatever makes those the same point.
    */
   world: { x: 113.55, z: 60.5 },
-  bounds: { x: 0, z: 0, hw: CS_W - 0.6, hd: CS_D - 0.6 },
+  /* To within thirty centimetres of the walls, not sixty: the second gallery's
+     north and south slabs run to z ±12.5, and now that the stairs work and the
+     fill can get up there, `npm run areas` was right to say the floor did not
+     fit in the room. */
+  bounds: { x: 0, z: 0, hw: CS_W - 0.35, hd: CS_D - 0.25 },
   platforms: CS_GROUND,
   /*
    * A lantern rather than a ceiling.
@@ -1808,15 +1833,36 @@ const CROWN_SHOP: Area = {
     { x: CS_VOID.hw, z: 0, hw: 0.35, hd: CS_VOID.hd + 0.7, from: CS_G1 },
     /* And round the well the flight comes up through, which is a hole in a
        floor and wants a rail as much as the atrium does. */
+    /*
+     * The rail round the well, with the way off the stairs left out of it.
+     *
+     * A flight arrives *on* the floor it serves, and the west rail ran the
+     * whole length of the well including the head — so the top of the stairs
+     * was a two-metre island with a rail on one side, a rail on the other and a
+     * drop behind. You could climb the flight and then not get off it.
+     *
+     * From z 1.6, which leaves the head open onto the east gallery beside it.
+     * The rail across the north end stays: that is the drop, and it is what
+     * stops you walking off the head into the atrium.
+     */
     { x: 14.3, z: -0.5, hw: 1.7, hd: 0.35, from: CS_G1 },
-    { x: 12.4, z: 5.5, hw: 0.35, hd: 6.5, from: CS_G1 },
+    { x: 12.4, z: 6.5, hw: 0.35, hd: 4.9, from: CS_G1 },
 
     { x: 0.35, z: -9.5, hw: 12.65, hd: 0.35, from: CS_G2 },
     { x: 0, z: 9.5, hw: 13, hd: 0.35, from: CS_G2 },
     { x: -13, z: 4.5, hw: 0.35, hd: 5.35, from: CS_G2 },
     { x: 13, z: 0, hw: 0.35, hd: 9.85, from: CS_G2 },
-    { x: -14.3, z: -0.15, hw: 1.7, hd: 0.35, from: CS_G2 },
-    { x: -12.4, z: -5.5, hw: 0.35, hd: 5.7, from: CS_G2 },
+    /*
+     * The second flight has no rail across its head, and should not.
+     *
+     * The first one arrives beside a hole: the east gallery stops at x 12.6 and
+     * north of that head there is nothing but a drop to the shop floor, which
+     * is what its cross rail is for. The second arrives *onto* the gallery it
+     * serves — the slab starts at exactly z −0.5, where the top tread is — so a
+     * rail there is a rail across the top of a staircase, and it walled the
+     * second gallery off as completely as the counter walled off the first.
+     */
+    { x: -12.4, z: -5.25, hw: 0.35, hd: 3.65, from: CS_G2 },
 
     /*
      * The shelving, on all three floors, exactly where it is drawn.
@@ -1871,12 +1917,44 @@ const CROWN_SHOP: Area = {
      */
     { x: 14.2, z: 5.6, hw: 1.7, hd: 5.2, to: 0.05 },
     { x: -14.2, z: -5.6, hw: 1.7, hd: 5.2, from: CS_G1, to: CS_G1 + 0.05 },
-    /* The open side of each flight, which does hold all the way up it. */
-    { x: 12.3, z: 6, hw: 0.3, hd: 5.6, to: CS_G1 },
-    { x: -12.3, z: -6, hw: 0.3, hd: 5.6, from: CS_G1, to: CS_G2 },
+    /*
+     * The open side of each flight — down the part of it that is a drop.
+     *
+     * This used to run the whole eleven metres, from the head of the flight to
+     * its foot, and the understair cupboard covers everything up to a metre
+     * short of that foot. Between them there was no way *onto* the stairs at
+     * all: the side wall held from z 0.05 to 11.95 and the shelving along the
+     * south wall starts at 11.43, so the two of them overlapped and the flight
+     * was sealed. The whole shop was one storey, and Mike found it by trying to
+     * go upstairs.
+     *
+     * It stops at ten now, which is where the treads are still only half a
+     * metre up. Below that there is nothing to fall off and the bottom three
+     * treads are what you step onto — which is what the foot of a staircase is
+     * for.
+     *
+     * `to` is five centimetres *below* the floor the flight serves, not level
+     * with it. A solid applies while `atY <= to`, so at exactly CS_G1 — which
+     * is what you are standing at when you reach the top — the side of the
+     * flight was still in the way, and the head of the stairs stayed an island
+     * even after the rail beside it was opened.
+     */
+    { x: 12.3, z: 5.2, hw: 0.3, hd: 4.8, to: CS_G1 - 0.05 },
+    { x: -12.3, z: -5.2, hw: 0.3, hd: 4.8, from: CS_G1, to: CS_G2 - 0.05 },
 
-    /* The counter, which is the one thing here you walk up to rather than past. */
-    { x: 9.6, z: 9.4, hw: 4.4, hd: 1.1, to: 2.6 },
+    /*
+     * The counter, which is the one thing here you walk up to rather than past.
+     *
+     * It used to run to x 14, and the flight up to the first gallery stands at
+     * x 12.6 to 15.8 — so the east metre and a half of the counter was across
+     * the foot of the stairs. With a duelist's own radius on top of it, the
+     * whole shop was one storey: Mike could not get upstairs at all, and the
+     * walk fill agreed, reaching 10,403 cells and every one of them at zero.
+     * Nothing else saw it. `npm run footing` tests the floor under the cells
+     * the fill reaches, so a floor the fill never reaches is a floor it never
+     * tests, and it passed with two galleries nobody could stand on.
+     */
+    { x: 8.6, z: 9.4, hw: 3.4, hd: 1.1, to: 2.6 },
     /* Tables out on the floor of the atrium. */
     { x: -4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
     { x: 4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
@@ -2256,6 +2334,23 @@ export function arrivalThrough(
  * So a position is only kept if it is inside the area it names. Anything else
  * gets that area's spawn, which is always somewhere a person can stand.
  */
+/**
+ * The floor a duelist put down at a spot would be standing on.
+ *
+ * `settle` compares a solid's `from`/`to` against the height you are at, and
+ * every one of those comparisons against `NaN` is false — so asking it to place
+ * somebody *without* a height makes every gallery balustrade in the shop apply
+ * on the ground floor. Restoring a save inside Black Crown Games pushed the
+ * player off wherever they had been standing, and the same call in the save
+ * route wrote the pushed position back.
+ *
+ * Arriving anywhere is always on the floor you walked in on, which is the one
+ * `groundAt` gives with nothing climbed.
+ */
+export function standingOn(area: Area, x: number, z: number): number {
+  return hasStoreys(area) ? groundAt(area, x, z, 0) : Number.NaN;
+}
+
 export function landing(
   world: { area?: AreaId; x: number; z: number; facing: number } | null | undefined
 ): { area: AreaId; x: number; z: number; facing: number } {
@@ -2267,6 +2362,6 @@ export function landing(
   const within =
     Math.abs(world.x - b.x) <= b.hw && Math.abs(world.z - b.z) <= b.hd;
   if (!within) return { area: area.id, ...area.spawn };
-  const settled = settle(area, world.x, world.z, PLAYER_RADIUS);
+  const settled = settle(area, world.x, world.z, PLAYER_RADIUS, standingOn(area, world.x, world.z));
   return { area: area.id, x: settled.x, z: settled.z, facing: world.facing };
 }

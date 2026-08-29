@@ -231,9 +231,22 @@ async function main() {
     const slug = v.name.replace(/[^a-z]+/gi, '-').toLowerCase();
     const a = `/tmp/shimmer/${slug}-a.png`;
     const b = `/tmp/shimmer/${slug}-b.png`;
+    /*
+     * A context per vantage, and both frames inside it.
+     *
+     * Twelve vantages is twenty-four worlds built in one browser, and a browser
+     * keeps only so many WebGL contexts alive — the oldest is dropped, its page
+     * stops rendering, and this reports "the area never finished building" for
+     * whichever vantage was holding it. A different one every run, which is
+     * what running out of something looks like rather than what a fault looks
+     * like. `npm run stairs` had the same tell for the same reason.
+     */
+    const ctx = await browser.newContext({ viewport: { width: 900, height: 640 } });
+    const page = await ctx.newPage();
     const distA = await frame(page, v, 0, a);
     const distB = await frame(page, v, NUDGE, b);
     if (!Number.isFinite(distA) || !Number.isFinite(distB)) {
+      await ctx.close();
       check(false, `${v.area}: ${v.name}`, 'the area never finished building');
       continue;
     }
@@ -283,6 +296,7 @@ async function main() {
       `${v.area}: ${v.name}`,
       `${(share * 100).toFixed(2)}% of the frame flipped (limit ${(LIMIT * 100).toFixed(1)}%)`
     );
+    await ctx.close();
   }
 
   await browser.close();

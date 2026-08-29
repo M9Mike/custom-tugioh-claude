@@ -378,30 +378,36 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
   /* And round the well the flight comes up through, clear of the shelving at
      each end of it. */
   rail('x', 12.9, 15.4, -0.5, CS_G1);
-  rail('z', 0.2, 11.4, 12.4, CS_G1);
+  /* From 1.6 and not 0.2: the head of the flight is at z 0.5, and a rail
+     across it is a staircase you cannot get off. */
+  rail('z', 1.6, 11.4, 12.4, CS_G1);
 
   /* Stopping clear of the well's own rail, which runs north past it. */
   rail('x', -12.3, 13, -9.5, CS_G2);
   rail('x', -13, 13, 9.5, CS_G2);
   rail('z', 0.4, 8.8, -13, CS_G2);
   rail('z', -8.8, 8.8, 13, CS_G2);
-  rail('x', -15.4, -13.5, -0.15, CS_G2);
-  rail('z', -8.9, -0.6, -12.4, CS_G2);
+  rail('z', -8.9, -1.6, -12.4, CS_G2);
 
   /* The counter, which is where the shop would be if there were one. */
   {
-    const cx = 9.6;
+    /* Six point eight metres and not eight point eight: at eight point eight it
+       ran across the foot of the stairs. See its solid in `areas.ts`. */
+    const cx = 8.6;
     const cz = 9.4;
-    root.add(box(own, 8.8, 1.05, 2.2, timber, cx, 0.525, cz));
-    root.add(box(own, 9.1, 0.12, 2.5, dark, cx, 1.11, cz));
-    root.add(box(own, 8.4, 0.7, 0.14, felt, cx, 0.6, cz - 1.05));
+    root.add(box(own, 6.8, 1.05, 2.2, timber, cx, 0.525, cz));
+    root.add(box(own, 7.1, 0.12, 2.5, dark, cx, 1.11, cz));
+    root.add(box(own, 6.4, 0.7, 0.14, felt, cx, 0.6, cz - 1.05));
     /* A glass case let into it, with dice in it and no price on anything. */
     root.add(box(own, 3.6, 0.5, 1.4, matt(own, '#241d18'), cx - 1.8, 1.42, cz));
     root.add(box(own, 3.3, 0.42, 1.2, glow(own, '#8d7448'), cx - 1.8, 1.42, cz));
+    /* Turned about the upright only, and standing on the case's lid rather than
+       a centimetre over it — a cube tilted on three axes rests on a corner, and
+       these were hanging in the air for the same reason the window's were. */
     for (let i = 0; i < 6; i++) {
       const d = box(own, 0.2, 0.2, 0.2, matt(own, '#ded3ba'),
-                    cx - 3.1 + i * 0.52, 1.28, cz - 0.3 + (i % 2) * 0.5);
-      d.rotation.set(0.3 + i * 0.5, 0.4 + i * 0.7, 0.2 + i * 0.3);
+                    cx - 2.4 + i * 0.5, 1.63 + 0.1 - 0.005, cz - 0.3 + (i % 2) * 0.5);
+      d.rotation.y = 0.4 + i * 0.7;
       root.add(d);
     }
     /* And the board over it, which is the only place the name is written
@@ -474,6 +480,31 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
     l.position.set(gx, gy + 2.3, gz);
     root.add(l);
   }
+  /*
+   * And a bracket on the wall under each gallery.
+   *
+   * Every light in here hung at six metres or higher — the pendants over the
+   * atrium, the lamps on the galleries — and the first gallery is at four and a
+   * half. So the four-metre-deep ring of room *underneath* it, which is where
+   * all the shelving is and where you walk in, had nothing but ambient: black
+   * shelves, and a hard black stripe of soffit right round the room.
+   */
+  for (const [bx, bz] of [
+    [-11, -12.4], [-4, -12.4], [4, -12.4], [11, -12.4],
+    [-11, 12.4], [-4, 12.4], [4, 12.4], [11, 12.4],
+    [16.4, -7], [16.4, 0], [16.4, 7],
+    [-16.4, -8], [-16.4, 8],
+  ] as const) {
+    /* Turned to face into the room, which is what puts the bracket against the
+       wall rather than the shade. */
+    const out = Math.abs(bx) > Math.abs(bz) ? [-Math.sign(bx), 0] : [0, -Math.sign(bz)];
+    root.add(box(own, 0.3, 0.16, 0.3, iron, bx + out[0] * 0.12, 3.72, bz + out[1] * 0.12));
+    root.add(box(own, 0.34, 0.44, 0.34, glow(own, '#c9954e'), bx + out[0] * 0.3, 3.4, bz + out[1] * 0.3));
+    const l = new THREE.PointLight('#ffb469', 13, 9, 2);
+    l.position.set(bx + out[0] * 0.5, 3.3, bz + out[1] * 0.5);
+    root.add(l);
+  }
+
   /* One over the counter, because that is where you would be looking. */
   const till = new THREE.PointLight('#ffcf96', 26, 10, 2);
   till.position.set(9.6, 3.4, 8.4);

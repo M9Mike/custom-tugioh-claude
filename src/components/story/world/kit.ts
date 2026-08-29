@@ -92,6 +92,43 @@ export function box(
  * perfectly good floor, and a thrown error is a black screen. So this keeps the
  * texture only when there is one, and passes the null straight through.
  */
+/**
+ * A base under a whole area, six centimetres down.
+ *
+ * Every drawn surface in this world is a place somebody walks, and they abut
+ * each other exactly, because two floors at one depth is a flicker. Under the
+ * *buildings* there was nothing at all — in Black Crown, nineteen thousand
+ * square metres of block standing on the void, and smaller patches in Turtle
+ * Lane and the street.
+ *
+ * Nobody can walk there, so `npm run footing` had nothing to say about it: that
+ * check tests the cells a duelist can stand on. But you can *see* there. From
+ * the top of Black Crown's podium you look over its south edge, across the
+ * three quarters of a metre between the podium and the terrace wall, and out
+ * into the sky. `npm run seams` drops a ray on every half metre of an area and
+ * is the check that found it.
+ *
+ * One plane under everything is the whole fix, and it is one mesh. Dark, so
+ * that wherever it does show it reads as ground in shadow — which is what a
+ * strip of paving between a building and a podium actually looks like.
+ */
+export function basePlate(
+  own: Owned,
+  root: THREE.Group,
+  bounds: { x: number; z: number; hw: number; hd: number },
+  colour = '#2b2723'
+): THREE.Mesh {
+  const base = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(bounds.hw * 2 + 16, bounds.hd * 2 + 16)),
+    matt(own, colour)
+  );
+  base.rotation.x = -Math.PI / 2;
+  base.position.set(bounds.x, -0.06, bounds.z);
+  base.receiveShadow = true;
+  root.add(base);
+  return base;
+}
+
 export function surfaceOf(
   own: Owned,
   make: () => THREE.Texture | null,

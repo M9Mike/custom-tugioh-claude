@@ -30,6 +30,19 @@
  * the whole distinction, it needs no threshold, and it is what makes casting at
  * roof height safe.
  *
+ * ## And the floor
+ *
+ * The same fault upside down, and `npm run footing` cannot see that one either:
+ * it walks the cells a duelist can *stand* on, and these holes are all in
+ * ground you can only look at. The drawn surfaces of an area abut rather than
+ * overlap — which is right, two floors at one depth is a flicker — and then a
+ * building is set down on the join. Nobody walks there, so nothing complains,
+ * and from the top of the podium you look over its south edge into a strip of
+ * sky where the pavement should be.
+ *
+ * So the second pass drops a ray on every half metre of the area and asks
+ * whether there is anything under it at all.
+ *
  *   npm run seams              every enclosed area
  *   npm run seams -- crown     the ones whose name says crown
  */
@@ -80,6 +93,47 @@ const ENCLOSED: AreaId[] = ['grandpa-shop', 'starting-area', 'market-row', 'step
 const DOOR_SLACK = 0.6;
 
 interface Leak { x: number; z: number; y: number; ang: number }
+
+/** Everywhere inside the area's own bounds with nothing underneath it. */
+async function voids(page: Page, id: AreaId): Promise<{ x: number; z: number }[]> {
+  const b = AREAS[id].bounds;
+  await page.evaluate('globalThis.__name = globalThis.__name || ((f) => f)');
+  const found = await page.evaluate(
+    ({ bx, bz, bhw, bhd }) => {
+      const w = window as unknown as { __scene?: unknown; __THREE?: unknown };
+      const THREE = w.__THREE as typeof import('three') | undefined;
+      const scene = w.__scene as import('three').Scene | undefined;
+      if (!THREE || !scene) return null;
+      const ray = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      const org = new THREE.Vector3();
+      const targets: import('three').Object3D[] = [];
+      scene.traverse((o) => {
+        const m = o as import('three').Mesh;
+        if ((m as unknown as { isMesh?: boolean }).isMesh
+            && !(m as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) targets.push(m);
+      });
+      const out: { x: number; z: number }[] = [];
+      const STEP = 0.5;
+      for (let x = bx - bhw; x <= bx + bhw; x += STEP) {
+        for (let z = bz - bhd; z <= bz + bhd; z += STEP) {
+          /* From above the tallest thing in the block, and stopping just below
+             zero: a ray allowed to keep going finds the underside of something
+             far away and calls a hole a floor. */
+          org.set(x, 60, z);
+          ray.set(org, down);
+          ray.far = 61;
+          if (!ray.intersectObjects(targets, false).length) {
+            out.push({ x: +x.toFixed(2), z: +z.toFixed(2) });
+          }
+        }
+      }
+      return out;
+    },
+    { bx: b.x, bz: b.z, bhw: b.hw, bhd: b.hd }
+  );
+  return found ?? [];
+}
 
 async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
   const area = AREAS[id];
@@ -290,12 +344,32 @@ async function main() {
   let bad = 0;
   for (const id of chosen) {
     await goTo(id);
-    const there = await enterStory(page, id, PINNED_HOUR);
+    /* Once more before giving up: a cold area can take longer to compile than
+       the wait allows, and "never reached" is a fact about the machine. */
+    let there = await enterStory(page, id, PINNED_HOUR);
+    if (!there) there = await enterStory(page, id, PINNED_HOUR);
     if (!there) { console.log(`  ❌ ${id} — never reached`); bad++; continue; }
+    const gaps = await voids(page, id);
+    if (gaps.length) {
+      bad++;
+      /* Grouped by where they are: a missing strip is one fault, not the two
+         hundred samples that landed in it. */
+      const seen: { x: number; z: number; n: number }[] = [];
+      for (const g of gaps) {
+        const near = seen.find((k) => Math.abs(k.x - g.x) < 5 && Math.abs(k.z - g.z) < 5);
+        if (near) near.n++; else seen.push({ ...g, n: 1 });
+      }
+      seen.sort((a, b) => b.n - a.n);
+      console.log(`  ❌ ${id} — nothing under ${gaps.length} spot(s), in ${seen.length} place(s)`);
+      for (const k of seen.slice(0, 10)) {
+        console.log(`       ${k.n.toString().padStart(4)} samples  around ${k.x.toFixed(1)}, ${k.z.toFixed(1)}`);
+      }
+      if (seen.length > 10) console.log(`       …and ${seen.length - 10} more`);
+    }
     const found = await leaks(page, id);
     const spots = cluster(found);
-    if (!spots.length) { console.log(`  ✅ ${id}`); continue; }
-    bad++;
+    if (!spots.length) { if (!gaps.length) console.log(`  ✅ ${id}`); continue; }
+    if (!gaps.length) bad++;
     console.log(`  ❌ ${id} — ${found.length} escaping rays, from ${spots.length} place(s)`);
     for (const s of spots.slice(0, 12)) {
       const deg = Math.round((s.ang * 180) / Math.PI);

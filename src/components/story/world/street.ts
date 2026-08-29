@@ -29,7 +29,8 @@
 
 import * as THREE from 'three';
 import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor, concrete } from './surfaces';
-import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import {
+  basePlate, Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
 import { Sky, ownSky } from './sky';
 import { AREAS, SHOP_STEP, STREET_FACES } from '@/story/areas';
 
@@ -91,6 +92,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
   const own = new Owned();
   const root = new THREE.Group();
   root.name = 'starting-area';
+  /* Under everything, so the ground the buildings stand on is ground and not
+     the sky. See `basePlate`. */
+  basePlate(own, root, AREAS['starting-area'].bounds);
   const rnd = seeded(0x51ee7);
   /* Every point light the street owns, so their shadow maps go with it. */
   const lamps: THREE.PointLight[] = [];

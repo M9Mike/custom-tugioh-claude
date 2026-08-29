@@ -641,6 +641,23 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          walking under a gallery puts them on top of it. See `groundAt`. */
       const wantY = groundAt(areaById(areaRef.current), p.x, p.z, groundY);
       groundY += (wantY - groundY) * Math.min(1, dt * 12);
+      /*
+       * And never below the floor, whatever the ease says.
+       *
+       * An exponential ease does not lag by a fixed amount, it lags by speed
+       * over rate — so on a slope it settles at a constant error and stays
+       * there for as long as you are climbing. Black Crown's shop steps rise
+       * 1.62 m over 4 m of run; at a full stick that is 1.34 m a second of
+       * climb, and at a rate of twelve the duelist walks the entire flight
+       * eleven centimetres under the treads. Which is what Mike saw: going up
+       * the stairs, her feet are in the stone.
+       *
+       * Descending is the same error the other way, and *that* one is fine —
+       * floating a hand's breadth over a step you are dropping off reads as a
+       * step down. Feet inside a stair does not read as anything. So the ease
+       * keeps its smoothing on the way down and is clamped on the way up.
+       */
+      if (groundY < wantY - 0.02) groundY = wantY - 0.02;
 
       if (rig) {
         rig.root.position.set(p.x, groundY, p.z);
@@ -884,7 +901,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * Stripped from production builds: it is a debugging aid, not a feature.
        */
       if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
-        const w = window as unknown as { __probe?: unknown; __scene?: unknown; __THREE?: unknown };
+        const w = window as unknown as {
+          __probe?: unknown; __scene?: unknown; __THREE?: unknown; __camera?: unknown };
         /* The scene itself, so `npm run coplanar` can audit the geometry for
            surfaces that sit at identical depth. See that script's header. */
         w.__scene = scene;
@@ -892,9 +910,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            code the renderer uses rather than a hand-rolled box test that would
            miss every rotated mesh in the world. */
         w.__THREE = THREE;
+        /* And the camera, so a check can ask what is behind a given pixel of a
+           screenshot — which is the only way to answer "what is that patch of
+           sky" without guessing at coordinates. */
+        w.__camera = camera;
         w.__probe = {
           area: area.id,
           player: [+p.x.toFixed(2), +p.z.toFixed(2)],
+          /* The height the duelist is actually drawn at, which is the eased one
+             and not `groundAt` — `npm run stairs` compares the two. */
+          y: +groundY.toFixed(3),
           cam: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],
           camDist: +camDist.toFixed(2), camLift: +camLift.toFixed(2), camYaw: +camYaw.toFixed(3),
           near: nearRef.current?.id ?? null,
@@ -1012,6 +1037,46 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     };
   }, []);
 
+  /**
+   * The position, written, with nobody told about it.
+   *
+   * The Save button is a *report* — a sound, a line of text, a spinner — and
+   * none of that belongs to the saves the game takes on its own behalf.
+   */
+  const persist = useCallback(
+    () => onSave({ ...here.current, area: areaRef.current }).catch(() => null),
+    [onSave]
+  );
+
+  /**
+   * And the game takes them constantly.
+   *
+   * Mike won a duel and came back to the street he starts on, twenty minutes
+   * from where he had been standing. Nothing was broken about the save itself:
+   * the world simply never wrote one unless he pressed the button. Leaving for
+   * a duel fired a write and then navigated away in the same tick, which aborts
+   * it; leaving to the main menu wrote nothing at all. So "carry on where you
+   * left off" meant "carry on wherever you last remembered to press Save",
+   * which is not a thing to ask of anybody.
+   *
+   * Every four seconds, and only when the duelist has actually moved a metre
+   * since the last one. A position is four numbers and this is the cheapest
+   * write in the game; not doing it cost an hour of somebody's evening.
+   */
+  const saved = useRef({ x: NaN, z: NaN, area: '' as string });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const at = here.current;
+      const area = areaRef.current;
+      const was = saved.current;
+      const moved = area !== was.area || Math.hypot(at.x - was.x, at.z - was.z) > 1;
+      if (!moved) return;
+      saved.current = { x: at.x, z: at.z, area };
+      void persist();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [persist]);
+
   const save = useCallback(async () => {
     setSaving(true);
     setNote(null);
@@ -1082,7 +1147,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           The open world needs WebGL, and this browser would not give us a 3D context. Your duelist and deck are
           safe — try Safari or Chrome with hardware acceleration switched on.
         </p>
-        <button className="btn rounded px-4 py-2 text-xs" onClick={onExit}>
+        <button
+          className="btn rounded px-4 py-2 text-xs"
+          onClick={() => void persist().then(onExit)}
+        >
           Back to the main menu
         </button>
       </main>
@@ -1161,7 +1229,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               className="btn w-full rounded px-3 py-2 text-[11px]"
               onClick={() => {
                 sfx.click();
-                onExit();
+                /* The way out writes where you were standing. Leaving by the
+                   menu used to write nothing, so coming back in put you at the
+                   last save rather than at the door you left by. */
+                void persist().then(onExit);
               }}
             >
               Return to the Main Menu
@@ -1315,8 +1386,19 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              * is worth exactly as much as it costs: if it fails the player is
              * where they last saved, which is what would have happened anyway.
              */
-            void onSave({ ...here.current, area: areaRef.current }).catch(() => {});
-            onDuel?.(talkingTo);
+            /*
+             * Awaited, and not fired into the dark.
+             *
+             * `onDuel` navigates to another page, and a fetch started in the
+             * same tick as a navigation is a fetch the browser is entitled to
+             * cancel — which it does, often enough that winning a duel put Mike
+             * back where he had last pressed Save rather than outside the
+             * building he walked into. The duel can wait the one round trip.
+             */
+            void (async () => {
+              await persist();
+              onDuel?.(talkingTo);
+            })();
           }}
           playerName={character.name}
           onClose={() => {

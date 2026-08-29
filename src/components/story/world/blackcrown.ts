@@ -35,6 +35,7 @@ import {
   asphalt, paving, brick, render, plaster, darkWood, concrete, shutter, signBoard,
 } from './surfaces';
 import {
+  basePlate,
   Owned, box, matt, tiled, glow, surfaceOf, type BuiltArea,
 } from './kit';
 import { Sky, ownSky } from './sky';
@@ -106,6 +107,8 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   }));
 
   /* ---- the ground ---- */
+
+  basePlate(own, root, AREA.bounds);
 
   /** A flat run of ground. Every surface in the block is one of these. */
   const floor = (
@@ -749,8 +752,10 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.9, 1.1, 0.5, iron, -8 + s * 3, 0.55, 43.0));
     root.add(box(own, 1.3, 0.34, 0.4, oxblood, -8 + s * 3, 1.22, 43.0));
   }
-  /* A blind arch in the viaduct, bricked up. Cities are full of them. */
-  root.add(box(own, 4.6, 3.6, 0.4, matt(own, '#3f342f'), -8, 1.8, 43.25));
+  /* A blind arch in the viaduct, bricked up. Cities are full of them. In
+     brickwork rather than a flat brown: it is the thing you are looking at down
+     the whole length of the street. */
+  root.add(box(own, 4.6, 3.6, 0.4, darkBrick(), -8, 1.8, 43.25));
   root.add(box(own, 5.2, 0.4, 0.6, stone(), -8, 3.8, 43.2));
 
   /* ---- what stands in the block ---- */

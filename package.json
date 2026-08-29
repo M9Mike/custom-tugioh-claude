@@ -71,7 +71,9 @@
     "embedded": "tsx scripts/embedded-check.ts",
     "models": "tsx scripts/model-size-check.ts",
     "seams": "tsx scripts/seam-check.ts",
-    "corners": "tsx scripts/corner-shots.ts"
+    "corners": "tsx scripts/corner-shots.ts",
+    "stairs": "tsx scripts/stairs-check.ts",
+    "carryon": "tsx scripts/carryon-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

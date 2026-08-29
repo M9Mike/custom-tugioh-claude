@@ -31,6 +31,7 @@
 import * as THREE from 'three';
 import { concrete, render, paving, darkWood, brick, signBoard } from './surfaces';
 import {
+  basePlate,
   Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea,
 } from './kit';
 import { Sky, ownSky } from './sky';
@@ -54,6 +55,9 @@ export function buildStepLane(anisotropy: number): BuiltArea {
   const own = new Owned();
   const root = new THREE.Group();
   root.name = 'step-lane';
+  /* Under everything, so the ground the buildings stand on is ground and not
+     the sky. See `basePlate`. */
+  basePlate(own, root, AREA.bounds);
   const rnd = seeded(0x57e9a);
 
   /* ---- surfaces ---- */

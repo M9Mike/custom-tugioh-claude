@@ -129,7 +129,22 @@ export default function StoryMode() {
    * `as` is for the resume above, which runs inside the same effect that sets
    * `name` — so the state it would otherwise read has not landed yet.
    */
+  /**
+   * One at a time, and not one per caller.
+   *
+   * `busy` is state, so it is not true until the next render — which is no
+   * guard at all against two calls in the same tick. There are three ways in
+   * now (the button, a rescue reload, and a session that has already signed in
+   * once), and two of them can land together: the effect fires on mount while a
+   * finger is already on the button. Two logins meant two profiles, two world
+   * mounts and two WebGL contexts rendering the same city, which pinned nine
+   * cores and never settled — `npm run doors` hung on the second door of every
+   * area it tried.
+   */
+  const signingIn = useRef(false);
   const signIn = async (as?: string) => {
+    if (signingIn.current) return;
+    signingIn.current = true;
     setBusy(true);
     setError(null);
     primeAudio();
@@ -137,6 +152,7 @@ export default function StoryMode() {
     const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/login', { username: as ?? name });
     setBusy(false);
     if (!res.ok) {
+      signingIn.current = false;
       sfx.error();
       setError(res.error);
       return;
@@ -189,6 +205,20 @@ export default function StoryMode() {
     } catch {
       /* private browsing — they type it again, exactly as before */
     }
+    /*
+     * Signing in on the way back from the main menu was tried here and taken
+     * out again.
+     *
+     * The idea was sound — walking out to the menu and back is not a cold visit
+     * and should not ask your name — but the world starts building the moment a
+     * profile lands, which with an automatic sign-in is before the cast has
+     * finished coming down: entry went from five seconds to thirty-two, and
+     * every browser check that enters the world more than once started timing
+     * out. One button press is a small price; half a minute of staring at a
+     * loading line is not, and neither is a check that cannot be trusted.
+     *
+     * The name is still in the box. What is left to do is press the button.
+     */
     if (carryOn && who) void signIn(who);
     /* Mount only. It sits below `signIn` rather than above it so that call is
        to something already declared — the order in this file is load-bearing. */

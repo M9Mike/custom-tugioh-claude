@@ -138,19 +138,56 @@ export async function ensurePlayer(): Promise<void> {
  * rather than for the canvas — a canvas exists while the world is still being
  * built, and auditing a half-built area is worse than not auditing it.
  */
+/**
+ * Walks her forward, by the stick a player would use.
+ *
+ * Not `keyboard.down('w')`. The key works when the page happens to have focus
+ * and does nothing when it does not, which in a check that has just navigated
+ * is a coin toss — the carry-on check reported her walking 3.1 m, then 2.8, then
+ * 0.9, then 0.7, off identical code, and the stairs sweep called a flight
+ * "never got going" for the same reason. The door check has always driven the
+ * stick and has never once been flaky. So this is that, shared.
+ */
+export async function walkForward(page: Page, ms: number): Promise<void> {
+  const box = await page.locator('[aria-label="Move"]').boundingBox();
+  if (!box) throw new Error('the thumb stick is not on screen');
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx, box.y - 40, { steps: 8 });
+  await page.waitForTimeout(ms);
+  await page.mouse.up();
+}
+
 export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR): Promise<boolean> {
   await page.goto(`${BASE}/story?t=${hour}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  /*
+   * Sign in if asked, and do not mind if the card goes away mid-sentence.
+   *
+   * Story Mode remembers, for the life of a tab, that this session has already
+   * said who it is — so the second and later visits inside one browser context
+   * go straight through and the card is gone between `isVisible` and the click.
+   * Every one of these checks enters the world a dozen times, and a race that
+   * throws in the setup fails a check that has nothing wrong with it. Which is
+   * what it did: `npm run doors` died on the fourth door with a timeout waiting
+   * for a name box that had already served its purpose.
+   */
   const field = page.locator('input[placeholder="Enter your name"]');
   if (await field.isVisible().catch(() => false)) {
-    if ((await field.inputValue().catch(() => '')) !== NAME) {
-      await field.fill('');
-      await field.fill(NAME);
+    try {
+      if ((await field.inputValue()) !== NAME) {
+        await field.fill('');
+        await field.fill(NAME);
+      }
+      const enter = page.locator('button:has-text("Enter Story Mode")').first();
+      for (let i = 0; i < 200 && !(await enter.isEnabled().catch(() => false)); i++) {
+        await page.waitForTimeout(200);
+      }
+      await enter.click({ timeout: 5000 });
+    } catch {
+      /* Signed in while we were typing. The wait below is the real test. */
     }
-    const enter = page.locator('button:has-text("Enter Story Mode")').first();
-    for (let i = 0; i < 200 && !(await enter.isEnabled().catch(() => false)); i++) {
-      await page.waitForTimeout(200);
-    }
-    await enter.click();
   }
   for (let i = 0; i < 250; i++) {
     const there = await page
@@ -160,6 +197,26 @@ export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR):
       }, area ?? null)
       .catch(() => false);
     if (there) {
+      /*
+       * And wait for the duelist herself.
+       *
+       * The area being built is not the same thing as the game being ready to
+       * play: a duelist is a *fetch*, and until her rig lands there is nobody
+       * for a keypress to move. Checks that hold a key down — the stairs, the
+       * carry-on — were pressing it into an empty world and reporting "she did
+       * not move", and the seam sweep read "never reached" off the same race.
+       * Every one of those was the harness, not the game.
+       */
+      for (let k = 0; k < 80; k++) {
+        const rigged = await page.evaluate(() => {
+          const w = window as unknown as { __scene?: { traverse(f: (o: { isSkinnedMesh?: boolean }) => void): void } };
+          let n = 0;
+          w.__scene?.traverse((o) => { if (o.isSkinnedMesh) n++; });
+          return n;
+        }).catch(() => 0);
+        if (rigged > 0) break;
+        await page.waitForTimeout(250);
+      }
       await page.waitForTimeout(700);
       return true;
     }

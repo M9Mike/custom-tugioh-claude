@@ -99,10 +99,26 @@ export function walkableCells(area: Area): { x: number; z: number; y: number }[]
   const storeys = hasStoreys(area);
   const floorAt = (x: number, z: number, near: number) =>
     storeys ? groundAt(area, x, z, near) : Number.NaN;
-  const queue: { ix: number; iz: number; y: number }[] = [
-    { ...start, y: floorAt(start.ix * STEP, start.iz * STEP, 0) },
-  ];
-  seen.add(`${start.ix},${start.iz}`);
+  /*
+   * A cell is a column *and* a floor.
+   *
+   * Keyed on the column alone — which is how this was written, and is right for
+   * a street — the shop's ground floor claims every column in the building
+   * before the fill ever reaches the stairs, and then the galleries over those
+   * columns can never be entered. Whichever of the two the depth-first walk
+   * happens to reach first wins, so the coverage was arbitrary: the second
+   * gallery came out with nothing on it at all, and `npm run footing`, which
+   * tests the floor under the cells the fill reaches, passed a storey nobody
+   * could stand on by never looking at it.
+   *
+   * Bucketed to half a metre so a flight of treads is a handful of visits to a
+   * column and not one per tread.
+   */
+  const cellKey = (ix: number, iz: number, y: number) =>
+    `${ix},${iz},${Number.isFinite(y) ? Math.round(y / 0.5) : 0}`;
+  const startY = floorAt(start.ix * STEP, start.iz * STEP, 0);
+  const queue: { ix: number; iz: number; y: number }[] = [{ ...start, y: startY }];
+  seen.add(cellKey(start.ix, start.iz, startY));
 
   while (queue.length) {
     const { ix, iz, y } = queue.pop()!;
@@ -113,10 +129,10 @@ export function walkableCells(area: Area): { x: number; z: number; y: number }[]
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = ix + dx;
       const nz = iz + dz;
-      const k = `${nx},${nz}`;
+      const ny = floorAt(nx * STEP, nz * STEP, y);
+      const k = cellKey(nx, nz, ny);
       if (seen.has(k)) continue;
       seen.add(k);
-      const ny = floorAt(nx * STEP, nz * STEP, y);
       if (standable(area, nx * STEP, nz * STEP, ny)) {
         queue.push({ ix: nx, iz: nz, y: ny });
         continue;

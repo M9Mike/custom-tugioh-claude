@@ -34,7 +34,7 @@ import { readFileSync } from 'node:fs';
 import {
   AREAS, FIRST_AREA, MARKET_GOODS, MARKET_GOODS_LIMIT, PLAYER_RADIUS, SEAM_TOLERANCE,
   STEP_LANE_CLIMB, STEP_LANE_HALF, STEP_LANE_RISE, STEP_LANE_THINGS, climbPlatforms, groundAt,
-  arrivalThrough, partnerOf, settle, toWorld, inside,
+  arrivalThrough, hasStoreys, partnerOf, settle, toWorld, inside,
   type Area, type AreaId, type Rect,
 } from '../src/story/areas';
 import { STEP, walkableCells as reachable } from './walkable';
@@ -224,11 +224,25 @@ for (const id of ids) {
     check(got, `${id}: ${door.id} can be walked into`);
   }
 
-  /* And nothing reachable may be cut off from the rest — a flood fill that
-     reaches the doors but leaves an island behind is a floor with a hole in it,
-     which is only ever a mistake. */
-  const area2 = area.bounds.hw * area.bounds.hd * 4;
-  check(walkable.length * STEP * STEP < area2 + 1,
+  /*
+   * And the floor cannot be bigger than the building.
+   *
+   * A ceiling on the fill: if it leaks past a wall it will cover more ground
+   * than the area has, and this says so. The number to compare against is the
+   * footprint — for a street. For a building with galleries in it the floor is
+   * genuinely larger than the ground it stands on, so the footprint plus every
+   * raised platform is the honest limit, and it is still tight: the shop's
+   * three storeys come to 1,160 m² against 1,589 of floor plate.
+   *
+   * Written as a footprint alone, this fired the moment the Black Crown shop's
+   * stairs started working — the check had never seen a second storey it could
+   * reach, because until then nobody could.
+   */
+  const foot = area.bounds.hw * area.bounds.hd * 4;
+  const raised = hasStoreys(area)
+    ? (area.platforms ?? []).reduce((n, p) => n + p.hw * p.hd * 4, 0)
+    : 0;
+  check(walkable.length * STEP * STEP < foot + raised + 1,
         `${id}: the floor fits inside its own bounds`);
 }
 

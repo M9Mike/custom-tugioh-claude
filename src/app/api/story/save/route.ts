@@ -1,7 +1,7 @@
 import { canonicalUsername, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
 import { readBody } from '../body';
-import { areaById, settle, PLAYER_RADIUS } from '@/story/areas';
+import { areaById, settle, PLAYER_RADIUS, standingOn } from '@/story/areas';
 import type { WorldPosition } from '@/story/profile';
 
 export const runtime = 'nodejs';
@@ -47,12 +47,12 @@ export async function POST(req: Request) {
        * written before areas existed.
        */
       const area = areaById(patch.area ?? profile.world.area);
-      const settled = settle(
-        area,
-        finite(patch.x, profile.world.x),
-        finite(patch.z, profile.world.z),
-        PLAYER_RADIUS
-      );
+      const x = finite(patch.x, profile.world.x);
+      const z = finite(patch.z, profile.world.z);
+      /* On the floor they walked in on — see `standingOn`. Without it every
+         gallery rail in the shop applies to somebody on the ground floor, and
+         the position written back is one they were shoved to. */
+      const settled = settle(area, x, z, PLAYER_RADIUS, standingOn(area, x, z));
       const world: WorldPosition = {
         area: area.id,
         x: settled.x,
