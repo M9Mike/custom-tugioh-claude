@@ -48,7 +48,7 @@
 
 import * as THREE from 'three';
 import {
-  arcadeFloor, shutter, brick, render, plaster, darkWood, signBoard,
+  arcadeFloor, shutter, brick, render, plaster, darkWood, concrete, paving, signBoard,
 } from './surfaces';
 import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
 import { MARKET_GOODS, type Goods, type GoodsKind } from '@/story/areas';
@@ -208,6 +208,10 @@ export function buildMarket(anisotropy: number): BuiltArea {
   const renderTex = surfaceOf(own, () => render('#8c8170'), 1, 1, anisotropy);
   const upperSkin = tiled(matt(own, '#ffffff', renderTex));
   const blockSkin = tiled(matt(own, '#ffffff', brickTex));
+  /* For the surround on the way through to Black Crown — the one piece of cut
+     stone in an arcade otherwise made of brick, board and steel. */
+  const stoneTrim = tiled(matt(own, '#ffffff',
+                               surfaceOf(own, () => concrete('#8a8478'), 1, 1, anisotropy)));
   const timber = matt(own, '#ffffff', surfaceOf(own, darkWood, 2, 1, anisotropy));
   const dimGlass = own.keep(new THREE.MeshStandardMaterial({
     color: '#161b22', roughness: 0.3, metalness: 0,
@@ -438,14 +442,66 @@ export function buildMarket(anisotropy: number): BuiltArea {
      ever needed and all the camera ever sees the back of. */
   const blockDepth = MR_D - MR_FRONT;
   const blockZ = (MR_FRONT + MR_D) / 2;
-  for (const s of [-1, 1] as const) {
-    root.add(box(own, MR_W * 2, 8.6, blockDepth, blockSkin, 0, 4.3, s * blockZ));
-  }
+  root.add(box(own, MR_W * 2, 8.6, blockDepth, blockSkin, 0, 4.3, -blockZ));
+  /*
+   * The south block, with the way through to Black Crown cut out of it.
+   *
+   * Six metres at the far end, where the last unit used to be. That unit is not
+   * drawn: a shopfront and a passage cannot both be in one bay, and a passage
+   * that begins behind a shutter is not a passage.
+   */
+  root.add(box(own, 39, 8.6, blockDepth, blockSkin, -3.5, 4.3, blockZ));
+  root.add(box(own, 1, 8.6, blockDepth, blockSkin, 22.5, 4.3, blockZ));
+  root.add(box(own, 6, 3.4, blockDepth, blockSkin, 19, 6.9, blockZ));
 
   for (let i = 0; i < UNITS; i++) {
     const cx = -MR_W + UNIT_W * (i + 0.5);
     unit(NORTH[i], cx, -1);
-    unit(SOUTH[i], cx, 1);
+    if (i < UNITS - 1) unit(SOUTH[i], cx, 1);
+  }
+
+  /*
+   * And the passage itself, dressed as an opening rather than left as a hole.
+   *
+   * Same three pieces as the shrine's way out, and for the same reason: a
+   * doorway has to read as one from the far end of the arcade, or forty-six
+   * metres of shopfront swallow it. Jambs and a head standing proud of the
+   * building line, a floor going through, and the far end lit — you cannot see
+   * into another area, but you can see that this one goes somewhere.
+   */
+  {
+    const PZ = MR_FRONT - 0.4;      // the face the surround stands on
+    for (const side of [-1, 1] as const) {
+      root.add(box(own, 0.6, 5.4, 0.75, stoneTrim, 19 + side * 3.3, 2.7, PZ - 0.3));
+    }
+    root.add(box(own, 7.4, 0.6, 0.75, stoneTrim, 19, 5.7, PZ - 0.3));
+    const through = new THREE.Mesh(
+      own.keep(new THREE.PlaneGeometry(6, 5)),
+      matt(own, '#ffffff', surfaceOf(own, () => paving({ dirt: 0.4 }), 2, 1.6, anisotropy))
+    );
+    through.rotation.x = -Math.PI / 2;
+    through.position.set(19, 0.01, 7.2);
+    root.add(through);
+    /* The lane beyond, suggested and not modelled: a wall, a lit window on it,
+       and one lamp. */
+    root.add(box(own, 6.4, 5.6, 0.4, matt(own, '#3a3029'), 19, 2.8, 9.6));
+    root.add(box(own, 2.2, 1.5, 0.14, glow(own, '#a37f4a'), 19, 3.1, 9.35));
+    const beyond = new THREE.PointLight('#ffc186', 24, 12, 2);
+    beyond.position.set(19, 3.4, 7.6);
+    root.add(beyond);
+    /* And a board over it, because a turning nobody has signposted is a gap. */
+    const sign = new THREE.Mesh(
+      own.keep(new THREE.PlaneGeometry(5.6, 1.05)),
+      own.keep(new THREE.MeshBasicMaterial({
+        map: surfaceOf(own, () => signBoard('BLACK CROWN', '#e0cfa2', '#232a33', undefined, 5.6 / 1.05),
+                       1, 1, anisotropy),
+        color: '#a89a7c',
+      }))
+    );
+    sign.rotation.y = Math.PI;
+    sign.position.set(19, 6.55, PZ - 0.72);
+    root.add(sign);
+    root.add(box(own, 6, 1.3, 0.3, matt(own, '#2b2723'), 19, 6.55, PZ - 0.6));
   }
 
   /* ---------------------------------------------------------------- */

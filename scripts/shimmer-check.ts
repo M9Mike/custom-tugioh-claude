@@ -108,6 +108,17 @@ const VANTAGES: Vantage[] = [
   { name: 'the lantern avenue, along it', area: 'domino-shrine', x: -5.6, z: -15.5, facing: 0 },
   { name: 'the little shrine in the trees', area: 'domino-shrine', x: 22.5, z: 8.6, facing: 0 },
   { name: 'the stone behind the hall', area: 'domino-shrine', x: 0, z: 18.2, facing: 0 },
+
+  /* Black Crown: one vantage per place, and the two flights from below, which
+     is where a step's nosing crawls if it is going to. */
+  { name: 'down the lane', area: 'black-crown', x: -19, z: -40, facing: 0 },
+  { name: 'the square, at the shop', area: 'black-crown', x: -4, z: 2, facing: Math.PI / 2 },
+  { name: 'the shop steps from below', area: 'black-crown', x: 3, z: 2, facing: Math.PI / 2 },
+  { name: 'the dice court', area: 'black-crown', x: 6, z: -16, facing: Math.PI / 2 },
+  { name: 'the south street', area: 'black-crown', x: -8, z: 24, facing: 0 },
+  { name: 'the alley west', area: 'black-crown', x: -24, z: -1.5, facing: -Math.PI / 2 },
+  { name: 'the yard', area: 'black-crown', x: -44, z: -1.5, facing: -Math.PI / 2 },
+  { name: 'the square, looking back', area: 'black-crown', x: -8, z: 6, facing: Math.PI },
   { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
 ];
 

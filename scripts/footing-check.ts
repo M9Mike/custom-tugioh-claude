@@ -166,7 +166,11 @@ async function main() {
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   page.on('pageerror', (e) => check(false, 'the world threw', e.message));
 
-  for (const id of Object.keys(AREAS) as AreaId[]) {
+  /* `npm run footing -- crown` for one area. Every area is minutes of real page
+     loads, which is right before a release and wrong while building one. */
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a));
+  const pick = (id: string) => !only.length || only.some((o) => id.includes(o));
+  for (const id of (Object.keys(AREAS) as AreaId[]).filter(pick)) {
     const area = AREAS[id];
     /* Twice before giving up. A cold Next.js route and eight hundred meshes is
        occasionally slower than the wait, and a flaky "never reached" is worse

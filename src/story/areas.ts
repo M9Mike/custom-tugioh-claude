@@ -43,7 +43,8 @@ export type AreaId =
   | 'starting-area'
   | 'market-row'
   | 'step-lane'
-  | 'domino-shrine';
+  | 'domino-shrine'
+  | 'black-crown';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -674,7 +675,9 @@ export const MARKET_GOODS: Goods[] = [
   { kind: 'ice',      x: -12.0, z: 3.8,   hw: 1.6, hd: 0.9 },
   { kind: 'bench',    x: -1.5,  z: 4.1,   hw: 1.1, hd: 0.45 },
   { kind: 'bicycles', x: 9.0,   z: 4.2,   hw: 1.4, hd: 0.5 },
-  { kind: 'crates',   x: 18.2,  z: 3.9,   hw: 1.0, hd: 0.8, tint: '#6a5a44' },
+  /* Moved west off x 18.2, which is now the mouth of the way through to
+     Black Crown and had a crate standing squarely in it. */
+  { kind: 'crates',   x: 12.6,  z: 3.9,   hw: 1.0, hd: 0.8, tint: '#6a5a44' },
 ];
 
 /**
@@ -715,7 +718,15 @@ const MARKET_ROW: Area = {
      * reach behind them cannot tell the difference.
      */
     { x: 0, z: -(MR_REACH + MR_D) / 2, hw: MR_W, hd: (MR_D - MR_REACH) / 2, tall: true },
-    { x: 0, z: (MR_REACH + MR_D) / 2, hw: MR_W, hd: (MR_D - MR_REACH) / 2, tall: true },
+    /*
+     * The south row, with the way through to Black Crown cut out of it.
+     *
+     * Six metres of gap at x 19, near the far end — near, because further west
+     * would have put that whole block inside Domino Shrine, whose trees reach
+     * world x 20.6 and whose ground cannot be shared.
+     */
+    { x: -3.5, z: (MR_REACH + MR_D) / 2, hw: MR_W - 3.5, hd: (MR_D - MR_REACH) / 2, tall: true },
+    { x: 22.5, z: (MR_REACH + MR_D) / 2, hw: 0.5, hd: (MR_D - MR_REACH) / 2, tall: true },
 
     /* West end: the arch back out to Turtle Lane, with wall either side of it.
        The 4.4 m gap between these is the doorway, and the camera gets it back
@@ -799,6 +810,30 @@ const MARKET_ROW: Area = {
        */
       arrive: { x: -15.0, z: 0, facing: Math.PI / 2 },
       label: 'Turtle Lane',
+    },
+    {
+      id: 'market-to-crown',
+      /* In the gap in the south row, and as deep as the gap is — you cannot
+         cross this without meaning to, because it is off the arcade rather
+         than along it. */
+      trigger: { x: 19, z: 7.4, hw: 2.6, hd: 1.1 },
+      to: 'black-crown',
+      seam: { x: 19, z: MR_D },
+      /*
+       * Out of the passage and facing west, down the arcade.
+       *
+       * Not north into the row of units opposite, which is the way you were
+       * walking when you left: you have come up out of a side turning, and what
+       * you want to see is the arcade you are back in.
+       *
+       * And at x 16 rather than 19, which is where the passage actually is. The
+       * camera sits three and a half metres behind a duelist facing west, and
+       * from 19 that is x 22 — inside the far gates, which are solid from 21.
+       * It clipped to 1.42 and lifted 0.68, and the arrival shot was the top of
+       * her head against a shutter.
+       */
+      arrive: { x: 16, z: 3.1, facing: -Math.PI / 2 },
+      label: 'Black Crown',
     },
   ],
   spawn: { x: -15.0, z: 0, facing: Math.PI / 2 },
@@ -1326,12 +1361,272 @@ const DOMINO_SHRINE: Area = {
   spawn: { x: 0, z: -22.1, facing: 0 },
 };
 
+
+/* ------------------------------------------------------------------ */
+/* Black Crown                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The block behind Market Row, and the shop that gives it its name.
+ *
+ * Eighty-four metres across and ninety-six deep — about three times the
+ * shrine's ground, and the largest thing in this world. That is the point of
+ * it. This is a *block* of a city rather than a set: walking from the mouth of
+ * the lane to the buffers at the far end takes as long as walking a real street
+ * does, and there is nowhere you can stand and see all of it at once.
+ *
+ * ## Six places, because one shape this size is only a large corridor
+ *
+ * It is a junction with things off it, and five of the six can be walked past
+ * without ever being entered — which is what makes entering them worth
+ * anything:
+ *
+ * - the **lane in** from the back of Market Row, ten metres wide and roofed at
+ *   its mouth, so the block opens out rather than starting
+ * - the **square**, the only wide ground, and irregular on its east side
+ *   because the two things standing there are at two different heights
+ * - **Black Crown** itself, up nine steps on a podium the width of its frontage
+ * - the **dice court** beside it, two steps up and round a corner from the shop
+ * - the **south street**, twelve metres wide, running down to a railway that
+ *   stops it
+ * - the **service alley** west, thirty metres of it, and the **yard** at the end
+ *
+ * ## What is solid, and what only looks it
+ *
+ * One slab per building, exactly as Market Row does it. Collision never needs
+ * to know about a shopfront — only that there is building here — and the fronts
+ * are drawn on the slabs by `world/blackcrown.ts`. A player who cannot reach
+ * behind a wall cannot tell the difference, and the difference is a hundred
+ * rectangles.
+ */
+
+const BC_W = 42;   // half-width, over a block running x −51 to 33
+const BC_D = 48;   // half-depth, so 96 m from the lane's mouth to the buffers
+
+/** The podium Black Crown stands on. Nine steps above the square. */
+export const BC_PODIUM = 1.62;
+/** The court beside it, which is two steps and a different place. */
+export const BC_COURT = 0.36;
+
+/** Everything you climb: the two flights and the two things they lead to. */
+export const BC_STEPS: Platform[] = [
+  /*
+   * Up to the shop, on a flight the width of its whole frontage.
+   *
+   * The square is arranged around this, so the shop is *approached* rather than
+   * merely entered — nine steps is enough that you are aware of climbing them.
+   */
+  ...flightPlatforms({ along: 'x', start: 8, end: 12, from: 0, to: BC_PODIUM, half: 12, cross: 2 }),
+  { x: 20.5, z: 2, hw: 8.5, hd: 12, y: BC_PODIUM },
+
+  /* And up to the court, which is round the corner from it and much lower.
+     Stopping at z −21.9 rather than −22: the square's frontage stands its
+     plinth on the building line, and the top step used to run under it. */
+  ...flightPlatforms({ along: 'x', start: 10.6, end: 12, from: 0, to: BC_COURT, half: 5.95, cross: -15.95 }),
+  { x: 22, z: -15.95, hw: 10, hd: 5.95, y: BC_COURT },
+];
+
+/**
+ * The pavements down the south street, which is the one place here that is a
+ * street rather than a yard or a square.
+ *
+ * Declared as ground rather than drawn as a kerb standing on the road. A kerb is
+ * thirteen centimetres proud and a player walks straight onto it, so unless
+ * `groundAt` knows about it their feet go through it — which is what the first
+ * version of this did, in seven hundred and forty-six cells.
+ */
+export const BC_PAVEMENTS: Platform[] = [
+  { x: -13.2, z: 29.5, hw: 0.8, hd: 13.5, y: 0.13 },
+  { x: -2.8, z: 28.5, hw: 0.8, hd: 14.5, y: 0.13 },
+];
+
+export const BC_GROUND: Platform[] = [...BC_STEPS, ...BC_PAVEMENTS];
+
+/**
+ * Everything standing in the block, and every one of them solid.
+ *
+ * Same arrangement as `SHRINE_THINGS`: one list, read by `blackCrownSolids` for
+ * collision and by `world/blackcrown.ts` for geometry, so a lamp cannot be moved
+ * in one and left behind in the other.
+ */
+export interface CrownThing {
+  kind: 'lamp' | 'bollard' | 'planter' | 'bench' | 'dice' | 'stall' | 'bin' | 'board' | 'crate';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  /** Lamps only: whether it is burning. Said here rather than worked out from
+      the index in this array, for the reason given on `ShrineThing`. */
+  lit?: boolean;
+  /** Turned, for anything with a front. Radians about +y, so 0 faces +z. */
+  face?: number;
+}
+
+export const CROWN_THINGS: CrownThing[] = [
+  /*
+   * The lane in, lit down one side only — a service lane is not a street.
+   *
+   * At x −23.4 all three of these were standing *inside* the wall: `frontage`
+   * carries its plinth out to twenty centimetres proud of the building line at
+   * −23.5, so the post, the lantern and the light in it were all buried in
+   * masonry and the lane arrived pitch dark.
+   */
+  { kind: 'lamp', x: -22.6, z: -44, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -22.6, z: -34, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -22.6, z: -26, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'bin', x: -15.4, z: -40, hw: 0.5, hd: 0.4 },
+  { kind: 'bin', x: -16.5, z: -40, hw: 0.5, hd: 0.4 },
+  { kind: 'crate', x: -15.2, z: -31, hw: 0.7, hd: 0.7 },
+
+  /*
+   * The square. Lamps round the edge of it rather than down the middle, which
+   * is the difference between a square and a wide street.
+   */
+  { kind: 'lamp', x: -18.6, z: -17, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -18.6, z: -2, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -18.6, z: 12, hw: 0.3, hd: 0.3 },
+  { kind: 'lamp', x: 5.5, z: -18, hw: 0.3, hd: 0.3 },
+  { kind: 'lamp', x: 5.5, z: 12, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'planter', x: -13, z: -13, hw: 1.6, hd: 1.6 },
+  { kind: 'planter', x: -13, z: 8, hw: 1.6, hd: 1.6 },
+  { kind: 'bench', x: -6.5, z: -13, hw: 1.2, hd: 0.42, face: 0 },
+  { kind: 'bench', x: -6.5, z: 8, hw: 1.2, hd: 0.42, face: Math.PI },
+  { kind: 'board', x: -19.2, z: -8, hw: 1.5, hd: 0.3, face: Math.PI / 2 },
+  /* A rank of them along the foot of the shop's steps, because that is what
+     stands at the foot of steps a delivery van would otherwise use. */
+  { kind: 'bollard', x: 6.4, z: -8, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: 6.4, z: -4, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: 6.4, z: 0, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: 6.4, z: 4, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: 6.4, z: 8, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: 6.4, z: 12, hw: 0.17, hd: 0.17 },
+
+  /* A pair on the podium, either side of the shop's own doors. Somewhere this
+     size with nothing standing on it reads as a loading bay. */
+  { kind: 'lamp', x: 13.4, z: -6.5, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: 13.4, z: 12.5, hw: 0.3, hd: 0.3, lit: true },
+
+  /* The court, and the thing it exists for. */
+  { kind: 'dice', x: 21, z: -16, hw: 2.3, hd: 2.3 },
+  { kind: 'lamp', x: 14.4, z: -20.6, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: 14.4, z: -11.4, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'bench', x: 29.6, z: -16, hw: 0.42, hd: 1.2, face: -Math.PI / 2 },
+
+  /* The south street: a market that packs up, left where it stands. */
+  { kind: 'stall', x: -12.2, z: 22, hw: 1.7, hd: 1.2, face: Math.PI / 2 },
+  { kind: 'stall', x: -12.2, z: 31, hw: 1.7, hd: 1.2, face: Math.PI / 2 },
+  { kind: 'stall', x: -3.8, z: 26.5, hw: 1.7, hd: 1.2, face: -Math.PI / 2 },
+  { kind: 'lamp', x: -12.6, z: 18, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'lamp', x: -3.4, z: 36, hw: 0.3, hd: 0.3 },
+  { kind: 'bollard', x: -6, z: 42, hw: 0.17, hd: 0.17 },
+  { kind: 'bollard', x: -10, z: 42, hw: 0.17, hd: 0.17 },
+  { kind: 'crate', x: -12.6, z: 39.5, hw: 0.7, hd: 0.7 },
+
+  /* The alley, and the yard at the end of it. */
+  { kind: 'lamp', x: -22.5, z: -4.6, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'bin', x: -29, z: 1.8, hw: 0.5, hd: 0.4 },
+  { kind: 'bin', x: -30.1, z: 1.8, hw: 0.5, hd: 0.4 },
+  { kind: 'crate', x: -35.5, z: -4.4, hw: 0.7, hd: 0.7 },
+  { kind: 'lamp', x: -42.5, z: -4.6, hw: 0.3, hd: 0.3, lit: true },
+  { kind: 'crate', x: -48, z: 8, hw: 0.9, hd: 0.9 },
+  { kind: 'crate', x: -48, z: -14, hw: 0.9, hd: 0.9 },
+  { kind: 'crate', x: -46, z: -14, hw: 0.9, hd: 0.9 },
+  { kind: 'bin', x: -43.5, z: 12.5, hw: 0.5, hd: 0.4 },
+];
+
+/** What you bump into, out of the same list the geometry is drawn from. */
+export function blackCrownSolids(): Rect[] {
+  return CROWN_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd }));
+}
+
+const BLACK_CROWN: Area = {
+  id: 'black-crown',
+  name: 'Black Crown',
+  kind: 'exterior',
+  /*
+   * Behind Market Row's south side, and clear to the east of the shrine.
+   *
+   * Forced by two things at once. The lane leaves Market Row through its south
+   * row at that arcade's local x 19, which is world (60, 9.5); and the same
+   * doorway arrives here at local (−19, −48). The origin is whatever makes
+   * those the same point, and there is nothing to choose about it.
+   *
+   * Which end of Market Row to leave from *was* a choice. Anywhere further west
+   * and this block would have been standing inside Domino Shrine, whose trees
+   * reach world x 20.6 — and two areas cannot share ground.
+   */
+  world: { x: 79, z: 57.5 },
+  /*
+   * Off-centre, because the block is: the ground runs x −51 to 33 and z −50 to
+   * 46. Centred on the origin instead, the backstop would sit forty metres
+   * inside the buildings on one side and hard against them on the other.
+   */
+  bounds: { x: -9, z: -2, hw: BC_W, hd: BC_D },
+  platforms: BC_GROUND,
+  solids: [
+    /* The lane in: building both sides, all the way up to the arcade's back. */
+    { x: -37.5, z: -36, hw: 14, hd: 14, tall: true },
+    { x: -1, z: -36, hw: 13, hd: 14, tall: true },
+
+    /* The square's west terrace, with the alley cut through the middle of it. */
+    { x: -30.5, z: -14, hw: 10, hd: 8, tall: true },
+    { x: -30.5, z: 9.5, hw: 10, hd: 6.5, tall: true },
+
+    /* The yard: the back wall of the block, and a shed at each end of it. */
+    { x: -53, z: -3, hw: 2.5, hd: 19, tall: true },
+    { x: -45.5, z: -25, hw: 5, hd: 3, tall: true },
+    { x: -45.5, z: 19, hw: 5, hd: 3, tall: true },
+
+    /* North-east: the building between the lane and the court. */
+    { x: 27, z: -36, hw: 15, hd: 14, tall: true },
+
+    /* Black Crown, whose front wall is the far side of its own podium, and the
+       wall closing the court behind the sculpture. */
+    { x: 30, z: 3, hw: 12, hd: 13, tall: true },
+    { x: 37, z: -16, hw: 5, hd: 6, tall: true },
+
+    /* The south street, and the railway that stops it. */
+    { x: -32, z: 30, hw: 18, hd: 14, tall: true },
+    { x: 15, z: 29, hw: 17, hd: 15, tall: true },
+    { x: -8, z: 46.5, hw: 8, hd: 3, tall: true },
+
+    ...blackCrownSolids(),
+  ],
+  camSolids: [
+    /* The mouth of the lane, closed to the camera. Standing just inside the
+       square and turning back north would otherwise put it through the arcade's
+       back wall and into the void behind it. */
+    { x: -19, z: -48.2, hw: 6, hd: 1.3 },
+  ],
+  doors: [
+    {
+      id: 'crown-to-market',
+      trigger: { x: -19, z: -46.4, hw: 5, hd: 1.2 },
+      to: 'market-row',
+      seam: { x: -19, z: -48 },
+      /*
+       * A little way down the lane, looking along it.
+       *
+       * Facing south, because everything there is to see here is that way — and
+       * far enough in that the camera is out of the archway. It sits three and a
+       * half metres behind, and the mouth of the lane is closed to it so the
+       * arcade's back wall is not something you can see round; from four metres
+       * in that closure was what the camera was pressed against.
+       */
+      arrive: { x: -19, z: -41, facing: 0 },
+      label: 'Market Row',
+    },
+  ],
+  spawn: { x: -19, z: -41, facing: 0 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
   'market-row': MARKET_ROW,
   'step-lane': STEP_LANE,
   'domino-shrine': DOMINO_SHRINE,
+  'black-crown': BLACK_CROWN,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

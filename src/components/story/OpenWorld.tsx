@@ -40,6 +40,7 @@ import { buildStreet } from './world/street';
 import { buildMarket } from './world/market';
 import { buildStepLane } from './world/steplane';
 import { buildShrine } from './world/shrine';
+import { buildBlackCrown } from './world/blackcrown';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -291,6 +292,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'market-row': buildMarket,
       'step-lane': buildStepLane,
       'domino-shrine': buildShrine,
+      'black-crown': buildBlackCrown,
     };
 
     let built: BuiltArea | null = null;

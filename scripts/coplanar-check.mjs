@@ -23,11 +23,15 @@
  */
 import { chromium } from 'playwright';
 
-const BASE = process.argv[2] || 'http://localhost:3000';
-const GAP = Number(process.argv[3] || 0.004);
+/* A URL, or nothing — the other positional arguments here are numbers and the
+   filter below is a name, so taking "the second argument" as the host meant
+   `-- crown` tried to open http://crown/story. Same fix as `story-setup`. */
+const BASE = process.argv.slice(2).find((a) => /^https?:\/\//.test(a)) || 'http://localhost:3000';
+const NUMS = process.argv.slice(2).filter((a) => /^[\d.]+$/.test(a));
+const GAP = Number(NUMS[0] || 0.004);
 /* How many pairs to print per area. Twenty is plenty when the answer is meant to
    be none; hunting a reported flicker at a wider gap needs all of them. */
-const SHOW = Number(process.argv[4] || 20);
+const SHOW = Number(NUMS[1] || 20);
 
 const browser = await chromium.launch();
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
@@ -270,7 +274,12 @@ const visit = async (area) => {
 };
 
 let total = 0;
-for (const area of ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine']) {
+/* `node scripts/coplanar-check.mjs -- crown` for one area; see the note in
+   `door-check.ts` on why every check in here grew a filter. */
+const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a) && !/^[\d.]+$/.test(a));
+const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown']
+  .filter((id) => !only.length || only.some((o) => id.includes(o)));
+for (const area of AREAS_TO_VISIT) {
   total += await visit(area);
 }
 

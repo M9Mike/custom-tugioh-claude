@@ -77,7 +77,11 @@ async function main() {
 
   console.log('\nNothing standing inside anything else\n');
 
-  for (const id of Object.keys(AREAS) as AreaId[]) {
+  /* `npm run embedded -- crown` for one area. Every area is minutes of real page
+     loads, which is right before a release and wrong while building one. */
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a));
+  const pick = (id: string) => !only.length || only.some((o) => id.includes(o));
+  for (const id of (Object.keys(AREAS) as AreaId[]).filter(pick)) {
     await fetch(`${BASE}/api/story/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
