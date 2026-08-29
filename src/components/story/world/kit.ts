@@ -19,6 +19,14 @@ import { tile } from './surfaces';
 export interface BuiltArea {
   /** Added to the scene as one object, removed as one object. */
   root: THREE.Group;
+  /**
+   * The hour, once a frame.
+   *
+   * An area answers to the clock: where the sun is, what colour it is, and
+   * which of its lamps are still burning. Optional only so that an area can be
+   * converted without breaking the others — every one of them implements it.
+   */
+  setTime?(hour: number): void;
   /** Lights belong to the area and are torn down with it. */
   dispose(): void;
 }
@@ -34,6 +42,16 @@ export interface BuiltArea {
  */
 export class Owned {
   readonly items: { dispose(): void }[] = [];
+  /**
+   * Every unlit material in the area, so the sky can put them out.
+   *
+   * A `MeshBasicMaterial` ignores light by definition, which is the whole
+   * reason `glow` exists — and the whole reason a lit window keeps burning at
+   * noon unless somebody dims it by hand. Collecting them here rather than at
+   * each call site means an area cannot forget one: there are sixty-odd of them
+   * across six areas and they are written in ones and twos, forty lines apart.
+   */
+  readonly glows: THREE.MeshBasicMaterial[] = [];
   keep<T extends { dispose(): void }>(x: T): T {
     this.items.push(x);
     return x;
@@ -126,7 +144,9 @@ export function decal(own: Owned, colour: string): THREE.MeshStandardMaterial {
  * seen from outside is a mid amber, not a lamp, and these are pitched there.
  */
 export function glow(own: Owned, colour: string): THREE.MeshBasicMaterial {
-  return own.keep(new THREE.MeshBasicMaterial({ color: colour }));
+  const m = own.keep(new THREE.MeshBasicMaterial({ color: colour }));
+  own.glows.push(m);
+  return m;
 }
 
 /** Deterministic, so an area is the same place every time it is entered. */

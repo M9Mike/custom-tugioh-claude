@@ -37,7 +37,9 @@ const browser = await chromium.launch();
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
 page.on('pageerror', (e) => console.log('PAGE ERROR:', e.message));
 
-await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 180000 });
+/* `?t=16` pins the sun: the world has a cycle now, and two frames taken
+   under a moving one are not comparable. See `story-setup.ts`. */
+await page.goto(`${BASE}/story?t=16`, { waitUntil: 'domcontentloaded', timeout: 180000 });
 await page.locator('input[placeholder="Enter your name"]').fill('Mike');
 const enter = page.locator('button:has-text("Enter Story Mode")');
 for (let i = 0; i < 400 && !(await enter.isEnabled().catch(() => false)); i++) await page.waitForTimeout(200);
@@ -243,7 +245,7 @@ const visit = async (area) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: 'Mike', world: { area, x: 0, z: 0, facing: 0 } }),
   }).catch(() => {});
-  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 180000 });
+  await page.goto(`${BASE}/story?t=16`, { waitUntil: 'domcontentloaded', timeout: 180000 });
   /* The name has to go back in. Reloading /story returns to the sign-in card
      with an empty field, and clicking Enter without filling it does nothing at
      all — which is how three areas in a row reported "no scene on window". */

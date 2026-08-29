@@ -33,6 +33,7 @@ import { concrete, render, paving, darkWood, brick, signBoard } from './surfaces
 import {
   Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea,
 } from './kit';
+import { Sky, ownSky } from './sky';
 import {
   AREAS, STEP_LANE_CLIMB, STEP_LANE_HALF, STEP_LANE_RISE, STEP_LANE_THINGS,
   STEP_LANE_TOP, climbPlatforms, groundAt,
@@ -571,28 +572,27 @@ export function buildStepLane(anisotropy: number): BuiltArea {
    * makes a stair read as a stair from the bottom, before you can see a single
    * riser.
    */
-  const moon = new THREE.DirectionalLight('#7f93b4', 0.62);
-  moon.position.set(-26, 20, -10);
-  moon.target.position.set(0, 2, 0);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
-  moon.shadow.camera.left = -22;
-  moon.shadow.camera.right = 22;
-  moon.shadow.camera.top = 18;
-  moon.shadow.camera.bottom = -18;
-  moon.shadow.camera.near = 1;
-  moon.shadow.camera.far = 70;
-  moon.shadow.bias = -0.0009;
-  /* See `market.ts` on `normalBias`: every wall here is edge-on to a light
-     coming down the hill, which is the case a constant bias cannot cover.
-     44 m across 2048 is 2.1 cm, and 2.1 is what it takes — at 5 every shadow
-     in the lane stood a hand's width clear of whatever threw it. */
-  moon.shadow.normalBias = 0.024;
-  root.add(moon);
-  root.add(moon.target);
-
-  root.add(new THREE.HemisphereLight('#38465c', '#241f1a', 0.38));
-  root.add(new THREE.AmbientLight('#3d4557', 0.22));
+  /*
+   * The sky over the lane, at whatever hour it is.
+   *
+   * Half of what an open precinct gets: this is a cut between two hills with
+   * buildings close on both sides, and the light that reaches the steps is the
+   * strip of sky above them.
+   *
+   * See `market.ts` on `normalBias`: every wall here is edge-on to a light
+   * coming down the hill, which is the case a constant bias cannot cover.
+   * 44 m across 2048 is 2.1 cm, and 2.1 is what it takes — at 5 every shadow in
+   * the lane stood a hand's width clear of whatever threw it.
+   */
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 34,
+    half: 22,
+    deep: 18,
+    target: [0, 2, 0],
+    normalBias: 0.024,
+    gain: 0.75,
+    fill: 0.68,
+  }));
 
   /*
    * Four porch lights and the lamp at the top, and no more than that.
@@ -629,12 +629,15 @@ export function buildStepLane(anisotropy: number): BuiltArea {
   root.add(mouth);
   lamps.push(mouth);
 
+  /* Every lamp in the lane, found rather than listed. See `sky.ts`. */
+  sky.claim();
+
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
       for (const lamp of lamps) lamp.shadow?.map?.dispose();
-      moon.shadow?.map?.dispose();
     },
   };
 }

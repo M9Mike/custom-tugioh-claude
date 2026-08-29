@@ -37,6 +37,7 @@ import {
 import {
   Owned, box, matt, tiled, glow, surfaceOf, type BuiltArea,
 } from './kit';
+import { Sky, ownSky } from './sky';
 import {
   AREAS, BC_PODIUM, BC_COURT, BC_STEPS, BC_PAVEMENTS, CROWN_THINGS, groundAt,
 } from '@/story/areas';
@@ -86,7 +87,23 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   const oxblood = matt(own, '#7d3a35');
   const brass = matt(own, '#9a7d42');
 
-  const lamps: THREE.PointLight[] = [];
+  /*
+   * The sky, and everything in the block that answers to the hour.
+   *
+   * One rig rather than three lights written out here: the key light swings
+   * from east at dawn to west at dusk and is a cool moon in between, and every
+   * lamp registered below goes out when it gets light. See `world/sky.ts`.
+   */
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 52,
+    half: 46,
+    deep: 40,
+    target: [-6, 0, 0],
+    /* 92 m across 2048 is 4.5 cm, which is more drift than any shadow in this
+       game — so this is under it, bought by never letting the key light stand
+       square-on to a wall. See `market.ts` on `normalBias`. */
+    normalBias: 0.032,
+  }));
 
   /* ---- the ground ---- */
 
@@ -333,7 +350,6 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     const on = new THREE.PointLight('#ffc186', 24, 17, 2);
     on.position.set(-17.5, 5.6, -36);
     root.add(on);
-    lamps.push(on);
     /* The bracket it hangs off, so the light comes from something. */
     root.add(box(own, 3.2, 0.14, 0.14, iron, -16.2, 6.5, -36));
     root.add(box(own, 0.5, 0.3, 0.5, iron, -17.5, 6.1, -36));
@@ -428,11 +444,12 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
      nothing to see through a doorway into another area, only that it goes. */
   floor(9, 4, -19, 0.01, BACK - 2.5, laneTex);
   root.add(box(own, 9, 5.2, 0.4, matt(own, '#3a2f28'), -19, 2.6, BACK - 4.3));
-  root.add(box(own, 5, 1.6, 0.14, glow(own, '#a37f4a'), -19, 2.6, BACK - 4.05));
+  const backGlass = glow(own, '#a37f4a');
+  root.add(box(own, 5, 1.6, 0.14, backGlass, -19, 2.6, BACK - 4.05));
   const backLight = new THREE.PointLight('#ffc186', 26, 14, 2);
   backLight.position.set(-19, 3.4, BACK - 2.2);
   root.add(backLight);
-  lamps.push(backLight);
+
 
   /* ---- Black Crown ---- */
 
@@ -489,7 +506,8 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     /* Set into the stone rather than flush with its outer face, which the two
        of them were sharing over twenty-two square metres. */
     root.add(box(own, 0.4, 3.4, 6.6, matt(own, '#241d18'), FRONT - 0.25, BCY + 2.5, cz));
-    root.add(box(own, 0.14, 3.0, 6.2, glow(own, '#c0964f'), FRONT - 0.3, BCY + 2.5, cz));
+    const windowGlass = glow(own, '#c0964f');
+    root.add(box(own, 0.14, 3.0, 6.2, windowGlass, FRONT - 0.3, BCY + 2.5, cz));
     /* Sills and heads stand proud of the stone they are set in, which is both
        what a sill does and what keeps three boxes out of two planes. */
     /* Eighty centimetres deep, not fifty-six. The glass starts at x 17.55 and
@@ -520,7 +538,6 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     const inside = new THREE.PointLight('#ffcf96', 14, 7, 2);
     inside.position.set(FRONT - 1.0, BCY + 2.2, cz);
     root.add(inside);
-    lamps.push(inside);
   }
 
   /* The board, the name on it, and the crown over the middle. */
@@ -556,11 +573,11 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   root.add(box(own, 2.66, 0.14, 0.34, brass, FRONT - 1.32, BCY + 5.06, 3));
   for (const s of [-1, 1] as const) {
     root.add(box(own, 0.16, 0.7, 0.16, iron, FRONT - 2.4, BCY + 4.55, 3 + s * 3.6));
-    root.add(box(own, 0.42, 0.5, 0.42, glow(own, '#c9954e'), FRONT - 2.4, BCY + 4.05, 3 + s * 3.6));
+    const shade = glow(own, '#c9954e');
+    root.add(box(own, 0.42, 0.5, 0.42, shade, FRONT - 2.4, BCY + 4.05, 3 + s * 3.6));
     const l = new THREE.PointLight('#ffbe78', 26, 13, 2);
     l.position.set(FRONT - 2.6, BCY + 3.95, 3 + s * 3.6);
     root.add(l);
-    lamps.push(l);
   }
 
   /*
@@ -633,7 +650,6 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     const spot = new THREE.PointLight('#ffcf96', 26, 12, 2);
     spot.position.set(dx - 2.6, dy + 3.4, dz + 2.2);
     root.add(spot);
-    lamps.push(spot);
   }
 
   /* ---- the railway at the end of the south street ---- */
@@ -664,14 +680,13 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.52, 0.22, 0.52, stone(), t.x, y + 0.11, t.z));
     root.add(box(own, 0.24, 3.6, 0.24, iron, t.x, y + 2.0, t.z));
     root.add(box(own, 0.42, 0.2, 0.42, iron, t.x, y + 3.9, t.z));
-    root.add(box(own, 0.5, 0.62, 0.5,
-                 t.lit ? glow(own, '#c99a52') : matt(own, '#2b2723'), t.x, y + 4.32, t.z));
+    const lantern = t.lit ? glow(own, '#c99a52') : matt(own, '#2b2723');
+    root.add(box(own, 0.5, 0.62, 0.5, lantern, t.x, y + 4.32, t.z));
     root.add(box(own, 0.6, 0.16, 0.6, iron, t.x, y + 4.71, t.z));
     if (t.lit) {
       const l = new THREE.PointLight('#ffb469', 30, 15, 2);
       l.position.set(t.x, y + 4.2, t.z);
       root.add(l);
-      lamps.push(l);
     }
   };
 
@@ -803,56 +818,27 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   /* ---- light ---- */
 
   /*
-   * A cold sky and warm lamps, and the shop brighter than either.
+   * A wash across the front of the shop, and nothing else written here.
    *
-   * Open ground at dusk is lit by the sky rather than by the sun that has gone,
-   * so the hemisphere does most of the work and the moon only models the
-   * shapes — the same arrangement as the shrine, and for the same reason.
-   */
-  const moon = new THREE.DirectionalLight('#93a7c4', 1.15);
-  moon.position.set(-22, 30, -26);
-  moon.target.position.set(-6, 0, 0);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
-  moon.shadow.camera.left = -46;
-  moon.shadow.camera.right = 46;
-  moon.shadow.camera.top = 40;
-  moon.shadow.camera.bottom = -40;
-  moon.shadow.camera.near = 1;
-  moon.shadow.camera.far = 120;
-  moon.shadow.bias = -0.0009;
-  /*
-   * See `market.ts` on `normalBias`, and `shrine.ts` on what it costs. 92 m
-   * across 2048 is 4.5 cm, which is more drift than any shadow in this game has
-   * — so the figure here is the one that matters, and it is bought by pointing
-   * the moon down the diagonal so that nothing is edge-on to it.
-   */
-  moon.shadow.normalBias = 0.032;
-  root.add(moon);
-  root.add(moon.target);
-
-  /* The ground half is the paving bouncing back, not soil. */
-  root.add(new THREE.HemisphereLight('#5a6f92', '#4a4136', 1.2));
-  root.add(new THREE.AmbientLight('#48536b', 0.5));
-
-  /*
-   * And a wash across the front of the shop.
-   *
-   * It is ninety metres from the mouth of the lane to this, with a square in
-   * between, and it has to still be the brightest thing in the frame from
-   * there — otherwise the block has nothing to walk towards and is only large.
+   * The sun, the moon, the sky and the ground bounce all belong to `Sky` at the
+   * top of this file, which is what lets the hour move. This is the one light
+   * that is a fact about *this* building: ninety metres from the mouth of the
+   * lane with a square in between, and it has to still be the brightest thing
+   * in the frame from there, or the block has nothing to walk towards and is
+   * only large. It goes out at dawn with the rest of them.
    */
   const facade = new THREE.PointLight('#ffc98c', 40, 38, 2);
   facade.position.set(FRONT - 11, BCY + 7.5, 3);
   root.add(facade);
-  lamps.push(facade);
+
+  /* Every lamp in the block, found rather than listed. See `sky.ts`. */
+  sky.claim();
 
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
-      for (const lamp of lamps) lamp.shadow?.map?.dispose();
-      moon.shadow?.map?.dispose();
     },
   };
 }

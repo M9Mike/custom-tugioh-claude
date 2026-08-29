@@ -51,6 +51,7 @@ import {
   arcadeFloor, shutter, brick, render, plaster, darkWood, concrete, paving, signBoard,
 } from './surfaces';
 import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import { Sky, ownSky } from './sky';
 import { MARKET_GOODS, type Goods, type GoodsKind } from '@/story/areas';
 
 const MR_W = 23;        // half-length, matching `areas.ts`
@@ -450,9 +451,9 @@ export function buildMarket(anisotropy: number): BuiltArea {
    * drawn: a shopfront and a passage cannot both be in one bay, and a passage
    * that begins behind a shutter is not a passage.
    */
-  root.add(box(own, 39, 8.6, blockDepth, blockSkin, -3.5, 4.3, blockZ));
-  root.add(box(own, 1, 8.6, blockDepth, blockSkin, 22.5, 4.3, blockZ));
-  root.add(box(own, 6, 3.4, blockDepth, blockSkin, 19, 6.9, blockZ));
+  root.add(box(own, 40.9, 8.6, blockDepth, blockSkin, -2.55, 4.3, blockZ));
+  root.add(box(own, 0.8, 8.6, blockDepth, blockSkin, 22.6, 4.3, blockZ));
+  root.add(box(own, 4.3, 3.4, blockDepth, blockSkin, 20.05, 6.9, blockZ));
 
   for (let i = 0; i < UNITS; i++) {
     const cx = -MR_W + UNIT_W * (i + 0.5);
@@ -472,36 +473,36 @@ export function buildMarket(anisotropy: number): BuiltArea {
   {
     const PZ = MR_FRONT - 0.4;      // the face the surround stands on
     for (const side of [-1, 1] as const) {
-      root.add(box(own, 0.6, 5.4, 0.75, stoneTrim, 19 + side * 3.3, 2.7, PZ - 0.3));
+      root.add(box(own, 0.6, 5.4, 0.75, stoneTrim, 20.05 + side * 2.45, 2.7, PZ - 0.3));
     }
-    root.add(box(own, 7.4, 0.6, 0.75, stoneTrim, 19, 5.7, PZ - 0.3));
+    root.add(box(own, 5.7, 0.6, 0.75, stoneTrim, 20.05, 5.7, PZ - 0.3));
     const through = new THREE.Mesh(
-      own.keep(new THREE.PlaneGeometry(6, 5)),
+      own.keep(new THREE.PlaneGeometry(4.3, 5)),
       matt(own, '#ffffff', surfaceOf(own, () => paving({ dirt: 0.4 }), 2, 1.6, anisotropy))
     );
     through.rotation.x = -Math.PI / 2;
-    through.position.set(19, 0.01, 7.2);
+    through.position.set(20.05, 0.01, 7.2);
     root.add(through);
     /* The lane beyond, suggested and not modelled: a wall, a lit window on it,
        and one lamp. */
-    root.add(box(own, 6.4, 5.6, 0.4, matt(own, '#3a3029'), 19, 2.8, 9.6));
-    root.add(box(own, 2.2, 1.5, 0.14, glow(own, '#a37f4a'), 19, 3.1, 9.35));
+    root.add(box(own, 4.7, 5.6, 0.4, matt(own, '#3a3029'), 20.05, 2.8, 9.6));
+    root.add(box(own, 1.9, 1.5, 0.14, glow(own, '#a37f4a'), 20.05, 3.1, 9.35));
     const beyond = new THREE.PointLight('#ffc186', 24, 12, 2);
-    beyond.position.set(19, 3.4, 7.6);
+    beyond.position.set(20.05, 3.4, 7.6);
     root.add(beyond);
     /* And a board over it, because a turning nobody has signposted is a gap. */
     const sign = new THREE.Mesh(
-      own.keep(new THREE.PlaneGeometry(5.6, 1.05)),
+      own.keep(new THREE.PlaneGeometry(4.0, 1.05)),
       own.keep(new THREE.MeshBasicMaterial({
-        map: surfaceOf(own, () => signBoard('BLACK CROWN', '#e0cfa2', '#232a33', undefined, 5.6 / 1.05),
+        map: surfaceOf(own, () => signBoard('BLACK CROWN', '#e0cfa2', '#232a33', undefined, 4.0 / 1.05),
                        1, 1, anisotropy),
         color: '#a89a7c',
       }))
     );
     sign.rotation.y = Math.PI;
-    sign.position.set(19, 6.55, PZ - 0.72);
+    sign.position.set(20.05, 6.55, PZ - 0.72);
     root.add(sign);
-    root.add(box(own, 6, 1.3, 0.3, matt(own, '#2b2723'), 19, 6.55, PZ - 0.6));
+    root.add(box(own, 4.4, 1.3, 0.3, matt(own, '#2b2723'), 20.05, 6.55, PZ - 0.6));
   }
 
   /* ---------------------------------------------------------------- */
@@ -1015,70 +1016,34 @@ export function buildMarket(anisotropy: number): BuiltArea {
    *
    * The canopy has `castShadow` off for this light's sake — see the panels.
    */
-  const overhead = new THREE.DirectionalLight('#ffcf9e', 0.28);
-  overhead.position.set(6, 24, 3);
-  overhead.target.position.set(0, 0, 0);
-  overhead.castShadow = true;
-  overhead.shadow.mapSize.set(2048, 2048);
-  overhead.shadow.camera.left = -25;
-  overhead.shadow.camera.right = 25;
-  overhead.shadow.camera.top = 11;
-  overhead.shadow.camera.bottom = -11;
-  overhead.shadow.camera.near = 1;
-  overhead.shadow.camera.far = 42;
   /*
-   * `bias` alone was never going to be enough here, and this area is the worst
-   * case for it in the whole world.
+   * The sky over the arcade, such as it is.
    *
-   * A constant depth bias shifts every shadow sample by the same amount, which
-   * is right for a surface facing the light and hopeless for one edge-on to it —
-   * the depth across a single shadow texel varies by far more than the bias, so
-   * half the texel shadows itself. It shows as grey rectangles crawling over a
-   * wall as the camera moves, which is exactly what it is: the shadow map
-   * disagreeing with itself, one texel at a time.
+   * A quarter of what an open street gets, because there is a roof on this —
+   * and the hemisphere is named rather than taken from the hour for the same
+   * reason: what is over your head in here is painted metal a metre and a half
+   * above the lamps, so the light coming down is the pendants' own returned
+   * warm. Getting that the wrong way round makes an interior look like an
+   * exterior with the lights turned off.
    *
-   * This light points very nearly straight down and every wall in the arcade is
-   * vertical, so *every* wall is edge-on to it. `normalBias` pushes the sample
-   * along the surface normal instead — off the surface, into the air in front of
-   * it — and the amount it needs is about one shadow texel, which at 50 m across
-   * 2048 is 2.4 cm.
-   *
-   * Not one light in this game set it. All five do now.
+   * See `market.ts` history on `normalBias`: 50 m across 2048 is 2.4 cm, and
+   * this light points very nearly straight down at walls that are all vertical,
+   * which is the worst case for it in the whole world.
    */
-  overhead.shadow.bias = -0.0009;
-  /*
-   * One texel, not two.
-   *
-   * `normalBias` buys its way out of acne by sampling the shadow map off the
-   * surface, into the air in front of it — so whatever it is set to is also how
-   * far a shadow slides away from the thing casting it. On the ground that shows
-   * as a gap under the duelist's feet, with the shadow keeping its own company a
-   * hand's width away: a figure standing on nothing.
-   *
-   * The amount needed is one shadow texel, which is what the note above works
-   * out and is not what any of these were set to — every one of them was at
-   * about twice it, and paid for it in daylight under everybody's shoes.
-   */
-  /* 50 m across 2048 is 2.4 cm. */
-  overhead.shadow.normalBias = 0.027;
-  root.add(overhead);
-  root.add(overhead.target);
-  lights.push(overhead);
-
-  /*
-   * Warm from above, dark below — the opposite way round from the street.
-   *
-   * Outside, the sky is a cool blue fill and the ground bounces almost nothing.
-   * In here there is no sky: what is over your head is a painted metal canopy a
-   * metre and a half above the lamps, so the ambient coming down is the pendants'
-   * own light returned warm. Getting this the wrong way round is what makes an
-   * interior look like an exterior with the lights turned off.
-   */
-  root.add(new THREE.HemisphereLight('#4a3c28', '#17130e', 0.22));
-  root.add(new THREE.AmbientLight('#3a3128', 0.13));
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 26,
+    half: 25,
+    deep: 11,
+    normalBias: 0.027,
+    gain: 0.32,
+    fill: 0.3,
+    hemi: { sky: '#4a3c28', ground: '#17130e' },
+  }));
+  sky.claim();
 
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
       for (const light of lights) {

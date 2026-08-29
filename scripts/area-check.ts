@@ -399,15 +399,29 @@ console.log('\nevery shadow has a normal bias');
    *
    * Any light that sets `shadow.mapSize` is a light that casts, so that is what
    * this looks for, and it wants a `shadow.normalBias` for each one.
+   *
+   * `Sky` is the exception, and a legitimate one: it owns the key light of every
+   * area now, it sets both biases in one place, and its `normalBias` is a
+   * required field of `SkyOptions` — so a builder cannot construct one without
+   * saying what it should be. The scan skips a caster whose name is `sky.key`
+   * and instead insists the builder passed the option.
    */
   const dir = new URL('../src/components/story/world/', import.meta.url);
-  for (const file of ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts', 'shrine.ts']) {
+  const world = ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts', 'shrine.ts', 'blackcrown.ts'];
+  for (const file of world) {
     const src = readFileSync(new URL(file, dir), 'utf8');
-    const casters = [...src.matchAll(/(\w+)\.shadow\.mapSize/g)].map((m) => m[1]);
-    const unique = [...new Set(casters)];
+    /* The whole dotted name, so `sky.key` is distinguishable from a local
+       called `key` — the filter below turns on exactly that. */
+    const casters = [...src.matchAll(/([\w.]+)\.shadow\.mapSize/g)].map((m) => m[1]);
+    const unique = [...new Set(casters)].filter((n) => n !== 'sky.key');
     const missing = unique.filter((name) => !src.includes(`${name}.shadow.normalBias`));
     check(missing.length === 0, `world/${file}: every shadow caster sets normalBias`,
           missing.length ? missing.join(', ') : `${unique.length} caster(s)`);
+    /* And the one Sky owns. */
+    if (src.includes('new Sky(')) {
+      check(/normalBias:\s*[\d.]+/.test(src), `world/${file}: its Sky is given a normalBias`,
+            'the key light of the whole area hangs off it');
+    }
   }
 }
 

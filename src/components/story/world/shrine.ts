@@ -32,6 +32,7 @@ import { gravel, concrete, paving, darkWood, brick, plaster, asphalt, soil, sign
 import {
   Owned, box, matt, tiled, glow, surfaceOf, seeded, type BuiltArea,
 } from './kit';
+import { Sky, ownSky } from './sky';
 import {
   AREAS, SHRINE_FLOOR, SHRINE_PLATFORM, SHRINE_GROUND, SHRINE_THINGS, groundAt,
 } from '@/story/areas';
@@ -762,48 +763,26 @@ export function buildShrine(anisotropy: number): BuiltArea {
    * shapes. That is also what makes the gravel read pale, which is the whole
    * character of the place.
    */
-  const moon = new THREE.DirectionalLight('#93a7c4', 1.35);
-  moon.position.set(14, 26, 34);
-  moon.target.position.set(0, SHRINE_FLOOR, 0);
-  moon.castShadow = true;
   /*
-   * Two thousand, like everywhere else, and not four.
+   * The sky over the precinct, at whatever hour it is.
    *
-   * Four halved the texel and so halved how far a shadow sits from its owner,
-   * which on ground this pale is worth having. It also cost enough on the first
-   * frame that two of the nine sweep views gave up waiting for the area to
-   * finish building — and an area that sometimes does not come up is a worse
-   * fault than a shadow sitting three centimetres off.
-   */
-  moon.shadow.mapSize.set(2048, 2048);
-  moon.shadow.camera.left = -34;
-  moon.shadow.camera.right = 34;
-  moon.shadow.camera.top = 30;
-  moon.shadow.camera.bottom = -30;
-  moon.shadow.camera.near = 1;
-  moon.shadow.camera.far = 90;
-  moon.shadow.bias = -0.0009;
-  /*
-   * 68 m across 2048 is 3.3 cm, and this sits below it.
+   * The most of any area here, and the most it can take: this is open ground
+   * sixty metres across with nothing over it, so it gets the sky at full and
+   * the ground bounce of a pale gravel floor with it.
    *
-   * The texel figure is an upper bound for the worst case, which is a surface
-   * edge-on to the light. This moon stands 55° off vertical, so the walls facing
-   * it are lit squarely and nothing here is anywhere near that case — which buys
-   * back a quarter of the bias, and a quarter of the gap under everyone's feet.
+   * 68 m across 2048 is 3.3 cm and this sits below it: the texel figure is the
+   * worst case, which is a surface edge-on to the light, and nothing in an open
+   * precinct is anywhere near that. See `market.ts` on `normalBias`.
    */
-  moon.shadow.normalBias = 0.026;
-  root.add(moon);
-  root.add(moon.target);
-
-  /*
-   * The ground half of the hemisphere is the pale gravel bouncing back, and it
-   * was set to the brown of soil. Everything vertical here — every riser of
-   * every flight, and there are three of them — takes half its fill from that
-   * term, so with it dark the treads came out lit and the risers came out as
-   * black bars. It is what a fifty-metre floor of light stone actually throws.
-   */
-  root.add(new THREE.HemisphereLight('#5a6f92', '#4e4638', 1.3));
-  root.add(new THREE.AmbientLight('#48536b', 0.55));
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 46,
+    half: 34,
+    deep: 30,
+    target: [0, SHRINE_FLOOR, 0],
+    normalBias: 0.026,
+    gain: 1.1,
+    fill: 1.05,
+  }));
 
   /* And a wash at the top of the steps, so the way in reads as a way in. */
   const gate = new THREE.PointLight('#ffb469', 40, 14, 2);
@@ -824,12 +803,15 @@ export function buildShrine(anisotropy: number): BuiltArea {
   root.add(facade);
   lamps.push(facade);
 
+  /* Every lamp in the precinct, found rather than listed. See `sky.ts`. */
+  sky.claim();
+
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
       for (const lamp of lamps) lamp.shadow?.map?.dispose();
-      moon.shadow?.map?.dispose();
     },
   };
 }

@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import { asphalt, paving, brick, render, darkWood, plaster, signBoard, arcadeFloor, concrete } from './surfaces';
 import { Owned, box, matt, tiled, decal, glow, surfaceOf, seeded, type BuiltArea } from './kit';
+import { Sky, ownSky } from './sky';
 import { AREAS, SHOP_STEP, STREET_FACES } from '@/story/areas';
 
 /**
@@ -966,27 +967,23 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* The last of the daylight: dim, cool, from low in the west. Enough to keep
      the far end of the street from being a silhouette, not enough to compete
      with the lamps. */
-  const dusk = new THREE.DirectionalLight('#5d7391', 0.55);
-  dusk.position.set(-30, 16, -8);
-  dusk.target.position.set(0, 0, 0);
-  dusk.castShadow = true;
-  dusk.shadow.mapSize.set(2048, 2048);
-  dusk.shadow.camera.left = -26;
-  dusk.shadow.camera.right = 26;
-  dusk.shadow.camera.top = 22;
-  dusk.shadow.camera.bottom = -22;
-  dusk.shadow.camera.near = 1;
-  dusk.shadow.camera.far = 70;
-  dusk.shadow.bias = -0.0009;
-  /* One shadow texel at this scale: 52 m across 2048. See `market.ts`. */
-  /* 52 m across 2048 is 2.5 cm; see `market.ts`. */
-  dusk.shadow.normalBias = 0.029;
-  root.add(dusk);
-  root.add(dusk.target);
-
-  /* Sky above, ground below — the bounce that stops undersides going to pitch. */
-  root.add(new THREE.HemisphereLight('#33465f', '#241f1a', 0.45));
-  root.add(new THREE.AmbientLight('#3b4459', 0.32));
+  /*
+   * The sky over Turtle Lane, at whatever hour it is.
+   *
+   * About half of what an open precinct gets — a street with terraces down both
+   * sides only ever sees the strip above it — and the shadow camera covers the
+   * whole 52 m of it. 52 m across 2048 is 2.5 cm, which is what `normalBias`
+   * has to be; see `market.ts` for why, and `shrine.ts` for what twice that
+   * costs under everybody's feet.
+   */
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 40,
+    half: 26,
+    deep: 22,
+    normalBias: 0.029,
+    gain: 0.8,
+    fill: 0.78,
+  }));
 
   /*
    * Why these are in the hundreds.
@@ -1000,12 +997,15 @@ export function buildStreet(anisotropy: number): BuiltArea {
    * is the value that lights the pavement without flattening the buildings.
    */
 
+  /* Every lamp in the street, found rather than listed. See `sky.ts`. */
+  sky.claim();
+
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
       for (const lamp of lamps) lamp.shadow?.map?.dispose();
-      dusk.shadow?.map?.dispose();
     },
   };
 }

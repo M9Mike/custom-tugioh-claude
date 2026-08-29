@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import { woodFloor, darkWood, plaster, ceiling } from './surfaces';
 import { Owned, box, matt, surfaceOf, type BuiltArea } from './kit';
+import { Sky, ownSky } from './sky';
 export type { BuiltArea };
 
 const SHOP_W = 6.5;
@@ -402,32 +403,42 @@ export function buildShop(anisotropy: number): BuiltArea {
    * has two temperatures in it. Aimed inwards and slightly down, so it lands on
    * the floor in front of the window the way a real one would.
    */
-  const day = new THREE.DirectionalLight('#8fb0d4', 0.45);
-  day.position.set(-1.0, 2.6, SHOP_D + 4);
-  day.target.position.set(-1.0, 0.4, -1.5);
-  day.castShadow = true;
-  day.shadow.mapSize.set(1024, 1024);
-  day.shadow.camera.left = -8;
-  day.shadow.camera.right = 8;
-  day.shadow.camera.top = 6;
-  day.shadow.camera.bottom = -3;
-  day.shadow.camera.near = 0.5;
-  day.shadow.camera.far = 22;
-  day.shadow.bias = -0.0009;
-  day.shadow.normalBias = 0.018;
-  root.add(day);
-  root.add(day.target);
-
-  /* A little bounce off the floor, so undersides are not pitch black. */
-  const bounce = new THREE.HemisphereLight('#f0e2c6', '#5a4736', 0.55);
-  root.add(bounce);
+  /*
+   * Daylight through the shopfront: cool, directional, and the reason the room
+   * has two temperatures in it. Aimed inwards and slightly down, so it lands on
+   * the floor in front of the window the way a real one would.
+   *
+   * Fixed, not swinging. Indoors the light does not come from where the sun is,
+   * it comes from where the window is — so only its colour and its level follow
+   * the hour, which is what turns the same room blue at dawn, warm at four, and
+   * lit by nothing but its own pendants after dark.
+   *
+   * See `market.ts` on `normalBias`. A room is a kinder case than a street:
+   * 16 m across 1024 is 1.6 cm.
+   */
+  const sky = ownSky(own, new Sky(own, root, {
+    reach: 12,
+    half: 8,
+    deep: 6,
+    target: [-1.0, 0.4, -1.5],
+    fixedKey: [-1.0, 2.6, SHOP_D + 4],
+    normalBias: 0.018,
+    gain: 1.0,
+    fill: 1.0,
+    indoor: true,
+    hemi: { sky: '#f0e2c6', ground: '#5a4736' },
+  }));
+  sky.key.shadow.mapSize.set(1024, 1024);
+  sky.key.shadow.camera.near = 0.5;
+  sky.key.shadow.camera.far = 22;
+  sky.key.shadow.camera.updateProjectionMatrix();
 
   return {
     root,
+    setTime: (hour) => { sky.apply(hour); },
     dispose() {
       for (const item of own.items) item.dispose();
       for (const lamp of lamps) lamp.shadow?.map?.dispose();
-      day.shadow?.map?.dispose();
     },
   };
 }

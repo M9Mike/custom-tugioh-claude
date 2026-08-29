@@ -721,12 +721,17 @@ const MARKET_ROW: Area = {
     /*
      * The south row, with the way through to Black Crown cut out of it.
      *
-     * Six metres of gap at x 19, near the far end — near, because further west
-     * would have put that whole block inside Domino Shrine, whose trees reach
-     * world x 20.6 and whose ground cannot be shared.
+     * The gap is the last unit's bay and nothing else — x 17.9 to 22.2, which
+     * is where the ninth shopfront stood. Cut anywhere else and the passage
+     * takes a bite out of a neighbour: at x 16 it opened into the eighth unit's
+     * stallboard, which is 34 cm of timber standing in a doorway.
+     *
+     * The far end of the arcade, because further west would have put the whole
+     * Black Crown block inside Domino Shrine, whose trees reach world x 20.6
+     * and whose ground cannot be shared.
      */
-    { x: -3.5, z: (MR_REACH + MR_D) / 2, hw: MR_W - 3.5, hd: (MR_D - MR_REACH) / 2, tall: true },
-    { x: 22.5, z: (MR_REACH + MR_D) / 2, hw: 0.5, hd: (MR_D - MR_REACH) / 2, tall: true },
+    { x: -2.55, z: (MR_REACH + MR_D) / 2, hw: 20.45, hd: (MR_D - MR_REACH) / 2, tall: true },
+    { x: 22.6, z: (MR_REACH + MR_D) / 2, hw: 0.4, hd: (MR_D - MR_REACH) / 2, tall: true },
 
     /* West end: the arch back out to Turtle Lane, with wall either side of it.
        The 4.4 m gap between these is the doorway, and the camera gets it back
@@ -816,9 +821,9 @@ const MARKET_ROW: Area = {
       /* In the gap in the south row, and as deep as the gap is — you cannot
          cross this without meaning to, because it is off the arcade rather
          than along it. */
-      trigger: { x: 19, z: 7.4, hw: 2.6, hd: 1.1 },
+      trigger: { x: 20.05, z: 7.4, hw: 1.8, hd: 1.1 },
       to: 'black-crown',
-      seam: { x: 19, z: MR_D },
+      seam: { x: 20.05, z: MR_D },
       /*
        * Out of the passage and facing west, down the arcade.
        *
@@ -1550,7 +1555,8 @@ const BLACK_CROWN: Area = {
    * Behind Market Row's south side, and clear to the east of the shrine.
    *
    * Forced by two things at once. The lane leaves Market Row through its south
-   * row at that arcade's local x 19, which is world (60, 9.5); and the same
+   * row through the bay its last shopfront used to fill, at that arcade's
+   * local x 20.05, which is world (61.05, 9.5); and the same
    * doorway arrives here at local (−19, −48). The origin is whatever makes
    * those the same point, and there is nothing to choose about it.
    *
@@ -1558,7 +1564,7 @@ const BLACK_CROWN: Area = {
    * and this block would have been standing inside Domino Shrine, whose trees
    * reach world x 20.6 — and two areas cannot share ground.
    */
-  world: { x: 79, z: 57.5 },
+  world: { x: 80.05, z: 57.5 },
   /*
    * Off-centre, because the block is: the ground runs x −51 to 33 and z −50 to
    * 46. Centred on the origin instead, the backstop would sit forty metres

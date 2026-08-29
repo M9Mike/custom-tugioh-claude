@@ -35,6 +35,7 @@ import {
   cameraReach,
 } from '@/story/areas';
 import type { BuiltArea } from './world/kit';
+import { skyAt, hourFrom } from '@/story/sky';
 import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
 import { buildMarket } from './world/market';
@@ -251,6 +252,26 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     const VOID = new THREE.Color('#000000');
     scene.background = VOID;
     scene.fog = new THREE.Fog(VOID, 34, 78);
+
+    /*
+     * What time it is.
+     *
+     * Derived from the wall clock rather than stored, so the hour is the same
+     * in every area, survives a door, a reload and the world being rebuilt, and
+     * costs nothing to save. See `story/sky.ts`.
+     *
+     * `?t=` pins it. That is not a debug flag left in by accident: a sweep that
+     * compares two frames a millimetre apart cannot have the sun move between
+     * them, and neither can a screenshot that is supposed to be comparable with
+     * last week's. Every check in `scripts/` passes it.
+     */
+    let pinned: number | null = null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('t');
+      if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) pinned = Number(raw);
+    } catch {
+      /* no window.location worth reading — leave it running */
+    }
 
     /*
      * Near and far are tight on purpose: it is the whole of the flicker fix.
@@ -485,6 +506,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       /* Clamped: a backgrounded tab hands back a delta of many seconds, and an
          unclamped one teleports the duelist across the field on return. */
       const dt = Math.min(clock.getDelta(), 0.05);
+
+      /* The sky, before anything is drawn under it. */
+      const hour = hourFrom(Date.now(), pinned);
+      const sky = skyAt(hour);
+      VOID.set(sky.voidColour);
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.near = sky.fogNear;
+        scene.fog.far = sky.fogFar;
+      }
+      renderer.toneMappingExposure = sky.exposure;
+      built?.setTime?.(hour);
 
       /* A conversation holds you still. Not by disabling the controls — the
          stick is hidden and the keys are simply not read — so that letting go

@@ -29,6 +29,23 @@ import { STARTER_POOL } from '../src/story/roster';
  */
 const BASE_ARG = process.argv.slice(2).find((a) => /^https?:\/\//.test(a));
 export const BASE = BASE_ARG ?? 'http://localhost:3000';
+
+/**
+ * The hour every check runs at, unless it says otherwise.
+ *
+ * The world has a day/night cycle now, and a check that compares two frames a
+ * millimetre apart cannot have the sun move between them — nor can a screenshot
+ * that is meant to be comparable with last week's. `?t=` pins it, and this is
+ * the default: late afternoon, which is the one hour with a real sun in the sky
+ * *and* the long shadows that find every fault in a wall.
+ *
+ * Pass `--hour=1` to a script to sweep the night instead.
+ */
+export const PINNED_HOUR = (() => {
+  const flag = process.argv.slice(2).find((a) => a.startsWith('--hour='));
+  const n = flag ? Number(flag.slice(7)) : NaN;
+  return Number.isFinite(n) ? n : 16;
+})();
 export const NAME = 'Mike';
 
 /**
@@ -121,8 +138,8 @@ export async function ensurePlayer(): Promise<void> {
  * rather than for the canvas — a canvas exists while the world is still being
  * built, and auditing a half-built area is worse than not auditing it.
  */
-export async function enterStory(page: Page, area?: string): Promise<boolean> {
-  await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR): Promise<boolean> {
+  await page.goto(`${BASE}/story?t=${hour}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   const field = page.locator('input[placeholder="Enter your name"]');
   if (await field.isVisible().catch(() => false)) {
     if ((await field.inputValue().catch(() => '')) !== NAME) {
