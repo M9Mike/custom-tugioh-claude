@@ -884,10 +884,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * Stripped from production builds: it is a debugging aid, not a feature.
        */
       if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
-        const w = window as unknown as { __probe?: unknown; __scene?: unknown };
+        const w = window as unknown as { __probe?: unknown; __scene?: unknown; __THREE?: unknown };
         /* The scene itself, so `npm run coplanar` can audit the geometry for
            surfaces that sit at identical depth. See that script's header. */
         w.__scene = scene;
+        /* And the library, so `npm run seams` can cast a ray with the same
+           code the renderer uses rather than a hand-rolled box test that would
+           miss every rotated mesh in the world. */
+        w.__THREE = THREE;
         w.__probe = {
           area: area.id,
           player: [+p.x.toFixed(2), +p.z.toFixed(2)],

@@ -69,7 +69,9 @@
     "shimmer": "tsx scripts/shimmer-check.ts",
     "walk": "tsx scripts/walk-record.ts",
     "embedded": "tsx scripts/embedded-check.ts",
-    "models": "tsx scripts/model-size-check.ts"
+    "models": "tsx scripts/model-size-check.ts",
+    "seams": "tsx scripts/seam-check.ts",
+    "corners": "tsx scripts/corner-shots.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

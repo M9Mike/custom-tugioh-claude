@@ -119,7 +119,19 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
   /* ---- the shell ---- */
 
   /** One wall of the room, with a plinth and a picture rail on it. */
-  const wall = (along: 'x' | 'z', from: number, to: number, face: number, outward: 1 | -1) => {
+  const wall = (
+    along: 'x' | 'z', from: number, to: number, face: number, outward: 1 | -1,
+    /*
+     * A hair up or down.
+     *
+     * The long walls run past the corners and the short ones stop inside them,
+     * so at each corner two walls occupy the same cubic metre — which is fine,
+     * and would be fine invisibly, except that both start at zero and both stop
+     * at 14.6. Two undersides in one plane and two tops in another, eight
+     * times. Thirteen centimetres of difference is invisible and is the fix.
+     */
+    dy = 0
+  ) => {
     const run = Math.abs(to - from);
     const mid = (from + to) / 2;
     const put = (len: number, h: number, thick: number, y: number, c: number, m: THREE.Material) => {
@@ -128,24 +140,33 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
         ? box(own, len, h, thick, m, mid, y, cross)
         : box(own, thick, h, len, m, cross, y, mid);
     };
-    root.add(put(run, CS_TOP + 1, 0.3, (CS_TOP + 1) / 2, 0.15, brickwork()));
+    root.add(put(run, CS_TOP + 1, 0.3, (CS_TOP + 1) / 2 + dy, 0.15, brickwork()));
     /* Plaster above the plinth, brick below it, which is what an old shop is. */
-    root.add(put(run - 0.1, CS_TOP - 1.3, 0.16, 1.55 + (CS_TOP - 1.3) / 2, 0.32, walls()));
-    root.add(put(run - 0.16, 1.4, 0.22, 0.68, 0.35, timber));
-    root.add(put(run - 0.22, 0.14, 0.3, 1.47, 0.37, dark));
+    root.add(put(run - 0.1, CS_TOP - 1.3, 0.16, 1.55 + (CS_TOP - 1.3) / 2 + dy, 0.32, walls()));
+    root.add(put(run - 0.16, 1.4, 0.22, 0.68 + dy, 0.35, timber));
+    root.add(put(run - 0.22, 0.14, 0.3, 1.47 + dy, 0.37, dark));
     /* And a picture rail at each gallery, which is what stops thirteen metres
        of wall reading as one flat sheet. */
     for (const y of [CS_G1 + 2.6, CS_G2 + 2.6]) {
-      root.add(put(run - 0.3, 0.12, 0.26, y, 0.36, dark));
+      root.add(put(run - 0.3, 0.12, 0.26, y + dy, 0.36, dark));
     }
   };
 
-  wall('x', -W + 0.5, W - 0.5, -D, 1);
-  wall('x', -W + 0.5, W - 0.5, D, -1);
-  wall('z', -D + 0.5, D - 0.5, W, -1);
+  /*
+   * The long walls run past the corners; the short ones stop inside them.
+   *
+   * Inset half a metre at every end — which is how these were first written —
+   * leaves a metre of unclad building at each of the four corners, and what is
+   * behind an unclad wall is the void. From inside the shop that is a
+   * full-height slit of daylight down both sides of the room, which is exactly
+   * what it looks like: a hole.
+   */
+  wall('x', -W - 0.6, W + 0.6, -D, 1);
+  wall('x', -W - 0.6, W + 0.6, D, -1);
+  wall('z', -D + 0.2, D - 0.2, W, -1, -0.13);
   /* The west wall, in two pieces with the way out between them. */
-  wall('z', -D + 0.5, -2.9, -W, 1);
-  wall('z', 2.9, D - 0.5, -W, 1);
+  wall('z', -D + 0.2, -2.9, -W, 1, -0.13);
+  wall('z', 2.9, D - 0.2, -W, 1, -0.13);
 
   /*
    * The way out, dressed as a doorway.
@@ -162,8 +183,67 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
     root.add(box(own, 0.7, 4.6, 0.6, stone(), -W + 0.45, 2.3, s * 3.3));
   }
   root.add(box(own, 0.7, 0.6, 7.2, stone(), -W + 0.45, 4.9, 0));
-  slab(2.4, 5.6, -W - 1.2, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
-  root.add(box(own, 0.4, 5.4, 5.6, matt(own, '#3a3029'), -W - 2.2, 2.7, 0));
+  /*
+   * And the nine metres of wall *above* the lintel.
+   *
+   * The west wall is in two pieces with a five-point-eight metre gap between
+   * them, and the gap is the full fourteen and a half metres of the room —
+   * because a doorway was drawn into it and a doorway is five metres tall. The
+   * lintel closed the bottom third and the rest of it was a hole, which from
+   * inside the shop is the sky standing in a slot beside the door. It is what
+   * Mike photographed, and no check saw it: the seam check excused every ray
+   * that left near a doorway, which is exactly where this one is.
+   *
+   * Tucked five centimetres behind the lintel's top rather than started on it,
+   * so the two of them are not a plane shared over four square metres.
+   */
+  {
+    const top = CS_TOP + 1;
+    const plasterTop = 1.55 + (CS_TOP - 1.3);
+    /*
+     * Each course butts its own neighbour rather than overlapping it.
+     *
+     * The head is the same three layers at the same depths as the wall either
+     * side, so the only thing keeping it out of their planes is where it stops:
+     * the brick ends exactly where their brick begins and the plaster exactly
+     * where their plaster does. Meeting end to end is two opposite faces, which
+     * is a joint; overlapping by a centimetre is two faces the same way round,
+     * which is a flicker.
+     */
+    const put = (len: number, h: number, thick: number, y: number, c: number, m: THREE.Material) =>
+      root.add(box(own, thick, h, len, m, -W + c, y, 0));
+    put(5.8, top - 5.15, 0.3, (top + 5.15) / 2, 0.15, brickwork());
+    put(5.9, plasterTop - 5.21, 0.16, (plasterTop + 5.21) / 2, 0.32, walls());
+    /* And the picture rails carry across it, at the height the walls put them,
+       so the room reads as one wall with a hole in it and not as a patch. */
+    for (const y of [CS_G1 + 2.6, CS_G2 + 2.6]) put(6.1, 0.12, 0.26, y - 0.13, 0.36, dark);
+  }
+  slab(3.0, 9.0, -W - 1.4, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
+  /*
+   * What is on the other side: a closed box, not a panel.
+   *
+   * A flat backdrop behind a doorway only works for somebody standing square in
+   * front of it. Every other sight line leaves the opening at an angle and
+   * misses the panel's edge — from ten metres inside the shop, a ray through the
+   * edge of the door is two thirds of a metre wide of the backdrop by the time
+   * it gets there, and what it finds instead is the sky. That was still a strip
+   * of daylight down both sides of the door after the panel had been widened
+   * once, and it would have been after widening it again.
+   *
+   * So it is a back, two returns and a lid: whatever angle you look out at, you
+   * are looking at the inside of a box with a warm light in it, which is what
+   * "the street is out there" looks like from in here.
+   */
+  {
+    /* No two of the four in a plane: they are four faces of one box, so written
+       to the same numbers they would share a corner edge apiece. */
+    const dark3 = matt(own, '#3a3029');
+    root.add(box(own, 0.4, 7.0, 9.6, dark3, -19.2, 3.5, 0));
+    for (const s of [-1, 1] as const) {
+      root.add(box(own, 2.15, 7.0, 0.4, dark3, -17.875, 3.6, s * 4.5));
+    }
+    root.add(box(own, 2.65, 0.4, 9.8, dark3, -18.175, 7.35, 0));
+  }
   const outside = new THREE.PointLight('#ffd2a0', 22, 12, 2);
   outside.position.set(-W - 1.4, 3, 0);
   root.add(outside);

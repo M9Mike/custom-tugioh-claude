@@ -1442,7 +1442,19 @@ export const BC_STEPS: Platform[] = [
      Stopping at z −21.9 rather than −22: the square's frontage stands its
      plinth on the building line, and the top step used to run under it. */
   ...flightPlatforms({ along: 'x', start: 10.6, end: 12, from: 0, to: BC_COURT, half: 5.95, cross: -15.95 }),
-  { x: 22, z: -15.95, hw: 10, hd: 5.95, y: BC_COURT },
+  /*
+   * The court's own paving, and not one of its four edges on a building line.
+   *
+   * Every wall round this yard stands *on* it, so an edge that stops exactly
+   * where a wall starts is two surfaces at one depth for the whole length of
+   * that wall — a metre and a half of flicker along the back, and more down the
+   * east side. So it stops short of the wall closing the court at x 32, keeps
+   * six centimetres clear of the podium it abuts at x 12, and is carried ten
+   * centimetres *under* the shop's north flank at z −10, which is the one edge
+   * where going past is better than stopping short: there is no slot left for
+   * anybody to see down.
+   */
+  { x: 21.98, z: -15.85, hw: 9.92, hd: 6.05, y: BC_COURT },
 ];
 
 /**
@@ -1455,8 +1467,11 @@ export const BC_STEPS: Platform[] = [
  * version of this did, in seven hundred and forty-six cells.
  */
 export const BC_PAVEMENTS: Platform[] = [
-  { x: -13.2, z: 29.5, hw: 0.8, hd: 13.5, y: 0.13 },
-  { x: -2.8, z: 28.5, hw: 0.8, hd: 14.5, y: 0.13 },
+  /* Five centimetres clear of the building line each side. A pavement whose
+     back edge is the face of the wall standing on it is two surfaces at one
+     depth down the whole street. */
+  { x: -13.15, z: 29.5, hw: 0.8, hd: 13.5, y: 0.13 },
+  { x: -2.85, z: 28.5, hw: 0.8, hd: 14.5, y: 0.13 },
 ];
 
 export const BC_GROUND: Platform[] = [...BC_STEPS, ...BC_PAVEMENTS];

@@ -51,6 +51,26 @@ const OBJECT_M3 = 5;
 /** Over this in its narrowest direction, it is an object rather than trim. */
 const OBJECT_MIN_M = 0.4;
 /**
+ * Over this in its longest direction, it is a piece of building.
+ *
+ * Nothing anybody *places* in this world is four metres long — a lamp post, a
+ * crate, a bench, a bollard, a sign. Things that are, are architecture: a band
+ * course, a parapet, a picture rail, a beam. And architecture is supposed to
+ * bury its ends. A wall run has to overrun its block by half a metre or there
+ * is a slit of daylight where it meets the next one, so where the next one is
+ * a drawn building rather than open air, the overrun ends up inside it — and
+ * that is the fix working, not a fault.
+ *
+ * Which is exactly what this check said about the terrace south of the podium
+ * once its runs were lengthened to close the corners: a parapet ten metres long
+ * reported as an object driven twenty-seven centimetres into a shop.
+ *
+ * The narrowing is real and worth saying out loud: something five metres long
+ * left inside a building is no longer reported. Nothing five metres long is
+ * ever an accident here.
+ */
+const OBJECT_MAX_M = 4;
+/**
  * Over this, it is a building.
  *
  * 220, not 50. A tree's canopy is a hundred and sixty cubic metres once its
@@ -93,7 +113,7 @@ async function main() {
     }
 
     const buried = await page.evaluate(
-      ({ objectM3, objectMinM, structureM3, allowed }) => {
+      ({ objectM3, objectMinM, objectMaxM, structureM3, allowed }) => {
         interface Obj3D {
           isMesh?: boolean;
           isSkinnedMesh?: boolean;
@@ -191,6 +211,7 @@ async function main() {
         for (const small of boxes) {
           if (small.vol > objectM3) continue;
           if (Math.min(small.size[0], small.size[1], small.size[2]) < objectMinM) continue;
+          if (Math.max(small.size[0], small.size[1], small.size[2]) > objectMaxM) continue;
           let deepest = 0;
           let host = '';
           for (const big of boxes) {
@@ -239,7 +260,8 @@ async function main() {
         }
         return out.sort((a, b) => b.depth - a.depth).map((o) => o.line);
       },
-      { objectM3: OBJECT_M3, objectMinM: OBJECT_MIN_M, structureM3: STRUCTURE_M3, allowed: ALLOWED }
+      { objectM3: OBJECT_M3, objectMinM: OBJECT_MIN_M, objectMaxM: OBJECT_MAX_M,
+        structureM3: STRUCTURE_M3, allowed: ALLOWED }
     );
 
     check(buried.length === 0, `${id}: nothing is driven into a wall`, `${buried.length} found`);

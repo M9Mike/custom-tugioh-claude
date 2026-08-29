@@ -235,6 +235,41 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     bays?: number;
     /** How many of the bays are lit from inside. */
     lit?: number;
+    /**
+     * A hair up or down.
+     *
+     * Runs meeting at a corner have to overlap or there is a slit of daylight
+     * between them, and two runs that overlap with the same underside and the
+     * same top are two pairs of faces in two planes. So every run along z is
+     * dropped thirteen centimetres and every run along x seven, which is
+     * invisible on both counts and is the whole fix: at any corner the two
+     * runs are a different height and stand on a different underside, and no
+     * two of the five courses in either can find the other's plane.
+     */
+    dy?: number;
+    /**
+     * An end that meets another run on the same building line.
+     *
+     * The overrun below is for an *outer* corner, where a run has to pass its
+     * block or there is a slit of daylight where two walls meet. Two runs on
+     * one line are the opposite case: overrun them into each other and their
+     * five courses are five pairs of boxes in the same place, which no amount
+     * of dropping one of them a hair fixes, because they are the same wall
+     * drawn twice.
+     *
+     * A lapped end does not stop dead either, which would put all five courses
+     * of the run in one plane and trade the fault for a smaller one. It follows
+     * its neighbour's overrun instead of mirroring it: course by course, this
+     * run starts exactly where the other one ends, so the joint is toothed, the
+     * stagger survives, and a terrace of two buildings meets flush with the
+     * taller one showing its end.
+     *
+     * `Lo` and `Hi` are the low and high ends on the world axis, not `from`
+     * and `to`, which some runs write backwards. Only the run on one side of a
+     * joint needs the flag — the other overruns as it always did.
+     */
+    lapLo?: boolean;
+    lapHi?: boolean;
     skin?: THREE.Material;
     /** Shutters instead of glass on the ground floor. */
     shut?: boolean;
@@ -242,8 +277,7 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   }) => {
     const alongX = o.along === 'x';
     const run = Math.abs(o.to - o.from);
-    const mid = (o.from + o.to) / 2;
-    const y0 = o.base ?? 0;
+    const y0 = (o.base ?? 0) + (o.dy ?? 0);
     const bays = o.bays ?? Math.max(1, Math.round(run / 5));
     const skin = o.skin ?? brickwork();
     /** Puts a box in the run's frame: `a` along it, `c` out from the face. */
@@ -260,6 +294,16 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     /*
      * Five courses, and no two of them starting or ending in one plane.
      *
+     * The runs themselves overrun their blocks by seventy centimetres and not
+     * by thirty, which is not an aesthetic choice. A run has to pass its
+     * block's corner or there is a slit of daylight where two walls should
+     * meet — and the amount it passes by lands its course *ends* on the same
+     * numbers as the next run's course *faces* if you pick it carelessly.
+     * Thirty, less the plinth's own six-centimetre inset, is twenty-four, which
+     * is exactly the depth of the face course: every corner in the block had
+     * two boxes sharing a plane, and the fix for the holes was making the
+     * flicker. Seventy collides with none of the five depths.
+     *
      * They are all proud of the same building line and all as long as the run,
      * so written the obvious way the face, the plinth, the band, the parapet
      * and the coping share their back face down the whole length of every
@@ -267,9 +311,16 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
      * a dozen walls. Each one is given its own depth *and* its own length; a
      * few centimetres is invisible from anywhere and is the whole fix.
      */
+    const lo0 = Math.min(o.from, o.to);
+    const hi0 = Math.max(o.from, o.to);
     const course = (
       lenExtra: number, h: number, inner: number, outer: number, y: number, mat: THREE.Material
-    ) => root.add(put(run + lenExtra, h, outer - inner, mid, y, (inner + outer) / 2, mat));
+    ) => {
+      const e = lenExtra / 2;
+      const lo = lo0 + (o.lapLo ? e : -e);
+      const hi = hi0 - (o.lapHi ? e : -e);
+      root.add(put(hi - lo, h, outer - inner, (lo + hi) / 2, y, (inner + outer) / 2, mat));
+    };
 
     course(0, o.h, 0, 0.24, y0 + o.h / 2, skin);                          // the face
     /* The plinth starts twelve centimetres below the face rather than level
@@ -319,8 +370,8 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
 
   /* The lane in: the backs of two blocks, blank and high, which is what the
      back of a shopping arcade actually looks like. */
-  frontage({ along: 'z', from: -49, to: -23, face: -23.5, outward: 1, h: 12, bays: 5, lit: 1, shut: true });
-  frontage({ along: 'z', from: -49, to: -23, face: -14, outward: -1, h: 13, bays: 5, lit: 1, shut: true,
+  frontage({ along: 'z', from: -50.7, to: -21.3, face: -23.5, outward: 1, h: 12, bays: 5, lit: 1, shut: true, dy: -0.13 });
+  frontage({ along: 'z', from: -50.7, to: -21.3, face: -14, outward: -1, h: 13, bays: 5, lit: 1, shut: true, dy: -0.13,
              skin: darkBrick() });
 
   /*
@@ -356,7 +407,10 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   }
 
   /* The square's four sides. */
-  frontage({ along: 'x', from: -13.5, to: 10.2, face: -22, outward: 1, h: 13, bays: 5, lit: 2,
+  /* To 10.5 and not 10.2: the pier below starts at 10.38, so stopping at the
+     block's own corner left an eighteen-centimetre slot of sky between the two
+     of them, thirteen metres tall. */
+  frontage({ along: 'x', from: -14.7, to: 10.5, face: -22, dy: -0.07, outward: 1, h: 13, bays: 5, lit: 2,
              skin: darkBrick() });
   /*
    * The corner over the court's steps, plain.
@@ -367,21 +421,25 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
    * court runs up to that line, so twenty centimetres proud was twenty
    * centimetres of stone standing on ground somebody is walking on.
    */
-  root.add(box(own, 1.86, 13, 0.24, darkBrick(), 11.31, 6.5, -21.88));
-  root.add(box(own, 1.94, 0.8, 0.3, darkBrick(), 11.31, 13.4, -21.91));
-  root.add(box(own, 1.9, 0.18, 0.4, stone(), 11.4, 13.89, -21.94));
-  frontage({ along: 'z', from: -21.5, to: -6.5, face: -20.5, outward: 1, h: 11, bays: 3, lit: 1,
+  /* Set six centimetres deeper than the runs either side of it, so the three of
+     them are three walls and not one plane repeated. */
+  root.add(box(own, 2.06, 13, 0.24, darkBrick(), 11.41, 6.5, -22.04));
+  root.add(box(own, 1.94, 0.8, 0.3, darkBrick(), 11.31, 13.4, -22.01));
+  root.add(box(own, 1.9, 0.18, 0.4, stone(), 11.4, 13.89, -22.0));
+  frontage({ along: 'z', from: -22.7, to: -5.3, face: -20.5, outward: 1, h: 11, bays: 3, lit: 1, dy: -0.13,
              skin: rendered() });
-  frontage({ along: 'z', from: 3.5, to: 15.5, face: -20.5, outward: 1, h: 11, bays: 3, lit: 1,
+  frontage({ along: 'z', from: 2.3, to: 16.7, face: -20.5, outward: 1, h: 11, bays: 3, lit: 1, dy: -0.13,
              skin: rendered() });
-  frontage({ along: 'x', from: -20, to: -14.5, face: 16, outward: -1, h: 12, bays: 1, lit: 1 });
-  frontage({ along: 'x', from: -1.5, to: 7.5, face: 14, outward: -1, h: 12, bays: 2, lit: 1,
+  frontage({ along: 'x', from: -21.2, to: -13.3, face: 16, dy: -0.07, outward: -1, h: 12, bays: 1, lit: 1 });
+  /* Stops at eight: the building south of the podium carries the same line on
+     from there, and the two of them are a terrace and not one wall. */
+  frontage({ along: 'x', from: -2.7, to: 8, face: 14, dy: -0.07, outward: -1, h: 12, bays: 2, lit: 1,
              skin: rendered() });
 
   /* The alley, which is the backs of the same two blocks. */
-  frontage({ along: 'x', from: -40, to: -21, face: -6, outward: 1, h: 11, bays: 4, lit: 0, shut: true,
+  frontage({ along: 'x', from: -41.2, to: -19.8, face: -6, dy: -0.07, outward: 1, h: 11, bays: 4, lit: 0, shut: true,
              skin: plastered() });
-  frontage({ along: 'x', from: -40, to: -21, face: 3, outward: -1, h: 11, bays: 4, lit: 0, shut: true,
+  frontage({ along: 'x', from: -41.2, to: -19.8, face: 3, dy: -0.07, outward: -1, h: 11, bays: 4, lit: 0, shut: true,
              skin: plastered() });
 
   /*
@@ -391,29 +449,29 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
    * you obviously stand; its back gets forgotten, and the back of this one is
    * the whole east wall of a thirty-eight metre yard you can walk into.
    */
-  frontage({ along: 'z', from: -21.5, to: -6.5, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0,
+  frontage({ along: 'z', from: -22.7, to: -5.3, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0, dy: -0.13,
              shut: true, skin: plastered() });
-  frontage({ along: 'z', from: 3.5, to: 15.5, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0,
+  frontage({ along: 'z', from: 2.3, to: 16.7, face: -40.5, outward: -1, h: 11, bays: 3, lit: 0, dy: -0.13,
              shut: true, skin: plastered() });
 
   /* The yard: a blank back wall and a shed at each end. */
-  frontage({ along: 'z', from: -21, to: 15, face: -50.5, outward: 1, h: 9, bays: 5, lit: 0, shut: true,
+  frontage({ along: 'z', from: -22.7, to: 16.7, face: -50.5, outward: 1, h: 9, bays: 5, lit: 0, shut: true, dy: -0.13,
              skin: plastered() });
-  frontage({ along: 'x', from: -50, to: -41, face: -22, outward: 1, h: 5, bays: 2, lit: 0, shut: true,
+  frontage({ along: 'x', from: -51.2, to: -39.8, face: -22, dy: -0.07, outward: 1, h: 5, bays: 2, lit: 0, shut: true,
              skin: plastered() });
-  frontage({ along: 'x', from: -50, to: -41, face: 16, outward: -1, h: 5, bays: 2, lit: 0, shut: true,
+  frontage({ along: 'x', from: -51.2, to: -39.8, face: 16, dy: -0.07, outward: -1, h: 5, bays: 2, lit: 0, shut: true,
              skin: plastered() });
 
   /* The south street. */
-  frontage({ along: 'z', from: 17, to: 43, face: -14, outward: 1, h: 12, bays: 5, lit: 2, base: 0.13 });
-  frontage({ along: 'z', from: 15, to: 43, face: -2, outward: -1, h: 13, bays: 5, lit: 2,
+  frontage({ along: 'z', from: 15.3, to: 44.7, face: -14, outward: 1, h: 12, bays: 5, lit: 2, base: 0.13, dy: -0.13 });
+  frontage({ along: 'z', from: 12.8, to: 44.7, face: -2, outward: -1, h: 13, bays: 5, lit: 2, dy: -0.13,
              skin: rendered(), base: 0.13 });
 
   /* The court, closed behind the sculpture. From 12.4 rather than 13, which
      left three quarters of a metre of nothing at its north-west corner. */
-  frontage({ along: 'x', from: 12.4, to: 31, face: -22, outward: 1, h: 12, bays: 3, lit: 1,
+  frontage({ along: 'x', from: 11.3, to: 32.7, face: -22, dy: -0.07, outward: 1, h: 12, bays: 3, lit: 1,
              skin: darkBrick(), base: BC_COURT });
-  frontage({ along: 'z', from: -21, to: -11, face: 32, outward: -1, h: 12, bays: 2, lit: 1,
+  frontage({ along: 'z', from: -22.7, to: -9.3, face: 32, outward: -1, h: 12, bays: 2, lit: 1, dy: -0.13,
              skin: darkBrick(), base: BC_COURT });
 
   /* ---- the way back to Market Row ---- */
@@ -510,29 +568,45 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.14, 3.0, 6.2, windowGlass, FRONT - 0.3, BCY + 2.5, cz));
     /* Sills and heads stand proud of the stone they are set in, which is both
        what a sill does and what keeps three boxes out of two planes. */
-    /* Eighty centimetres deep, not fifty-six. The glass starts at x 17.55 and
-       the sill only reached 17.34, which left twenty-one centimetres of ledge
-       for a forty-six centimetre die — so they sat half off the front of it. */
-    root.add(box(own, 0.8, 0.34, 7.2, stone(), FRONT - 0.5, BCY + 0.6, cz));
+    /* A metre deep, not eighty centimetres and not the fifty-six it started at.
+       The glass starts at x 17.55, and a forty-six centimetre die turned on the
+       sill needs sixty-five of ledge in front of it — at eighty it still hung
+       over the front edge. */
+    root.add(box(own, 1.0, 0.34, 7.2, stone(), FRONT - 0.6, BCY + 0.6, cz));
     root.add(box(own, 0.64, 0.3, 7.4, stone(), FRONT - 0.4, BCY + 4.4, cz));
     /* Dice on the sill, because the window of a dice shop has dice in it. On
        the sill and not in the glass: at x 17.55 they were inside the pane and
        came out as white wedges growing through it. */
+    /*
+     * Turned on the sill, and *on* it.
+     *
+     * These were tumbled on all three axes and hung in the air above the ledge:
+     * a cube tilted about x and z has its lowest point at a corner, which is
+     * four tenths of its size below the middle and not two, so a height picked
+     * as "half a die above the stone" left them floating by the difference.
+     * Turned about the upright only, a die rests on its own face — which is
+     * also what three dice arranged in a shop window actually do.
+     *
+     * And they are one group each, so the pips turn with the die. Placed in
+     * world coordinates and merely *rotated*, as they were, three of the six
+     * faces ended up with their spots hanging in the air beside them.
+     */
     for (let i = 0; i < 3; i++) {
       const S = 0.46;
-      const px = FRONT - 0.73;
-      const pz = cz - 2.1 + i * 2.1;
-      const d = box(own, S, S, S, matt(own, '#ddd2b8'), px, BCY + 1.01, pz);
-      d.rotation.set(0.3 + i * 0.4, 0.6 + i * 0.9, 0.2 + i * 0.5);
-      root.add(d);
-      /* Pips, or they are just pale cubes — which at this size read as litter
-         on the sill rather than as the stock of a dice shop. */
+      const die = new THREE.Group();
+      die.add(box(own, S, S, S, matt(own, '#ddd2b8'), 0, 0, 0));
+      /* Pips on the face that turns towards the square, or they are pale cubes
+         — which at this size read as litter on the sill rather than as the
+         stock of a dice shop. */
       for (let k = 0; k < 3; k++) {
-        const pip = box(own, 0.09, 0.09, 0.09, matt(own, '#38302a'),
-                        px - S / 2 - 0.02, BCY + 1.01 - 0.12 + k * 0.12, pz - 0.12 + k * 0.12);
-        pip.rotation.copy(d.rotation);
-        root.add(pip);
+        die.add(box(own, 0.09, 0.09, 0.09, matt(own, '#38302a'),
+                    -S / 2 - 0.02, -0.12 + k * 0.12, -0.12 + k * 0.12));
       }
+      /* Sill top plus half a die, less five millimetres, so it is bedded on the
+         stone rather than balanced a hair above it. */
+      die.position.set(FRONT - 0.73, BCY + 0.6 + 0.17 + S / 2 - 0.005, cz - 2.1 + i * 2.1);
+      die.rotation.y = 0.35 + i * 0.55;
+      root.add(die);
     }
     /* And a light behind the glass, so the window is lit from inside it. */
     const inside = new THREE.PointLight('#ffcf96', 14, 7, 2);
@@ -587,7 +661,7 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
    * to is a `solid`, and solids are not drawn. From the court you were looking
    * at twenty-four metres by fifteen of void with a door floating in it.
    */
-  frontage({ along: 'x', from: 18.6, to: 41.4, face: -10, outward: -1, h: 15, bays: 4, lit: 1,
+  frontage({ along: 'x', from: 16.6, to: 32.7, face: -10, dy: -0.07, outward: -1, h: 15, bays: 4, lit: 1,
              base: BC_COURT });
   /* And the side door nobody uses, on the wall now that there is one. */
   root.add(box(own, 1.4, 3.2, 0.34, timber, 20.5, BC_COURT + 1.6, -10.55));
@@ -597,8 +671,14 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
    * And the building south of the podium, which had the same fault: from the
    * top of the shop's steps you were looking along a terrace at a hole.
    */
-  frontage({ along: 'x', from: 8.4, to: 17, face: 14, outward: -1, h: 14, bays: 2, lit: 1,
-             skin: rendered() });
+  /* Thirty centimetres into the shop's mass at its east end and not seventy.
+     The overrun exists to pass a corner, and here there is a drawn block on the
+     other side of that corner rather than open air — at seventy the parapet was
+     far enough inside it to read to `npm run embedded` as a beam driven into a
+     building, which is a thing worth being told about. Thirty still puts every
+     course of it behind the block's face. */
+  frontage({ along: 'x', from: 8, to: 18.3, face: 14, dy: -0.07, outward: -1, h: 14, bays: 2, lit: 1,
+             lapLo: true, skin: rendered() });
 
   /* ---- the dice court ---- */
 
