@@ -79,7 +79,12 @@ const GONE = 400;
  * a ray leaving it is the view, not a fault. Listing them is honest about that
  * rather than tuning a threshold until the shrine goes quiet.
  */
-const ENCLOSED: AreaId[] = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'black-crown', 'crown-shop'];
+const ENCLOSED: AreaId[] = [
+  'grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'black-crown', 'crown-shop',
+  /* Walled on all four sides, which is what makes a burial ground set apart —
+     and what makes it checkable. */
+  'old-cemetery',
+];
 
 /**
  * Doors are holes on purpose. This is how much wider than its trigger.

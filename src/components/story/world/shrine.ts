@@ -108,7 +108,16 @@ export function buildShrine(anisotropy: number): BuiltArea {
    * never come round at all. Eight per cent either way, which is nothing to look
    * at directly and the difference between ground and cardboard at a distance.
    */
-  const yardGeo = own.keep(new THREE.PlaneGeometry(56, 39, 28, 20));
+  /* Wider and deeper than the fence that rings it. At 56 by 39 the ground
+     stopped 25 cm inside the fence line, so the fence and the gate posts stood
+     on the last of it with their undersides out over nothing — which is the
+     same fault as a floor that does not reach its wall, one storey up and
+     outdoors.
+
+     North and sideways only: the south edge stops on the entrance step, whose
+     top is at this exact height, and a plane laid over that is the flicker this
+     is trying to avoid. */
+  const yardGeo = own.keep(new THREE.PlaneGeometry(57.4, 39.6, 28, 20));
   const yp = yardGeo.attributes.position;
   const tone = new Float32Array(yp.count * 3);
   for (let i = 0; i < yp.count; i++) {
@@ -128,7 +137,7 @@ export function buildShrine(anisotropy: number): BuiltArea {
   yardMat.vertexColors = true;
   const yard = new THREE.Mesh(yardGeo, yardMat);
   yard.rotation.x = -Math.PI / 2;
-  yard.position.set(0, SHRINE_FLOOR, 4.5);
+  yard.position.set(0, SHRINE_FLOOR, 4.8);
   yard.receiveShadow = true;
   root.add(yard);
 
@@ -322,7 +331,46 @@ export function buildShrine(anisotropy: number): BuiltArea {
      both their top and their underside along the whole corner. */
   fence(-28.6, 4.775, 0.7, 37.55, 'z');
   fence(28.6, 4.775, 0.7, 37.55, 'z');
-  fence(0, 23.9, 57, 0.7, 'x');
+  /*
+   * The back fence, in two pieces with the gate to the burial ground between
+   * them.
+   *
+   * A shrine's own graveyard is behind it, and this is the way through — the
+   * one opening in three sides of fence, on the west side of the hall where you
+   * only find it by walking round. Everything about it is smaller than the way
+   * in from the street, which is the point: that is the entrance and this is a
+   * back gate.
+   */
+  fence(-23.85, 23.9, 9.3, 0.7, 'x');
+  fence(6.65, 23.9, 43.7, 0.7, 'x');
+  {
+    const gx = -17.2;
+    const gz = 23.9;
+    const gy = SHRINE_FLOOR;
+    for (const side of [-1, 1] as const) {
+      root.add(box(own, 0.44, 3.1, 0.44, post, gx + side * 2, gy + 1.55, gz));
+      root.add(box(own, 0.62, 0.18, 0.62, stone(), gx + side * 2, gy + 3.19, gz));
+    }
+    root.add(box(own, 5.2, 0.34, 0.5, post, gx, gy + 3.45, gz));
+    root.add(box(own, 6, 0.26, 0.9, matt(own, '#57453a'), gx, gy + 3.75, gz));
+    /*
+     * And what is beyond it, which is not the cemetery — that is a different
+     * scene. A closed box, for the same reason Black Crown Games has one behind
+     * its front door: a doorway you can see through is a doorway you can see the
+     * void through, and `npm run areas` counted five thousand sight lines
+     * leaving the precinct through this gap the moment it was cut.
+     */
+    const beyond = matt(own, '#2b2f28');
+    root.add(box(own, 6.4, 4.2, 0.4, beyond, gx, gy + 2.1, gz + 2.2));
+    for (const side of [-1, 1] as const) {
+      root.add(box(own, 0.4, 4.2, 2.1, beyond, gx + side * 2.6, gy + 2.05, gz + 1.15));
+    }
+    root.add(box(own, 6.2, 0.4, 2.7, beyond, gx, gy + 4.35, gz + 1.3));
+    const lamp = new THREE.PointLight('#ffb469', 20, 9, 2);
+    lamp.position.set(gx, gy + 2.6, gz - 1.4);
+    root.add(lamp);
+    lamps.push(lamp);
+  }
 
   /* Beyond the fence, the hill: dark tree mass and nothing you can reach. */
   for (let i = 0; i < 34; i++) {

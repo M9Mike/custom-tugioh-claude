@@ -44,6 +44,7 @@ import { buildStepLane } from './world/steplane';
 import { buildShrine } from './world/shrine';
 import { buildBlackCrown } from './world/blackcrown';
 import { buildCrownShop } from './world/crownshop';
+import { buildCemetery } from './world/cemetery';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -317,6 +318,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'domino-shrine': buildShrine,
       'black-crown': buildBlackCrown,
       'crown-shop': buildCrownShop,
+      'old-cemetery': buildCemetery,
     };
 
     let built: BuiltArea | null = null;
@@ -949,7 +951,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         w.__camera = camera;
         w.__probe = {
           area: area.id,
-          player: [+p.x.toFixed(2), +p.z.toFixed(2)],
+          /*
+           * Four places, not two.
+           *
+           * At two, a reported position is up to five millimetres from the real
+           * one — which is nothing anywhere except at the edge of a step, where
+           * it is a whole step. Turtle Lane's treads meet at x 8.502, and
+           * `npm run stairs` read a duelist standing at 8.503 as standing at
+           * 8.50, looked up the floor there, and reported her eighteen
+           * centimetres inside a stone she was walking correctly down.
+           */
+          player: [+p.x.toFixed(4), +p.z.toFixed(4)],
           /* The height the duelist is actually drawn at, which is the eased one
              and not `groundAt` — `npm run stairs` compares the two. */
           y: +groundY.toFixed(3),

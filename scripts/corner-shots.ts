@@ -30,6 +30,20 @@ const NE = (Math.PI * 3) / 4, SE = Math.PI / 4, SW = -Math.PI / 4, NW = -(Math.P
 const N = Math.PI, S = 0, E = Math.PI / 2, W = -Math.PI / 2;
 
 const SHOTS: Shot[] = [
+  /* The Old Cemetery: the gate, the avenue, the terraces, the far corners. */
+  { name: 'cemetery, in at the gate', area: 'old-cemetery', x: 12.4, z: -46, facing: N },
+  { name: 'cemetery, up the avenue', area: 'old-cemetery', x: 12.4, z: -24, facing: N },
+  { name: 'cemetery, the first terrace', area: 'old-cemetery', x: 12.4, z: -4, facing: N },
+  { name: 'cemetery, the oldest ground', area: 'old-cemetery', x: 12.4, z: 24, facing: N },
+  { name: 'cemetery, the ossuary', area: 'old-cemetery', x: 21, z: 26, facing: S },
+  { name: 'cemetery, across the rows', area: 'old-cemetery', x: -22, z: -30, facing: W },
+  { name: 'cemetery, the west grove', area: 'old-cemetery', x: -37.5, z: 30, facing: W },
+  { name: 'cemetery, the north-east corner', area: 'old-cemetery', x: 34, z: 44, facing: NE },
+  { name: 'cemetery, the south-west corner', area: 'old-cemetery', x: -34, z: -44, facing: SW },
+  { name: 'cemetery, the grave with flowers', area: 'old-cemetery', x: 24.6, z: 27, facing: N },
+  { name: 'cemetery, the south wall west of the gate', area: 'old-cemetery', x: 12.4, z: -48, facing: W },
+  { name: 'cemetery, the south wall east of the gate', area: 'old-cemetery', x: 12.4, z: -48, facing: E },
+  { name: 'the shrine, the back gate', area: 'domino-shrine', x: -17.2, z: 19, facing: 0 },
   { name: 'the stairs, walking up to them', area: 'crown-shop', x: 6, z: 2, facing: E },
   { name: 'the stairs, from the atrium', area: 'crown-shop', x: 2, z: 6, facing: SE },
   { name: 'the shop, up at the galleries', area: 'crown-shop', x: 0, z: 0, facing: NE },

@@ -45,7 +45,8 @@ export type AreaId =
   | 'step-lane'
   | 'domino-shrine'
   | 'black-crown'
-  | 'crown-shop';
+  | 'crown-shop'
+  | 'old-cemetery';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -1328,7 +1329,10 @@ const DOMINO_SHRINE: Area = {
     { x: 30, z: 0, hw: 2, hd: SH_D, tall: true },
     /* Reaching forward to 23.4, for the same reason: the kerb is part of the
        wall, not a step. */
-    { x: 0, z: 24.7, hw: SH_W, hd: 1.3, tall: true },
+    /* In two pieces now, with the back gate to the burial ground between them.
+       A shrine's own graveyard is behind it, and this is the way through. */
+    { x: -25.6, z: 24.7, hw: 6.4, hd: 1.3, tall: true },
+    { x: 8.4, z: 24.7, hw: 23.6, hd: 1.3, tall: true },
 
     /*
      * The hall, and the edge of the platform it stands on.
@@ -1351,8 +1355,23 @@ const DOMINO_SHRINE: Area = {
   /* The way in, closed to the camera: turning back at the top of the steps
      would otherwise put it through the terrace and into the void where Turtle
      Lane is not built. */
-  camSolids: [{ x: 0, z: -24, hw: SH_APPROACH, hd: 2 }],
+  camSolids: [
+    { x: 0, z: -24, hw: SH_APPROACH, hd: 2 },
+    /* And the back gate to the burial ground, for the same reason. */
+    { x: -17.2, z: 25.2, hw: 2.8, hd: 1 },
+  ],
   doors: [
+    {
+      id: 'shrine-to-cemetery',
+      trigger: { x: -17.2, z: SH_D - 1.4, hw: 1.8, hd: 1.4 },
+      to: 'old-cemetery',
+      seam: { x: -17.2, z: SH_D },
+      /* Nine metres in, not five. The camera trails four and a half metres
+         behind the arrival, and at five it stood in the back fence — so you
+         came through the gate into a shot of the top of your own head. */
+      arrive: { x: -17.2, z: SH_D - 9, facing: Math.PI },
+      label: 'The Old Cemetery',
+    },
     {
       id: 'shrine-to-street',
       /* Across the passage, deep enough that walking north out of the grounds
@@ -1748,9 +1767,6 @@ export const CS_G2 = 9.2;
 /** The underside of the lantern, and what the camera is not allowed through. */
 export const CS_TOP = 13.6;
 
-/** The atrium: open from the floor to the lantern, and never built over. */
-const CS_VOID = { hw: 9, hd: 6 };
-
 export const CS_GROUND: Platform[] = [
   /*
    * Two galleries, each a continuous ring, and a flight up to each.
@@ -1985,6 +2001,329 @@ const CROWN_SHOP: Area = {
   spawn: { x: -11.5, z: 0, facing: Math.PI / 2 },
 };
 
+/* ------------------------------------------------------------------ */
+/* The Old Cemetery                                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * "Moss, cut stone, fresh flowers on one grave. The oldest ground in Domino."
+ *
+ * The plan gives this area one job the rest of the world has never asked for:
+ * *dense small collision* — hundreds of markers, not one of them walkable. Six
+ * hundred solids is two orders of magnitude past anything here, which is why
+ * `solidsNear` exists; without an index this area alone would cost more collision
+ * work per frame than the whole city put together.
+ *
+ * ## The shape of it
+ *
+ * A hundred and twelve metres by a hundred and four, and laid out rather than
+ * scattered — a burial ground is one of the most ordered pieces of land a city
+ * has, and the order is the thing you read it by. Three terraces climbing north,
+ * because the oldest ground is always the highest; a gate at the bottom; one
+ * avenue on the axis from the gate to the ossuary at the top; four more paths
+ * crossing it. What is left between the paths is twenty-five plots, and the
+ * plots are where the stones are.
+ *
+ * You can see the whole of it from the top step and it still takes two minutes
+ * to walk from the gate to the far corner.
+ *
+ * ## Why the terraces need no retaining solids
+ *
+ * They are 1.8 m apart, and a platform more than a stride above you and less
+ * than a room is already a wall — the rule `settle` learned when Mike walked
+ * into the side of Black Crown's podium steps. Every terrace edge in here is
+ * collision for free; what the builder draws on them is the face of the wall
+ * that is already there.
+ */
+const CM_W = 56;      // half-width, so 112 m
+const CM_D = 52;      // half-depth, so 104 m
+export const CM_MID = 1.8;   // the second terrace
+export const CM_HIGH = 3.6;  // the oldest ground
+
+/** The four paths that run the length of it, and the avenue from the gate. */
+export const CM_WALKS = [-34, -10, 12.4, 34];
+/** How wide a path is, either side of its line. */
+export const CM_WALK = 3.5;
+
+/** One thing standing in the ground. */
+export interface Marker {
+  x: number;
+  z: number;
+  /** Footprint, before it is turned. */
+  hw: number;
+  hd: number;
+  h: number;
+  kind: 'stone' | 'slab' | 'obelisk' | 'family' | 'tree' | 'lantern';
+  turn: number;
+  /** The one grave with flowers on it. */
+  tended?: boolean;
+}
+
+/**
+ * The stones, laid out plot by plot.
+ *
+ * Generated rather than typed because there are six hundred of them, and from
+ * one seed so that the world is the same every time it is built — a grave that
+ * moves between two visits is worse than no grave at all. The collision and the
+ * geometry both read this list, so they cannot disagree about where anything is.
+ */
+function cemeteryMarkers(): Marker[] {
+  let seed = 0x01dce3 ^ 0x9e3779b9;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const out: Marker[] = [];
+
+  /* The bands between the paths, west to east and south to north. */
+  const xs: [number, number][] = [];
+  let from = -CM_W + 3.5;
+  for (const w of CM_WALKS) {
+    xs.push([from, w - CM_WALK]);
+    from = w + CM_WALK;
+  }
+  xs.push([from, CM_W - 3.5]);
+
+  /* z bands. The gaps between them are the cross paths and the two flights.
+     Which terrace each sits on is not written here — the stones are lifted onto
+     whatever `groundAt` answers under them, so there is only one source for it
+     and the bands cannot drift from the ground they stand on. */
+  const zs: [number, number][] = [
+    [-48, -24],              // the low ground
+    [-16.5, -13.5],          // the strip in front of the first flight
+    [-11, -4],               // the middle terrace
+    [4, 11],
+    [17, 26],                // the oldest ground
+    [34, 48],
+  ];
+
+  for (const [x0, x1] of xs) {
+    for (const [z0, z1] of zs) {
+      /* The grove takes the whole west band of the oldest ground, and the
+         ossuary stands where the avenue's east plot would be. */
+      const grove = x0 < -CM_W + 6 && z0 > 12;
+      const ossuary = x0 > 14 && x0 < 18 && z0 > 30;
+      if (ossuary) continue;
+      if (grove) {
+        for (let i = 0; i < 7; i++) {
+          out.push({
+            x: x0 + 2 + rnd() * (x1 - x0 - 4),
+            z: z0 + 2 + rnd() * (z1 - z0 - 4),
+            hw: 0.5 + rnd() * 0.25, hd: 0.5 + rnd() * 0.25, h: 7 + rnd() * 4,
+            kind: 'tree', turn: rnd() * 3.14,
+          });
+        }
+        continue;
+      }
+      /*
+       * Rows, because a burial ground is rows — and rows you can walk between.
+       *
+       * Stones sit every 1.8 m along a row and the rows are 2.8 m apart, which
+       * is close enough that a plot is a wall of stone from the side and open
+       * enough that you can walk down any row of it. That is what a cemetery
+       * is: dense in one direction and passable in the other. Scattered at one
+       * stone per eighteen square metres — which is where this started — it
+       * read as a field with some rocks in it.
+       */
+      const cols = Math.max(1, Math.round((x1 - x0) / 1.8));
+      const rows = Math.max(1, Math.round((z1 - z0) / 2.8));
+      const dx = (x1 - x0) / cols;
+      const dz = (z1 - z0) / rows;
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          if (rnd() < 0.08) continue;               // a plot nobody took
+          const kind = rnd() < 0.06 ? 'family' : rnd() < 0.22 ? 'obelisk' : rnd() < 0.4 ? 'slab' : 'stone';
+          const big = kind === 'family';
+          out.push({
+            x: x0 + dx * (c + 0.5) + (rnd() - 0.5) * 0.18,
+            z: z0 + dz * (r + 0.5) + (rnd() - 0.5) * 0.18,
+            hw: big ? 0.62 : kind === 'slab' ? 0.5 : 0.3,
+            hd: big ? 0.5 : kind === 'slab' ? 0.36 : 0.28,
+            h: big ? 1.9 + rnd() * 0.5 : kind === 'obelisk' ? 1.5 + rnd() * 0.6 : kind === 'slab' ? 0.55 : 0.85 + rnd() * 0.35,
+            kind,
+            turn: (rnd() - 0.5) * 0.12,
+          });
+        }
+      }
+    }
+  }
+
+  /*
+   * And the one with flowers on it.
+   *
+   * The brief asks for exactly one, and one is the whole point: six hundred
+   * stones nobody has visited in a century, and a single grave someone came to
+   * this week. It stands a little clear of its row on the oldest ground, where
+   * you will find it on the way to the ossuary and not before.
+   */
+  out.push({ x: 24.6, z: 21.5, hw: 0.42, hd: 0.34, h: 1.15, kind: 'stone', turn: 0.04, tended: true });
+  return out;
+}
+
+export const CM_MARKERS: Marker[] = cemeteryMarkers();
+
+/**
+ * The stone lanterns, and the water basin by the gate.
+ *
+ * Here rather than in the builder because they are things you walk into, and a
+ * thing the renderer knows about and the collision does not is the whole family
+ * of bug this world keeps finding. `npm run footing` found it as a hundred and
+ * fifty-three cells standing inside a lantern's own plinth.
+ */
+/*
+ * A lantern stands where the row puts it — unless the row puts it on the lip of
+ * a terrace, where a third of its plinth hangs over the drop and its underside
+ * sits in the same plane as the coping's. Those step back onto the ground.
+ *
+ * The clearance is the plinth's half-width, the coping's overhang either side of
+ * the terrace face, and a hand's width past that.
+ */
+const CM_LIP_CLEAR = 0.33 + 0.72 + 0.4;
+const offLip = (z: number) =>
+  [-12.6, 15.4].reduce((at, lip) => (Math.abs(at - lip) < CM_LIP_CLEAR ? lip + CM_LIP_CLEAR : at), z);
+
+export const CM_THINGS: { x: number; z: number; kind: 'lantern' | 'basin'; lit?: boolean }[] = [
+  ...Array.from({ length: 12 }, (_, i) => [
+    { x: 12.4 - CM_WALK - 1.1, z: offLip(-52 + 8 + i * 8.6), kind: 'lantern' as const, lit: i % 3 === 0 },
+    { x: 12.4 + CM_WALK + 1.1, z: offLip(-52 + 8 + i * 8.6), kind: 'lantern' as const, lit: i % 3 === 1 },
+  ]).flat(),
+  ...([[-34, -20], [-10, -20], [34, -20], [-34, 30], [-10, 30], [34, 30]] as const).map(
+    ([px, pz]) => ({ x: px + CM_WALK + 1.1, z: pz, kind: 'lantern' as const, lit: true })
+  ),
+  { x: 3.4, z: -44, kind: 'basin' as const },
+].filter((t) =>
+  /*
+   * Not inside the ossuary.
+   *
+   * The east row runs 8.6 m apart from the gate to the back wall, and one of
+   * them lands at z 42 — which is inside the building at the head of the
+   * avenue, lantern, light and all. `npm run embedded` found it buried 56 cm in
+   * a wall it is entirely inside of. The row simply stops where the building
+   * starts, which is what a row of lamps does.
+   */
+  Math.abs(t.x - 21) > 7.3 || Math.abs(t.z - 41) > 6.3);
+
+/** The terraces, and the flights between them. */
+export const CM_GROUND: Platform[] = [
+  /*
+   * The middle terrace runs north to 16, not to 12.
+   *
+   * The flight up to the oldest ground stands *on* it, between 12 and 16 — so
+   * if the terrace stopped where the flight starts, the four metres either side
+   * of each flight had no floor at any height and a duelist walking north off
+   * the middle terrace fell 1.8 m into a strip of nothing. `groundAt` takes the
+   * highest surface, so a flight standing on a terrace still reads as the
+   * flight.
+   */
+  { x: 0, z: 2, hw: CM_W, hd: 14, y: CM_MID },
+  { x: 0, z: 34, hw: CM_W, hd: 18, y: CM_HIGH },
+  /* One flight per path, so the climb is never a detour. */
+  ...CM_WALKS.flatMap((cross) => [
+    ...flightPlatforms({ along: 'z', start: -16, end: -12, from: 0, to: CM_MID, half: CM_WALK, cross }),
+    ...flightPlatforms({ along: 'z', start: 12, end: 16, from: CM_MID, to: CM_HIGH, half: CM_WALK, cross }),
+  ]),
+];
+
+const OLD_CEMETERY: Area = {
+  id: 'old-cemetery',
+  name: 'The Old Cemetery',
+  kind: 'exterior',
+  /*
+   * North of the shrine, and west of Black Crown's yard.
+   *
+   * The shrine's north wall is its own back fence, and a burial ground behind a
+   * shrine is where one goes. The offset puts this area's south edge on the
+   * shrine's north edge exactly, so the gate between them is one line in two
+   * areas rather than two numbers that have to be kept equal by hand.
+   */
+  world: { x: -40, z: 122 },
+  bounds: { x: 0, z: 0, hw: CM_W, hd: CM_D },
+  platforms: CM_GROUND,
+  solids: [
+    /* The boundary wall. Three sides whole, and the south in two pieces with
+       the lych-gate between them. */
+    { x: 0, z: CM_D + 1, hw: CM_W + 2, hd: 1, tall: true },
+    { x: -CM_W - 1, z: 0, hw: 1, hd: CM_D + 2, tall: true },
+    { x: CM_W + 1, z: 0, hw: 1, hd: CM_D + 2, tall: true },
+    /* The runs end on the gate's own piers, and the piers are solid. A drawn
+       opening wider than the walked one is a wall nobody can see. */
+    { x: -25.175, z: -CM_D - 1, hw: 32.825, hd: 1, tall: true },
+    { x: 37.575, z: -CM_D - 1, hw: 20.425, hd: 1, tall: true },
+    { x: 8.2, z: -CM_D, hw: 0.62, hd: 0.62, tall: true },
+    { x: 16.6, z: -CM_D, hw: 0.62, hd: 0.62, tall: true },
+
+    /* The ossuary at the head of the avenue. */
+    { x: 21, z: 41, hw: 6.5, hd: 5.5, tall: true },
+
+    /*
+     * The edge of each terrace, broken where the paths climb it.
+     *
+     * A platform more than a stride above you is already a wall, which stops
+     * anyone walking into a terrace *from below*. From above there was nothing:
+     * you could walk off the middle terrace's south edge and drop 1.8 m onto
+     * the ground below it. A burial ground has a parapet along a drop, and this
+     * is it — the same rectangles the builder draws its coping on.
+     */
+    ...[-12.6, 15.4].flatMap((z) => {
+      const runs: { from: number; to: number }[] = [];
+      let from = -CM_W;
+      for (const w of CM_WALKS) {
+        runs.push({ from, to: w - CM_WALK });
+        from = w + CM_WALK;
+      }
+      runs.push({ from, to: CM_W });
+      return runs
+        .filter((r) => r.to - r.from > 0.3)
+        .map((r) => ({ x: (r.from + r.to) / 2, z, hw: (r.to - r.from) / 2, hd: 0.72 }));
+    }),
+
+    /*
+     * The kept grave's plot, which is a plot and not a step.
+     *
+     * Its surround, its flower cups and its votive lantern all stand proud of
+     * the ground, and standing *on* somebody's grave is the one thing this area
+     * should not let you do. One rectangle round the whole of it.
+     */
+    ...CM_MARKERS.filter((m) => m.tended).map((m) => ({ x: m.x, z: m.z + 0.14, hw: 0.95, hd: 1.05 })),
+
+    /* The lanterns and the basin, which are things you walk into. */
+    ...CM_THINGS.map((t) => (t.kind === 'basin'
+      ? { x: t.x, z: t.z, hw: 1.4, hd: 0.95 }
+      : { x: t.x, z: t.z, hw: 0.46, hd: 0.46 })),
+
+    /* And every stone in the ground. */
+    ...CM_MARKERS.map((m) => ({
+      x: m.x,
+      z: m.z,
+      /* Turned a few degrees, so the footprint is the box round the turned
+         stone rather than the stone — which is the right way round for
+         something you are not meant to walk into. */
+      hw: m.hw * Math.cos(m.turn) + m.hd * Math.abs(Math.sin(m.turn)),
+      hd: m.hd * Math.cos(m.turn) + m.hw * Math.abs(Math.sin(m.turn)),
+    })),
+  ],
+  /* The gate, closed to the camera and to the sightline sweep but not to a
+     duelist: past it is the shrine, which is a different scene, and what you
+     would otherwise see through a six-metre gap is the void. */
+  /* Wide enough to cover the whole opening between the gate's piers, not just
+     the middle of it: a ray leaving down the west edge of the gap found neither
+     wall nor blocker, which is forty-four sight lines out of the world. */
+  camSolids: [{ x: 12.4, z: -CM_D + 0.8, hw: 4.9, hd: 1 }],
+  doors: [
+    {
+      id: 'cemetery-to-shrine',
+      trigger: { x: 12.4, z: -CM_D + 1.4, hw: 3, hd: 1.4 },
+      to: 'domino-shrine',
+      seam: { x: 12.4, z: -CM_D },
+      /* And the same the other way: at 5.5 the camera sat in the lych-gate's
+         own camera solid. Nine metres puts it on open avenue. */
+      arrive: { x: 12.4, z: -CM_D + 9, facing: 0 },
+      label: 'Domino Shrine',
+    },
+  ],
+  spawn: { x: 12.4, z: -44, facing: 0 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
@@ -1993,6 +2332,7 @@ export const AREAS: Record<AreaId, Area> = {
   'domino-shrine': DOMINO_SHRINE,
   'black-crown': BLACK_CROWN,
   'crown-shop': CROWN_SHOP,
+  'old-cemetery': OLD_CEMETERY,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */
@@ -2042,6 +2382,94 @@ export function pushOut(
  * meant to hit, and the bounds clamp last so that a push out of a wall cannot
  * leave somebody outside the room.
  */
+/* ------------------------------------------------------------------ */
+/* Finding the few solids that matter, out of hundreds                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The solids near a point, rather than all of them.
+ *
+ * Every area until now has had a few dozen solids and `settle` could afford to
+ * look at every one of them, twice a frame. The Old Cemetery has six hundred —
+ * that is the whole point of the place: hundreds of markers and not one of them
+ * walkable — and six hundred rectangle tests a frame, on a phone, is not a
+ * budget any of this can afford.
+ *
+ * So the solids are filed on a four-metre grid the first time an area asks, and
+ * a query looks in the four cells its circle can touch. A street with sixty
+ * solids skips the index entirely and behaves exactly as it always has; the one
+ * area that needs it gets a couple of dozen tests instead of six hundred.
+ *
+ * The order is preserved. `settle` pushes out of one solid and then tests the
+ * next from the moved position, so which solid is considered first decides
+ * where a duelist ends up in a corner — the indices come back ascending, which
+ * is the order `area.solids` is written in.
+ */
+const GRID_CELL = 4;
+/** Under this, an index costs more than it saves. */
+const GRID_FROM = 96;
+const GRIDS = new WeakMap<Area, Map<number, number[]>>();
+
+function cellKey(cx: number, cz: number): number {
+  /* Two 16-bit halves. The world is nowhere near ±32 km. */
+  return ((cx + 8192) << 16) | (cz + 8192);
+}
+
+function gridFor(area: Area): Map<number, number[]> {
+  let grid = GRIDS.get(area);
+  if (grid) return grid;
+  grid = new Map();
+  area.solids.forEach((r, i) => {
+    const x0 = Math.floor((r.x - r.hw) / GRID_CELL);
+    const x1 = Math.floor((r.x + r.hw) / GRID_CELL);
+    const z0 = Math.floor((r.z - r.hd) / GRID_CELL);
+    const z1 = Math.floor((r.z + r.hd) / GRID_CELL);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const k = cellKey(cx, cz);
+        const at = grid!.get(k);
+        if (at) at.push(i); else grid!.set(k, [i]);
+      }
+    }
+  });
+  GRIDS.set(area, grid);
+  return grid;
+}
+
+/** Scratch, so a query per frame is not a pair of allocations per frame. */
+const NEAR: number[] = [];
+
+function solidsNear(area: Area, x: number, z: number, r: number): readonly Rect[] {
+  if (area.solids.length < GRID_FROM) return area.solids;
+  const grid = gridFor(area);
+  /* Half a metre of margin: `settle` moves the duelist as it goes, and a solid
+     that only matters *after* a push has to already be in the list. */
+  const pad = r + 0.5;
+  const x0 = Math.floor((x - pad) / GRID_CELL);
+  const x1 = Math.floor((x + pad) / GRID_CELL);
+  const z0 = Math.floor((z - pad) / GRID_CELL);
+  const z1 = Math.floor((z + pad) / GRID_CELL);
+  NEAR.length = 0;
+  for (let cx = x0; cx <= x1; cx++) {
+    for (let cz = z0; cz <= z1; cz++) {
+      const at = grid.get(cellKey(cx, cz));
+      if (at) for (const i of at) NEAR.push(i);
+    }
+  }
+  if (NEAR.length === 0) return EMPTY;
+  NEAR.sort((p, q) => p - q);
+  const out: Rect[] = [];
+  let last = -1;
+  for (const i of NEAR) {
+    if (i === last) continue;
+    last = i;
+    out.push(area.solids[i]);
+  }
+  return out;
+}
+
+const EMPTY: readonly Rect[] = [];
+
 export function settle(
   area: Area,
   x: number,
@@ -2065,7 +2493,7 @@ export function settle(
 ): { x: number; z: number } {
   let px = x;
   let pz = z;
-  for (const solid of area.solids) {
+  for (const solid of solidsNear(area, x, z, radius)) {
     if (Number.isFinite(atY) && (solid.from !== undefined || solid.to !== undefined)) {
       /* Half a metre of grace at the bottom, so standing on the top step of a
          flight does not fall out of the railing it is about to run alongside. */

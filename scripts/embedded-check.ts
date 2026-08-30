@@ -112,7 +112,12 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: NAME, world: { area: id, ...AREAS[id].spawn } }),
     }).catch(() => {});
-    if (!(await enterStory(page, id))) {
+    /* Once more before giving up: a cold area can take longer to compile than
+       the wait allows, and "never finished building" is a fact about the
+       machine, not about the world. Same retry as `seam-check`. */
+    let built = await enterStory(page, id);
+    if (!built) built = await enterStory(page, id);
+    if (!built) {
       await ctx.close();
       check(false, id, 'the area never finished building');
       continue;
@@ -123,7 +128,11 @@ async function main() {
         interface Obj3D {
           isMesh?: boolean;
           isSkinnedMesh?: boolean;
-          geometry?: { boundingBox: { min: XYZ; max: XYZ } | null; computeBoundingBox(): void };
+          geometry?: {
+            boundingBox: { min: XYZ; max: XYZ } | null;
+            computeBoundingBox(): void;
+            attributes?: { position?: { count: number; getX(i: number): number; getY(i: number): number; getZ(i: number): number } };
+          };
           matrixWorld: { elements: number[] };
           material?: { color?: { getHexString(): string } };
         }
@@ -135,6 +144,7 @@ async function main() {
           lo: number[];
           hi: number[];
           vol: number;
+          fills: number;
           colour: string;
           size: number[];
           at: number[];
@@ -202,10 +212,67 @@ async function main() {
           /* Anything flat is a panel, a decal or a plane; it cannot be "inside"
              something in the sense this is looking for. */
           if (Math.min(size[0], size[1], size[2]) < 0.02) return;
+          /*
+           * Whether this mesh fills its own bounding box.
+           *
+           * A bounding box is not a solid. Eight hundred and thirty-four grave
+           * markers baked into one geometry have a box a hundred and four
+           * metres across, and every lantern, basin and gate in the burial
+           * ground stands somewhere inside it — thirty-three things reported as
+           * driven into a wall that is not there. What is there is stones, with
+           * metres of air between them.
+           *
+           * So a container has to earn it: on at least one axis, both faces of
+           * the box must actually be *covered* by geometry. A box covers them
+           * completely; a turned roof or a round pillar covers most of them; a
+           * merge of hundreds of separate things covers a stone's worth and is
+           * not a container at all. Only containers are asked this — the small
+           * thing being swallowed can be any shape it likes.
+           */
+          let fills = 0;
+          const pos = o.geometry.attributes?.position;
+          if (pos) {
+            const face: (number[] | null)[] = [null, null, null, null, null, null];
+            for (let vi = 0; vi < pos.count; vi++) {
+              const vx = pos.getX(vi);
+              const vy = pos.getY(vi);
+              const vz = pos.getZ(vi);
+              const w = [
+                m[0] * vx + m[4] * vy + m[8] * vz + m[12],
+                m[1] * vx + m[5] * vy + m[9] * vz + m[13],
+                m[2] * vx + m[6] * vy + m[10] * vz + m[14],
+              ];
+              for (let axis = 0; axis < 3; axis++) {
+                for (let side = 0; side < 2; side++) {
+                  if (Math.abs(w[axis] - (side ? hi[axis] : lo[axis])) > 1e-4) continue;
+                  const k = axis * 2 + side;
+                  const f = face[k] ?? (face[k] = [Infinity, -Infinity, Infinity, -Infinity]);
+                  for (let d = 0; d < 2; d++) {
+                    const v = w[(axis + 1 + d) % 3];
+                    if (v < f[d * 2]) f[d * 2] = v;
+                    if (v > f[d * 2 + 1]) f[d * 2 + 1] = v;
+                  }
+                }
+              }
+            }
+            for (let axis = 0; axis < 3; axis++) {
+              const o1 = size[(axis + 1) % 3];
+              const o2 = size[(axis + 2) % 3];
+              if (o1 <= 0 || o2 <= 0) continue;
+              let worst = 1;
+              for (let side = 0; side < 2; side++) {
+                const f = face[axis * 2 + side];
+                if (!f) { worst = 0; break; }
+                worst = Math.min(worst, ((f[1] - f[0]) / o1) * ((f[3] - f[2]) / o2));
+              }
+              if (worst > fills) fills = worst;
+            }
+          }
           boxes.push({
             lo,
             hi,
             frame,
+            fills,
             vol: size[0] * size[1] * size[2],
             colour: o.material?.color ? '#' + o.material.color.getHexString() : '?',
             size: size.map((n) => +n.toFixed(2)),
@@ -222,6 +289,9 @@ async function main() {
           let host = '';
           for (const big of boxes) {
             if (big === small || big.vol < structureM3) continue;
+            /* And it has to be a solid, not a bounding box round a scattering.
+               See `fills` above. */
+            if (big.fills < 0.5) continue;
             /* Overlap along each axis; the *smallest* of the three is how far it
                had to be pushed in, which is the number that means something. */
             const spans = [0, 1, 2].map((k) =>

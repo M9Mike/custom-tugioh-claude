@@ -102,9 +102,76 @@ const audit = async (label) => {
         const len = Math.hypot(...col);
         return len > 1e-9 && col.filter((v) => v > len * 1e-4).length === 1;
       });
-      boxes.push({ name: o.name || o.type, lo, hi, offset, square,
+      /*
+       * Where the geometry actually *is* on each side of that box.
+       *
+       * A bounding box has six sides; a mesh does not necessarily have six
+       * faces. Eight hundred and thirty-four grave markers baked into one
+       * geometry have a box ninety-four metres deep whose front plane is
+       * touched by the four corners of a single stone. Two such merges reported
+       * a 681 m² coplanar face between them — an area neither of them has
+       * anywhere, and nothing an eye could ever find because there is nothing
+       * there to flicker.
+       *
+       * So each side is measured rather than assumed: the extent of the
+       * vertices lying in that plane. A box hands back the whole side, which is
+       * what it always meant. A merge hands back the one stone that reaches the
+       * edge. It is the difference between "these two boxes touch" and "these
+       * two faces are in the same place", and only the second one fights.
+       */
+      const faces = [null, null, null, null, null, null];
+      const pos = g.attributes && g.attributes.position;
+      if (pos) {
+        for (let vi = 0; vi < pos.count; vi++) {
+          const vx = pos.getX(vi);
+          const vy = pos.getY(vi);
+          const vz = pos.getZ(vi);
+          const w = [
+            m[0] * vx + m[4] * vy + m[8] * vz + m[12],
+            m[1] * vx + m[5] * vy + m[9] * vz + m[13],
+            m[2] * vx + m[6] * vy + m[10] * vz + m[14],
+          ];
+          for (let axis = 0; axis < 3; axis++) {
+            for (let side = 0; side < 2; side++) {
+              if (Math.abs(w[axis] - (side ? hi[axis] : lo[axis])) > 1e-4) continue;
+              const k = axis * 2 + side;
+              const f = faces[k] || (faces[k] = { lo: [Infinity, Infinity], hi: [-Infinity, -Infinity] });
+              for (let d = 0; d < 2; d++) {
+                const v = w[(axis + 1 + d) % 3];
+                if (v < f.lo[d]) f.lo[d] = v;
+                if (v > f.hi[d]) f.hi[d] = v;
+              }
+            }
+          }
+        }
+      }
+      boxes.push({ name: o.name || o.type, lo, hi, offset, square, faces,
                    size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] });
     });
+
+    /*
+     * Is there a floor at this height, under both of them?
+     *
+     * The rule below about things standing on the ground used to be written as
+     * `y is zero`, which is true of every area whose ground is one storey. The
+     * cemetery climbs three terraces, so its floors are at 0, 1.8 and 3.6, and
+     * the ossuary standing on the top one with a lantern beside it was reported
+     * as a fight between two undersides that are a foot under the turf.
+     *
+     * What made the original rule true was never the zero. It was that
+     * something opaque is in the way. So that is what gets asked: does some
+     * third surface top out at this height and cover the ground the two of them
+     * share. Which is the same question at 3.6 as it is at 0.
+     */
+    const TOP = 3; /* axis 1, upper side */
+    const covered = (boxes, y, gap, z0, z1, x0, x1, i, j) =>
+      boxes.some((c, k) => {
+        if (k === i || k === j) return false;
+        if (Math.abs(c.hi[1] - y) > gap) return false;
+        const r = c.faces[TOP];
+        return !!r && r.lo[0] <= z0 + 0.001 && r.hi[0] >= z1 - 0.001
+                   && r.lo[1] <= x0 + 0.001 && r.hi[1] >= x1 - 0.001;
+      });
 
     const out = [];
     const seen = new Set();
@@ -117,24 +184,29 @@ const audit = async (label) => {
         for (let axis = 0; axis < 3; axis++) {
           const o1 = (axis + 1) % 3;
           const o2 = (axis + 2) % 3;
-          /* They must genuinely share some area on the other two axes, or a
-             touch on this one is two things meeting at an edge. */
-          const over1 = Math.min(a.hi[o1], b.hi[o1]) - Math.max(a.lo[o1], b.lo[o1]);
-          const over2 = Math.min(a.hi[o2], b.hi[o2]) - Math.max(a.lo[o2], b.lo[o2]);
-          if (over1 < 0.05 || over2 < 0.05) continue;
-          /*
-           * And they must share real area, not just an edge.
-           *
-           * An awning and the arm holding it up touch along a line: one axis
-           * overlaps by the width of the arm and the other by nothing at all.
-           * Sixteen of those in Market Row alone, every one reported at 0.00 m².
-           * A hundred square centimetres is the floor for something anybody
-           * could see.
-           */
-          if (over1 * over2 < 0.01) continue;
-          for (const fa of [a.lo[axis], a.hi[axis]]) {
-            for (const fb of [b.lo[axis], b.hi[axis]]) {
+          for (let sa = 0; sa < 2; sa++) {
+            for (let sb = 0; sb < 2; sb++) {
+              const fa = sa ? a.hi[axis] : a.lo[axis];
+              const fb = sb ? b.hi[axis] : b.lo[axis];
               if (Math.abs(fa - fb) > gap) continue;
+              const ra = a.faces[axis * 2 + sa];
+              const rb = b.faces[axis * 2 + sb];
+              if (!ra || !rb) continue;
+              /* They must genuinely share some area on the other two axes, or a
+                 touch on this one is two things meeting at an edge. */
+              const over1 = Math.min(ra.hi[0], rb.hi[0]) - Math.max(ra.lo[0], rb.lo[0]);
+              const over2 = Math.min(ra.hi[1], rb.hi[1]) - Math.max(ra.lo[1], rb.lo[1]);
+              if (over1 < 0.05 || over2 < 0.05) continue;
+              /*
+               * And they must share real area, not just an edge.
+               *
+               * An awning and the arm holding it up touch along a line: one axis
+               * overlaps by the width of the arm and the other by nothing at all.
+               * Sixteen of those in Market Row alone, every one reported at 0.00 m².
+               * A hundred square centimetres is the floor for something anybody
+               * could see.
+               */
+              if (over1 * over2 < 0.01) continue;
               /*
                * There used to be a thinness rule here — skip the pair unless one
                * side is under 60 cm through — on the reasoning that two thick
@@ -175,6 +247,13 @@ const audit = async (label) => {
                */
               if (axis === 1 && Math.abs(fa) < 0.001 && Math.abs(fb) < 0.001
                   && a.hi[1] > 0.001 && b.hi[1] > 0.001) continue;
+              /* The same thing one storey up. See `covered` above. */
+              if (axis === 1 && sa === 0 && sb === 0
+                  && a.hi[1] > fa + gap && b.hi[1] > fb + gap
+                  && covered(boxes, fa, gap,
+                             Math.max(ra.lo[0], rb.lo[0]), Math.min(ra.hi[0], rb.hi[0]),
+                             Math.max(ra.lo[1], rb.lo[1]), Math.min(ra.hi[1], rb.hi[1]),
+                             i, j)) continue;
 
               const aAbove = a.hi[axis] > fa + gap;
               const bAbove = b.hi[axis] > fb + gap;
@@ -279,7 +358,7 @@ let total = 0;
 /* `node scripts/coplanar-check.mjs -- crown` for one area; see the note in
    `door-check.ts` on why every check in here grew a filter. */
 const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a) && !/^[\d.]+$/.test(a));
-const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop']
+const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop', 'old-cemetery']
   .filter((id) => !only.length || only.some((o) => id.includes(o)));
 for (const area of AREAS_TO_VISIT) {
   total += await visit(area);

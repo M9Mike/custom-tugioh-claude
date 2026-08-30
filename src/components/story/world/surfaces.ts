@@ -853,6 +853,76 @@ export function gravel(): THREE.CanvasTexture | null {
  * angle: without it a paved street turns to grey mush three metres ahead of
  * the player, which is exactly where they are looking.
  */
+/**
+ * Turf: old grass, mown but not kept.
+ *
+ * Written because the burial ground was standing on `gravel`, and `gravel`
+ * draws twenty-six rake furrows — it is the shrine's yard, and the furrows are
+ * the point of it there. Over eleven thousand square metres of grass they tile
+ * into corduroy, which is what the ground read as: decking.
+ *
+ * So: nothing in here is a line. Broad patches for the tone, blades at every
+ * angle for the grain, and a scatter of dry leaf and bare scuff so that a
+ * hundred metres of it is not one colour. Anything with a direction would come
+ * back as stripes the moment it repeats.
+ */
+export function turf(): THREE.CanvasTexture | null {
+  return surface(1024, (ctx, s) => {
+    const rnd = seeded(0x7c9f3a);
+    ctx.fillStyle = '#79855a';
+    ctx.fillRect(0, 0, s, s);
+
+    /* Patches: damp and dry ground, big enough to read from across the plot. */
+    for (let i = 0; i < 150; i++) {
+      const r = 34 + rnd() * 170;
+      const up = rnd() < 0.5;
+      ctx.fillStyle = up ? 'rgba(147,158,104,0.17)' : 'rgba(78,90,58,0.19)';
+      ctx.beginPath();
+      ctx.ellipse(rnd() * s, rnd() * s, r, r * (0.5 + rnd() * 0.7), rnd() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* Blades. Short, and turned every way — the grain has to have no direction
+       at all or the repeat finds it. */
+    for (let i = 0; i < 30000; i++) {
+      const v = 96 + rnd() * 74;
+      ctx.strokeStyle = `rgba(${v - 22},${v},${v - 44},${0.3 + rnd() * 0.4})`;
+      ctx.lineWidth = 1 + rnd() * 1.4;
+      const x = rnd() * s;
+      const y = rnd() * s;
+      const a = rnd() * Math.PI * 2;
+      const len = 2.5 + rnd() * 5;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+      ctx.stroke();
+    }
+
+    /* Bare scuffs, where the ground has been walked or a stone has stood. */
+    for (let i = 0; i < 260; i++) {
+      ctx.fillStyle = `rgba(126,113,88,${0.13 + rnd() * 0.2})`;
+      const r = 5 + rnd() * 22;
+      ctx.beginPath();
+      ctx.ellipse(rnd() * s, rnd() * s, r, r * (0.6 + rnd() * 0.6), rnd() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* And what falls off the trees. Dry, because nothing here is new. */
+    for (let i = 0; i < 220; i++) {
+      ctx.save();
+      ctx.translate(rnd() * s, rnd() * s);
+      ctx.rotate(rnd() * Math.PI);
+      ctx.fillStyle = ['#6d5c34', '#7b6a3a', '#5a5230'][i % 3];
+      ctx.globalAlpha = 0.3 + rnd() * 0.3;
+      ctx.fillRect(-3 - rnd() * 3, -1.2, 6 + rnd() * 6, 2.4 + rnd() * 1.4);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    soften(ctx, s, s, 0.5);
+  });
+}
+
 export function tile(
   tex: THREE.Texture | null,
   repeatX: number,

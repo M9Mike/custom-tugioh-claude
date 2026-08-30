@@ -65,6 +65,11 @@ const ROUTES: Route[] = [
   { name: 'up to the shrine', area: 'domino-shrine', from: { x: 0, z: -22.6, facing: 0 }, key: 'w', frames: 44 },
   { name: 'along the sando', area: 'domino-shrine', from: { x: 0, z: -14, facing: 0 }, key: 'w', frames: 44 },
   { name: 'into the east trees', area: 'domino-shrine', from: { x: 14, z: 6, facing: Math.PI / 4 }, key: 'w', frames: 40 },
+  { name: 'up the cemetery avenue', area: 'old-cemetery', from: { x: 12.4, z: -46, facing: 0 }, key: 'w', frames: 48 },
+  /* Down a row, which runs north — the stones are 1.8 m apart along a row and
+     the rows are 2.8 m apart, so this is the passable direction and across it
+     is the wall of stone. Aimed across, the duelist did not move at all. */
+  { name: 'down a cemetery row', area: 'old-cemetery', from: { x: -21, z: -44, facing: 0 }, key: 'w', frames: 40 },
 ];
 
 /** A step this big between frames is a real change, not dithering. */
