@@ -409,6 +409,22 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.5, 0.3, 0.5, iron, -17.5, 6.1, -36));
   }
 
+  /*
+   * The north end of the terrace on the lane's west side.
+   *
+   * The lane is nine and a half metres across, from x −23.5 to −14, and the
+   * terrace it runs down the side of stops at x −20.5 — so three metres of that
+   * terrace's north end faces straight up the lane, eleven metres of it, and
+   * nothing was drawn there. Walking down towards the square it is the first
+   * building on your right, and it had no wall on the side you are looking at:
+   * you could see out of the world through it and still walk into the block
+   * behind it, which is exactly how Mike described it.
+   */
+  /* At −22.05 and not −22: the lane's kerb runs down to exactly −22, and a
+     wall face on the same plane as a kerb end is two centimetres of flicker. */
+  frontage({ along: 'x', from: -23.8, to: -20.1, face: -22.05, dy: -0.07, outward: -1, h: 11,
+             bays: 1, lit: 0, shut: true });
+
   /* The square's four sides. */
   /* To 10.5 and not 10.2: the pier below starts at 10.38, so stopping at the
      block's own corner left an eighteen-centimetre slot of sky between the two

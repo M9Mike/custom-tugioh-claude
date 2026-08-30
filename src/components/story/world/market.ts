@@ -813,6 +813,17 @@ export function buildMarket(anisotropy: number): BuiltArea {
   for (const ry of [0.32, 1.72, 3.06]) {
     root.add(box(own, 0.1, 0.1, MR_FRONT * 2, barMat, gateX, ry, 0));
   }
+  /*
+   * And a kick plate along the foot of it.
+   *
+   * The lowest rail is at thirty-two centimetres and the bars stop there, so
+   * under the gate there was a clear strip straight through to the vestibule
+   * floor — which is lit by a fifty-watt lamp and reads, from the arcade, as a
+   * band of daylight under a closed gate. Mike photographed it and called it
+   * sky, which is what it looks like. Every shutter in this arcade has one of
+   * these; this one did not.
+   */
+  root.add(box(own, 0.14, 0.3, MR_FRONT * 2, matt(own, '#34383c'), gateX, 0.15, 0));
   /* The box the gate rolls into, and the runner it hangs off. */
   /* The lintel and the beam over it are *seated* on the walls, not driven 20 and
      30 cm into them. Six centimetres of bearing each side is enough to read as

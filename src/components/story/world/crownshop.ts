@@ -218,6 +218,38 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
        so the room reads as one wall with a hole in it and not as a patch. */
     for (const y of [CS_G1 + 2.6, CS_G2 + 2.6]) put(6.1, 0.12, 0.26, y - 0.13, 0.36, dark);
   }
+  /*
+   * The doors, seen from the inside.
+   *
+   * There are doors on this shopfront from the street — timber, leaded, brass
+   * handles — and from in here there was a dark rectangle with a light behind
+   * it. A doorway you can see out of is not the same as a door, and a shop with
+   * no door on the inside of its own entrance reads as a hole in the wall. The
+   * leaves stand in the opening; the trigger that takes you out is a metre and
+   * a half inside them, so nobody ever walks into one.
+   */
+  for (const s of [-1, 1] as const) {
+    const z = s * 1.3;
+    /*
+     * Everything on the *room* side of the leaf.
+     *
+     * Written the way the outside face is written — glass and bars set back
+     * behind the timber — and from in here that is the back of a plank: two
+     * black rectangles where the doors should be. You are standing on the other
+     * side of these ones, so the glass, the bars and the handle all come
+     * forward of the leaf rather than behind it.
+     */
+    root.add(box(own, 0.14, 4.3, 2.4, timber, -W - 0.25, 2.15, z));
+    root.add(box(own, 0.08, 3.4, 1.9, glow(own, '#8c6c3c'), -W - 0.15, 2.3, z));
+    /* Glazing bars, so they are doors and not two lit panels. */
+    for (let g = 0; g < 3; g++) {
+      root.add(box(own, 0.1, 0.1, 1.94, matt(own, '#2a2320'), -W - 0.10, 1.0 + g * 1.3, z));
+    }
+    /* Two centimetres in front of the horizontals it crosses, or the two of
+       them share both faces at every intersection. */
+    root.add(box(own, 0.1, 3.44, 0.1, matt(own, '#2a2320'), -W - 0.08, 2.3, z));
+    root.add(box(own, 0.16, 0.6, 0.09, brass, -W - 0.02, 1.9, s * 0.28));
+  }
   slab(3.0, 9.0, -W - 1.4, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
   /*
    * What is on the other side: a closed box, not a panel.
@@ -391,9 +423,17 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
 
   /* The counter, which is where the shop would be if there were one. */
   {
-    /* Six point eight metres and not eight point eight: at eight point eight it
-       ran across the foot of the stairs. See its solid in `areas.ts`. */
-    const cx = 8.6;
+    /*
+     * At the west end of the south wall, not the east.
+     *
+     * The flight up to the galleries stands in the south-east corner, and a
+     * counter anywhere near it means the way upstairs is *behind the till* —
+     * which is not where a staircase goes in a shop and is not somewhere a
+     * customer should have to walk. Shortening it was not enough; it had to
+     * move. It is by the door now, which is where a counter belongs anyway, and
+     * the whole south-east corner is clear from the middle of the room.
+     */
+    const cx = -6;
     const cz = 9.4;
     root.add(box(own, 6.8, 1.05, 2.2, timber, cx, 0.525, cz));
     root.add(box(own, 7.1, 0.12, 2.5, dark, cx, 1.11, cz));
@@ -405,8 +445,11 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
        a centimetre over it — a cube tilted on three axes rests on a corner, and
        these were hanging in the air for the same reason the window's were. */
     for (let i = 0; i < 6; i++) {
+      /* Over the case, all six of them, and standing on its lid. The sixth
+         used to sit past the case's edge with nothing under it but the counter
+         forty-five centimetres below — one white cube hanging in the air. */
       const d = box(own, 0.2, 0.2, 0.2, matt(own, '#ded3ba'),
-                    cx - 2.4 + i * 0.5, 1.63 + 0.1 - 0.005, cz - 0.3 + (i % 2) * 0.5);
+                    cx - 3.1 + i * 0.5, 1.67 + 0.1 - 0.005, cz - 0.3 + (i % 2) * 0.5);
       d.rotation.y = 0.4 + i * 0.7;
       root.add(d);
     }
@@ -507,7 +550,7 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
 
   /* One over the counter, because that is where you would be looking. */
   const till = new THREE.PointLight('#ffcf96', 26, 10, 2);
-  till.position.set(9.6, 3.4, 8.4);
+  till.position.set(-5, 3.4, 8.4);
   root.add(till);
 
   /*

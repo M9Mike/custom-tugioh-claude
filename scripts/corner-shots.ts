@@ -30,6 +30,21 @@ const NE = (Math.PI * 3) / 4, SE = Math.PI / 4, SW = -Math.PI / 4, NW = -(Math.P
 const N = Math.PI, S = 0, E = Math.PI / 2, W = -Math.PI / 2;
 
 const SHOTS: Shot[] = [
+  { name: 'the podium steps from the side', area: 'black-crown', x: 10, z: -9, facing: E },
+  { name: 'the shop, the counter and the stairs', area: 'crown-shop', x: 0, z: 4, facing: E },
+  /* The two Mike photographed sky through. */
+  { name: 'walking into the square from the lane', area: 'black-crown', x: -19, z: -24, facing: S },
+  { name: 'the square, from the lane mouth', area: 'black-crown', x: -19, z: -19, facing: S },
+  { name: 'the lane mouth, looking west', area: 'black-crown', x: -18, z: -19, facing: W },
+  { name: 'the lane mouth, looking east', area: 'black-crown', x: -18, z: -19, facing: E },
+  { name: 'the station gate, its north end', area: 'market-row', x: 16, z: -4, facing: E },
+  { name: 'the station gate, its south end', area: 'market-row', x: 16, z: 4, facing: E },
+  { name: 'the station gate', area: 'market-row', x: 14, z: 0, facing: E },
+  { name: 'the station gate, from the side', area: 'market-row', x: 12, z: -3, facing: E },
+  { name: 'the crown lane, from the arch', area: 'black-crown', x: -19, z: -44, facing: S },
+  { name: 'the crown lane, the east wall', area: 'black-crown', x: -21, z: -34, facing: E },
+  { name: 'the crown lane, the west wall', area: 'black-crown', x: -17, z: -34, facing: W },
+
   { name: 'the starting area, from the spawn', area: 'starting-area', x: 0, z: 0, facing: N },
   { name: 'the starting area, looking south', area: 'starting-area', x: 0, z: -4, facing: S },
 

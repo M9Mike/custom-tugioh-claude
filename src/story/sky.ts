@@ -30,8 +30,21 @@
  * built for.
  */
 
-/** How long a whole day takes, in real minutes. */
-export const DAY_MINUTES = 18;
+/**
+ * How long a whole day takes, in real minutes.
+ *
+ * Seventy-two, not eighteen. The clock is derived from the wall clock and is
+ * the same number in every area — there is one sun over Domino City and always
+ * has been — but at eighteen minutes a day an hour goes by every forty-five
+ * seconds, so *walking* from the shrine to Black Crown moved the sun a third of
+ * the way across the sky. Mike photographed a blue afternoon in one street and
+ * night in the next and said, reasonably, that they are on the same planet.
+ *
+ * They were. The cycle was just fast enough to be a continuity error. At
+ * seventy-two an hour is three minutes, which is slower than anybody crosses
+ * the city and still turns the whole day over inside one sitting.
+ */
+export const DAY_MINUTES = 72;
 
 /** The hour the world starts at when nothing says otherwise: mid-morning. */
 export const DEFAULT_HOUR = 9.5;

@@ -92,7 +92,7 @@ const ENCLOSED: AreaId[] = ['grandpa-shop', 'starting-area', 'market-row', 'step
  */
 const DOOR_SLACK = 0.6;
 
-interface Leak { x: number; z: number; y: number; ang: number }
+interface Leak { x: number; z: number; y: number; ang: number; wide: number }
 
 /** Everywhere inside the area's own bounds with nothing underneath it. */
 async function voids(page: Page, id: AreaId): Promise<{ x: number; z: number }[]> {
@@ -169,7 +169,7 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
    */
   await page.evaluate('globalThis.__name = globalThis.__name || ((f) => f)');
   const found = await page.evaluate(
-    ({ from, doors, GONE, RAYS }) => {
+    ({ from, doors, GONE, RAYS, process_loose }) => {
       const w = window as unknown as { __scene?: unknown; __THREE?: unknown };
       const THREE = w.__THREE as typeof import('three') | undefined;
       const scene = w.__scene as import('three').Scene | undefined;
@@ -236,12 +236,13 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
         }
       }
 
-      /** Does anything stop this ray before `GONE`? */
-      const blocked = (ox: number, oy: number, oz: number, dx: number, dz: number): boolean => {
+      /** How far this ray gets before something stops it. `Infinity` if nothing does. */
+      const reach = (ox: number, oy: number, oz: number, dx: number, dz: number): number => {
         const band = bands.get(Math.floor(oy / BAND));
-        if (!band) return false;
+        if (!band) return Infinity;
         const ix = dx === 0 ? Infinity : 1 / dx;
         const iz = dz === 0 ? Infinity : 1 / dz;
+        let best = Infinity;
         for (let k = 0; k < band.length; k++) {
           const j = band[k];
           if (oy < L[j + 1] || oy > H[j + 1]) continue;
@@ -255,9 +256,47 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
           if (a > b) { const t = a; a = b; b = t; }
           if (a > t0) t0 = a;
           if (b < t1) t1 = b;
-          if (t0 <= t1) return true;
+          if (t0 <= t1 && t0 < best) best = t0;
         }
-        return false;
+        return best;
+      };
+      const blocked = (ox: number, oy: number, oz: number, dx: number, dz: number): boolean =>
+        reach(ox, oy, oz, dx, dz) < GONE;
+
+      /**
+       * How wide the opening this ray leaves through is, in metres.
+       *
+       * The other half of telling a hole from the sky, and the half the first
+       * version of this check did not have. "Is there anything above it" finds a
+       * slot with wall over it — the nine metres above the shop's front door —
+       * and is blind to a slot that goes all the way up, which is exactly what
+       * two buildings that do not quite meet leave behind. Mike photographed two
+       * of those after this check had passed the world clean.
+       *
+       * So: sweep out to either side until something stops the ray, and measure
+       * the chord between where those two neighbours hit. A street mouth comes
+       * out at ten metres and is a street. A joint between two blocks comes out
+       * at twenty centimetres and is a fault, and so is the three-metre notch where
+       * the lane's west terrace ends — four metres is the line, because the
+       * narrowest thing in this city anybody is meant to walk down is nine.
+       */
+      const opening = (ox: number, oy: number, oz: number, a: number): number => {
+        const STEP = 0.004;
+        const SWEEP = 0.6;
+        let left = 0, right = 0, dl = Infinity, dr = Infinity;
+        for (let k = STEP; k <= SWEEP; k += STEP) {
+          if (!left) {
+            const d = reach(ox, oy, oz, Math.sin(a - k), Math.cos(a - k));
+            if (d < GONE) { left = k; dl = d; }
+          }
+          if (!right) {
+            const d = reach(ox, oy, oz, Math.sin(a + k), Math.cos(a + k));
+            if (d < GONE) { right = k; dr = d; }
+          }
+          if (left && right) break;
+        }
+        if (!left || !right) return Infinity;
+        return (left + right) * Math.min(dl, dr);
       };
 
       /** Out through a doorway is the point of a doorway. */
@@ -295,7 +334,8 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
         return false;
       };
 
-      const out: { x: number; z: number; y: number; ang: number }[] = [];
+      const loose = process_loose;
+      const out: { x: number; z: number; y: number; ang: number; wide: number }[] = [];
       for (const [x, z, fy] of from) {
         for (const eye of [1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 13.5]) {
           const oy = fy + eye;
@@ -304,21 +344,26 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
             const dx = Math.sin(a), dz = Math.cos(a);
             if (blocked(x, oy, z, dx, dz)) continue;
             if (throughDoor(x, z, dx, dz)) continue;
-            if (!roofedOver(x, oy, z, dx, dz)) continue;
-            out.push({ x, z, y: oy, ang: a });
+            /* Either there is wall above it, or the opening it leaves through
+               is too narrow to be a way anywhere.
+               `SEAMS_ALL=1` drops both tests and reports every ray that gets
+               out, which is how you find a hole the tests do not describe. */
+            const wide = opening(x, oy, z, a);
+            if (!loose && !roofedOver(x, oy, z, dx, dz) && wide > 4) continue;
+            out.push({ x, z, y: oy, ang: a, wide });
           }
         }
       }
       return out;
     },
-    { from, doors, GONE, RAYS: 2400 }
+    { from, doors, GONE, RAYS: 2400, process_loose: !!process.env.SEAMS_ALL }
   );
   return found ?? [];
 }
 
 /** The leaks, gathered into the places they come from. */
-function cluster(all: Leak[]): { x: number; z: number; y: number; ang: number; n: number }[] {
-  const seen: { x: number; z: number; y: number; ang: number; n: number }[] = [];
+function cluster(all: Leak[]): { x: number; z: number; y: number; ang: number; wide: number; n: number }[] {
+  const seen: { x: number; z: number; y: number; ang: number; wide: number; n: number }[] = [];
   for (const l of all) {
     const near = seen.find(
       (s) => Math.abs(s.x - l.x) < 6 && Math.abs(s.z - l.z) < 6 && Math.abs(s.y - l.y) < 3
@@ -374,7 +419,8 @@ async function main() {
     for (const s of spots.slice(0, 12)) {
       const deg = Math.round((s.ang * 180) / Math.PI);
       console.log(`       ${s.n.toString().padStart(4)} rays  at ${s.x.toFixed(1)}, ${s.z.toFixed(1)}`
-                  + `  eye ${s.y.toFixed(1)}  looking ${deg}°`);
+                  + `  eye ${s.y.toFixed(1)}  looking ${deg}°  gap ${
+                      Number.isFinite(s.wide) ? `${s.wide.toFixed(1)} m` : 'open'}`);
     }
     if (spots.length > 12) console.log(`       …and ${spots.length - 12} more`);
   }

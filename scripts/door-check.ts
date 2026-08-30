@@ -171,7 +171,10 @@ async function main() {
       }
 
       /* Long enough to cover the run-up at walking pace, plus the fade. */
-      await walkForward(page, 2600);
+      /* Three and a bit seconds, not two and a half: the stick ramps in, and
+         the run-up to Black Crown's door was finishing three centimetres short
+         of its trigger about one run in two. */
+      await walkForward(page, 3200);
       const landed = await waitForArea(page, door.to, 12000);
 
       check(

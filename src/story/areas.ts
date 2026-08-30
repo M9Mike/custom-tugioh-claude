@@ -1954,7 +1954,7 @@ const CROWN_SHOP: Area = {
      * the fill reaches, so a floor the fill never reaches is a floor it never
      * tests, and it passed with two galleries nobody could stand on.
      */
-    { x: 8.6, z: 9.4, hw: 3.4, hd: 1.1, to: 2.6 },
+    { x: -6, z: 9.4, hw: 3.4, hd: 1.1, to: 2.6 },
     /* Tables out on the floor of the atrium. */
     { x: -4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
     { x: 4.5, z: -2, hw: 1.6, hd: 1.0, to: 2.6 },
@@ -2072,6 +2072,31 @@ export function settle(
       if (atY < (solid.from ?? -Infinity) - 0.5 || atY > (solid.to ?? Infinity)) continue;
     }
     const fixed = pushOut(solid, px, pz, radius);
+    if (fixed) {
+      px = fixed.x;
+      pz = fixed.z;
+    }
+  }
+  /*
+   * And a step you cannot climb is a wall.
+   *
+   * A platform is a floor, and a floor is something you stand *on* — which is
+   * the whole of what this world knew about them, so walking at the side of a
+   * flight of steps walked straight into the side of the flight. `groundAt`
+   * answered with the ground, because the tread a metre up is out of reach, and
+   * the stone that is drawn between the two swallowed the duelist to the
+   * shoulders. Mike photographed it on the podium steps.
+   *
+   * A platform more than a stride above you is the face of a step, and you are
+   * stopped by it. More than a room above you it is a *ceiling* — the gallery
+   * over a shop floor — and it is not in the way at all, or a duelist standing
+   * under one would be pushed out of the building. Two point two metres is the
+   * same line `hasStoreys` draws between a podium and a storey.
+   */
+  const from = Number.isFinite(atY) ? atY : standingOn(area, px, pz);
+  for (const p of area.platforms ?? []) {
+    if (p.y <= from + CLIMB || p.y > from + 2.2) continue;
+    const fixed = pushOut(p, px, pz, radius);
     if (fixed) {
       px = fixed.x;
       pz = fixed.z;
@@ -2348,7 +2373,18 @@ export function arrivalThrough(
  * `groundAt` gives with nothing climbed.
  */
 export function standingOn(area: Area, x: number, z: number): number {
-  return hasStoreys(area) ? groundAt(area, x, z, 0) : Number.NaN;
+  /*
+   * Indoors, the floor you walked in on. Outdoors, the highest thing here.
+   *
+   * The two are different questions. In a building with galleries, arriving is
+   * always on the ground floor and the gallery overhead is not where you are.
+   * Out in a street there is nothing overhead — a raised surface at your feet is
+   * a podium or a step, and if a saved position or a door's arrival is on top of
+   * one, that is where the duelist was standing. Answering `NaN` here made
+   * `settle` treat the podium as a wall and shove the shop's own doorstep three
+   * and a half metres into the square.
+   */
+  return hasStoreys(area) ? groundAt(area, x, z, 0) : groundAt(area, x, z);
 }
 
 export function landing(

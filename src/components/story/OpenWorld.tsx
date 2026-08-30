@@ -32,6 +32,7 @@ import {
   type AreaId,
   type Door,
   groundAt,
+  standingOn,
   cameraReach,
 } from '@/story/areas';
 import type { BuiltArea } from './world/kit';
@@ -489,10 +490,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * a pavement. Twelve per second covers the step in about a tenth of a second,
      * which reads as stepping up rather than as a glitch.
      */
-    /* From the ground floor up: arriving in a building with storeys has to
-       start on the floor you walked in on, not on whichever gallery happens to
-       be highest over the doormat. See `groundAt`. */
-    let groundY = groundAt(areaById(areaRef.current), here.current.x, here.current.z, 0);
+    /*
+     * The floor she arrives on. Indoors the one she walked in on; outdoors
+     * whatever is under her feet — see `standingOn`.
+     *
+     * This asked for the ground floor everywhere, which is right in a building
+     * with galleries and wrong on a podium: the shop's own doorstep is 1.62 m
+     * up, so she arrived believing she was at zero, and once a step you cannot
+     * climb became something you cannot walk into she was promptly shoved three
+     * and a half metres off her own doorstep.
+     */
+    let groundY = standingOn(areaById(areaRef.current), here.current.x, here.current.z);
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
@@ -729,8 +737,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              looking where you are going rather than at the door you just used. */
           camYaw = to.facing + Math.PI;
           camPitch = 0.24;
+          /*
+           * And the floor she arrives on, which is not the floor she left.
+           *
+           * `groundY` carried across the threshold, so walking out of the shop
+           * onto its own podium arrived believing she was at zero — and once a
+           * step you cannot climb became a wall, being at zero on top of a
+           * 1.62 m podium meant being pushed off it. The ease then took her
+           * smoothly to the right height somewhere she had never stood.
+           */
+          groundY = standingOn(areaById(door.to), p.x, p.z);
           if (rig) {
-            rig.root.position.set(p.x, 0, p.z);
+            rig.root.position.set(p.x, groundY, p.z);
             rig.root.rotation.y = p.facing;
           }
         }

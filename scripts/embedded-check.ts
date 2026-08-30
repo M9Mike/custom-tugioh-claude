@@ -93,7 +93,10 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
   });
-  const page = await (await browser.newContext({ viewport: { width: 700, height: 500 } })).newPage();
+  /* A context per area — see `stairs-check.ts`. Seven worlds in one browser is
+     seven WebGL contexts, and the oldest gets dropped: this reported "the area
+     never finished building" for a different area every run until each got a
+     browser of its own. */
 
   console.log('\nNothing standing inside anything else\n');
 
@@ -102,12 +105,15 @@ async function main() {
   const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a));
   const pick = (id: string) => !only.length || only.some((o) => id.includes(o));
   for (const id of (Object.keys(AREAS) as AreaId[]).filter(pick)) {
+    const ctx = await browser.newContext({ viewport: { width: 700, height: 500 } });
+    const page = await ctx.newPage();
     await fetch(`${BASE}/api/story/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: NAME, world: { area: id, ...AREAS[id].spawn } }),
     }).catch(() => {});
     if (!(await enterStory(page, id))) {
+      await ctx.close();
       check(false, id, 'the area never finished building');
       continue;
     }
@@ -264,6 +270,7 @@ async function main() {
         structureM3: STRUCTURE_M3, allowed: ALLOWED }
     );
 
+    await ctx.close();
     check(buried.length === 0, `${id}: nothing is driven into a wall`, `${buried.length} found`);
     for (const line of buried.slice(0, 14)) console.log(`       ${line}`);
   }
