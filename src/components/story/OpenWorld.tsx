@@ -518,6 +518,21 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       raf = requestAnimationFrame(frame);
       /* Clamped: a backgrounded tab hands back a delta of many seconds, and an
          unclamped one teleports the duelist across the field on return. */
+      /*
+       * A tenth of a second, not a twentieth.
+       *
+       * The clamp is there so that a frame nobody rendered — a backgrounded
+       * tab, an area being built — does not advance the world half a room in
+       * one step. But it also means that *below the clamp's frame rate the
+       * whole game runs in slow motion*: at fifteen frames a second every frame
+       * still only moves the world by a fiftieth, so a duelist walks at three
+       * quarters of her speed and nothing in the code says so. That is what
+       * Mike felt as "running indoors is slower than outdoors" — not the speed,
+       * the clock, in the one area heavy enough to drop under twenty.
+       *
+       * Ten frames a second is a genuine stall and worth clipping. Twenty is a
+       * busy room, and a busy room should not slow time down.
+       */
       const dt = Math.min(clock.getDelta(), 0.05);
 
       /* The sky, before anything is drawn under it. */

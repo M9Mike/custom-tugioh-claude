@@ -129,8 +129,22 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
        * for the coplanar sweep to care about, while a tread drawn over its
        * neighbour is a step drawn at the wrong height.
        */
-      root.add(box(own, t.hw * 2 + 0.004, 0.36, t.hd * 2 + 0.004, timber, t.x, t.y - 0.18, t.z));
-      slab(t.hw * 2 - 0.04, t.hd * 2 - 0.04, t.x, t.y + 0.014, t.z, galleryTex);
+      /*
+       * The boards are at the platform's own height, not fourteen millimetres
+       * over it.
+       *
+       * That gap is the height a duelist walks *sunk into* a gallery floor: she
+       * stands at what `groundAt` says and the boards are drawn above it. On the
+       * ground floor the boards are at zero and it never showed; upstairs Mike
+       * watched his own feet go into the wood every step, and stop doing it the
+       * moment he stood still — because a walk cycle's feet reach lower than an
+       * idle stance's, and fourteen millimetres is exactly the margin.
+       *
+       * The plate drops by the same amount so the two are still that far apart,
+       * which is what keeps them out of one plane.
+       */
+      root.add(box(own, t.hw * 2 + 0.004, 0.36, t.hd * 2 + 0.004, timber, t.x, t.y - 0.194, t.z));
+      slab(t.hw * 2 - 0.04, t.hd * 2 - 0.04, t.x, t.y, t.z, galleryTex);
     } else {
       /*
        * Exactly its own platform, neither wider nor narrower.
@@ -615,17 +629,19 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
    * past one floating at head height. A lamp is fixed to something. These are
    * brackets on the outer wall, the same as the ones under the first gallery.
    */
-  for (const [gx, gz, gy] of [
-    [-16.4, -8, CS_G1], [-16.4, 8, CS_G1], [16.4, -8, CS_G1], [16.4, 8, CS_G1],
-    [-8, -12.4, CS_G1], [8, -12.4, CS_G1], [-8, 12.4, CS_G1], [8, 12.4, CS_G1],
-    [-16.4, -4, CS_G2], [-16.4, 4, CS_G2], [16.4, -4, CS_G2], [16.4, 4, CS_G2],
-    [-8, -12.4, CS_G2], [8, -12.4, CS_G2], [-8, 12.4, CS_G2], [8, 12.4, CS_G2],
+  /* Sixteen shades, six of them real — see the note below on why. */
+  for (const [gx, gz, gy, real] of [
+    [-16.4, -8, CS_G1, 1], [-16.4, 8, CS_G1, 0], [16.4, -8, CS_G1, 0], [16.4, 8, CS_G1, 1],
+    [-8, -12.4, CS_G1, 0], [8, -12.4, CS_G1, 1], [-8, 12.4, CS_G1, 0], [8, 12.4, CS_G1, 0],
+    [-16.4, -4, CS_G2, 1], [-16.4, 4, CS_G2, 0], [16.4, -4, CS_G2, 0], [16.4, 4, CS_G2, 1],
+    [-8, -12.4, CS_G2, 0], [8, -12.4, CS_G2, 1], [-8, 12.4, CS_G2, 0], [8, 12.4, CS_G2, 0],
   ] as const) {
     const out = Math.abs(gx) > Math.abs(gz) ? [-Math.sign(gx), 0] : [0, -Math.sign(gz)];
     root.add(box(own, 0.3, 0.16, 0.3, iron, gx + out[0] * 0.12, gy + 2.72, gz + out[1] * 0.12));
     root.add(box(own, 0.34, 0.44, 0.34, glow(own, '#c9954e'),
                  gx + out[0] * 0.3, gy + 2.4, gz + out[1] * 0.3));
-    const l = new THREE.PointLight('#ffb469', 15, 9, 2);
+    if (!real) continue;
+    const l = new THREE.PointLight('#ffb469', 30, 16, 2);
     l.position.set(gx + out[0] * 0.5, gy + 2.3, gz + out[1] * 0.5);
     root.add(l);
   }
@@ -638,18 +654,35 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
    * all the shelving is and where you walk in, had nothing but ambient: black
    * shelves, and a hard black stripe of soffit right round the room.
    */
-  for (const [bx, bz] of [
-    [-11, -12.4], [-4, -12.4], [4, -12.4], [11, -12.4],
-    [-11, 12.4], [-4, 12.4], [4, 12.4], [11, 12.4],
-    [16.4, -7], [16.4, 0], [16.4, 7],
-    [-16.4, -8], [-16.4, 8],
+  /*
+   * Thirteen shades, five of them with a light in.
+   *
+   * A point light in a forward renderer costs every lit fragment in the frame,
+   * and this room had thirty-seven of them: five pendants, sixteen on the
+   * galleries, thirteen down here, the till and the doorway. On anything but a
+   * desktop that is a frame budget spent on lamps — and the world's timestep is
+   * clamped, so once the frame rate drops under twenty the whole game runs in
+   * slow motion. Mike said walking indoors was slower than outdoors, and it
+   * was: not the speed, the clock.
+   *
+   * The shades all stay. They are unlit boxes with a warm colour and they cost
+   * nothing; a wall of them reads as a lit wall whether or not each one is
+   * casting. Every third is real, which is enough to lay light across the
+   * shelving without lighting the same square metre five times.
+   */
+  for (const [bx, bz, real] of [
+    [-11, -12.4, 1], [-4, -12.4, 0], [4, -12.4, 0], [11, -12.4, 1],
+    [-11, 12.4, 1], [-4, 12.4, 0], [4, 12.4, 0], [11, 12.4, 1],
+    [16.4, -7, 0], [16.4, 0, 1], [16.4, 7, 0],
+    [-16.4, -8, 0], [-16.4, 8, 0],
   ] as const) {
     /* Turned to face into the room, which is what puts the bracket against the
        wall rather than the shade. */
     const out = Math.abs(bx) > Math.abs(bz) ? [-Math.sign(bx), 0] : [0, -Math.sign(bz)];
     root.add(box(own, 0.3, 0.16, 0.3, iron, bx + out[0] * 0.12, 3.72, bz + out[1] * 0.12));
     root.add(box(own, 0.34, 0.44, 0.34, glow(own, '#c9954e'), bx + out[0] * 0.3, 3.4, bz + out[1] * 0.3));
-    const l = new THREE.PointLight('#ffb469', 13, 9, 2);
+    if (!real) continue;
+    const l = new THREE.PointLight('#ffb469', 26, 15, 2);
     l.position.set(bx + out[0] * 0.5, 3.3, bz + out[1] * 0.5);
     root.add(l);
   }
