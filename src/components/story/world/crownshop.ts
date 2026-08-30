@@ -109,7 +109,19 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
       root.add(box(own, t.hw * 2, 0.36, t.hd * 2, timber, t.x, t.y - 0.18, t.z));
       slab(t.hw * 2 - 0.04, t.hd * 2 - 0.04, t.x, t.y + 0.014, t.z, galleryTex);
     } else {
-      root.add(box(own, t.hw * 2, 0.34, t.hd * 2 + 0.004, timber, t.x, t.y - 0.17, t.z));
+      /*
+       * Exactly its own platform, neither wider nor narrower.
+       *
+       * The platforms overlap each other by four millimetres so `groundAt` is
+       * never deciding on a boundary. Drawing the tread *wider* than that undoes
+       * it from the other side — at the join the box underfoot is the higher
+       * tread while the height you are given is the lower, which
+       * `npm run footing` reads as feet inside the floor. Drawing it *narrower*
+       * leaves four millimetres at the end of a flight with nothing under it at
+       * all, which the same check reads as a hole. Both of those were real. The
+       * size the platform says is the only one that is neither.
+       */
+      root.add(box(own, t.hw * 2, 0.34, t.hd * 2, timber, t.x, t.y - 0.17, t.z));
       /* A nosing, wholly on its own tread — see `shrine.ts` on why it must not
          overhang the one below. */
       root.add(box(own, t.hw * 2, 0.05, 0.06, dark, t.x, t.y - 0.02, t.z - t.hd + 0.032));
@@ -229,7 +241,7 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
    * a half inside them, so nobody ever walks into one.
    */
   for (const s of [-1, 1] as const) {
-    const z = s * 1.3;
+    const z = s * 1.48;
     /*
      * Everything on the *room* side of the leaf.
      *
@@ -239,16 +251,19 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
      * side of these ones, so the glass, the bars and the handle all come
      * forward of the leaf rather than behind it.
      */
-    root.add(box(own, 0.14, 4.3, 2.4, timber, -W - 0.25, 2.15, z));
-    root.add(box(own, 0.08, 3.4, 1.9, glow(own, '#8c6c3c'), -W - 0.15, 2.3, z));
+    /* Two point nine wide each, so the pair fills the opening from jamb to
+       jamb. At two point four there was half a metre of daylight down each side
+       of them, which is what you see from inside looking out. */
+    root.add(box(own, 0.14, 4.5, 2.9, timber, -W - 0.25, 2.25, z));
+    root.add(box(own, 0.08, 3.4, 2.2, glow(own, '#8c6c3c'), -W - 0.15, 2.3, z));
     /* Glazing bars, so they are doors and not two lit panels. */
     for (let g = 0; g < 3; g++) {
-      root.add(box(own, 0.1, 0.1, 1.94, matt(own, '#2a2320'), -W - 0.10, 1.0 + g * 1.3, z));
+      root.add(box(own, 0.1, 0.1, 2.24, matt(own, '#2a2320'), -W - 0.10, 1.0 + g * 1.3, z));
     }
     /* Two centimetres in front of the horizontals it crosses, or the two of
        them share both faces at every intersection. */
     root.add(box(own, 0.1, 3.44, 0.1, matt(own, '#2a2320'), -W - 0.08, 2.3, z));
-    root.add(box(own, 0.16, 0.6, 0.09, brass, -W - 0.02, 1.9, s * 0.28));
+    root.add(box(own, 0.16, 0.6, 0.09, brass, -W - 0.02, 1.9, s * 0.16));
   }
   slab(3.0, 9.0, -W - 1.4, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
   /*
@@ -394,32 +409,63 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
   };
 
   /*
-   * The runs stop short of each other at the corners.
+   * A balustrade that climbs with the flight it guards.
    *
-   * Two rails meeting at a right angle and overlapping share both their top and
-   * their underside over the square where they cross — small, and there are
-   * sixteen corners. The long runs go through; the short ones stop against
-   * them.
+   * Written because there was not one: the sides of both staircases were
+   * `solid` and nothing else, so what stopped a duelist walking off a flight
+   * four metres up was a wall nobody could see. Either you fall or there is
+   * something there.
+   *
+   * The panel is drawn tread by tread — one short box per step, each at the
+   * height of the step it stands on — which is what a stair balustrade is, and
+   * is the only way to follow a slope with axis-aligned boxes.
    */
-  rail('x', -9, 9, -6, CS_G1);
-  rail('x', -9, 9, 6, CS_G1);
+  const stairRail = (
+    fromZ: number, toZ: number, cross: number, y0: number, y1: number
+  ) => {
+    /* Twenty-five of the twenty-six, so the last one does not push its cap
+       into the underside of the floor the flight arrives at. */
+    const steps = 25;
+    const dz = (toZ - fromZ) / steps;
+    for (let i = 0; i < steps; i++) {
+      const z = fromZ + dz * (i + 0.5);
+      const y = y0 + ((y1 - y0) / steps) * (i + 1);
+      root.add(box(own, 0.24, 0.44, Math.abs(dz) + 0.01, timber, cross, y + 0.22, z));
+      /* Twenty-eight centimetres and not thirty: at thirty the cap's outer
+         face lands on the edge of the gallery slab the flight runs past. */
+      root.add(box(own, 0.28, 0.12, Math.abs(dz) + 0.01, dark, cross, y + 1.02, z));
+      root.add(box(own, 0.09, 0.54, 0.09, iron, cross, y + 0.71, z));
+    }
+  };
+
+  /*
+   * The atrium's rails, on the edge of the floor rather than half a metre in.
+   *
+   * The long runs go through and the short ones stop against them: two rails
+   * meeting at a right angle and overlapping share their top and their
+   * underside over the square where they cross, and there are sixteen corners.
+   */
+  rail('x', -9, 9, -6.5, CS_G1);
+  rail('x', -9, 9, 6.5, CS_G1);
   /* Far enough short that the *caps* clear too — they oversail the rails they
      sit on, so stopping the rail at the corner still crosses at the cap. */
-  rail('z', -5.3, 5.3, -9, CS_G1);
-  rail('z', -5.3, 5.3, 9, CS_G1);
-  /* And round the well the flight comes up through, clear of the shelving at
-     each end of it. */
-  rail('x', 12.9, 15.4, -0.5, CS_G1);
-  /* From 1.6 and not 0.2: the head of the flight is at z 0.5, and a rail
-     across it is a staircase you cannot get off. */
-  rail('z', 1.6, 11.4, 12.4, CS_G1);
+  rail('z', -5.8, 5.8, -9, CS_G1);
+  rail('z', -5.8, 5.8, 9, CS_G1);
+  rail('x', -9, 9, -6.5, CS_G2);
+  rail('x', -9, 9, 6.5, CS_G2);
+  rail('z', -5.8, 5.8, -9, CS_G2);
+  rail('z', -5.8, 5.8, 9, CS_G2);
 
-  /* Stopping clear of the well's own rail, which runs north past it. */
-  rail('x', -12.3, 13, -9.5, CS_G2);
-  rail('x', -13, 13, 9.5, CS_G2);
-  rail('z', 0.4, 8.8, -13, CS_G2);
-  rail('z', -8.8, 8.8, 13, CS_G2);
-  rail('z', -8.9, -1.6, -12.4, CS_G2);
+  /* And round each well: the two long sides and the far end, never the end the
+     flight arrives at. */
+  rail('z', 0.75, 10.15, 12.25, CS_G1);
+  rail('x', 12.6, 15.75, 0.05, CS_G1);
+  rail('z', -0.75, -10.15, -12.25, CS_G2);
+  rail('x', -12.6, -15.75, -0.05, CS_G2);
+
+  /* The flights' own sides — the open one only. The other is the east wall. */
+  stairRail(0.4, 10.5, 12.45, 0, CS_G1);
+  stairRail(-0.4, -10.5, -12.45, CS_G1, CS_G2);
 
   /* The counter, which is where the shop would be if there were one. */
   {
@@ -514,13 +560,26 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
   pendant(-6, 4, 6.2, 30);
   pendant(6, 4, 6.2, 30);
   pendant(0, 0, 8.6, 34);
+  /*
+   * The galleries' lamps, on the wall behind them.
+   *
+   * These were a glowing box hanging in mid-air over each gallery with a light
+   * inside it: nothing held them up, and on the second floor you walk straight
+   * past one floating at head height. A lamp is fixed to something. These are
+   * brackets on the outer wall, the same as the ones under the first gallery.
+   */
   for (const [gx, gz, gy] of [
-    [-13, -9, CS_G1], [13, -9, CS_G1], [-13, 9, CS_G1], [13, 9, CS_G1],
-    [-15, 0, CS_G2], [15, 0, CS_G2], [0, -11, CS_G2], [0, 11, CS_G2],
+    [-16.4, -8, CS_G1], [-16.4, 8, CS_G1], [16.4, -8, CS_G1], [16.4, 8, CS_G1],
+    [-8, -12.4, CS_G1], [8, -12.4, CS_G1], [-8, 12.4, CS_G1], [8, 12.4, CS_G1],
+    [-16.4, -4, CS_G2], [-16.4, 4, CS_G2], [16.4, -4, CS_G2], [16.4, 4, CS_G2],
+    [-8, -12.4, CS_G2], [8, -12.4, CS_G2], [-8, 12.4, CS_G2], [8, 12.4, CS_G2],
   ] as const) {
-    root.add(box(own, 0.34, 0.42, 0.34, glow(own, '#c9954e'), gx, gy + 2.5, gz));
-    const l = new THREE.PointLight('#ffb469', 16, 9, 2);
-    l.position.set(gx, gy + 2.3, gz);
+    const out = Math.abs(gx) > Math.abs(gz) ? [-Math.sign(gx), 0] : [0, -Math.sign(gz)];
+    root.add(box(own, 0.3, 0.16, 0.3, iron, gx + out[0] * 0.12, gy + 2.72, gz + out[1] * 0.12));
+    root.add(box(own, 0.34, 0.44, 0.34, glow(own, '#c9954e'),
+                 gx + out[0] * 0.3, gy + 2.4, gz + out[1] * 0.3));
+    const l = new THREE.PointLight('#ffb469', 15, 9, 2);
+    l.position.set(gx + out[0] * 0.5, gy + 2.3, gz + out[1] * 0.5);
     root.add(l);
   }
   /*

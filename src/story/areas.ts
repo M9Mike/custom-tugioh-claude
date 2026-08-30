@@ -1753,34 +1753,57 @@ const CS_VOID = { hw: 9, hd: 6 };
 
 export const CS_GROUND: Platform[] = [
   /*
-   * The first gallery: a ring round the void, with the stairwell cut out of it.
+   * Two galleries, each a continuous ring, and a flight up to each.
    *
-   * Written as slabs rather than as one rectangle with holes in it, because a
-   * platform is a rectangle and there are no holes in rectangles. The corners
-   * belong to the long sides, and the south-east corner belongs to neither —
-   * that is the well the flight comes up through.
+   * The first version put both flights in a corner against a wall, cut the well
+   * for each out of whichever slab happened to be there, and left it at that.
+   * Mike walked it and found eight separate consequences of that not being a
+   * design: you had to squeeze into the last ten centimetres by the wall to get
+   * on the stairs, the top of the second flight opened onto a hole he fell
+   * through, the second gallery was not a ring at all so you could not walk
+   * round it, and every flight arrived hard against the end of a wall.
    *
-   * The well is not optional. Run a flight under an unbroken gallery and its
-   * top six treads pass through the floor above: you climb into the underside
-   * of it, which `npm run footing` reports as ten cells of feet inside a
-   * building and which is exactly what it is.
+   * So the circulation is laid out rather than placed. Each flight starts in
+   * the *middle* of a side, where you walk up to it face on out of the open
+   * room, and finishes on a landing that is part of the gallery it serves — you
+   * step off the top tread onto the floor, the way you do on a staircase. The
+   * wells are cut around the flights, and both rings close.
    */
+
+  /* ---- the first gallery, and the flight up to it ---- */
+
+  /* The ring, north and west, whole. */
   { x: 0, z: -9.25, hw: 16, hd: 2.75, y: CS_G1 },
-  { x: -1.7, z: 9.25, hw: 14.3, hd: 2.75, y: CS_G1 },
   { x: -12.5, z: 0, hw: 3.5, hd: 6.5, y: CS_G1 },
-  { x: 10.8, z: 0, hw: 1.8, hd: 6.5, y: CS_G1 },
+  /* East, north of the well: the whole depth of the side. */
+  { x: 12.5, z: -3.05, hw: 3.5, hd: 3.45, y: CS_G1 },
+  /* East, beside the well. */
+  { x: 10.8, z: 3.45, hw: 1.8, hd: 3.05, y: CS_G1 },
+  /* South, west of the well. */
+  { x: -1.7, z: 9.25, hw: 14.3, hd: 2.75, y: CS_G1 },
+  /* And the landing the flight arrives on, which closes the south-east corner. */
+  { x: 14.19, z: 11.25, hw: 1.59, hd: 0.75, y: CS_G1 },
 
-  /* And the flight up to it, in the well on the east side. */
-  ...flightPlatforms({ along: 'z', start: 11.5, end: 0.5, from: 0, to: CS_G1, half: 1.6, cross: 14.2 }),
+  /* The flight: foot at z 0.4 out in the open, head at the landing. */
+  /* Three point one eight metres wide, reaching the shelving on the east wall:
+     at three there was a forty-centimetre strip of well between the flight and
+     the wall, which is nothing anybody can stand in and a slot to look down. */
+  ...flightPlatforms({ along: 'z', start: 0.4, end: 10.5, from: 0, to: CS_G1, half: 1.59, cross: 14.19 }),
 
-  /* The second gallery, a narrower ring over the first — and its own well, on
-     the opposite side, so the circuit crosses the atrium twice. */
-  { x: 1.7, z: -11, hw: 14.3, hd: 1.5, y: CS_G2 },
-  { x: 0, z: 11, hw: 16, hd: 1.5, y: CS_G2 },
-  { x: -14.5, z: 4.5, hw: 1.5, hd: 5, y: CS_G2 },
-  { x: 14.5, z: 0, hw: 1.5, hd: 9.5, y: CS_G2 },
+  /* ---- the second gallery, and the flight up to it ---- */
 
-  ...flightPlatforms({ along: 'z', start: -11.5, end: -0.5, from: CS_G1, to: CS_G2, half: 1.6, cross: -14.2 }),
+  /* The ring, south and east, whole. */
+  { x: 0, z: 9.25, hw: 16, hd: 2.75, y: CS_G2 },
+  { x: 12.5, z: 0, hw: 3.5, hd: 6.5, y: CS_G2 },
+  /* North, east of the well. */
+  { x: 1.7, z: -9.25, hw: 14.3, hd: 2.75, y: CS_G2 },
+  /* West, south of the well, and the strip beside it that closes the ring. */
+  { x: -12.5, z: 3.05, hw: 3.5, hd: 3.45, y: CS_G2 },
+  { x: -10.8, z: -3.45, hw: 1.8, hd: 3.05, y: CS_G2 },
+  /* And its landing, in the north-west corner. */
+  { x: -14.19, z: -11.25, hw: 1.59, hd: 0.75, y: CS_G2 },
+
+  ...flightPlatforms({ along: 'z', start: -0.4, end: -10.5, from: CS_G1, to: CS_G2, half: 1.59, cross: -14.19 }),
 ];
 
 const CROWN_SHOP: Area = {
@@ -1820,49 +1843,32 @@ const CROWN_SHOP: Area = {
     { x: -CS_W - 1, z: 8, hw: 1, hd: 6.5, tall: true },
 
     /*
-     * The galleries' railings, and the fixtures they stand on.
+     * The balustrades, on the edge of the floor they stand on.
      *
-     * The same rectangle read twice: on the ground it is the back of a run of
-     * shelving, four metres up it is the balustrade of the gallery over it. So
-     * the railing says which floors it is on and the shelf says which floors it
-     * is not, and neither of them is in the way on the other's.
+     * These used to sit on the void's own rectangle, half a metre inside the
+     * slab that carries them — so from the gallery there was a strip of floor
+     * *beyond* the railing, and the railing read as floating clear of it. It is
+     * the slab edges that matter: a rail stands where the floor stops.
      */
-    { x: 0, z: -CS_VOID.hd, hw: CS_VOID.hw, hd: 0.35, from: CS_G1 },
-    { x: 0, z: CS_VOID.hd, hw: CS_VOID.hw, hd: 0.35, from: CS_G1 },
-    { x: -CS_VOID.hw, z: 0, hw: 0.35, hd: CS_VOID.hd + 0.7, from: CS_G1 },
-    { x: CS_VOID.hw, z: 0, hw: 0.35, hd: CS_VOID.hd + 0.7, from: CS_G1 },
-    /* And round the well the flight comes up through, which is a hole in a
-       floor and wants a rail as much as the atrium does. */
-    /*
-     * The rail round the well, with the way off the stairs left out of it.
-     *
-     * A flight arrives *on* the floor it serves, and the west rail ran the
-     * whole length of the well including the head — so the top of the stairs
-     * was a two-metre island with a rail on one side, a rail on the other and a
-     * drop behind. You could climb the flight and then not get off it.
-     *
-     * From z 1.6, which leaves the head open onto the east gallery beside it.
-     * The rail across the north end stays: that is the drop, and it is what
-     * stops you walking off the head into the atrium.
-     */
-    { x: 14.3, z: -0.5, hw: 1.7, hd: 0.35, from: CS_G1 },
-    { x: 12.4, z: 6.5, hw: 0.35, hd: 4.9, from: CS_G1 },
+    { x: 0, z: -6.5, hw: 9, hd: 0.35, from: CS_G1 },
+    { x: 0, z: 6.5, hw: 9, hd: 0.35, from: CS_G1 },
+    { x: -9, z: 0, hw: 0.35, hd: 6.85, from: CS_G1 },
+    { x: 9, z: 0, hw: 0.35, hd: 6.85, from: CS_G1 },
 
-    { x: 0.35, z: -9.5, hw: 12.65, hd: 0.35, from: CS_G2 },
-    { x: 0, z: 9.5, hw: 13, hd: 0.35, from: CS_G2 },
-    { x: -13, z: 4.5, hw: 0.35, hd: 5.35, from: CS_G2 },
-    { x: 13, z: 0, hw: 0.35, hd: 9.85, from: CS_G2 },
     /*
-     * The second flight has no rail across its head, and should not.
+     * And round each well, which is a hole in a floor and wants a rail as much
+     * as the atrium does — the second flight's well is the one Mike fell down.
      *
-     * The first one arrives beside a hole: the east gallery stops at x 12.6 and
-     * north of that head there is nothing but a drop to the shop floor, which
-     * is what its cross rail is for. The second arrives *onto* the gallery it
-     * serves — the slab starts at exactly z −0.5, where the top tread is — so a
-     * rail there is a rail across the top of a staircase, and it walled the
-     * second gallery off as completely as the counter walled off the first.
+     * Three sides each: the two long ones and the far end. The fourth is where
+     * the flight comes up, and a rail across that is a staircase you cannot get
+     * off, which this shop has already been once.
      */
-    { x: -12.4, z: -5.25, hw: 0.35, hd: 3.65, from: CS_G2 },
+    /* Two sides each, not three: the fourth is where the flight comes up and
+       the far one is the east wall, which is already a wall. */
+    { x: 12.25, z: 5.45, hw: 0.35, hd: 5.05, from: CS_G1 },
+    { x: 14.19, z: 0.05, hw: 1.94, hd: 0.35, from: CS_G1 },
+    { x: -12.25, z: -5.45, hw: 0.35, hd: 5.05, from: CS_G2 },
+    { x: -14.19, z: -0.05, hw: 1.94, hd: 0.35, from: CS_G2 },
 
     /*
      * The shelving, on all three floors, exactly where it is drawn.
@@ -1889,58 +1895,29 @@ const CROWN_SHOP: Area = {
       ];
     }),
     /*
-     * The open side of each flight, closed on the floor below it.
+     * The sides of each flight, which are drawn as balustrades.
      *
-     * A stair is a ramp with a hole under the top of it, and a duelist who
-     * wanders in from the side at the point where the treads are half a metre
-     * up is standing inside one. Both flights are against a wall on one side;
-     * this is the other, and it stops at the floor the flight serves so that
-     * arriving on the gallery you can walk straight off it.
+     * There is no invisible fence on a staircase in this shop any more: what
+     * stops you walking off the side of a flight is a rail you can see, built
+     * from these same numbers. Either you fall or there is something there —
+     * those are the two honest options, and a wall nobody can see is neither.
+     *
+     * They hold from the floor below to just short of the floor above, so
+     * stepping off the top tread onto the landing is not walking into the end
+     * of your own bannister.
      */
+    { x: 12.45, z: 5.45, hw: 0.15, hd: 5.05, to: CS_G1 - 0.05 },
+    { x: -12.45, z: -5.45, hw: 0.15, hd: 5.05, from: CS_G1, to: CS_G2 - 0.05 },
+
     /*
-     * And the understair, boxed in on the floor below.
+     * And the understair, boxed in on the floor below it.
      *
      * A stair is a ramp with a hole under the top of it, and a duelist standing
-     * in that hole is standing inside a building. Real stairs have a cupboard
-     * there; this is the cupboard. It stops a metre short of the foot so the
-     * first two treads — eighteen and thirty-six centimetres — are still
-     * something you walk onto rather than into.
+     * in that hole is standing inside a building. It stops well short of the
+     * foot, so the bottom treads are something you walk onto rather than into.
      */
-    /*
-     * The cupboard applies to somebody standing on the floor and to nobody
-     * else — `to` is five centimetres above it, not the height of the flight.
-     *
-     * At the height of the flight it blocks the flight: a duelist a third of
-     * the way up is below 4.6 and so is inside the cupboard, which is why she
-     * stopped climbing at the eighth tread. Stepping onto the first tread lifts
-     * her past it, and after that the treads are what she is standing on.
-     */
-    { x: 14.2, z: 5.6, hw: 1.7, hd: 5.2, to: 0.05 },
-    { x: -14.2, z: -5.6, hw: 1.7, hd: 5.2, from: CS_G1, to: CS_G1 + 0.05 },
-    /*
-     * The open side of each flight — down the part of it that is a drop.
-     *
-     * This used to run the whole eleven metres, from the head of the flight to
-     * its foot, and the understair cupboard covers everything up to a metre
-     * short of that foot. Between them there was no way *onto* the stairs at
-     * all: the side wall held from z 0.05 to 11.95 and the shelving along the
-     * south wall starts at 11.43, so the two of them overlapped and the flight
-     * was sealed. The whole shop was one storey, and Mike found it by trying to
-     * go upstairs.
-     *
-     * It stops at ten now, which is where the treads are still only half a
-     * metre up. Below that there is nothing to fall off and the bottom three
-     * treads are what you step onto — which is what the foot of a staircase is
-     * for.
-     *
-     * `to` is five centimetres *below* the floor the flight serves, not level
-     * with it. A solid applies while `atY <= to`, so at exactly CS_G1 — which
-     * is what you are standing at when you reach the top — the side of the
-     * flight was still in the way, and the head of the stairs stayed an island
-     * even after the rail beside it was opened.
-     */
-    { x: 12.3, z: 5.2, hw: 0.3, hd: 4.8, to: CS_G1 - 0.05 },
-    { x: -12.3, z: -5.2, hw: 0.3, hd: 4.8, from: CS_G1, to: CS_G2 - 0.05 },
+    { x: 14.19, z: 6.6, hw: 1.59, hd: 3.9, to: 0.05 },
+    { x: -14.19, z: -6.6, hw: 1.59, hd: 3.9, from: CS_G1, to: CS_G1 + 0.05 },
 
     /*
      * The counter, which is the one thing here you walk up to rather than past.
@@ -1968,7 +1945,10 @@ const CROWN_SHOP: Area = {
   doors: [
     {
       id: 'shop-to-crown',
-      trigger: { x: -15.6, z: 0, hw: 1.1, hd: 2.2 },
+      /* Ground floor only. The door is at the bottom of a three-storey room,
+         and without a height on it, walking into the west wall from the second
+         gallery took you out into Black Crown — from nine metres up. */
+      trigger: { x: -15.6, z: 0, hw: 1.1, hd: 2.2, to: 1.2 },
       to: 'black-crown',
       seam: { x: -CS_W, z: 0 },
       /*
@@ -2248,9 +2228,21 @@ export function groundAt(area: Area, x: number, z: number, near = Infinity): num
   return y === -Infinity ? 0 : y;
 }
 
-/** The door whose trigger contains this point, if any. */
-export function doorAt(area: Area, x: number, z: number): Door | null {
-  return area.doors.find((d) => inside(d.trigger, x, z)) ?? null;
+/**
+ * The door whose trigger contains this point, if any.
+ *
+ * `atY` is which floor the duelist is on, and a trigger may say which floors it
+ * belongs to. The shop's front door is at the bottom of a room three storeys
+ * high, and without this, walking into the west wall from the second gallery
+ * walked you out of the building — from nine metres up.
+ */
+export function doorAt(area: Area, x: number, z: number, atY = Number.NaN): Door | null {
+  return area.doors.find((d) => {
+    if (!inside(d.trigger, x, z)) return false;
+    if (!Number.isFinite(atY)) return true;
+    const t = d.trigger;
+    return atY >= (t.from ?? -Infinity) - 0.5 && atY <= (t.to ?? Infinity);
+  }) ?? null;
 }
 
 /* ------------------------------------------------------------------ */

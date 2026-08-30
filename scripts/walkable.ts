@@ -125,7 +125,13 @@ export function walkableCells(area: Area): { x: number; z: number; y: number }[]
     const x = ix * STEP;
     const z = iz * STEP;
     out.push({ x, z, y });
-    if (area.doors.some((d) => inside(d.trigger, x, z))) continue;
+    /* On the floor this cell was reached on: a trigger scoped to the ground
+       floor is not a door on the gallery above it. */
+    if (area.doors.some((d) => {
+      if (!inside(d.trigger, x, z)) return false;
+      if (!Number.isFinite(y)) return true;
+      return y >= (d.trigger.from ?? -Infinity) - 0.5 && y <= (d.trigger.to ?? Infinity);
+    })) continue;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = ix + dx;
       const nz = iz + dz;

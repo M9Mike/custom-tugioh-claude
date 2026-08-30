@@ -639,7 +639,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * of the fade so it cannot fire twice on consecutive frames.
          */
         if (!crossing) {
-          const door = doorAt(area, p.x, p.z);
+          const door = doorAt(area, p.x, p.z, groundY);
           if (door) crossing = { door, t: 0, swapped: false };
         }
       }

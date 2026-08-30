@@ -30,8 +30,13 @@ const NE = (Math.PI * 3) / 4, SE = Math.PI / 4, SW = -Math.PI / 4, NW = -(Math.P
 const N = Math.PI, S = 0, E = Math.PI / 2, W = -Math.PI / 2;
 
 const SHOTS: Shot[] = [
+  { name: 'the stairs, walking up to them', area: 'crown-shop', x: 6, z: 2, facing: E },
+  { name: 'the stairs, from the atrium', area: 'crown-shop', x: 2, z: 6, facing: SE },
+  { name: 'the shop, up at the galleries', area: 'crown-shop', x: 0, z: 0, facing: NE },
+  { name: 'the shop, the west gallery from below', area: 'crown-shop', x: -4, z: 0, facing: W },
+
   { name: 'the podium steps from the side', area: 'black-crown', x: 10, z: -9, facing: E },
-  { name: 'the shop, the counter and the stairs', area: 'crown-shop', x: 0, z: 4, facing: E },
+  
   /* The two Mike photographed sky through. */
   { name: 'walking into the square from the lane', area: 'black-crown', x: -19, z: -24, facing: S },
   { name: 'the square, from the lane mouth', area: 'black-crown', x: -19, z: -19, facing: S },
