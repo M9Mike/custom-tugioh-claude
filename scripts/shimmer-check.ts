@@ -173,7 +173,11 @@ async function frame(page: Page, v: Vantage, dx: number, file: string) {
       world: { area: v.area, x: v.x + dx, z: v.z, facing: v.facing },
     }),
   }).catch(() => {});
-  const there = await enterStory(page, v.area);
+  /* Twice before giving up. A cold area can take longer to compile than the
+     wait allows, and "never finished building" is then a fact about the machine
+     rather than about the world — see the note in `stairs-check.ts`. */
+  let there = await enterStory(page, v.area);
+  if (!there) there = await enterStory(page, v.area);
   const dist = await settled(page);
 
   /*

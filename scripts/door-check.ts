@@ -37,7 +37,7 @@ import {
   AREAS, PLAYER_RADIUS, arrivalThrough, partnerOf,
   type AreaId, type Door,
 } from '../src/story/areas';
-import { BASE, NAME, ensurePlayer, enterStory, post } from './story-setup';
+import { BASE, NAME, ensurePlayer, enterStory, post, walkUntil } from './story-setup';
 
 
 let failures = 0;
@@ -112,17 +112,7 @@ async function waitForArea(page: Page, want: AreaId, ms: number): Promise<Probe 
 }
 
 /** Pushes the stick forward for as long as it takes, then lets go. */
-async function walkForward(page: Page, ms: number): Promise<void> {
-  const box = await page.locator('[aria-label="Move"]').boundingBox();
-  if (!box) throw new Error('the thumb stick is not on screen');
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx, box.y - 40, { steps: 8 });
-  await page.waitForTimeout(ms);
-  await page.mouse.up();
-}
+
 
 /* ------------------------------------------------------------------ */
 
@@ -171,10 +161,10 @@ async function main() {
       }
 
       /* Long enough to cover the run-up at walking pace, plus the fade. */
-      /* Three and a bit seconds, not two and a half: the stick ramps in, and
-         the run-up to Black Crown's door was finishing three centimetres short
-         of its trigger about one run in two. */
-      await walkForward(page, 3200);
+      /* Until she is through it, or six seconds — see `walkUntil`. */
+      await walkUntil(page, 6000, async () =>
+        (await page.evaluate(() => (window as unknown as { __probe?: { area: string } }).__probe?.area)
+          .catch(() => null)) !== id);
       const landed = await waitForArea(page, door.to, 12000);
 
       check(

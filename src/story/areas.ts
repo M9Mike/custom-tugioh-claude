@@ -1772,17 +1772,34 @@ export const CS_GROUND: Platform[] = [
 
   /* ---- the first gallery, and the flight up to it ---- */
 
+  /*
+   * Every slab runs to the wall it meets.
+   *
+   * These stopped at x ±16 while the walls stand at ±17, so along the whole
+   * east and west sides of both galleries there was a metre of nothing between
+   * the floor and the wall — and nothing to stop you walking into it. Mike
+   * walked too near the wall on the top floor and fell to the shop.
+   *
+   * They run a little *into* the brick rather than up to its face — the wall's
+   * courses stand at x ±16.7 to ±17 and z ±12.7 to ±13, and a floor whose edge
+   * is exactly a wall's face is a floor and a wall at one depth. Buried, the
+   * edge is not a surface at all.
+   */
+
   /* The ring, north and west, whole. */
-  { x: 0, z: -9.25, hw: 16, hd: 2.75, y: CS_G1 },
-  { x: -12.5, z: 0, hw: 3.5, hd: 6.5, y: CS_G1 },
+  { x: 0, z: -9.675, hw: 16.85, hd: 3.175, y: CS_G1 },
+  { x: -12.925, z: 0, hw: 3.925, hd: 6.5, y: CS_G1 },
   /* East, north of the well: the whole depth of the side. */
-  { x: 12.5, z: -3.05, hw: 3.5, hd: 3.45, y: CS_G1 },
-  /* East, beside the well. */
+  { x: 12.925, z: -3.05, hw: 3.925, hd: 3.45, y: CS_G1 },
+  /* East, either side of the well. */
   { x: 10.8, z: 3.45, hw: 1.8, hd: 3.05, y: CS_G1 },
-  /* South, west of the well. */
-  { x: -1.7, z: 9.25, hw: 14.3, hd: 2.75, y: CS_G1 },
-  /* And the landing the flight arrives on, which closes the south-east corner. */
-  { x: 14.19, z: 11.25, hw: 1.59, hd: 0.75, y: CS_G1 },
+  { x: 16.315, z: 3.45, hw: 0.535, hd: 3.05, y: CS_G1 },
+  /* South, west of the well, and the strip behind the shelving east of it. */
+  { x: -2.125, z: 9.675, hw: 14.725, hd: 3.175, y: CS_G1 },
+  { x: 16.315, z: 8.5, hw: 0.535, hd: 2, y: CS_G1 },
+  /* And the landing the flight arrives on, which closes the south-east corner
+     and runs to the east wall like everything else. */
+  { x: 14.725, z: 11.675, hw: 2.125, hd: 1.175, y: CS_G1 },
 
   /* The flight: foot at z 0.4 out in the open, head at the landing. */
   /* Three point one eight metres wide, reaching the shelving on the east wall:
@@ -1793,15 +1810,18 @@ export const CS_GROUND: Platform[] = [
   /* ---- the second gallery, and the flight up to it ---- */
 
   /* The ring, south and east, whole. */
-  { x: 0, z: 9.25, hw: 16, hd: 2.75, y: CS_G2 },
-  { x: 12.5, z: 0, hw: 3.5, hd: 6.5, y: CS_G2 },
+  { x: 0, z: 9.675, hw: 16.85, hd: 3.175, y: CS_G2 },
+  { x: 12.925, z: 0, hw: 3.925, hd: 6.5, y: CS_G2 },
   /* North, east of the well. */
-  { x: 1.7, z: -9.25, hw: 14.3, hd: 2.75, y: CS_G2 },
-  /* West, south of the well, and the strip beside it that closes the ring. */
-  { x: -12.5, z: 3.05, hw: 3.5, hd: 3.45, y: CS_G2 },
+  { x: 2.125, z: -9.675, hw: 14.725, hd: 3.175, y: CS_G2 },
+  { x: -16.315, z: -8.5, hw: 0.535, hd: 2, y: CS_G2 },
+  /* West, south of the well, the strip beside it that closes the ring, and the
+     strip behind the shelving. */
+  { x: -12.925, z: 3.05, hw: 3.925, hd: 3.45, y: CS_G2 },
   { x: -10.8, z: -3.45, hw: 1.8, hd: 3.05, y: CS_G2 },
+  { x: -16.315, z: -3.45, hw: 0.535, hd: 3.05, y: CS_G2 },
   /* And its landing, in the north-west corner. */
-  { x: -14.19, z: -11.25, hw: 1.59, hd: 0.75, y: CS_G2 },
+  { x: -14.725, z: -11.675, hw: 2.125, hd: 1.175, y: CS_G2 },
 
   ...flightPlatforms({ along: 'z', start: -0.4, end: -10.5, from: CS_G1, to: CS_G2, half: 1.59, cross: -14.19 }),
 ];

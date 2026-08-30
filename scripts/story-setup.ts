@@ -149,6 +149,22 @@ export async function ensurePlayer(): Promise<void> {
  * stick and has never once been flaky. So this is that, shared.
  */
 export async function walkForward(page: Page, ms: number): Promise<void> {
+  await walkUntil(page, ms);
+}
+
+/**
+ * Holds the stick until something happens, or until the time runs out.
+ *
+ * A fixed duration is a guess about distance, and the guess was wrong often
+ * enough to matter: the run-up to Black Crown's door from Market Row finished
+ * short of its trigger about one run in two, at two point six seconds and again
+ * at three point two, because the stick ramps in and that approach is longer
+ * than the others. Walking *until she arrives* is the question the check is
+ * actually asking.
+ */
+export async function walkUntil(
+  page: Page, ms: number, done?: () => Promise<boolean>
+): Promise<void> {
   const box = await page.locator('[aria-label="Move"]').boundingBox();
   if (!box) throw new Error('the thumb stick is not on screen');
   const cx = box.x + box.width / 2;
@@ -156,8 +172,14 @@ export async function walkForward(page: Page, ms: number): Promise<void> {
   await page.mouse.move(cx, cy);
   await page.mouse.down();
   await page.mouse.move(cx, box.y - 40, { steps: 8 });
-  await page.waitForTimeout(ms);
-  await page.mouse.up();
+  try {
+    for (let t = 0; t < ms; t += 120) {
+      await page.waitForTimeout(120);
+      if (done && (await done().catch(() => false))) break;
+    }
+  } finally {
+    await page.mouse.up();
+  }
 }
 
 export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR): Promise<boolean> {

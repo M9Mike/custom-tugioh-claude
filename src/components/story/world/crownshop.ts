@@ -100,13 +100,36 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
    * flight with daylight under every step is a ladder.
    */
   for (const t of CS_GROUND) {
-    const wide = t.hw > 2 && t.hd > 2;
+    /*
+     * A floor plate or a stair tread.
+     *
+     * Measured on the *narrow* side, not on both: a landing is 4.4 m by 1.5 and
+     * a strip of floor behind the shelving is 1.2 by 6, and neither is a tread —
+     * but under "both sides over two metres" both came out as one, complete with
+     * a nosing along an edge nobody can see. A tread is under half a metre deep;
+     * nothing else here is.
+     */
+    const wide = Math.min(t.hw, t.hd) > 0.5;
     if (wide) {
       /* A floor plate with a beam-and-soffit underside. */
       /* The boards sit fourteen millimetres over the plate they are laid on,
          not four: at four the two of them are one plane as far as the depth
          buffer is concerned, and 174 m² of gallery flickers. */
-      root.add(box(own, t.hw * 2, 0.36, t.hd * 2, timber, t.x, t.y - 0.18, t.z));
+      /*
+       * Four millimetres proud of its own platform, on every side.
+       *
+       * Two floor plates that abut *exactly* share a plane, and at the join
+       * whether a point is on one, the other or neither comes down to whether
+       * `3.45 + 3.05` rounds above or below 6.5. It rounded below, and
+       * `npm run footing` found eighteen cells standing over nothing along the
+       * two lines where the galleries' sides meet their south and north slabs.
+       *
+       * Overlapping is right here and wrong for a tread: these are all at one
+       * height, so four millimetres of shared floor is invisible and too small
+       * for the coplanar sweep to care about, while a tread drawn over its
+       * neighbour is a step drawn at the wrong height.
+       */
+      root.add(box(own, t.hw * 2 + 0.004, 0.36, t.hd * 2 + 0.004, timber, t.x, t.y - 0.18, t.z));
       slab(t.hw * 2 - 0.04, t.hd * 2 - 0.04, t.x, t.y + 0.014, t.z, galleryTex);
     } else {
       /*
@@ -191,10 +214,20 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
   /* Standing proud of the wall rather than flush into it: at x −17 the jambs
      share a face with the wall they are set in, and at z ±2.9 they share one
      with where it stops. */
+  /*
+   * Three point nine metres to the springing, not four point six.
+   *
+   * The first gallery's floor is at 4.6, and its west side now runs all the way
+   * to the wall — as every gallery here does, because stopping a metre short of
+   * one is a metre you can walk off. A 4.6 m doorway in a wall a gallery crosses
+   * puts its own lintel through that gallery's floor: half a metre of stone
+   * standing up out of the boards, right where you walk. A door goes under the
+   * floor above it.
+   */
   for (const s of [-1, 1] as const) {
-    root.add(box(own, 0.7, 4.6, 0.6, stone(), -W + 0.45, 2.3, s * 3.3));
+    root.add(box(own, 0.7, 3.9, 0.6, stone(), -W + 0.45, 1.95, s * 3.3));
   }
-  root.add(box(own, 0.7, 0.6, 7.2, stone(), -W + 0.45, 4.9, 0));
+  root.add(box(own, 0.7, 0.5, 7.2, stone(), -W + 0.45, 4.15, 0));
   /*
    * And the nine metres of wall *above* the lintel.
    *
@@ -224,8 +257,8 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
      */
     const put = (len: number, h: number, thick: number, y: number, c: number, m: THREE.Material) =>
       root.add(box(own, thick, h, len, m, -W + c, y, 0));
-    put(5.8, top - 5.15, 0.3, (top + 5.15) / 2, 0.15, brickwork());
-    put(5.9, plasterTop - 5.21, 0.16, (plasterTop + 5.21) / 2, 0.32, walls());
+    put(5.8, top - 4.35, 0.3, (top + 4.35) / 2, 0.15, brickwork());
+    put(5.9, plasterTop - 4.41, 0.16, (plasterTop + 4.41) / 2, 0.32, walls());
     /* And the picture rails carry across it, at the height the walls put them,
        so the room reads as one wall with a hole in it and not as a patch. */
     for (const y of [CS_G1 + 2.6, CS_G2 + 2.6]) put(6.1, 0.12, 0.26, y - 0.13, 0.36, dark);
@@ -254,15 +287,15 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
     /* Two point nine wide each, so the pair fills the opening from jamb to
        jamb. At two point four there was half a metre of daylight down each side
        of them, which is what you see from inside looking out. */
-    root.add(box(own, 0.14, 4.5, 2.9, timber, -W - 0.25, 2.25, z));
-    root.add(box(own, 0.08, 3.4, 2.2, glow(own, '#8c6c3c'), -W - 0.15, 2.3, z));
+    root.add(box(own, 0.14, 3.8, 2.9, timber, -W - 0.25, 1.9, z));
+    root.add(box(own, 0.08, 2.9, 2.2, glow(own, '#8c6c3c'), -W - 0.15, 1.95, z));
     /* Glazing bars, so they are doors and not two lit panels. */
     for (let g = 0; g < 3; g++) {
-      root.add(box(own, 0.1, 0.1, 2.24, matt(own, '#2a2320'), -W - 0.10, 1.0 + g * 1.3, z));
+      root.add(box(own, 0.1, 0.1, 2.24, matt(own, '#2a2320'), -W - 0.10, 0.9 + g * 1.05, z));
     }
     /* Two centimetres in front of the horizontals it crosses, or the two of
        them share both faces at every intersection. */
-    root.add(box(own, 0.1, 3.44, 0.1, matt(own, '#2a2320'), -W - 0.08, 2.3, z));
+    root.add(box(own, 0.1, 2.94, 0.1, matt(own, '#2a2320'), -W - 0.08, 1.95, z));
     root.add(box(own, 0.16, 0.6, 0.09, brass, -W - 0.02, 1.9, s * 0.16));
   }
   slab(3.0, 9.0, -W - 1.4, 0.01, 0, surfaceOf(own, () => paving({ dirt: 0.3 }), 1, 2, anisotropy));
@@ -548,7 +581,21 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
    * shop.
    */
   const pendant = (x: number, z: number, y: number, watts: number) => {
-    root.add(box(own, 0.06, 0.9, 0.06, iron, x, y + 0.45, z));
+    /*
+     * The rod goes all the way to the roof it hangs from.
+     *
+     * It was ninety centimetres long, which in a room thirteen and a half
+     * metres high leaves the lamp swinging from a stub of iron with nothing
+     * above it — five of them, hanging out of nowhere over the atrium. These
+     * are in the void, so there is clear air from the shade to the lantern, and
+     * a long thin drop rod is what a three-storey atrium actually has.
+     */
+    /* To the ceiling itself, which is at CS_TOP — not to a number near it. At
+       CS_TOP − 0.25 the rod stopped a hand's breadth short and the lamp was
+       still hanging from nothing, which is the fault and not its size. */
+    const top = CS_TOP;
+    root.add(box(own, 0.06, top - y, 0.06, iron, x, (y + top) / 2, z));
+    root.add(box(own, 0.18, 0.14, 0.18, iron, x, top - 0.08, z));
     root.add(box(own, 0.62, 0.3, 0.62, oxblood, x, y - 0.05, z));
     root.add(box(own, 0.46, 0.1, 0.46, glow(own, '#c9954e'), x, y - 0.22, z));
     const l = new THREE.PointLight('#ffbe78', watts, 16, 2);

@@ -206,6 +206,9 @@ async function main() {
       if (drawn === null) {
         holes++;
         if (!firstHole) firstHole = `(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`;
+        if (process.env.FOOTING_ALL) {
+          console.log(`       hole at (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) told ${told.toFixed(3)}`);
+        }
         continue;
       }
       const diff = drawn - told;
