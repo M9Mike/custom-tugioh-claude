@@ -73,7 +73,8 @@
     "seams": "tsx scripts/seam-check.ts",
     "corners": "tsx scripts/corner-shots.ts",
     "stairs": "tsx scripts/stairs-check.ts",
-    "carryon": "tsx scripts/carryon-check.ts"
+    "carryon": "tsx scripts/carryon-check.ts",
+    "soak": "tsx scripts/soak-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

@@ -145,7 +145,11 @@ The first deck is exactly 25 from 34 offered cards, one copy of each. The
 offered pool is not the collection — **what you keep is what you sleeved.**
 
 Story Mode opens **inside Grandpa's shop**, and the world is made of named
-areas rather than one field. Two of them exist:
+areas rather than one field. Eight of them stand — the whole of the Old Ward,
+from Grandpa's counter to the burial ground behind the shrine: the Kame Game
+Shop, Turtle Lane, Market Row, Step Lane, Domino Shrine, Black Crown, Black
+Crown Games (three floors) and The Old Cemetery. The two that came first, and
+set the pattern for the rest:
 
 **Grandpa's Shop** — the Kame Game Shop from the inside. Thirteen metres by
 eleven: floorboards, a counter with a till and a case of singles, shelving down
@@ -153,8 +157,8 @@ both walls, a pegboard of card packs, and Solomon Muto behind the counter. He
 says one thing and repeats it, on purpose — the world does not have anything to
 tutorialise yet, so he tells you to go and play instead.
 
-**Starting Area** — the street outside. Four times the floor of the shop, at
-dusk, enclosed on all four sides: the shop's own terrace and its neighbours to
+**Turtle Lane** — the street outside. Four times the floor of the shop,
+enclosed on all four sides: the shop's own terrace and its neighbours to
 the north, an unbroken terrace opposite, a hoarding over a building site at one
 end and a railed alley mouth at the other. Lamps, benches, planters, a post box,
 a vending machine, road markings and drains.
@@ -178,18 +182,17 @@ and never by the duel board.
 
 ### The cast
 
-Seven characters are finished — rigged, carrying Idle, Walk and Run, and checked
-a frame at a time at full resolution.
+The characters are sculpted and rigged outside the project and come in one at
+a time, carrying Idle, Walk and Run, and are checked a frame at a time at full
+resolution.
 
-**In the world.** Solomon Muto, standing behind his own counter. He is the only
-one placed: the rest are duelists you meet on a circuit, and there is one street
-so far. Standing five named characters in a road because they happen to be ready
-is how a world stops feeling like a place.
-
-**On the bench.** Yugi, Yami, Seto Kaiba, Joey Wheeler and Mai Valentine, in
-`WAITING_CAST` in `src/story/npcs.ts`. Introducing one is moving it into
-`WORLD_NPCS` and giving it an area. Mai's duel — she offers, you play her with
-your own twenty-five, she reacts to the result — is built and travels with her.
+**In the world.** Solomon Muto behind his own counter, and seven on Turtle
+Lane. Three of them are the templates for every interaction the rest will
+use — a counter you buy from, a duel you are offered and come back from with
+the result, and a conversation that branches — and the others stand where
+they will be met. The rest of the cast, and the people for the other six
+areas, are added together with Mike once the whole open world stands: an area
+gets its people when the city around it is finished, not before.
 
 **Playable.** Sandra Afrika and Robert Barathion.
 

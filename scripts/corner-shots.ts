@@ -64,6 +64,19 @@ const SHOTS: Shot[] = [
   { name: 'the crown lane, the east wall', area: 'black-crown', x: -21, z: -34, facing: E },
   { name: 'the crown lane, the west wall', area: 'black-crown', x: -17, z: -34, facing: W },
 
+  /* The first five areas, looked at again with the last three's eyes. */
+  { name: 'the shop, from the door', area: 'grandpa-shop', x: 2.6, z: 0.6, facing: N },
+  { name: 'the shop, the counter', area: 'grandpa-shop', x: 0, z: 0, facing: N },
+  { name: 'the shop, looking back at the door', area: 'grandpa-shop', x: 0, z: -2, facing: S },
+  { name: 'Turtle Lane, east to Market Row', area: 'starting-area', x: 4, z: 0.5, facing: E },
+  { name: 'Turtle Lane, west to Step Lane', area: 'starting-area', x: -4, z: 4, facing: W },
+  { name: 'Turtle Lane, up to the shrine', area: 'starting-area', x: -10.4, z: 8, facing: S },
+  { name: 'Step Lane, from the bottom', area: 'step-lane', x: 12.4, z: 0, facing: W },
+  { name: 'Step Lane, from the top', area: 'step-lane', x: -13, z: 0, facing: E },
+  { name: 'Market Row, east to the crown arch', area: 'market-row', x: 6, z: 0, facing: E },
+  { name: 'the shrine, in at the gate', area: 'domino-shrine', x: 0, z: -22, facing: S },
+  { name: 'the shrine, the hall', area: 'domino-shrine', x: 0, z: 5, facing: S },
+  { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 0, z: 14, facing: N },
   { name: 'the starting area, from the spawn', area: 'starting-area', x: 0, z: 0, facing: N },
   { name: 'the starting area, looking south', area: 'starting-area', x: 0, z: -4, facing: S },
 
@@ -208,7 +221,11 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: NAME, world: { area: s.area, x: s.x, z: s.z, facing: s.facing } }),
     }).catch(() => {});
-    const there = await enterStory(page, s.area, PINNED_HOUR);
+    /* Once more before photographing nothing: a cold area can take longer to
+       compile than the wait allows, and a frame of the sign-in card labelled
+       "Step Lane, from the top" is worse than a late one. */
+    let there = await enterStory(page, s.area, PINNED_HOUR);
+    if (!there) there = await enterStory(page, s.area, PINNED_HOUR);
     await clear(page);
     await lookUp(page);
     await page.waitForTimeout(900);

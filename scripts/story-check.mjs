@@ -274,7 +274,12 @@ async function run(phoneName) {
   /* ---- the main menu offers it ---- */
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const entry = page.locator('button:has-text("Story Mode")').first();
-  check(await entry.isVisible().catch(() => false), 'Story Mode is on the main menu');
+  /* Waited for, not glanced at. The menu is client-rendered and
+     `domcontentloaded` fires before it has hydrated, so on a cold server the
+     button is not there *yet* — the check said "not on the main menu" and then
+     pressed it a line later. */
+  const offered = await entry.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
+  check(offered, 'Story Mode is on the main menu');
   await tapWhenAwake(page, 'button:has-text("Story Mode")');
   await page.waitForURL(/\/story$/, { timeout: 20000 });
   ok('it opens Story Mode');

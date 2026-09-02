@@ -112,6 +112,18 @@ interface Props {
 
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  /*
+   * Whether there is a keyboard to mention.
+   *
+   * "WASD on a keyboard" under the thumb stick of a phone is a line about a
+   * thing the player does not have, and a real game does not tell you about
+   * controls you cannot use. A fine pointer that can hover is a mouse, and a
+   * mouse comes with a keyboard; a touch screen comes with neither. Read once,
+   * on mount: nobody plugs a keyboard into a phone mid-duel.
+   */
+  const [hasKeyboard] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  );
   const [saving, setSaving] = useState(false);
   /**
    * How far through deleting the player is: nothing, warned, or asked twice.
@@ -506,6 +518,26 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
+    /*
+     * A hook for the checks: put the duelist somewhere, in this area, now.
+     *
+     * Every other way of moving her — the save route and a reload — throws the
+     * page away, which is exactly what a long-session check must not do: the
+     * question `npm run soak` asks is what the *same* page holds after a
+     * hundred door crossings, and a reload answers a different one. Sets only
+     * what a door crossing sets. Not a teleport anywhere: it stays in the area
+     * she is in, and the collision, the floor and the camera all catch up on
+     * the next frame exactly as they would after a door.
+     */
+    (window as unknown as { __teleport?: (x: number, z: number, facing: number) => void }).__teleport =
+      (x, z, facing) => {
+        here.current.x = x;
+        here.current.z = z;
+        here.current.facing = facing;
+        heading = facing;
+        camYaw = facing + Math.PI;
+        groundY = standingOn(area, x, z);
+      };
     /* 0 walking, 1 talking; eased, and read by the camera below. */
     let talkBlend = 0;
     let raf = 0;
@@ -937,10 +969,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        */
       if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
         const w = window as unknown as {
-          __probe?: unknown; __scene?: unknown; __THREE?: unknown; __camera?: unknown };
+          __probe?: unknown; __scene?: unknown; __THREE?: unknown; __camera?: unknown; __renderer?: unknown };
         /* The scene itself, so `npm run coplanar` can audit the geometry for
            surfaces that sit at identical depth. See that script's header. */
         w.__scene = scene;
+        /* And the renderer, so `npm run soak` can read `renderer.info` — how
+           many geometries and textures the card is holding — across a hundred
+           door crossings. A leak is a number that only ever goes up. */
+        w.__renderer = renderer;
         /* And the library, so `npm run seams` can cast a ray with the same
            code the renderer uses rather than a hand-rolled box test that would
            miss every rotated mesh in the world. */
@@ -1406,8 +1442,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)' }}
         >
           Drag to look · stick to walk
-          <br />
-          WASD on a keyboard
+          {hasKeyboard && (
+            <>
+              <br />
+              WASD on a keyboard
+            </>
+          )}
         </p>
       )}
 

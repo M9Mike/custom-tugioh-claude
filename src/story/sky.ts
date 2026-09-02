@@ -23,11 +23,21 @@
  *
  * ## The shape of a day
  *
- * A long day and a short night, which is what a game wants rather than what a
- * planet does: you are here to look at the city, and half of a real cycle spent
- * unable to see it is half of it wasted. Dawn and dusk are given real width
- * because they are the best-looking part and the part this world was already
- * built for.
+ * A long day and a shorter night, which is what a game wants rather than what
+ * a planet does: you are here to look at the city, and half of a real cycle
+ * spent unable to see it is half of it wasted. Dawn and dusk are given real
+ * width because they are the best-looking part and the part this world was
+ * already built for.
+ *
+ * And the night is a night. It used to be one keyframe at one o'clock that the
+ * evening blended into and the dawn blended out of, with the sky light left at
+ * four fifths of dusk's and the lamps turned up to full — so a lamp-lit street
+ * was at its *brightest* at midnight, and Turtle Lane at 00:00, 06:00, 16:00
+ * and 20:00 were four copies of one frame. Mike asked for a real one: darker,
+ * with lamps. So the sky light drops a stop and a half, the exposure comes
+ * down, the fog closes in, the lamps stay at full and carry the streets — and
+ * it *holds*, from ten to four, because a night that is only dark for the one
+ * minute the clock passes one o'clock is not a night, it is a dip.
  */
 
 /**
@@ -93,41 +103,50 @@ function mix(a: string, b: string, t: number): string {
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /**
- * The four moments a day is built out of, and the hour each is centred on.
+ * The moments a day is built out of, and the hour each is centred on.
  *
- * Everything between them is a straight blend. Four is enough because the two
- * that matter — dawn and dusk — are the transitions themselves, and a curve
- * through more points would be an accuracy nobody can see.
+ * Everything between them is a straight blend. Dawn and dusk are the
+ * transitions themselves, and a curve through more points would be an accuracy
+ * nobody can see. Night appears twice with the same numbers, at ten and at
+ * four, so that the six hours between them are *held* dark rather than blended
+ * straight through: with one night keyframe the city was only ever as dark as
+ * that at the one moment the clock passed it.
  */
+/**
+ * Night. Moonlight from the same quarter it always came from, a stop and a
+ * half down; the sky light down to a third; the exposure trimmed; the fog
+ * closing in from thirty-four metres to twenty-six. The lamps at full, and
+ * carrying the streets — which is what a lit city at night is.
+ *
+ * The gains each area passes are about *enclosure* — how much sky a street
+ * between terraces sees against an open precinct — and not about how bright
+ * night is. Read the other way round they scale the day down with the night,
+ * which is how Turtle Lane came out at noon looking like Turtle Lane at nine.
+ */
+const NIGHT: Omit<SkyProfile, 'hour'> = {
+  key: [0.45, 0.82, 0.35],
+  keyColour: '#7d90b4',
+  /* A fifth of dusk's sky light, not a tenth: at 0.32 / 0.42 / 0.20 the
+     burial ground was lantern pools in a void, and the avenue between two
+     lanterns went to nothing. This is enough moon to read a silhouette by and
+     not enough to be mistaken for evening. The lamp-lit streets do not move —
+     their lamps were always the light. */
+  keyIntensity: 0.4,
+  shadowOpacity: 0.35,
+  skyColour: '#2a3650',
+  groundColour: '#26221d',
+  hemiIntensity: 0.55,
+  ambientColour: '#2f3646',
+  ambientIntensity: 0.26,
+  voidColour: '#000000',
+  fogNear: 26,
+  fogFar: 62,
+  lamps: 1,
+  exposure: 0.86,
+};
+
 const KEYFRAMES: { at: number; p: Omit<SkyProfile, 'hour'> }[] = [
-  {
-    /* Deep night. The world as it has been until now. */
-    at: 1,
-    p: {
-      key: [0.45, 0.82, 0.35],
-      keyColour: '#93a7c4',
-      /*
-       * The gains each area passes are about *enclosure* — how much sky a
-       * street between terraces sees against an open precinct — and not about
-       * how bright night was. Read the other way round they scale the day down
-       * with the night, which is how Turtle Lane came out at noon looking like
-       * Turtle Lane at nine. So the gains went up to what they describe and the
-       * moon came down to keep the night where it was.
-       */
-      keyIntensity: 0.95,
-      shadowOpacity: 0.55,
-      skyColour: '#5a6f92',
-      groundColour: '#4a4136',
-      hemiIntensity: 1.2,
-      ambientColour: '#48536b',
-      ambientIntensity: 0.5,
-      voidColour: '#000000',
-      fogNear: 34,
-      fogFar: 78,
-      lamps: 1,
-      exposure: 1.0,
-    },
-  },
+  { /* Still night: the last of it before the sky begins to pale. */ at: 4, p: NIGHT },
   {
     /* Dawn: the sun on the horizon in the east, lamps going out. */
     at: 6,
@@ -198,6 +217,7 @@ const KEYFRAMES: { at: number; p: Omit<SkyProfile, 'hour'> }[] = [
       exposure: 0.98,
     },
   },
+  { /* Night fallen. From here to four the numbers hold. */ at: 22, p: NIGHT },
 ];
 
 /**

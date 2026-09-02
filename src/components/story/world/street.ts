@@ -615,7 +615,11 @@ export function buildStreet(anisotropy: number): BuiltArea {
       color: '#cfc4a6',
     }))
   );
-  alleySign.rotation.y = -Math.PI / 2;
+  /* Facing east, towards the street — the alley is at the *west* end. Copied
+     from Market Row's sign at the east end it faced west, into the alley, and
+     was back-face culled from the one place anybody reads it: the only door
+     on Turtle Lane with no name over it. */
+  alleySign.rotation.y = Math.PI / 2;
   alleySign.position.set(WEST_FACE + 0.02, 5.15, alleyMid);
   root.add(alleySign);
 
