@@ -51,7 +51,6 @@ const audit = async (label) => {
   const hits = await page.evaluate((gap) => {
     const scene = window.__scene;
     if (!scene) return { error: 'no scene on window — is this a production build?' };
-    const THREE = window.__three ?? null;
     const boxes = [];
     scene.updateMatrixWorld(true);
     scene.traverse((o) => {
@@ -182,8 +181,6 @@ const audit = async (label) => {
         if (a.offset || b.offset) continue;
         if (!a.square || !b.square) continue;
         for (let axis = 0; axis < 3; axis++) {
-          const o1 = (axis + 1) % 3;
-          const o2 = (axis + 2) % 3;
           for (let sa = 0; sa < 2; sa++) {
             for (let sb = 0; sb < 2; sb++) {
               const fa = sa ? a.hi[axis] : a.lo[axis];
@@ -318,7 +315,7 @@ const audit = async (label) => {
  * did not mean to be — and the script prints where it actually is next to where
  * it meant to be, so a lie of this kind can never be silent again.
  */
-const visit = async (area) => {
+const visitOnce = async (area) => {
   await fetch(`${BASE}/api/story/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -352,6 +349,16 @@ const visit = async (area) => {
   }
   await page.waitForTimeout(1200);
   return audit(area);
+};
+
+/* Once more before auditing the wrong place: a cold area can take longer to
+   compile than the wait allows, and a sweep that lands in the previous area
+   reports that area's faults twice under two names. */
+const visit = async (area) => {
+  let n = await visitOnce(area);
+  const where = await page.evaluate(() => window.__probe && window.__probe.area).catch(() => '?');
+  if (where !== area) n = await visitOnce(area);
+  return n;
 };
 
 let total = 0;

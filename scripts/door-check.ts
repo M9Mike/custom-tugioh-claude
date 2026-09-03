@@ -33,11 +33,8 @@
  */
 
 import { chromium, type Page } from 'playwright';
-import {
-  AREAS, PLAYER_RADIUS, arrivalThrough, partnerOf,
-  type AreaId, type Door,
-} from '../src/story/areas';
-import { BASE, NAME, ensurePlayer, enterStory, post, walkUntil } from './story-setup';
+import { AREAS, arrivalThrough, partnerOf, type AreaId } from '../src/story/areas';
+import { BASE, NAME, ensurePlayer, enterStory, post, walkUntil, approach } from './story-setup';
 
 
 let failures = 0;
@@ -46,27 +43,6 @@ const check = (ok: boolean, what: string, detail = '') => {
   if (!ok) failures++;
 };
 
-/**
- * Where to stand to walk into this door, and which way to face.
- *
- * Backed off from the trigger along the line the player would come in on, by
- * the trigger's own half-extent in that direction plus a run-up — so it is
- * outside the trigger (standing in one starts the transition before anybody has
- * pressed anything) with room to build up walking speed.
- */
-function approach(door: Door): { x: number; z: number; facing: number } {
-  let dx = door.trigger.x - door.arrive.x;
-  let dz = door.trigger.z - door.arrive.z;
-  const len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
-  const clear = Math.abs(dx) * door.trigger.hw + Math.abs(dz) * door.trigger.hd + PLAYER_RADIUS + 1.9;
-  return {
-    x: door.trigger.x - dx * clear,
-    z: door.trigger.z - dz * clear,
-    facing: Math.atan2(dx, dz),
-  };
-}
 
 /** The world's live state, or null while it is still building. */
 type Probe = { area: AreaId; player: [number, number]; camDist: number; camLift: number };

@@ -943,9 +943,49 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * it sink into the steps it is looking over. This asks what is under the
        * camera itself and keeps a knee's height above it.
        */
-      /* The camera is on the duelist's floor too — otherwise it clears the
-         gallery over their head rather than the floor under their feet. */
-      const underCamera = groundAt(area, camPos.x, camPos.z, groundY);
+      /*
+       * Asked from the camera's own height, not the duelist's.
+       *
+       * From the duelist's floor, anything more than a stride above them is a
+       * wall and not a floor — which is right for *them* and wrong for a camera
+       * standing four metres behind on higher ground. Walking down the shrine's
+       * great flight towards the street gate, the camera trailed over the
+       * precinct two metres above her feet, the precinct did not count as
+       * floor, and the shot was taken from inside it: a frame of solid grey.
+       *
+       * From its own height the terrace under it is a floor and it rides up
+       * onto it. A gallery three and a half metres over the duelist's head is
+       * still nothing to a camera at one and a half, which is what the old
+       * comment was protecting.
+       */
+      /*
+       * And not just from its own height: from a metre above it. At the foot
+       * of the shrine's great flight the duelist is on the ground and the
+       * camera, four metres behind, is over the precinct — a floor sixty
+       * centimetres *above the lens*. Asked from the lens that floor is a wall.
+       * Asked from a metre up it is a floor, and the camera rides onto it.
+       *
+       * Anything more than eighty centimetres over the lens is overhead — a
+       * gallery, a ceiling — and is left to the duelist's own answer, or the
+       * camera would climb through every gallery it walked under.
+       */
+      /*
+       * And under the *line* from the lens to the duelist, not the lens alone.
+       *
+       * Standing on a flight and looking up, the camera drops behind you into
+       * the risers: the tread under it is clear, the next tread up — between it
+       * and you — is in its face, and the frame is stone from an inch away.
+       * Sampled a third and two thirds of the way along as well, the highest
+       * step between the two of you is what the camera rides.
+       */
+      let underCamera = -Infinity;
+      for (const t of [0, 0.35, 0.7]) {
+        const sx = camPos.x + (p.x - camPos.x) * t;
+        const sz = camPos.z + (p.z - camPos.z) * t;
+        const nearby = groundAt(area, sx, sz, camPos.y + 1);
+        const g = nearby <= camPos.y + 0.8 ? nearby : groundAt(area, sx, sz, groundY);
+        if (g > underCamera) underCamera = g;
+      }
       const ceilingLimit = area.kind === 'interior' ? groundY + 3.05 : (area.ceiling ?? 40);
       camera.position.set(
         camPos.x,

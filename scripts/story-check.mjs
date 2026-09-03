@@ -185,6 +185,9 @@ async function standNearGrandpa(name) {
       body: JSON.stringify({
         username: name,
         world: { area: 'grandpa-shop', x: 2.6, z: 1.6, facing: Math.PI },
+        /* And no duel half-returned from: a conversation waiting on the save
+           opens over the world and hides the stick this check drags. */
+        duelDone: true,
       }),
     });
   } catch {

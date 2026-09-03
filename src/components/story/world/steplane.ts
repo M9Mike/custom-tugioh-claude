@@ -305,6 +305,34 @@ export function buildStepLane(anisotropy: number): BuiltArea {
   const SOUTH = [16.6, 11.4, 6.2, 1.0, -4.2, -9.4, -14.4];
   NORTH.forEach((cx, i) => house(cx, 4.7, -1, i));
   SOUTH.forEach((cx, i) => house(cx, 4.6, 1, i + 3));
+  /*
+   * The gaps between houses, closed.
+   *
+   * Each row leaves forty-odd centimetres between neighbours, and behind that
+   * gap is the edge of the area, which is to say nothing: stand in line with
+   * one and there is a slit of sky from the ground to the eaves. `npm run
+   * seams` found the one at x 12.5 the day it could see. A party wall in each,
+   * set thirty centimetres back from the faces so the row still reads as
+   * separate houses, as tall as the *taller* neighbour's eaves — at the
+   * shorter one's, a slot of sky was left under the taller roof's overhang,
+   * which is the notch a real party wall rises through — and stopping a hand
+   * short of the houses' backs and tops so it shares no plane with them.
+   */
+  const closeGaps = (row: number[], w: number, side: -1 | 1, i0: number) => {
+    const depth = SL_D - HOUSE_FACE;
+    const eaves = (cx: number, i: number) => laneY(cx) + 1.05 + 6.4 + (i % 3) * 0.7;
+    for (let k = 0; k + 1 < row.length; k++) {
+      const a = row[k], b = row[k + 1];
+      const x0 = Math.min(a, b) + w / 2, x1 = Math.max(a, b) - w / 2;
+      if (x1 - x0 < 0.05) continue;
+      const top = Math.max(eaves(a, i0 + k), eaves(b, i0 + k + 1)) - 0.05;
+      const len = depth - 0.35;
+      root.add(box(own, x1 - x0, top, len, retaining(), (x0 + x1) / 2, top / 2,
+                   side * HOUSE_FACE + side * (0.3 + len / 2)));
+    }
+  };
+  closeGaps(NORTH, 4.7, -1, 0);
+  closeGaps(SOUTH, 4.6, 1, 3);
 
   /* ---- poles and lines ---- */
 
@@ -484,6 +512,26 @@ export function buildStepLane(anisotropy: number): BuiltArea {
     root.add(box(own, 1.3, 0.2, 1.1, matt(own, '#6a655c'), gateX, topY + 3.2, s * 1.75));
   }
   root.add(box(own, 1.2, 0.28, 2.7, matt(own, '#6a655c'), gateX, topY + 3.02, 0));
+  /*
+   * The corners between the piers and the last houses, closed.
+   *
+   * A pier stops at z ±2.2 and the houses start at ±2.9, so past each pier
+   * ran a slot seventy centimetres wide to the edge of the area — sky, from
+   * the lane's own top, between the last house and the gate. Filled from the
+   * ground to the house's eaves with the same retaining stone as the piers.
+   */
+  for (const [s, houseWest, eaves] of [
+    [1, -14.4 - 4.6 / 2, laneY(-14.4) + 1.05 + 6.4] as const,
+    [-1, -15.2 - 4.7 / 2, laneY(-15.2) + 1.05 + 6.4] as const,
+  ]) {
+    const x0 = gateX - 0.55, x1 = Math.min(houseWest, gateX + 0.55);
+    const gy = laneY(gateX) - 0.5;
+    /* Five centimetres short of the house face, which is also the face of
+       the retaining wall running past it: at 2.9 the two were one plane. */
+    const d = HOUSE_FACE - 2.2 - 0.05;
+    root.add(box(own, x1 - x0, eaves - gy, d, retaining(),
+                 (x0 + x1) / 2, (gy + eaves) / 2, s * (2.2 + d / 2)));
+  }
   /* The gate itself: uprights and two rails, so you see through it. */
   for (let i = 0; i < 9; i++) {
     root.add(box(own, 0.06, 2.4, 0.06, steel, gateX, topY + 1.2, -1.2 + i * 0.3));

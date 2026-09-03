@@ -370,6 +370,32 @@ export function buildShrine(anisotropy: number): BuiltArea {
     lamp.position.set(gx, gy + 2.6, gz - 1.4);
     root.add(lamp);
     lamps.push(lamp);
+    /*
+     * And what is *in* the box, because a closed box you can see into is a
+     * hole until something stands in it.
+     *
+     * Standing at the gate, what you saw through it was flat black: the box
+     * did its one job — nothing past its edges — and nothing else. What is
+     * actually through that gate is a burial ground, so the first two metres
+     * of it are here: the path going on, a stone lantern burning beside it, and
+     * two markers behind, dark against the dark. Enough to say where the gate
+     * goes; the real ground is built when you walk through.
+     */
+    root.add(box(own, 5.4, 0.04, 1.9, matt(own, '#3a4032'), gx, gy + 0.02, gz + 1.05));
+    root.add(box(own, 1.6, 0.02, 1.9, matt(own, '#9a9382'), gx, gy + 0.05, gz + 1.05));
+    const lx = gx + 1.4;
+    const lz = gz + 1.3;
+    root.add(box(own, 0.5, 0.2, 0.5, stone(), lx, gy + 0.14, lz));
+    root.add(box(own, 0.24, 0.9, 0.24, stone(), lx, gy + 0.69, lz));
+    root.add(box(own, 0.44, 0.44, 0.44, glow(own, '#c9954e'), lx, gy + 1.36, lz));
+    root.add(box(own, 0.6, 0.12, 0.6, stone(), lx, gy + 1.64, lz));
+    const grave = matt(own, '#4a4b45');
+    root.add(box(own, 0.5, 0.9, 0.3, grave, gx - 1.5, gy + 0.49, gz + 1.5));
+    root.add(box(own, 0.42, 0.7, 0.28, grave, gx - 0.6, gy + 0.39, gz + 1.7));
+    const yonder = new THREE.PointLight('#ffb469', 14, 6, 2);
+    yonder.position.set(lx, gy + 1.36, lz);
+    root.add(yonder);
+    lamps.push(yonder);
   }
 
   /* Beyond the fence, the hill: dark tree mass and nothing you can reach. */
@@ -762,6 +788,39 @@ export function buildShrine(anisotropy: number): BuiltArea {
    * exactly as what it was: a crate floating in the air.
    */
   root.add(box(own, 0.9, 0.34, 0.6, matt(own, '#6b5a3a'), 0, hy + 3.6, 11.05));
+
+  /*
+   * A rail round the veranda.
+   *
+   * The plinth stands three metres over the yard, and the collision has
+   * always stopped you at its edge — with nothing to see there. Mike's rule
+   * from the galleries of Black Crown Games: either you fall or there is a
+   * visible fence. So a low timber balustrade runs along both sides and the
+   * back, and along the two front corners either side of the steps, standing
+   * where the solids stand. `npm run walls` found the eight places it was
+   * missing.
+   */
+  const railWood = matt(own, '#3a2f26');
+  const railRun = (x0: number, z0: number, x1: number, z1: number) => {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+    const n = Math.max(2, Math.round(len / 1.8) + 1);
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      root.add(box(own, 0.12, 0.84, 0.12, post, x0 + (x1 - x0) * t, hy + 0.42, z0 + (z1 - z0) * t));
+    }
+    const cx = (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+    /* The top rail sits on the posts and overhangs the end ones by a hand;
+       the middle rail runs through them, thinner than they are. */
+    root.add(box(own, alongX ? len + 0.2 : 0.1, 0.08, alongX ? 0.1 : len + 0.2, railWood, cx, hy + 0.88, cz));
+    root.add(box(own, alongX ? len - 0.02 : 0.08, 0.06, alongX ? 0.08 : len - 0.02, railWood, cx, hy + 0.46, cz));
+  };
+  for (const s of [-1, 1] as const) {
+    railRun(s * 9.3, 9.08, s * 9.3, 19.3);
+    railRun(s * 7.2, 9.08, s * 9.05, 9.08);
+  }
+  railRun(-9.05, 19.3, 9.05, 19.3);
   root.add(box(own, 0.6, 0.7, 0.6, matt(own, '#8a7448'), 0, hy + 3.1, 11.05));
   /* Two lengths, not six. The rope hangs above the box you throw past it — six
      of them reached down through its lid. */

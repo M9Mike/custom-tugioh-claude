@@ -424,8 +424,11 @@ const STARTING_AREA: Area = {
      * way out of every side is a street you are *in* rather than one you pass
      * along.
      */
-    { x: -17.45, z: ST_D - 3.5, hw: 4.55, hd: 3.5, tall: true },
-    { x: 7.05, z: ST_D - 3.5, hw: 14.95, hd: 3.5, tall: true },
+    /* The gap is the passage as drawn: its walls stand a quarter-metre inside
+       the terrace ends, so a gap cut to the terrace ends let a duelist walk
+       forty-five centimetres into the passage wall. `npm run walls`. */
+    { x: -17.2, z: ST_D - 3.5, hw: 4.8, hd: 3.5, tall: true },
+    { x: 6.8, z: ST_D - 3.5, hw: 15.2, hd: 3.5, tall: true },
 
     /* West end: a hoarding across a building site. */
     { x: -ST_W + 2, z: 0, hw: 2, hd: ST_D, tall: true },
@@ -460,6 +463,13 @@ const STARTING_AREA: Area = {
     { x: 15.5, z: -7.5, hw: 0.9, hd: 0.9 },     // planter
     { x: 17.62, z: -4.0, hw: 0.42, hd: 0.62 },  // vending machine, facing the road
     { x: -17.4, z: -7.3, hw: 0.55, hd: 0.55 },  // post box, on the north pavement
+    { x: -11.5, z: -7.6, hw: 0.34, hd: 0.34 },  // litter bin, north pavement
+    { x: 6.0, z: 8.4, hw: 0.34, hd: 0.34 },     // litter bin, south pavement
+    /* The arch's pier bases either side of the way into Market Row, drawn a
+       metre and a half wide and a metre deep and never given a solid: you
+       walked into them up to the hip. Clear of the trigger between them. */
+    { x: 18.0, z: -2.3, hw: 0.75, hd: 0.55 },
+    { x: 18.0, z: 3.3, hw: 0.75, hd: 0.55 },
   ],
   /*
    * Both pavements, which sit a kerb above the road. The numbers come from
@@ -744,6 +754,13 @@ const MARKET_ROW: Area = {
      */
     { x: -2.55, z: (MR_REACH + MR_D) / 2, hw: 20.45, hd: (MR_D - MR_REACH) / 2, tall: true },
     { x: 22.6, z: (MR_REACH + MR_D) / 2, hw: 0.4, hd: (MR_D - MR_REACH) / 2, tall: true },
+    /* The passage's two piers, which stand 63 cm proud of the row on the
+       arcade floor. Drawn is colliding: the west one is on ground you can
+       walk, and without this you walked through it. (`market.ts` draws them
+       at 20.05 ± 2.25, 0.6 by 0.75.) */
+    { x: 17.8, z: MR_FRONT - 0.7, hw: 0.3, hd: 0.375 },
+    { x: 22.3, z: MR_FRONT - 0.7, hw: 0.3, hd: 0.375 },
+
 
     /* West end: the arch back out to Turtle Lane, with wall either side of it.
        The 4.4 m gap between these is the doorway, and the camera gets it back
@@ -1344,11 +1361,20 @@ const DOMINO_SHRINE: Area = {
      * round it is what a shrine looks like anyway.
      */
     { x: 0, z: 14.5, hw: 7.5, hd: 4, tall: true },
-    { x: -9.5, z: 14.25, hw: 0.4, hd: 5.25 },
-    { x: 9.5, z: 14.25, hw: 0.4, hd: 5.25 },
-    { x: 0, z: 19.5, hw: 9.5, hd: 0.4 },
-    { x: -8.25, z: 9, hw: 1.25, hd: 0.4 },
-    { x: 8.25, z: 9, hw: 1.25, hd: 0.4 },
+    /*
+     * The edge is the veranda rail `shrine.ts` draws: its inner face is the
+     * rail's inner face (x ±9.24, z 19.25, z 9.12 at the front corners) and
+     * the rest of each solid lies outward over the drop, where nobody stands.
+     * The front corners are the delicate ones — they stand beside the top
+     * tread of the great flight, which is level with the plinth, so a solid
+     * reaching south of z 8.9 stops a player on the flight a stride before
+     * anything drawn, and the flight's sides are open all the way up.
+     */
+    { x: -9.6, z: 14.25, hw: 0.36, hd: 5.25 },
+    { x: 9.6, z: 14.25, hw: 0.36, hd: 5.25 },
+    { x: 0, z: 19.6, hw: 9.6, hd: 0.36 },
+    { x: -8.15, z: 9.02, hw: 1.1, hd: 0.1 },
+    { x: 8.15, z: 9.02, hw: 1.1, hd: 0.1 },
 
     ...shrineSolids(),
   ],
@@ -1578,9 +1604,13 @@ export const CROWN_THINGS: CrownThing[] = [
   { kind: 'bench', x: 29.6, z: -16, hw: 0.42, hd: 1.2, face: -Math.PI / 2 },
 
   /* The south street: a market that packs up, left where it stands. */
-  { kind: 'stall', x: -12.2, z: 22, hw: 1.7, hd: 1.2, face: Math.PI / 2 },
-  { kind: 'stall', x: -12.2, z: 31, hw: 1.7, hd: 1.2, face: Math.PI / 2 },
-  { kind: 'stall', x: -3.8, z: 26.5, hw: 1.7, hd: 1.2, face: -Math.PI / 2 },
+  /* Turned a quarter, and the solid turned with them: the tops are 3.2 m
+     along the stall and 2 m across, so a solid written for a stall facing
+     the road left forty centimetres of tabletop past it at each end.
+     `npm run walls`. */
+  { kind: 'stall', x: -12.2, z: 22, hw: 1.2, hd: 1.7, face: Math.PI / 2 },
+  { kind: 'stall', x: -12.2, z: 31, hw: 1.2, hd: 1.7, face: Math.PI / 2 },
+  { kind: 'stall', x: -3.8, z: 26.5, hw: 1.2, hd: 1.7, face: -Math.PI / 2 },
   { kind: 'lamp', x: -12.6, z: 18, hw: 0.3, hd: 0.3, lit: true },
   /* Both of these burn. The street's far end is thirty metres from the last
      lit lamp, and what stands at the end of it is a viaduct with a bricked-up
@@ -1675,7 +1705,10 @@ const BLACK_CROWN: Area = {
     /* The south street, and the railway that stops it. */
     { x: -32, z: 30, hw: 18, hd: 14, tall: true },
     { x: 15, z: 28.75, hw: 17, hd: 15.25, tall: true },
-    { x: -8, z: 46.5, hw: 8, hd: 3, tall: true },
+    /* To the face of the blind arch and the buffers at its foot, not the
+       brick behind them: at z 43.5 the arch stood forty centimetres proud of
+       the solid and you walked into it, and the buffers had no solid at all. */
+    { x: -8, z: 46.3, hw: 8, hd: 3.6, tall: true },
 
     ...blackCrownSolids(),
   ],
@@ -1900,9 +1933,14 @@ const CROWN_SHOP: Area = {
      * off, which this shop has already been once.
      */
     /* Two sides each, not three: the fourth is where the flight comes up and
-       the far one is the east wall, which is already a wall. */
-    { x: 12.25, z: 5.45, hw: 0.35, hd: 5.05, from: CS_G1 },
-    { x: 14.19, z: 0.05, hw: 1.94, hd: 0.35, from: CS_G1 },
+       the far one is the east wall, which is already a wall.
+       The first gallery's stop short of the second: without a `to` they went
+       on up through it, and along the top gallery's east side stood ten
+       metres of wall nobody could see, half a metre in front of the shelving
+       — which is what hid it from `npm run walls` everywhere but the gap
+       between two units. */
+    { x: 12.25, z: 5.45, hw: 0.35, hd: 5.05, from: CS_G1, to: CS_G2 - 0.05 },
+    { x: 14.19, z: 0.05, hw: 1.94, hd: 0.35, from: CS_G1, to: CS_G2 - 0.05 },
     { x: -12.25, z: -5.45, hw: 0.35, hd: 5.05, from: CS_G2 },
     { x: -14.19, z: -0.05, hw: 1.94, hd: 0.35, from: CS_G2 },
 
@@ -2252,8 +2290,10 @@ const OLD_CEMETERY: Area = {
     { x: 8.2, z: -CM_D, hw: 0.62, hd: 0.62, tall: true },
     { x: 16.6, z: -CM_D, hw: 0.62, hd: 0.62, tall: true },
 
-    /* The ossuary at the head of the avenue. */
+    /* The ossuary at the head of the avenue, and the two piers of its porch. */
     { x: 21, z: 41, hw: 6.5, hd: 5.5, tall: true },
+    { x: 17, z: 34.4, hw: 0.4, hd: 0.4 },
+    { x: 25, z: 34.4, hw: 0.4, hd: 0.4 },
 
     /*
      * The edge of each terrace, broken where the paths climb it.
@@ -2298,8 +2338,12 @@ const OLD_CEMETERY: Area = {
       /* Turned a few degrees, so the footprint is the box round the turned
          stone rather than the stone — which is the right way round for
          something you are not meant to walk into. */
-      hw: m.hw * Math.cos(m.turn) + m.hd * Math.abs(Math.sin(m.turn)),
-      hd: m.hd * Math.cos(m.turn) + m.hw * Math.abs(Math.sin(m.turn)),
+      /* Both terms unsigned. A stone turns a few degrees and its cosine is
+         always positive; a tree turns up to a half circle, and for three of
+         them the cosine was negative, the solid came out *negative*, and a
+         duelist stood inside the trunk. `npm run walls` found them. */
+      hw: m.hw * Math.abs(Math.cos(m.turn)) + m.hd * Math.abs(Math.sin(m.turn)),
+      hd: m.hd * Math.abs(Math.cos(m.turn)) + m.hw * Math.abs(Math.sin(m.turn)),
     })),
   ],
   /* The gate, closed to the camera and to the sightline sweep but not to a

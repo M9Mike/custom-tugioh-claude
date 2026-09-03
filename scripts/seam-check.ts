@@ -48,7 +48,8 @@
  */
 
 import { chromium, type Page } from 'playwright';
-import { AREAS, type AreaId } from '../src/story/areas';
+import { mkdirSync } from 'node:fs';
+import { AREAS, groundAt, type AreaId } from '../src/story/areas';
 import { walkableCells } from './walkable';
 import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote } from './story-setup';
 
@@ -97,6 +98,14 @@ const ENCLOSED: AreaId[] = [
  */
 const DOOR_SLACK = 0.6;
 
+/** `SEAMS_DEBUG=x,z` prints what the down-and-out rays from near that spot land on. */
+const SEAMS_DEBUG: { x?: number; z?: number } | null = (() => {
+  const f = process.env.SEAMS_DEBUG;
+  if (!f) return null;
+  const [x, z] = f.split(',').map(Number);
+  return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : {};
+})();
+
 interface Leak { x: number; z: number; y: number; ang: number; wide: number }
 
 /** Everywhere inside the area's own bounds with nothing underneath it. */
@@ -128,7 +137,10 @@ async function voids(page: Page, id: AreaId): Promise<{ x: number; z: number }[]
           org.set(x, 60, z);
           ray.set(org, down);
           ray.far = 61;
-          if (!ray.intersectObjects(targets, false).length) {
+          /* A mesh with a NaN transform answers every ray with a hit at NaN,
+             which sorted first and made this pass blind for as long as one
+             stood in the scene. Only a finite hit is a hit. */
+          if (!ray.intersectObjects(targets, false).some((h) => Number.isFinite(h.distance))) {
             out.push({ x: +x.toFixed(2), z: +z.toFixed(2) });
           }
         }
@@ -138,6 +150,111 @@ async function voids(page: Page, id: AreaId): Promise<{ x: number; z: number }[]
     { bx: b.x, bz: b.z, bhw: b.hw, bhd: b.hd }
   );
   return found ?? [];
+}
+
+interface Blind { x: number; z: number; ang: number; pitch: number }
+
+/**
+ * The floor you can see.
+ *
+ * `voids` drops rays inside the area's own bounds and `leaks` looks out level;
+ * neither looks *down and out*. The strip of nothing between the arcade floor
+ * and the vestibule floor behind Market Row's far gates was outside the bounds,
+ * under every level ray, and in plain view through the gate's lower panel — a
+ * flat band of sky behind the bars. So from every standing place, at eye
+ * height, rays go out and down at three pitches, and each one has to land on
+ * something. One that lands on nothing has found a hole in a floor you can
+ * see. Rays through a doorway are let go: what is past a door is a closed box
+ * with no floor of its own.
+ */
+async function unfloored(page: Page, id: AreaId): Promise<Blind[]> {
+  const area = AREAS[id];
+  const cells = walkableCells(area);
+  const grid = new Map<string, { x: number; z: number; y: number }>();
+  for (const c of cells) {
+    const k = `${Math.round(c.x / 2)},${Math.round(c.z / 2)},${Math.round(c.y / 3)}`;
+    if (!grid.has(k)) grid.set(k, c);
+  }
+  /* A cell's own `y` is not always a number — `walkableCells` leaves it NaN
+     where the fill never settled a height — and a ray from a NaN origin hits
+     everything at NaN, which counted as a hit. Every pass here stood on that
+     for as long as it existed. The floor is what `groundAt` says it is. */
+  const from = [...grid.values()].map((c) =>
+    [c.x, c.z, Number.isFinite(c.y) ? c.y : groundAt(area, c.x, c.z)] as const);
+  const doors = area.doors.map((d) =>
+    [d.trigger.x, d.trigger.z, d.trigger.hw + DOOR_SLACK, d.trigger.hd + DOOR_SLACK] as const);
+  await page.evaluate('globalThis.__name = globalThis.__name || ((f) => f)');
+  const found = await page.evaluate(
+    ({ from, doors, DIRS, PITCHES, DEBUG }) => {
+      const w = window as unknown as { __scene?: unknown; __THREE?: unknown };
+      const THREE = w.__THREE as typeof import('three') | undefined;
+      const scene = w.__scene as import('three').Scene | undefined;
+      if (!THREE || !scene) return null;
+      const targets: import('three').Object3D[] = [];
+      scene.traverse((o) => {
+        const m = o as import('three').Mesh;
+        if ((m as unknown as { isMesh?: boolean }).isMesh
+            && !(m as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) targets.push(m);
+      });
+      const ray = new THREE.Raycaster();
+      ray.far = 120;
+      const org = new THREE.Vector3();
+      const dir = new THREE.Vector3();
+      const throughDoor = (x: number, z: number, dx: number, dz: number, reach: number) => {
+        for (let k = 0; k <= reach; k += 0.25) {
+          const px = x + dx * k, pz = z + dz * k;
+          for (const [cx, cz, hw, hd] of doors) {
+            if (Math.abs(px - cx) <= hw && Math.abs(pz - cz) <= hd) return true;
+          }
+        }
+        return false;
+      };
+      const out: { x: number; z: number; ang: number; pitch: number }[] = [];
+      const debug: string[] = [];
+      let cast = 0, skipped = 0;
+      for (const [x, z, fy] of from) {
+        const oy = fy + 1.5;
+        for (const pitch of PITCHES) {
+          const p = (pitch * Math.PI) / 180;
+          /* Where a level floor would be met, plus a stride: a ray that would
+             land past a doorway is looking through it. */
+          const reach = 1.5 / Math.tan(p) + 1;
+          for (let i = 0; i < DIRS; i++) {
+            const a = (i / DIRS) * Math.PI * 2;
+            const dx = Math.sin(a), dz = Math.cos(a);
+            if (throughDoor(x, z, dx, dz, reach)) { skipped++; continue; }
+            org.set(x, oy, z);
+            dir.set(dx * Math.cos(p), -Math.sin(p), dz * Math.cos(p));
+            ray.set(org, dir);
+            cast++;
+            const hits = ray.intersectObjects(targets, false).filter((h) => Number.isFinite(h.distance));
+            if (!hits.length) out.push({ x, z, ang: a, pitch });
+            if (DEBUG && DEBUG.x !== undefined && DEBUG.z !== undefined && Math.hypot(x - DEBUG.x, z - DEBUG.z) < 1.5 && debug.length < 60) {
+              const h = hits[0];
+              const g = h ? (h.object as import('three').Mesh).geometry : null;
+              debug.push(`spot ${x.toFixed(2)},${z.toFixed(2)} dir ${Math.round((a * 180) / Math.PI)}° ${pitch}° down → ` + (h
+                ? `${g?.type ?? '?'} at ${h.point.x.toFixed(2)},${h.point.y.toFixed(2)},${h.point.z.toFixed(2)} d ${h.distance.toFixed(2)}`
+                : 'NOTHING'));
+            }
+          }
+        }
+      }
+      if (DEBUG) {
+        debug.unshift(`standing places ${from.length} (floors ${[...new Set(from.map((f) => f[2].toFixed(2)))].join(' ')}), rays cast ${cast}, through doors ${skipped}, targets ${targets.length}`);
+        for (const t of targets) {
+          const e = t.matrixWorld.elements;
+          if (e.every((v) => Number.isFinite(v))) continue;
+          const m = t as import('three').Mesh;
+          debug.push(`NaN transform: ${m.geometry.type} "${t.name}" under "${t.parent?.name}" (${t.parent?.type}) pos ${t.position.x},${t.position.y},${t.position.z} scale ${t.scale.x},${t.scale.y},${t.scale.z}`);
+        }
+      }
+      return { out, debug };
+    },
+    { from, doors, DIRS: 36, PITCHES: [15, 25, 40], DEBUG: SEAMS_DEBUG }
+  );
+  if (!found) return [];
+  for (const line of found.debug) console.log(`     ${line}`);
+  return found.out;
 }
 
 async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
@@ -157,7 +274,12 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
     const k = `${Math.round(c.x / 2)},${Math.round(c.z / 2)},${Math.round(c.y / 3)}`;
     if (!grid.has(k)) grid.set(k, c);
   }
-  const from = [...grid.values()].map((c) => [c.x, c.z, c.y] as const);
+  /* A cell's own `y` is not always a number — `walkableCells` leaves it NaN
+     where the fill never settled a height — and a ray from a NaN origin hits
+     everything at NaN, which counted as a hit. Every pass here stood on that
+     for as long as it existed. The floor is what `groundAt` says it is. */
+  const from = [...grid.values()].map((c) =>
+    [c.x, c.z, Number.isFinite(c.y) ? c.y : groundAt(area, c.x, c.z)] as const);
   /* The trigger rect, widened a little: the opening is what you see through,
      and it is wider than the strip that fires the door. */
   const doors = area.doors.map((d) =>
@@ -214,6 +336,13 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
         if (!sq) return;
         box.setFromObject(m, true);
         if (!Number.isFinite(box.min.x)) return;
+        /* Rods are not walls. A wire across Step Lane is six centimetres
+           square, and a ray at the six-metre eye passing between a pole's
+           two wires is a "narrow slit with the same surface above and
+           below" — which is what a wire pair is, and what no hole is. A
+           thing thin in two of its three dimensions closes nothing. */
+        const thin = [box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z].filter((d) => d < 0.15).length;
+        if (thin >= 2) return;
         lo.push(box.min.x, box.min.y, box.min.z);
         hi.push(box.max.x, box.max.y, box.max.z);
       });
@@ -341,9 +470,33 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
 
       const loose = process_loose;
       const out: { x: number; z: number; y: number; ang: number; wide: number }[] = [];
+      /* On a hill an eye is not four metres up, it is four metres above
+         wherever the lane has climbed to — nine over the houses downhill,
+         from where every level ray is the sky over their roofs. So "high"
+         is measured from the area's lowest floor as well as from the one
+         underfoot, and up there the harder question is asked. */
+      const floorMin = Math.min(...from.map((f) => f[2]));
       for (const [x, z, fy] of from) {
-        for (const eye of [1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 13.5]) {
+        /*
+         * Four heights, and the top one is six metres.
+         *
+         * There were nine, up to thirteen and a half, on the theory that a
+         * slit under a roof is seen from below. Photographed, every escape
+         * above six metres was the sky over a roofline: a lower parapet with
+         * a taller neighbour a metre behind it satisfies every test a slit
+         * does, because a terrace *is* walls at nearly one distance. Every
+         * real hole this check has found was found from the ground. What is
+         * above six metres is looked at, in the corner frames.
+         */
+        for (const eye of [1.5, 3, 4.5, 6]) {
           const oy = fy + eye;
+          /* And no eye more than seven and a half metres over the area's
+             lowest floor: from halfway up Step Lane a level ray at nine
+             metres clears the roofs of the lowest houses at the mouth and
+             leaves over the corner of the area, which is the sky over a
+             roofline again. Seven and a half keeps the six-metre eye on the
+             flat and the eyes that found the gate's corners on the hill. */
+          if (oy - floorMin > 7.5) continue;
           for (let i = 0; i < RAYS; i++) {
             const a = (i / RAYS) * Math.PI * 2;
             const dx = Math.sin(a), dz = Math.cos(a);
@@ -354,7 +507,38 @@ async function leaks(page: Page, id: AreaId): Promise<Leak[]> {
                `SEAMS_ALL=1` drops both tests and reports every ray that gets
                out, which is how you find a hole the tests do not describe. */
             const wide = opening(x, oy, z, a);
-            if (!loose && !roofedOver(x, oy, z, dx, dz) && wide > 4) continue;
+            /*
+             * Below six metres a ray that gets out is a fault if there is wall
+             * over it *or* the opening is too narrow to be a way anywhere.
+             * Above six metres — eyes no player has, cast so that a slit
+             * between a wall and its roof is seen from below — a ray gets out
+             * over every roofline and every boundary wall, and a parapet with
+             * a chimney beside it is a "narrow opening" with the whole sky in
+             * it. Up there a hole is a hole only when it is one: wall above
+             * it and narrow. Photographed, the first sweep at height was ten
+             * rooflines out of ten.
+             */
+            const roofed = roofedOver(x, oy, z, dx, dz);
+            /* At six metres — the camera never gets higher than three and a
+               half — the harder question is the only fair one: Black Crown's
+               precinct walls are six metres, and every ray over one of them
+               at six was a "hole". */
+            const high = oy - fy >= 5.5 || oy - floorMin >= 5.5;
+            /*
+             * "Roofed over" asks whether a higher ray in the same direction is
+             * stopped, and a taller building behind a parapet stops it as
+             * surely as the wall above a slit does. Up high, ask the harder
+             * question: is what stops the ray just below this one the same
+             * surface as what stops the ray just above it? A slit in a wall
+             * has the wall on both sides at one distance; a parapet with a
+             * facade behind it has them ten metres apart.
+             */
+            const sameWall = () => {
+              const dLow = reach(x, oy - 0.6, z, dx, dz);
+              const dUp = reach(x, oy + 1.5, z, dx, dz);
+              return Number.isFinite(dLow) && Number.isFinite(dUp) && Math.abs(dLow - dUp) < 3;
+            };
+            if (!loose && (high ? !(roofed && wide <= 4 && sameWall()) : !roofed && wide > 4)) continue;
             out.push({ x, z, y: oy, ang: a, wide });
           }
         }
@@ -384,6 +568,9 @@ async function main() {
   await ensurePlayer();
   const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:/.test(a));
   const chosen = ENCLOSED.filter((id) => !only.length || only.some((o) => id.includes(o)));
+  /* `--shots`: photograph each leak from where it leaks, looking along it. */
+  const SHOTS = process.argv.includes('--shots');
+  if (SHOTS) mkdirSync('/tmp/seams', { recursive: true });
 
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
@@ -416,16 +603,59 @@ async function main() {
       }
       if (seen.length > 10) console.log(`       …and ${seen.length - 10} more`);
     }
+    const blind = await unfloored(page, id);
+    if (blind.length) {
+      if (!gaps.length) bad++;
+      const seen: { x: number; z: number; n: number; pitch: number; ang: number }[] = [];
+      for (const b of blind) {
+        const near = seen.find((k) => Math.abs(k.x - b.x) < 5 && Math.abs(k.z - b.z) < 5);
+        if (near) near.n++; else seen.push({ x: b.x, z: b.z, n: 1, pitch: b.pitch, ang: b.ang });
+      }
+      seen.sort((a, b) => b.n - a.n);
+      console.log(`  ❌ ${id} — ${blind.length} ray(s) looking down see no floor, from ${seen.length} place(s)`);
+      for (const k of seen.slice(0, 10)) {
+        const deg = Math.round((k.ang * 180) / Math.PI);
+        console.log(`       ${k.n.toString().padStart(4)} rays  at ${k.x.toFixed(1)}, ${k.z.toFixed(1)}  looking ${deg}°, ${k.pitch}° down`);
+      }
+      if (seen.length > 10) console.log(`       …and ${seen.length - 10} more`);
+    }
     const found = await leaks(page, id);
     const spots = cluster(found);
-    if (!spots.length) { if (!gaps.length) console.log(`  ✅ ${id}`); continue; }
-    if (!gaps.length) bad++;
+    if (!spots.length) { if (!gaps.length && !blind.length) console.log(`  ✅ ${id}`); continue; }
+    if (!gaps.length && !blind.length) bad++;
     console.log(`  ❌ ${id} — ${found.length} escaping rays, from ${spots.length} place(s)`);
     for (const s of spots.slice(0, 12)) {
       const deg = Math.round((s.ang * 180) / Math.PI);
       console.log(`       ${s.n.toString().padStart(4)} rays  at ${s.x.toFixed(1)}, ${s.z.toFixed(1)}`
-                  + `  eye ${s.y.toFixed(1)}  looking ${deg}°  gap ${
+                  + `  y ${s.y.toFixed(1)}  looking ${deg}°  gap ${
                       Number.isFinite(s.wide) ? `${s.wide.toFixed(1)} m` : 'open'}`);
+    }
+    if (SHOTS) {
+      await page.evaluate('globalThis.__name = globalThis.__name || ((f) => f)');
+      for (let i = 0; i < Math.min(spots.length, 10); i++) {
+        const s = spots[i];
+        await page.evaluate(({ x, y, z, ang }) => {
+          const w = window as unknown as {
+            __THREE?: typeof import('three'); __renderer?: import('three').WebGLRenderer; __scene?: import('three').Scene;
+            __origRender?: (s: import('three').Object3D, c: import('three').Camera) => void;
+          };
+          const THREE = w.__THREE!; const r = w.__renderer!;
+          const cam = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.2, 400);
+          cam.position.set(x, y, z);
+          cam.lookAt(x + Math.sin(ang) * 10, y, z + Math.cos(ang) * 10);
+          if (!w.__origRender) w.__origRender = r.render.bind(r);
+          r.render = (sc) => w.__origRender!(sc, cam);
+          w.__scene?.traverse((o) => { if ((o as { isSkinnedMesh?: boolean }).isSkinnedMesh) o.visible = false; });
+        }, { x: s.x, y: s.y, z: s.z, ang: s.ang });
+        await page.waitForTimeout(1500);
+        const file = `/tmp/seams/${id}-${i + 1}-${s.x.toFixed(1)}_${s.z.toFixed(1)}-eye${s.y.toFixed(1)}.png`;
+        await page.screenshot({ path: file, timeout: 60000 });
+        console.log(`       📸 ${file}`);
+      }
+      await page.evaluate(() => {
+        const w = window as unknown as { __renderer?: import('three').WebGLRenderer; __origRender?: unknown };
+        if (w.__renderer && w.__origRender) (w.__renderer as unknown as { render: unknown }).render = w.__origRender;
+      });
     }
     if (spots.length > 12) console.log(`       …and ${spots.length - 12} more`);
   }

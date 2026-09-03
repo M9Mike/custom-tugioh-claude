@@ -30,8 +30,8 @@
  * and a fresh page is the one thing that cannot leak.
  */
 import { chromium, type Page } from 'playwright';
-import { AREAS, type AreaId, type Door, PLAYER_RADIUS } from '../src/story/areas';
-import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote, walkUntil } from './story-setup';
+import { AREAS, type AreaId } from '../src/story/areas';
+import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote, walkUntil, approach } from './story-setup';
 
 const LAPS = (() => {
   const flag = process.argv.slice(2).find((a) => a.startsWith('--laps='));
@@ -77,16 +77,6 @@ const CIRCUIT: [AreaId, string][] = [
   ['starting-area', 'street-to-shop'],
 ];
 
-/** Where to stand to walk into a door: back from its trigger along the line the arrival faces. */
-function approach(door: Door): { x: number; z: number; facing: number } {
-  let dx = door.trigger.x - door.arrive.x;
-  let dz = door.trigger.z - door.arrive.z;
-  const len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
-  const clear = Math.abs(dx) * door.trigger.hw + Math.abs(dz) * door.trigger.hd + PLAYER_RADIUS + 1.9;
-  return { x: door.trigger.x - dx * clear, z: door.trigger.z - dz * clear, facing: Math.atan2(dx, dz) };
-}
 
 const areaOf = (page: Page) =>
   page.evaluate(() => (window as unknown as { __probe?: { area: string } }).__probe?.area ?? null).catch(() => null);

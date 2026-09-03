@@ -344,7 +344,9 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
       const alight = i < (o.lit ?? Math.round(bays * 0.35));
       /* Ground floor. */
       if (o.shut) {
-        root.add(put(step * 0.62, 2.5, 0.14, a, y0 + 2.05, 0.26, shutters));
+        /* Sixteen out, not twenty-six: a shutter sits nearly flush in its reveal,
+           and at twenty-six its face reached the pavement's last standable cell. */
+        root.add(put(step * 0.62, 2.5, 0.14, a, y0 + 2.05, 0.16, shutters));
         root.add(put(step * 0.66, 0.16, 0.3, a, y0 + 3.35, 0.3, iron));
       } else {
         root.add(put(step * 0.66, 2.6, 0.1, a, y0 + 2.1, 0.02, matt(own, '#241d18')));
@@ -517,12 +519,30 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
     root.add(box(own, 0.55, 5.4, 0.7, stone(), -19 + side * 4.75, 2.7, BACK + 1.35));
   }
   root.add(box(own, 10.5, 0.55, 0.7, stone(), -19, 5.65, BACK + 1.35));
-  /* And the arcade beyond it: a floor, a lit end wall, nothing else. There is
-     nothing to see through a doorway into another area, only that it goes. */
+  /*
+   * And the arcade beyond it: a closed box, not a panel.
+   *
+   * It was one panel five metres back, nine wide and a little lower than the
+   * opening — which from square in front reads as the arcade's end wall and
+   * from anywhere else reads as a panel with sky round it. Standing at the
+   * mouth of the lane you saw the wall, and a strip of evening sky down both
+   * sides of it and over the top. Same answer as every other doorway in the
+   * city: a back, two returns and a lid, sized so no sight line from inside
+   * the block gets past an edge, with no two of its faces in one plane.
+   */
+  const arcade = matt(own, '#3a2f28');
   floor(9, 4, -19, 0.01, BACK - 2.5, laneTex);
-  root.add(box(own, 9, 5.2, 0.4, matt(own, '#3a2f28'), -19, 2.6, BACK - 4.3));
+  root.add(box(own, 11, 6.4, 0.4, arcade, -19, 3.2, BACK - 4.7));
+  /* The returns stop short of the head's inner face and the lid stops short
+     of the back: run to either, and a return's end shares a plane with a sign
+     bracket on the wall and with the lid's own end. Everything still meets
+     inside something. */
+  for (const side of [-1, 1] as const) {
+    root.add(box(own, 0.4, 6.4, 4.2, arcade, -19 + side * 4.7, 3.2, BACK - 2.4));
+  }
+  root.add(box(own, 9.4, 0.4, 3.4, arcade, -19, 6.0, BACK - 2.7));
   const backGlass = glow(own, '#a37f4a');
-  root.add(box(own, 5, 1.6, 0.14, backGlass, -19, 2.6, BACK - 4.05));
+  root.add(box(own, 5, 1.6, 0.14, backGlass, -19, 2.6, BACK - 4.45));
   const backLight = new THREE.PointLight('#ffc186', 26, 14, 2);
   backLight.position.set(-19, 3.4, BACK - 2.2);
   root.add(backLight);
@@ -683,8 +703,10 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   frontage({ along: 'x', from: 16.6, to: 32.7, face: -10, dy: -0.07, outward: -1, h: 15, bays: 4, lit: 1,
              base: BC_COURT });
   /* And the side door nobody uses, on the wall now that there is one. */
-  root.add(box(own, 1.4, 3.2, 0.34, timber, 20.5, BC_COURT + 1.6, -10.55));
-  root.add(box(own, 1.7, 0.3, 0.5, stone(), 20.5, BC_COURT + 3.35, -10.6));
+  /* In its reveal, not standing half a metre off the wall: at −10.55 the door
+     stood proud of the court's collision face and a hip clipped through it. */
+  root.add(box(own, 1.4, 3.2, 0.34, timber, 20.5, BC_COURT + 1.6, -10.2));
+  root.add(box(own, 1.7, 0.3, 0.5, stone(), 20.5, BC_COURT + 3.35, -10.28));
 
   /*
    * And the building south of the podium, which had the same fault: from the

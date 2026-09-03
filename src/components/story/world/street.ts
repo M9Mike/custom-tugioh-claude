@@ -292,7 +292,9 @@ export function buildStreet(anisotropy: number): BuiltArea {
          them: at `out * 0.14` their back face was a centimetre off its back
          face, over more than a square metre, on every shopfront in the street. */
       root.add(box(own, gw + 0.3, 0.22, 0.28, matt(own, '#3b332a'), cx, 3.06, zf + out * 0.20));
-      root.add(box(own, gw + 0.3, 0.24, 0.28, matt(own, '#3b332a'), cx, 0.82, zf + out * 0.20));
+      /* A shallow ledge, not a shelf: at 28 cm deep and set 20 cm out it reached
+         past the collision face and a duelist's hip clipped its edge. */
+      root.add(box(own, gw + 0.3, 0.24, 0.16, matt(own, '#3b332a'), cx, 0.82, zf + out * 0.12));
       const spill = new THREE.PointLight('#ffb96a', 45, 12, 2);
       spill.position.set(cx, 2.1, faceZ + out * 1.4);
       root.add(spill);
@@ -324,6 +326,20 @@ export function buildStreet(anisotropy: number): BuiltArea {
   /* --- the Kame Game Shop itself, at x = 2.6 --- */
   building(9.55, 6.9, NORTH_FACE, -1, 8.8, { shopfront: true, awning: '#3f5f7a' });
   building(15.6, 5.2, NORTH_FACE, -1, 9.8);
+  /*
+   * The two hairlines in the north row, closed.
+   *
+   * The units at -16 and -9.2 stand twenty centimetres apart, and so do -9.2
+   * and -3.65; behind each gap is the back of the terrace and then nothing.
+   * From the kerb opposite, in line with one, that is a dark slit from the
+   * pavement to the parapet — `npm run seams` found the first the day it
+   * could see. A party wall in each, set back a little so the units still
+   * read as two, as tall as the shorter neighbour and stopping short of both
+   * backs so it shares no plane with either.
+   */
+  for (const [x0, x1, h] of [[-12.0, -11.8, 8.2], [-6.6, -6.4, 8.2]] as const) {
+    root.add(box(own, x1 - x0, h - 0.05, 7.0, brickWall(), (x0 + x1) / 2, (h - 0.05) / 2, NORTH_FACE - 0.3 - 3.5));
+  }
 
   /*
    * South terrace, opposite. Taller than the north, so the street feels held in,
@@ -656,11 +672,29 @@ export function buildStreet(anisotropy: number): BuiltArea {
     root.add(box(own, 11.2, 7, 0.6, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#6e6c67'), 1, 1, anisotropy))),
                  WEST_FACE - 10, 3.5, az));
   }
-  for (let i = 0; i < 7; i++) {
+  /*
+   * The first flight, three metres in rather than eight, and lit.
+   *
+   * From the street the passage read as a dark blue-grey panel: the steps
+   * began eight metres back where nothing reached them, and the one lamp is
+   * over the door, pointing at the pavement. Standing at the mouth of a lane
+   * you are about to walk up, what you should see is the lane starting — so
+   * the flight starts where a stride would meet it, a lantern on the passage
+   * wall lights it the way Step Lane's own houses do, and the treads are the
+   * pale stone the lane is actually built of.
+   */
+  const treadMat = tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#8a8780'), 1, 1, anisotropy)));
+  for (let i = 0; i < 9; i++) {
     const y = 0.18 * (i + 1);
-    root.add(box(own, 0.5, y, ALLEY_S - ALLEY_N, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#7c7a74'), 1, 1, anisotropy))),
-                 WEST_FACE - 8.25 - i * 0.5, y / 2, alleyMid));
+    /* Four centimetres short of the jambs: a tread that runs exactly wall to
+       wall puts its end faces in the jambs' own planes. */
+    root.add(box(own, 0.5, y, ALLEY_S - ALLEY_N - 0.04, treadMat, WEST_FACE - 3.4 - i * 0.5, y / 2, alleyMid));
   }
+  root.add(box(own, 0.2, 0.34, 0.34, matt(own, '#2b2b2c'), WEST_FACE - 4.2, 2.6, ALLEY_N - 0.02 + 0.17));
+  root.add(box(own, 0.24, 0.4, 0.24, glow(own, '#f0c98a'), WEST_FACE - 4.2, 2.6, ALLEY_N + 0.34));
+  const alleyInner = new THREE.PointLight('#ffc98a', 34, 11, 2);
+  alleyInner.position.set(WEST_FACE - 4.2, 2.8, alleyMid);
+  root.add(alleyInner);
   root.add(box(own, 2, 8, ALLEY_S - ALLEY_N + 1.4, tiled(matt(own, '#ffffff', surfaceOf(own, () => concrete('#6e6c67'), 1, 1, anisotropy))),
                WEST_FACE - 15, 4, alleyMid));
 

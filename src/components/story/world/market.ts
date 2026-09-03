@@ -473,7 +473,10 @@ export function buildMarket(anisotropy: number): BuiltArea {
   {
     const PZ = MR_FRONT - 0.4;      // the face the surround stands on
     for (const side of [-1, 1] as const) {
-      root.add(box(own, 0.6, 5.4, 0.75, stoneTrim, 20.05 + side * 2.45, 2.7, PZ - 0.3));
+      /* Twenty centimetres in from the opening's edges, and solid: the west
+         one stands on arcade floor you can walk, and `areas.ts` gives both a
+         footprint of their own. */
+      root.add(box(own, 0.6, 5.4, 0.75, stoneTrim, 20.05 + side * 2.25, 2.7, PZ - 0.3));
     }
     root.add(box(own, 5.7, 0.6, 0.75, stoneTrim, 20.05, 5.7, PZ - 0.3));
     const through = new THREE.Mesh(
@@ -840,15 +843,26 @@ export function buildMarket(anisotropy: number): BuiltArea {
   /* Also a little short of the blocks in front of it, so their ends and its
      ends are not the same two planes. */
   root.add(box(own, 1.4, 8.74, MR_FRONT * 2 + 7.88, blockSkin, gateX + 6.4, 4.37, 0));
-  /* Starting past the arcade floor's own edge at x 23 rather than under it:
-     two planes at y 0 sharing 40 cm of ground is z-fighting by definition, and
-     `npm run coplanar` found it as four square metres of it. */
+  /* Starting *at* the arcade floor's own edge, x 23 — not under it, and not
+     past it. Under it, two planes at y 0 shared 40 cm of ground and
+     `npm run coplanar` found four square metres of z-fighting; 80 cm past it,
+     there was a strip of nothing between the two floors, and through the
+     gate's lower panel that strip was the void — a flat band of sky colour
+     behind the bars, from the mouth of the passage to Black Crown. Edge to
+     edge, a millimetre apart in height, they share no area and leave no gap. */
+  /*
+   * Not the arcade's own floor. In the same pale tiles, lit by nothing but the
+   * sky — the gate lamp is a night lamp and the blocks shade the sun — the
+   * strip behind the bars read as a flat band of daylight from the passage
+   * mouth, which is the second time this end has been photographed as sky.
+   * A dark, worn floor in shadow reads as a dark, worn floor.
+   */
   const vestibule = new THREE.Mesh(
-    own.keep(new THREE.PlaneGeometry(5.4, MR_FRONT * 2)),
-    floorMat
+    own.keep(new THREE.PlaneGeometry(6.2, MR_FRONT * 2)),
+    matt(own, '#5e5347', surfaceOf(own, () => paving({ dirt: 0.6 }), 2.7, 5, anisotropy))
   );
   vestibule.rotation.x = -Math.PI / 2;
-  vestibule.position.set(gateX + 4.5, 0.001, 0);
+  vestibule.position.set(gateX + 4.1, 0.001, 0);
   vestibule.receiveShadow = true;
   root.add(vestibule);
 

@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { PLAYER_RADIUS, type Door } from '../src/story/areas';
 import { STARTER_POOL } from '../src/story/roster';
 
 /**
@@ -182,8 +183,9 @@ export async function walkUntil(
   }
 }
 
-export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR): Promise<boolean> {
-  await page.goto(`${BASE}/story?t=${hour}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+export async function enterStory(page: Page, area?: string, hour: number | null = PINNED_HOUR): Promise<boolean> {
+  /* `null` leaves the clock running — for the one check that is about time passing. */
+  await page.goto(`${BASE}/story${hour === null ? '' : `?t=${hour}`}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   /*
    * Sign in if asked, and do not mind if the card goes away mid-sentence.
    *
@@ -245,4 +247,28 @@ export async function enterStory(page: Page, area?: string, hour = PINNED_HOUR):
     await page.waitForTimeout(200);
   }
   return false;
+}
+
+/**
+ * Where to stand to walk into a door: through it the way a door is crossed.
+ *
+ * Along its axis, from the side the arrival is on. The arrival itself may sit
+ * off to one side — Market Row keeps the camera out of the far gates that
+ * way — and a straight line from there cuts the corner of whatever flanks the
+ * doorway, which no player does: with the passage piers made solid, the old
+ * diagonal run-up jammed on one. A clearly oblong trigger is crossed across
+ * its short side; a square one along whichever way the arrival is offset.
+ * Shared by `door-check`, `door-shots` and `soak-check`, so what is
+ * photographed, what is crossed and what is soaked is one run-up.
+ */
+export function approach(door: Door): { x: number; z: number; facing: number } {
+  const ox = door.trigger.x - door.arrive.x;
+  const oz = door.trigger.z - door.arrive.z;
+  const { hw, hd } = door.trigger;
+  const oblong = Math.max(hw, hd) / Math.min(hw, hd) > 1.3;
+  const alongX = oblong ? hw < hd : Math.abs(ox) >= Math.abs(oz);
+  const dx = alongX ? Math.sign(ox) || 1 : 0;
+  const dz = alongX ? 0 : Math.sign(oz) || 1;
+  const clear = (alongX ? hw : hd) + PLAYER_RADIUS + 1.9;
+  return { x: door.trigger.x - dx * clear, z: door.trigger.z - dz * clear, facing: Math.atan2(dx, dz) };
 }

@@ -117,15 +117,22 @@ Trails 4.6 m behind. It gives up distance for height when something is behind
 it (`camLift`), which indoors is the point and outdoors means a landing was
 put against a wall — a door's `arrive` needs the camera's 4.5 m clear behind
 it. `camSolids` close a doorway to the camera without closing it to the
-duelist.
+duelist. It rides the highest floor between the lens and the duelist, asked
+from a metre above the lens — so on a flight it rises onto the treads behind
+you instead of showing you the inside of a riser — and anything more than
+eighty centimetres over the lens is a ceiling, not a floor.
 
 ### What is beyond a door
 
 A different scene, which is to say the void. Every doorway you can see through
 gets a closed box behind it — back, two returns, a lid — sized so no sight
 line from inside the area gets past its edges, with no two of its faces in one
-plane. Nothing else may stand inside that box: a canopy that reaches into it
-hangs in the doorway.
+plane. And a floor that reaches it: a strip of nothing between two floors is
+the void, seen through whatever stands over it. Nothing else may stand inside that box: a canopy that reaches into it
+hangs in the doorway. And a closed box you can see into is a hole until
+something stands in it: the first two metres of the place beyond — a lantern
+burning, the path going on, a fence, a lit window — so the gate says where it
+goes. `npm run doorshots` photographs every approach; look at each one.
 
 ## The gates
 
@@ -136,13 +143,17 @@ npm run areas      # every area holds; every sweep names every area; all reachab
 npm run footing    # a floor everywhere you can stand; feet never in it, never over it
 npm run coplanar   # no two same-facing faces in one plane (measured from vertices)
 npm run embedded   # nothing driven into a wall (containers must fill their box)
-npm run seams      # no sight line out of a room with no window
+npm run seams      # no sight line out, from four heights up to 6 m; every floor you can see is there (above 6 m: the corner frames)
 npm run doors      # every door reaches, lands where its partner says, camera clear
+npm run walls      # collision is what is drawn: no walls of air, nothing drawn where you stand
+npm run doorshots  # a frame from the approach to every door, both ways — look at them
 npm run stairs     # feet on every step, every flight
 npm run carryon    # leave, come back, same spot
 npm run shimmer    # no flicker
 npm run walk       # recorded walks — descriptive, watch them
 npm run soak       # one page, six laps of every door: nothing only goes up
+npm run linger     # one page, six minutes in one area with the clock running: nothing only goes up
+npm run duelreturn # into a duel from a conversation and back: no sign-in, same spot, conversation resumed
 npm run models     # every model the size it says
 npm run stale      # the guard that puts you back where you were
 npm run story      # the whole flow, tapped, at both phone sizes
@@ -157,7 +168,14 @@ close the horizon. **When Mike names an object, go and look at the object.**
 
 And probe the instrument. When you loosen a check, put the fault back and
 prove the check still catches it. When you tighten one, prove it still passes
-on everything that was clean.
+on everything that was clean. A check that has never failed has never been
+proved: the seams check reported "none" for five days because every standing
+place it used had a NaN height — `walkableCells` leaves `y` NaN in a
+single-storey area, a ray from a NaN origin hits everything at NaN, and NaN
+counted as a hit. Stand on `groundAt` where `c.y` is not finite, count only
+finite hits, and before trusting a new pass reopen a known hole and watch it
+fail. `npm run seams -- <area> --shots` and `npm run walls -- <area>
+--why=x,z` exist so a fault list can be looked at rather than reasoned about.
 
 ## Working with Mike
 

@@ -291,6 +291,28 @@ export function buildCemetery(anisotropy: number): BuiltArea {
     under.position.set(gx, 3.5, -D);
     root.add(under);
     lamps.push(under);
+    /*
+     * And what is in the box, which is the back of the shrine.
+     *
+     * A closed box you can see into is a hole until something stands in it:
+     * from the avenue the gate framed a lantern hanging in flat black. So the
+     * first two metres past the threshold are here — the path going on, a
+     * stone lantern burning beside it, the shrine's back fence dark behind.
+     * Enough to say where the gate goes; the precinct is built when you walk
+     * through.
+     */
+    root.add(box(own, 3.6, 0.02, 2.6, matt(own, '#9a9382'), gx, 0.03, -D - 1.5));
+    const px = gx - 2.4;
+    const pz = -D - 1.9;
+    root.add(box(own, 0.5, 0.2, 0.5, kerb(), px, 0.1, pz));
+    root.add(box(own, 0.24, 0.9, 0.24, kerb(), px, 0.65, pz));
+    root.add(box(own, 0.44, 0.44, 0.44, glow(own, '#c9954e'), px, 1.32, pz));
+    root.add(box(own, 0.6, 0.12, 0.6, kerb(), px, 1.6, pz));
+    root.add(box(own, 8, 0.9, 0.14, matt(own, '#2e2a24'), gx, 0.45, -D - 2.7));
+    const past = new THREE.PointLight('#ffb469', 14, 7, 2);
+    past.position.set(px, 1.32, pz);
+    root.add(past);
+    lamps.push(past);
   }
 
   /* ---- the stones ---- */

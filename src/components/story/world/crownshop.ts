@@ -482,6 +482,20 @@ export function buildCrownShop(anisotropy: number): BuiltArea {
          face lands on the edge of the gallery slab the flight runs past. */
       root.add(box(own, 0.28, 0.12, Math.abs(dz) + 0.01, dark, cross, y + 1.02, z));
       root.add(box(own, 0.09, 0.54, 0.09, iron, cross, y + 0.71, z));
+      /*
+       * And the spandrel under it: a panel from the floor the flight leaves
+       * to the underside of the balustrade on every step, closing the open
+       * side. The collision along this side is a wall from floor to gallery,
+       * so a wall from floor to gallery is what is drawn — mid-flight, with
+       * only the climbing rail overhead, `npm run walls` found nothing beside
+       * you at hip height but the east wall four metres off. Two centimetres
+       * in from the balustrade's faces, and stopping four centimetres under
+       * it — a shadow gap, and not a top face at gallery height: the last
+       * panel's top sat a millimetre under the top of the slab the flight
+       * arrives beside, and `npm run coplanar` counted the two as one plane.
+       */
+      const ph = y - y0 - 0.04;
+      root.add(box(own, 0.2, ph, Math.abs(dz) + 0.01, timber, cross, y0 + ph / 2, z));
     }
   };
 

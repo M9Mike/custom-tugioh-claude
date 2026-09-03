@@ -74,7 +74,11 @@
     "corners": "tsx scripts/corner-shots.ts",
     "stairs": "tsx scripts/stairs-check.ts",
     "carryon": "tsx scripts/carryon-check.ts",
-    "soak": "tsx scripts/soak-check.ts"
+    "soak": "tsx scripts/soak-check.ts",
+    "walls": "tsx scripts/walls-check.ts",
+    "doorshots": "tsx scripts/door-shots.ts",
+    "linger": "tsx scripts/linger-check.ts",
+    "duelreturn": "tsx scripts/duelreturn-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
