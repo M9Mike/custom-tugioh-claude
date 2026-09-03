@@ -105,6 +105,7 @@ export class Sky {
   private readonly glows: { at: THREE.Color; was: THREE.Color }[] = [];
 
   constructor(own: Owned, root: THREE.Group, o: SkyOptions) {
+    LIVE.add(this);
     this.own = own;
     this.reach = o.reach;
     this.indoor = o.indoor ?? false;
@@ -216,10 +217,35 @@ export class Sky {
   }
 
   dispose() {
+    LIVE.delete(this);
     this.key.shadow?.map?.dispose();
     for (const l of this.lamps) l.light.shadow?.map?.dispose();
   }
 
+  /** The key's shadow map, re-made at another size on the next frame. */
+  shadowSize(size: number) {
+    if (this.key.shadow.mapSize.x === size) return;
+    this.key.shadow.mapSize.set(size, size);
+    this.key.shadow.map?.dispose();
+    this.key.shadow.map = null;
+  }
+
+}
+
+/** Every sky standing, so the renderer's governor can reach the shadow maps. */
+const LIVE = new Set<Sky>();
+
+/**
+ * Smooth beats sharp.
+ *
+ * Levels 0 and 1 keep the 2048 shadow map and give up pixels; 2 and 3 halve
+ * the map as well. Called by the world's governor when frames run long — on a
+ * phone that has been walking the city for five minutes and is warm — and
+ * again on the way back up when they run short.
+ */
+export function setShadowQuality(level: number) {
+  const size = level >= 2 ? 1024 : 2048;
+  for (const sky of LIVE) sky.shadowSize(size);
 }
 
 /** Kept so `Owned` stays the one place that knows how to let go of things. */

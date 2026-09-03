@@ -72,6 +72,12 @@ collector cannot see the card, and an area entered twenty times must cost what
 it cost the first. `npm run soak` walks one page through every door for six
 laps and fails if anything only ever goes up.
 
+**Smooth beats sharp.** The renderer watches its own frame time
+(`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it
+gives up frames; a phone starts at one and a half times its pixels, not two.
+`npm run linger` watches it act. Nothing else in the world may assume a
+pixel ratio.
+
 **Speed is the same everywhere.** Inside and outside, on the flat and on the
 stairs. The ease that keeps feet on a step is clamped on the way up
 (`groundY ≥ wantY − 0.02`) and free on the way down.

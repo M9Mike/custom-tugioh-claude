@@ -37,6 +37,7 @@ import {
 } from '@/story/areas';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
+import { setShadowQuality } from './world/sky';
 import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
 import { buildMarket } from './world/market';
@@ -241,7 +242,19 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       queueMicrotask(() => setWebglFailed(true));
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    /*
+     * Two on a desktop, one and a half on a phone.
+     *
+     * A three-times phone at two is four times the pixels of its own screen,
+     * with antialiasing on top and a 2048 shadow map under it, and that is a
+     * load a phone carries for four minutes before it is warm and starts
+     * dropping frames — which is what Mike felt as "slow after five minutes,
+     * fine again after a refresh". A refresh is a rest, not a fix. Fewer
+     * pixels from the start, and the governor below for the rest.
+     */
+    const coarse = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches ?? false;
+    const baseRatio = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+    renderer.setPixelRatio(baseRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -484,6 +497,44 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     const ro = new ResizeObserver(resize);
     ro.observe(el);
 
+    /*
+     * The governor: smooth beats sharp.
+     *
+     * A running average of the real frame time, and four levels of quality.
+     * Three seconds over thirty frames a second steps down — fewer pixels,
+     * then a smaller shadow map — and twelve seconds under fifty-five steps
+     * back up. Frames nobody drew (a hidden tab, an area being built) are not
+     * counted. `__probe.quality` says where it is, so `npm run linger` can
+     * watch it act.
+     */
+    const RATIOS = [1, 0.85, 0.7, 0.55];
+    const quality = { level: 0, ema: 1 / 60, since: performance.now(), frames: 0 };
+    const applyQuality = () => {
+      renderer.setPixelRatio(baseRatio * RATIOS[quality.level]);
+      resize();
+      setShadowQuality(quality.level);
+    };
+    const govern = (raw: number) => {
+      /* A hidden tab hands back seconds; an area being built, a crossing.
+         Neither is a frame anybody watched. A hitch of up to a second and a
+         half is — counted, but capped, so one long frame cannot by itself
+         drag the average over the line. */
+      if (raw > 1.5 || document.hidden || crossing !== null) return;
+      quality.ema += (Math.min(raw, 0.1) - quality.ema) * 0.05;
+      quality.frames++;
+      const now = performance.now();
+      if (quality.frames < 45 || now - quality.since < 3000) return;
+      if (quality.ema > 1 / 30 && quality.level < 3) {
+        quality.level++;
+        applyQuality();
+        quality.since = now; quality.frames = 0;
+      } else if (quality.ema < 1 / 55 && quality.level > 0 && now - quality.since > 12000) {
+        quality.level--;
+        applyQuality();
+        quality.since = now; quality.frames = 0;
+      }
+    };
+
     const clock = new THREE.Clock();
     /**
      * A door being walked through: black out, swap the world, come back.
@@ -567,7 +618,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * Ten frames a second is a genuine stall and worth clipping. Twenty is a
        * busy room, and a busy room should not slow time down.
        */
-      const dt = Math.min(clock.getDelta(), 0.05);
+      const raw = clock.getDelta();
+      govern(raw);
+      const dt = Math.min(raw, 0.05);
 
       /* The sky, before anything is drawn under it. */
       const hour = hourFrom(Date.now(), pinned);
@@ -1046,6 +1099,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           near: nearRef.current?.id ?? null,
           lights: scene.children.length,
           built: built ? built.root.children.length : 0,
+          quality: { level: quality.level, ratio: +renderer.getPixelRatio().toFixed(2), ms: +(quality.ema * 1000).toFixed(1) },
         };
       }
       renderer.render(scene, camera);
