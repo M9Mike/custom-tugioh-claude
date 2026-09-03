@@ -78,13 +78,27 @@ export default function StoryMode() {
     return pending;
   });
   /**
+   * The other half of the road back, which does not depend on the note.
+   *
+   * `sessionStorage` is the note's home and on one phone it was not there when
+   * the world came back — the sign-in card was, and then the first field. So
+   * the save itself now says "in a duel with Sarah" (see `DuelInProgress`),
+   * `login` brings it back with the room's verdict, and a mark in
+   * `localStorage` is enough to know, on arrival, that this is a return and
+   * not a cold visit: sign in without asking, and resume off the save.
+   */
+  const [walkingBack] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return window.localStorage.getItem(MIRROR) === '1'; } catch { return false; }
+  });
+  /**
    * A conversation to walk straight back into.
    *
    * Cleared once used: coming back from a duel should resume the conversation
    * exactly once, and a note left in place would reopen the character every time
    * the world mounted for the rest of the session.
    */
-  const [resume] = useState<{ npcId: string; node: string } | null>(() =>
+  const [resume, setResume] = useState<{ npcId: string; node: string } | null>(() =>
     returned ? { npcId: returned.npcId, node: returned.outcome === 'won' ? returned.won : returned.lost } : null
   );
   /**
@@ -162,6 +176,14 @@ export default function StoryMode() {
     } catch {
       /* private browsing — they will type it again next time */
     }
+    /* Off the save, in the same render as the world mounts — `OpenWorld` reads
+       `resume` once, on the way in. A loss resumes too; only a win owes. */
+    const back = res.data.profile.pendingDuel;
+    if (back?.outcome) {
+      setResume({ npcId: back.npcId, node: back.outcome === 'won' ? back.won : back.lost });
+      if (back.outcome === 'won') setOwed({ code: back.code, token: back.token });
+    }
+    try { window.localStorage.removeItem(MIRROR); } catch { /* private browsing */ }
     setProfile(res.data.profile);
     setScreen(res.data.stage);
   };
@@ -373,6 +395,9 @@ export default function StoryMode() {
         body: JSON.stringify({
           storyUser: name,
           opponentId: npc.duel.opponentId,
+          npcId: npc.id,
+          won: npc.duel.won,
+          lost: npc.duel.lost,
         }),
         cache: 'no-store',
       });
@@ -390,6 +415,7 @@ export default function StoryMode() {
         won: npc.duel.won,
         lost: npc.duel.lost,
       });
+      try { window.localStorage.setItem(MIRROR, '1'); } catch { /* private browsing */ }
       router.push(`/duel/${data.code}`);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -411,7 +437,7 @@ export default function StoryMode() {
    */
   const walkedBackIn = useRef(false);
   useEffect(() => {
-    if (!ready || !returned || walkedBackIn.current) return;
+    if (!ready || !(returned || walkingBack) || walkedBackIn.current) return;
     if (profile || busy || !name) return;
     walkedBackIn.current = true;
     /* Deferred a tick rather than called straight out: `signIn` sets state on its
@@ -424,7 +450,23 @@ export default function StoryMode() {
        the ref above already guarantees this fires once. */
     queueMicrotask(() => void signIn());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, returned, profile, busy, name]);
+  }, [ready, returned, walkingBack, profile, busy, name]);
+
+  /**
+   * And once the world has the conversation back, the save is told so —
+   * otherwise every sign-in for the rest of time would resume it.
+   */
+  const settled = useRef<string | null>(null);
+  useEffect(() => {
+    const pending = profile?.pendingDuel;
+    if (!profile || !pending?.outcome || screen !== 'world' || settled.current === pending.code) return;
+    settled.current = pending.code;
+    const username = profile.username;
+    void (async () => {
+      const res = await post<{ profile: StoryProfile }>('/api/story/save', { username, duelDone: true });
+      if (res.ok && res.data.profile) setProfile(res.data.profile);
+    })();
+  }, [profile, screen]);
 
   /**
    * Buys one card, and returns what Solomon should say — or null when it worked.
@@ -456,6 +498,9 @@ export default function StoryMode() {
   /* ---------------- sign in ---------------- */
 
   if (!profile || !screen) {
+    /* Coming back from a duel is not a visit: no card, no question, until the
+       sign-in has actually failed and the name is a question again. */
+    if ((returned || walkingBack) && !error) return <Waiting line="Walking back in" />;
     return (
       <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col items-center justify-center gap-6 p-5">
         <div className="text-center">
@@ -577,6 +622,8 @@ export default function StoryMode() {
  * that is only true for the next ninety seconds.
  */
 const PENDING = 'story:duel';
+/** Set on the way into a duel, cleared on the way back: "this is a return". */
+const MIRROR = 'story:duel-mirror';
 
 export interface PendingDuel {
   /** The room the duel is being played in, so a stale note can be told apart. */

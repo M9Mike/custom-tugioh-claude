@@ -59,7 +59,10 @@ export async function POST(req: Request) {
         z: settled.z,
         facing: finite(patch.facing, profile.world.facing) % (Math.PI * 2),
       };
-      return { ok: true, profile: { ...profile, world } };
+      /* `duelDone`: the conversation the duel came out of has picked up again,
+         and the note on the save has done its job. */
+      const pendingDuel = body.duelDone === true ? null : profile.pendingDuel;
+      return { ok: true, profile: { ...profile, world, pendingDuel } };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });
     return Response.json({ ok: true, profile: result.profile });

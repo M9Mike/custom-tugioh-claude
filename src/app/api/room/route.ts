@@ -1,5 +1,5 @@
 import { createExhibitionRoom, createRoom, createSoloRoom, createStoryRoom, createTournamentRoom, viewOf } from '@/server/rooms';
-import { canonicalUsername, loadProfile } from '@/server/story';
+import { canonicalUsername, loadProfile, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
 
 export const runtime = 'nodejs';
@@ -19,6 +19,10 @@ export async function POST(req: Request) {
      * cards this player actually owns.
      */
     storyUser?: string;
+    /** With `storyUser`: who the duel is with in the story, and where it resumes. */
+    npcId?: string;
+    won?: string;
+    lost?: string;
     dress?: string;
     tournament?: boolean;
     spectate?: boolean;
@@ -52,6 +56,12 @@ export async function POST(req: Request) {
         body.opponentId ?? 'mai',
         body.dress
       );
+      /* Written on the save as well as handed back — see `DuelInProgress`. Best
+         effort: a save that is busy does not stop a duel that is ready. */
+      if (typeof body.npcId === 'string' && typeof body.won === 'string' && typeof body.lost === 'string') {
+        const note = { code: room.code, token, npcId: body.npcId, won: body.won, lost: body.lost, startedAt: Date.now() };
+        await updateProfile(canonical, (p) => ({ ok: true, profile: { ...p, pendingDuel: note } })).catch(() => null);
+      }
       return Response.json({ ok: true, code: room.code, token, pid });
     }
 

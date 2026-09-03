@@ -25,6 +25,8 @@ export interface StoryBody {
   token?: unknown;
   /** The shop: which card is being bought. */
   slug?: unknown;
+  /** `save`: the duel on the save has been come back from; forget it. */
+  duelDone?: boolean;
 }
 
 export async function readBody(req: Request): Promise<StoryBody> {
@@ -39,5 +41,6 @@ export async function readBody(req: Request): Promise<StoryBody> {
     slug: obj.slug,
     deck: obj.deck,
     world: obj.world,
+    duelDone: obj.duelDone === true,
   };
 }

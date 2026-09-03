@@ -1,7 +1,30 @@
-import { canonicalUsername, loadOrCreateProfile } from '@/server/story';
+import { canonicalUsername, loadOrCreateProfile, updateProfile } from '@/server/story';
+import { loadRoom } from '@/server/rooms';
+import type { StoryProfile } from '@/story/profile';
 import { describeStoreError } from '@/server/store';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
+
+/**
+ * A duel walked into and not come back from: ask the room how it went.
+ *
+ * The verdict is the room's, never the client's. A room that has gone — they
+ * expire — is nothing to come back to, and the note is cleared. A room still
+ * being played is left alone: no outcome, no conversation to resume.
+ */
+async function withVerdict(canonical: string, profile: StoryProfile): Promise<StoryProfile> {
+  const pending = profile.pendingDuel;
+  if (!pending) return profile;
+  const room = await loadRoom(pending.code).catch(() => null);
+  if (!room || !room.story) {
+    const cleared = await updateProfile(canonical, (p) => ({ ok: true, profile: { ...p, pendingDuel: null } })).catch(() => null);
+    return cleared?.ok ? cleared.profile : { ...profile, pendingDuel: null };
+  }
+  const winner = room.state?.winner;
+  if (!winner) return profile;
+  const mine = (['p1', 'p2'] as const).find((seat) => room.seats[seat]?.token === pending.token);
+  return { ...profile, pendingDuel: { ...pending, outcome: mine && winner === mine ? 'won' : 'lost' } };
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +47,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const profile = await loadOrCreateProfile(canonical);
+    const profile = await withVerdict(canonical, await loadOrCreateProfile(canonical));
     return Response.json({ ok: true, profile, stage: stageFor(profile) });
   } catch (err) {
     const reason = describeStoreError(err);

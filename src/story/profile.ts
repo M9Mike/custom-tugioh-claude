@@ -80,6 +80,16 @@ export interface StoryProfile {
   level: number;
   xp: number;
   world: WorldPosition;
+  /**
+   * The duel this duelist walked into from a conversation and has not come
+   * back from. Written by `/api/room` when the room is made, read back by
+   * `/api/story/login` with the room's own verdict attached, and cleared by
+   * `/api/story/save` once the conversation has picked up. The server owns
+   * it because the browser could not be trusted to: a note in
+   * `sessionStorage` was the whole road back, and on Mike's phone the road
+   * back was a sign-in card and the first field.
+   */
+  pendingDuel?: DuelInProgress | null;
   createdAt: number;
   updatedAt: number;
   /**
@@ -98,6 +108,19 @@ export interface StoryProfile {
 }
 
 /** Inside the shop, a step in from the door, looking at the counter. */
+export interface DuelInProgress {
+  /** The room, and the seat in it — the server's own token, kept server-side. */
+  code: string;
+  token: string;
+  npcId: string;
+  /** Which node the conversation resumes on, per outcome. */
+  won: string;
+  lost: string;
+  startedAt: number;
+  /** Attached on the way back by `login`, read off the room; never stored. */
+  outcome?: 'won' | 'lost';
+}
+
 export const STARTING_POSITION: WorldPosition = {
   area: FIRST_AREA,
   ...AREAS[FIRST_AREA].spawn,
