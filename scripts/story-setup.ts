@@ -217,7 +217,15 @@ export async function enterStory(page: Page, area?: string, hour: number | null 
     const there = await page
       .evaluate((want) => {
         const w = window as unknown as { __scene?: unknown; __probe?: { area: string } };
-        return !!w.__scene && (!want || w.__probe?.area === want);
+        if (w.__scene) return !want || w.__probe?.area === want;
+        /* No probe — a production build. The stick on screen, or a
+           conversation open over the world, is the world. Which area cannot
+           be told, and the checks that need to know say so themselves.
+           No named inner function here: `tsx` would wrap it in a helper the
+           page does not have, and the whole callback would throw. */
+        const stick = document.querySelector('[aria-label="Move"]');
+        const talk = document.querySelector('[data-conversation]');
+        return (!!stick && stick.getClientRects().length > 0) || (!!talk && talk.getClientRects().length > 0);
       }, area ?? null)
       .catch(() => false);
     if (there) {
@@ -231,7 +239,10 @@ export async function enterStory(page: Page, area?: string, hour: number | null 
        * not move", and the seam sweep read "never reached" off the same race.
        * Every one of those was the harness, not the game.
        */
-      for (let k = 0; k < 80; k++) {
+      /* Without the probe the rig cannot be counted; a production build gets a
+         moment's grace instead of eighty empty looks. */
+      const probed = await page.evaluate(() => !!(window as unknown as { __scene?: unknown }).__scene).catch(() => false);
+      for (let k = 0; probed && k < 80; k++) {
         const rigged = await page.evaluate(() => {
           const w = window as unknown as { __scene?: { traverse(f: (o: { isSkinnedMesh?: boolean }) => void): void } };
           let n = 0;
@@ -241,7 +252,7 @@ export async function enterStory(page: Page, area?: string, hour: number | null 
         if (rigged > 0) break;
         await page.waitForTimeout(250);
       }
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(probed ? 700 : 2500);
       return true;
     }
     await page.waitForTimeout(200);

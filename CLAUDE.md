@@ -209,7 +209,13 @@ fail. `npm run seams -- <area> --shots` and `npm run walls -- <area>
 ## Where things live
 
 - Production: https://custom-tugioh-claude.vercel.app — verify the shipped
-  bundle, not the push.
+  bundle, not the push. And know that **an app that stays open keeps its old
+  build**: Skew Protection pins a running page to the deployment it loaded,
+  so Mike's phone can play a week-old bundle until it is relaunched — a fix
+  he cannot see is not a fix he has. A page asks `/api/build` with its
+  cookies left at home and reloads into the current build when it is
+  behind (`src/lib/freshBuild.ts`), on the way back from a duel and on
+  arrival in Story Mode; `npm run duelreturn`'s fourth leg walks it.
 - The ward plan artifact lists every area, built and proposed, and the build
   order. Update it when an area stands.
 - Memory of past sessions: `~/.claude/projects/-Users-mike-Desktop-custom-tugioh-game/memory/`.

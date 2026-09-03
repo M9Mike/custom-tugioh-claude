@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useClientValue } from '@/lib/useClientValue';
+import { reloadIntoFresh, staleBuild } from '@/lib/freshBuild';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Duel from '@/components/Duel';
@@ -44,7 +45,12 @@ export default function DuelRoom({ code }: { code: string }) {
   const storyReturn = storyDuel
     ? (won: boolean) => {
         writePendingDuel({ ...storyDuel, outcome: won ? 'won' : 'lost' });
-        router.push('/story');
+        /* Inside this build if it is the current one; otherwise a reload
+           into the build that is — see `freshBuild.ts`. The save already
+           knows how the duel went, so either road resumes the conversation. */
+        void staleBuild().then((stale) => {
+          if (!stale || !reloadIntoFresh('/story')) router.push('/story');
+        });
       }
     : undefined;
   /* The bracket round whose duel the player has walked into. Holding the round

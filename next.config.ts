@@ -24,6 +24,12 @@ const nextConfig: NextConfig = {
    * floor under both — it catches what gets through and reloads once.
    */
   deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
+  /* And the same id, inlined into the client, so a running page can ask
+     whether it is still the current build — see `src/lib/freshBuild.ts`. */
+  env: {
+    NEXT_PUBLIC_BUILD_ID:
+      process.env.VERCEL_DEPLOYMENT_ID ?? (process.env.NODE_ENV === 'development' ? 'dev' : ''),
+  },
 };
 
 export default nextConfig;

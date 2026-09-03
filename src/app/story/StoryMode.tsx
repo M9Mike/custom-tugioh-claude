@@ -16,6 +16,7 @@
  * of the duel board entirely.
  */
 
+import { reloadIntoFresh, staleBuild } from '@/lib/freshBuild';
 import { useEffect, useRef, useState } from 'react';
 import { RESUME_KEY } from '@/lib/staleBuild';
 import { useRouter } from 'next/navigation';
@@ -242,6 +243,10 @@ export default function StoryMode() {
      * The name is still in the box. What is left to do is press the button.
      */
     if (carryOn && who) void signIn(who);
+    /* And if this page is a build behind, into the current one, once: the
+       resume flag above is what that reload sets, so it signs itself back
+       in. A page that is current, or cannot tell, carries on. */
+    if (!carryOn) void staleBuild().then((stale) => { if (stale) reloadIntoFresh('/story'); });
     /* Mount only. It sits below `signIn` rather than above it so that call is
        to something already declared — the order in this file is load-bearing. */
     // eslint-disable-next-line react-hooks/exhaustive-deps

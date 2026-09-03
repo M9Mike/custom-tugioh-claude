@@ -18,7 +18,7 @@
  *      find the duel on the save and resume it anyway (Mike's second entry);
  *   3. and once more, which must *not* resume it: the save was told.
  */
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote, walkUntil } from './story-setup';
 
 /** The seat gives up, through the room's own action route. */
@@ -59,7 +59,11 @@ async function takeTheDuel(page: import('playwright').Page): Promise<boolean> {
 async function main() {
   refuseRemote();
   await ensurePlayer();
-  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined });
+  /* `PW_BROWSER=webkit` runs the same road in WebKit — the engine Mike's
+     phone uses — once `npx playwright install webkit` has been run. */
+  const browser = process.env.PW_BROWSER === 'webkit'
+    ? await webkit.launch()
+    : await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined });
   const page = await (await browser.newContext({ viewport: { width: 900, height: 640 } })).newPage();
   let bad = 0;
   const check = (ok: boolean, what: string) => { console.log(`  ${ok ? '✅' : '❌'} ${what}`); if (!ok) bad++; };
@@ -143,8 +147,17 @@ async function main() {
   const t0 = Date.now();
   while (Date.now() - t0 < 60000) {
     if (await page.locator('input[placeholder="Enter your name"]').isVisible().catch(() => false)) askedName = true;
-    const p = await page.evaluate(() => (window as unknown as { __probe?: { built?: boolean } }).__probe ?? null).catch(() => null);
-    if (p?.built) built = true;
+    /* Built: the probe says so in development; in a production build, which
+       has no probe, the stick on screen (or a conversation over the world) is
+       the world. */
+    const p = await page.evaluate(() => {
+      const w = window as unknown as { __probe?: { built?: boolean }; __scene?: unknown };
+      if (w.__scene) return !!w.__probe?.built;
+      const stick = document.querySelector('[aria-label="Move"]');
+      const talk = document.querySelector('[data-conversation]');
+      return (!!stick && stick.getClientRects().length > 0) || (!!talk && talk.getClientRects().length > 0);
+    }).catch(() => false);
+    if (p) built = true;
     if (await page.locator('[data-conversation]').first().isVisible().catch(() => false)) { conversation = true; break; }
     await page.waitForTimeout(500);
   }
@@ -152,8 +165,10 @@ async function main() {
   check(built, 'the world is built');
   check(conversation, 'the conversation picks up where the duel left it');
   const after = await page.evaluate(() => (window as unknown as { __probe?: { player?: [number, number] } }).__probe?.player ?? null);
-  const near = !!before && !!after && Math.hypot(after[0] - before[0], after[1] - before[1]) < 1.5;
-  check(near, `standing where the duel began (${before ? `${before[0].toFixed(1)}, ${before[1].toFixed(1)}` : '?'} → ${after ? `${after[0].toFixed(1)}, ${after[1].toFixed(1)}` : '?'})`);
+  /* Positions come off the probe, which a production build does not expose:
+     there the spot is not judged, and the line says so. */
+  if (!before || !after) console.log('  ·  standing where the duel began: no probe in a production build');
+  else check(Math.hypot(after[0] - before[0], after[1] - before[1]) < 1.5, `standing where the duel began (${before[0].toFixed(1)}, ${before[1].toFixed(1)} → ${after[0].toFixed(1)}, ${after[1].toFixed(1)})`);
   await page.screenshot({ path: '/tmp/duel-return.png' }).catch(() => {});
 
   /* ---- leg two: the browser forgets, the save does not ---- */
@@ -181,7 +196,8 @@ async function main() {
   }
   check(picked, 'and the conversation is waiting, off the save');
   const after2 = await page.evaluate(() => (window as unknown as { __probe?: { player?: [number, number] } }).__probe?.player ?? null);
-  check(!!after2, 'standing in the world' + (spot2 && after2 ? ` (${spot2[0].toFixed(1)}, ${spot2[1].toFixed(1)} → ${after2[0].toFixed(1)}, ${after2[1].toFixed(1)})` : ''));
+  if (!after2) console.log('  ·  standing in the world: no probe in a production build');
+  else check(true, 'standing in the world' + (spot2 ? ` (${spot2[0].toFixed(1)}, ${spot2[1].toFixed(1)} → ${after2[0].toFixed(1)}, ${after2[1].toFixed(1)})` : ''));
 
   /* ---- leg three: told once, it stays told ---- */
   await page.waitForTimeout(3000);
@@ -192,6 +208,58 @@ async function main() {
   await page.waitForTimeout(4000);
   const reopened = await page.locator('[data-conversation]').first().isVisible().catch(() => false);
   check(!reopened, 'and does not reopen a conversation already picked up');
+
+  /* ---- leg four: an app that has been open across a deploy ---- */
+  console.log('\n  — and once more, from an app that is a build behind —');
+  await page.evaluate(() => { sessionStorage.clear(); localStorage.removeItem('story:duel-mirror'); });
+  /* Back to a few strides from Sarah, facing her: the third leg left the
+     duelist wherever the second one picked the conversation up. */
+  await fetch(`${BASE}/api/story/save`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: NAME, world: { area: 'starting-area', x: -8.0, z: 1.5, facing: -Math.PI / 2 } }),
+  }).catch(() => {});
+  let stale = await enterStory(page, 'starting-area', PINNED_HOUR);
+  if (!stale) stale = await enterStory(page, 'starting-area', PINNED_HOUR);
+  check(stale, 'the world opens');
+  await page.locator('[aria-label="End the conversation"]').first().dispatchEvent('click').catch(() => {});
+  await page.waitForTimeout(600);
+  check(await takeTheDuel(page), 'Sarah offers a duel and it opens');
+  await page.waitForURL(/\/duel\//, { timeout: 45000 }).catch(() => {});
+  const code4 = new URL(page.url()).pathname.split('/').pop() ?? '';
+  await page.waitForTimeout(5000);
+  const token4 = await page.evaluate(() => {
+    const raw = sessionStorage.getItem('story:duel');
+    return raw ? ((JSON.parse(raw) as { token?: string }).token ?? '') : '';
+  });
+  check(await surrender(code4, token4), 'the seat gives the duel up');
+  /* From here the server says it is a newer build than the one this page
+     runs — which is what a phone that kept the game open across a deploy
+     sees. Continue must reload into the fresh build rather than navigate
+     inside the old one, and the fresh page must walk back in on its own. */
+  await page.route('**/api/build*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'dpl_a_newer_build' }) }));
+  await page.evaluate(() => {
+    const raw = sessionStorage.getItem('story:duel');
+    const n = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    n.outcome = 'lost';
+    sessionStorage.setItem('story:duel', JSON.stringify(n));
+  });
+  await page.locator('button:has-text("Continue")').first().click({ timeout: 5000 }).catch(async () => {
+    /* No win screen without a finished view on the page yet; the room may
+       still be polling. Nudge it the way the button would. */
+    await page.evaluate(() => (window as unknown as { next: { router: { push(u: string): void } } }).next.router.push('/story'));
+  });
+  await page.waitForURL(/rebuilt=/, { timeout: 20000 }).catch(() => {});
+  check(/rebuilt=/.test(page.url()), 'Continue reloads into the fresh build');
+  await page.unroute('**/api/build*');
+  let asked4 = false, conv4 = false;
+  const t4 = Date.now();
+  while (Date.now() - t4 < 60000) {
+    if (await page.locator('input[placeholder="Enter your name"]').isVisible().catch(() => false)) asked4 = true;
+    if (await page.locator('[data-conversation]').first().isVisible().catch(() => false)) { conv4 = true; break; }
+    await page.waitForTimeout(500);
+  }
+  check(!asked4, 'and the fresh page does not ask your name');
+  check(conv4, 'and the conversation is waiting');
 
   await browser.close();
   console.log(bad ? `\nDUEL AND BACK: ${bad} thing(s) wrong ❌\n` : '\nDUEL AND BACK: the road back is whole. ✅\n');
