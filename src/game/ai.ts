@@ -229,8 +229,6 @@ const UNKNOWN_ATK = unknownMeans.small.atk;
    on purpose: people Set their walls and summon their attackers. */
 const PHANTOM_SUMMON_ATK = 1600;
 const UNKNOWN_DEF = unknownMeans.small.def;
-const TRIBUTED_UNKNOWN_ATK = unknownMeans.big.atk;
-const TRIBUTED_UNKNOWN_DEF = unknownMeans.big.def;
 
 interface Body {
   atk: number;

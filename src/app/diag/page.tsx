@@ -8,8 +8,8 @@
  * page exists so a wrong inset can be read off the real device instead of
  * guessed at twice. Open it from the installed app and screenshot it.
  */
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSyncExternalStore } from 'react';
 import { audioState, primeAudio, sfx } from '@/lib/sfx';
 
 interface Reading {
@@ -40,15 +40,28 @@ function readEnv(prop: string): string {
   return value || '—';
 }
 
-export default function Diag() {
-  const [r, setR] = useState<Reading | null>(null);
-
-  useEffect(() => {
+/**
+ * The reading, as a tiny store: taken once per page load, the same object
+ * every render, and replaced (with the listeners told) when the sound test
+ * has something new to say. `useSyncExternalStore` renders it without a
+ * hydration mismatch — the server shows nothing, the client shows the phone.
+ */
+let reading: Reading | null = null;
+const listeners = new Set<() => void>();
+const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+function refreshAudio() {
+  if (!reading) return;
+  const a = audioState();
+  reading = { ...reading, audio: a.state, audioRate: a.sampleRate };
+  for (const fn of listeners) fn();
+}
+function readOnce(): Reading {
+  if (reading) return reading;
     const nav = navigator as Navigator & { standalone?: boolean };
     const root = getComputedStyle(document.documentElement);
     const vv = window.visualViewport;
     const a = audioState();
-    setR({
+  reading = {
       audio: a.state,
       audioRate: a.sampleRate,
       audioEnabled: a.enabled ? 'on' : 'off (turned off in the duel menu)',
@@ -66,8 +79,12 @@ export default function Diag() {
       screenHeight: `${window.screen.height}px`,
       visualViewport: vv ? `${Math.round(vv.width)}×${Math.round(vv.height)}` : 'unsupported',
       dpr: String(window.devicePixelRatio),
-    });
-  }, []);
+  };
+  return reading;
+}
+
+export default function Diag() {
+  const r = useSyncExternalStore(subscribe, readOnce, () => null);
 
   const rows: [string, string][] = r
     ? [
@@ -134,8 +151,7 @@ export default function Diag() {
           onClick={() => {
             primeAudio();
             sfx.attack();
-            const a = audioState();
-            setR((cur) => (cur ? { ...cur, audio: a.state, audioRate: a.sampleRate } : cur));
+            refreshAudio();
           }}
         >
           🔊 Test the sound

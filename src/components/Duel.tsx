@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useClientValue } from '@/lib/useClientValue';
 import GameCard, { statTint } from './GameCard';
 import { previewInstances } from './deckPreview';
 import CardDetail from './CardDetail';
@@ -232,6 +233,8 @@ function PlayerBar({
   );
 }
 
+const IDLE: Mode = { kind: 'idle' };
+
 export default function Duel({ view, act, rematch, toLobby, connection, onBracket, onStoryReturn, setAnimating, setWatching, paused, setPaused }: Props) {
   const state = view.state!;
   const me = view.you;
@@ -253,12 +256,25 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      been told the result yet. */
   const wonTheKingdom = !!view.tournament && state.winner === me && isFinalRound(view.tournament);
 
-  const [mode, setMode] = useState<Mode>({ kind: 'idle' });
+  /*
+   * A half-built interaction belongs to the board it was built on.
+   *
+   * Any state change from the server invalidates it — the cards it referred
+   * to may already be gone — so the mode is kept together with the version it
+   * was set against and *derived* as idle on any other: no effect resetting it
+   * a render late, which is the cascade the React Compiler refuses.
+   */
+  const [modeAt, setModeAt] = useState<{ version: number; mode: Mode }>({ version: state.version, mode: IDLE });
+  const mode: Mode = modeAt.version === state.version ? modeAt.mode : IDLE;
+  const version = state.version;
+  const setMode = useCallback((m: Mode) => setModeAt({ version, mode: m }), [version]);
   /* Picks collected in an "up to N" window. Cleared whenever an answer is sent,
      so a new window always opens empty — and anything stale that did survive is
      dropped by the engine, which only accepts uids it offered. */
   const [choicePicks, setChoicePicks] = useState<string[]>([]);
-  const [inspect, setInspect] = useState<CardInstance | null>(null);
+  const [inspectAt, setInspectAt] = useState<{ version: number; card: CardInstance | null }>({ version: state.version, card: null });
+  const inspect = inspectAt.version === state.version ? inspectAt.card : null;
+  const setInspect = useCallback((card: CardInstance | null) => setInspectAt({ version, card }), [version]);
   const [toast, setToast] = useState<string | null>(null);
   /* Two refusals in quick succession used to race: the first one's timer fired
      mid-way through the second's stay and took it down early. Each timer may
@@ -279,7 +295,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      on hover, which a phone never sends, so a card in here could not be read at
      all on the devices this is built for. */
   const [graveInspect, setGraveInspect] = useState<CardInstance | null>(null);
-  const [soundOn, setSoundOn] = useState(true);
+  /* The stored setting, read the hydration-safe way, until a tap says otherwise. */
+  const storedSound = useClientValue(getSfxEnabled, true);
+  const [soundChoice, setSoundChoice] = useState<boolean | null>(null);
+  const soundOn = soundChoice ?? storedSound;
+  const setSoundOn = setSoundChoice;
   const [leaving, setLeaving] = useState(false);
   const seenAnims = useRef<Set<string>>(new Set());
   /** The event the board is reacting to right now, and the queue behind it. */
@@ -353,7 +373,6 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   useEffect(() => {
     primeAudio();
-    setSoundOn(getSfxEnabled());
   }, []);
 
   /**
@@ -832,15 +851,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         showToast(err);
       }
     },
-    [act, showToast]
+    [act, showToast, setMode]
   );
-
-  useEffect(() => {
-    // Any state change from the server invalidates a half-built interaction —
-    // the cards it referred to may already be gone.
-    setMode({ kind: 'idle' });
-    setInspect(null);
-  }, [state.version]);
 
   /* ---------------- derived helpers ---------------- */
   /**
@@ -1163,7 +1175,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     else setMode({ ...mode, picked });
   };
 
-  const targetableSet = useMemo(() => {
+  /* Plain derivations, not `useMemo`: the compiler could not keep the manual
+     memo's semantics, and a Set over a board of a few dozen cards costs
+     nothing to rebuild. */
+  const targetableSet: Set<string> = (() => {
     /* `mode.uid` is the card doing the asking, and it is never one of its own
        answers — the rule `targetCandidates` owns. The gate that decides whether
        to open this modal at all has always passed it; the modal itself did not,
@@ -1193,13 +1208,13 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
       );
     }
     return new Set<string>();
-  }, [mode, pickableUids, mine.monsters, state, me]);
+  })();
 
-  const canDirect = useMemo(() => {
+  const canDirect: boolean = (() => {
     if (mode.kind !== 'attack') return false;
     const c = mine.monsters.find((m) => m?.uid === mode.uid);
     return !!c && legalAttackTargets(state, me, c).direct;
-  }, [mode, mine.monsters, state, me]);
+  })();
 
   /* ---------------- render pieces ---------------- */
 

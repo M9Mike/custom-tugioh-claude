@@ -223,7 +223,10 @@ export function useDuelRoom(code: string | null) {
       setStatus('live');
     };
 
-    setStatus('connecting');
+    /* Deferred a tick rather than set straight out: setting state inside the
+       effect's own body makes React re-render before it has finished
+       committing, which is the cascade the compiler's rule is about. */
+    queueMicrotask(() => { if (aliveRef.current) setStatus('connecting'); });
     /* The poll loop starts either way. `connect` swallows a failed fetch and
        returns a verdict, but the `res.json()` inside it can still throw on a
        body that arrives truncated — and a rejection here used to skip the

@@ -220,7 +220,6 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
   });
-  const page = await (await browser.newContext({ viewport: { width: 900, height: 640 } })).newPage();
 
   console.log(`\nShimmer — ${(NUDGE * 1000).toFixed(1)} mm of camera, and what it costs\n`);
 

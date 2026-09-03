@@ -14,7 +14,6 @@
  * fix, has proven nothing yet.
  */
 import { applyAction, canAttackWith, createDuel } from '../src/game/engine';
-import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';

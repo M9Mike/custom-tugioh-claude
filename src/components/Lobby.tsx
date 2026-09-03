@@ -35,7 +35,11 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
      commit. */
   const [selected, setSelected] = useState<string | null>(null);
   const detailRef = useRef<HTMLElement>(null);
-  const [nameDraft, setNameDraft] = useState(mySeat?.name ?? '');
+  /* What has been typed, or the seat's own name until something is: derived,
+     so the name arriving from the server after the first render needs no
+     effect to copy it in. */
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const nameDraft = typedName ?? mySeat?.name ?? '';
   const [copied, setCopied] = useState(false);
   const [deckOpen, setDeckOpen] = useState<string | null>(null);
   /** The card being read inside the deck viewer. */
@@ -44,10 +48,6 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
   useEffect(() => {
     primeAudio();
   }, []);
-  useEffect(() => {
-    if (mySeat?.name && !nameDraft) setNameDraft(mySeat.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mySeat?.name]);
 
   const detail = useMemo(
     /* An explicit tap beats a stray hover: with a synthetic pointer the two can
@@ -97,7 +97,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
             <input
               value={nameDraft}
               maxLength={18}
-              onChange={(e) => setNameDraft(e.target.value)}
+              onChange={(e) => setTypedName(e.target.value)}
               onBlur={() => nameDraft.trim() && setPlayerName(nameDraft)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

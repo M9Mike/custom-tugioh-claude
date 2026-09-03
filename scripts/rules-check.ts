@@ -1077,7 +1077,7 @@ console.log("\nA stolen card goes home to its owner's Graveyard");
   const theirs = card(FOE, 'battle-ox');
   s2.players[ME].hand = [reborn];
   s2.players[FOE].grave = [theirs];
-  let mid = act(s2, ME, { type: 'activateSpell', uid: reborn.uid, targets: [theirs.uid] });
+  const mid = act(s2, ME, { type: 'activateSpell', uid: reborn.uid, targets: [theirs.uid] });
   ok(
     mid.players[ME].monsters.some((m) => m?.uid === theirs.uid && m.owner === FOE),
     'Monster Reborn hands the body across the table with its ownership intact',

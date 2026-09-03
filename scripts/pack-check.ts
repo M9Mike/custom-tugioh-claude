@@ -10,7 +10,7 @@
  *   npm run packs
  */
 
-import { DUELISTS, DUELIST_BY_ID } from '../src/game/cards';
+import { DUELISTS } from '../src/game/cards';
 import { newProfile, type StoryProfile } from '../src/story/profile';
 import { PACK_SIZE, isExhausted, openPack, packPool, remainingPool, slugOf, trunkOf } from '../src/story/packs';
 

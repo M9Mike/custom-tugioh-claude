@@ -13,7 +13,7 @@
 import { CARDS, DUELIST_BY_ID } from '../src/game/cards';
 import { compareCards } from '../src/story/deckSort';
 import { newProfile, type StoryProfile } from '../src/story/profile';
-import { BOUNTY, STOCK, bountyFor, buy, priceOf, refuseBuy, shopStock } from '../src/story/shop';
+import { BOUNTY, STOCK, bountyFor, buy, refuseBuy, shopStock } from '../src/story/shop';
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => {

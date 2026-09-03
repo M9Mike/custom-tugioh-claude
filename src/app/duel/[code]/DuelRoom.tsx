@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useClientValue } from '@/lib/useClientValue';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Duel from '@/components/Duel';
@@ -9,11 +10,28 @@ import Bracket from '@/components/Bracket';
 import { useDuelRoom } from '@/lib/useDuelRoom';
 import { readPendingDuel, writePendingDuel, type PendingDuel } from '@/app/story/StoryMode';
 
+/**
+ * The note, as one object per distinct note — `useClientValue` compares what
+ * it reads with `Object.is`, so parsing afresh on every render would never
+ * settle.
+ */
+let lastRaw: string | null = null;
+let lastNote: PendingDuel | null = null;
+function noteFor(code: string): PendingDuel | null {
+  let raw: string | null = null;
+  try { raw = sessionStorage.getItem('story:duel'); } catch { raw = null; }
+  if (raw !== lastRaw) {
+    lastRaw = raw;
+    lastNote = readPendingDuel();
+  }
+  return lastNote && lastNote.code === code ? lastNote : null;
+}
+
 export default function DuelRoom({ code }: { code: string }) {
   const { view, status, error, errorKind, act, chooseDuelist, setPlayerName, rematch, toLobby, configureAi, setAnimating, setWatching, paused, setPaused } =
     useDuelRoom(code);
   const router = useRouter();
-  const [shareUrl, setShareUrl] = useState('');
+  const shareUrl = useClientValue(() => `${window.location.origin}/duel/${code}`, '');
   /**
    * Whether this room was entered from a conversation in Story Mode.
    *
@@ -21,11 +39,7 @@ export default function DuelRoom({ code }: { code: string }) {
    * leaves a story duel and starts an ordinary one would otherwise be sent back
    * to Mai from a duel she had nothing to do with.
    */
-  const [storyDuel, setStoryDuel] = useState<PendingDuel | null>(null);
-  useEffect(() => {
-    const pending = readPendingDuel();
-    setStoryDuel(pending && pending.code === code ? pending : null);
-  }, [code]);
+  const storyDuel = useClientValue(() => noteFor(code), null);
 
   const storyReturn = storyDuel
     ? (won: boolean) => {
@@ -37,10 +51,6 @@ export default function DuelRoom({ code }: { code: string }) {
      rather than a bare flag is what makes each new round open on the bracket
      again, with no effect needed to reset it. */
   const [enteredRound, setEnteredRound] = useState<number | null>(null);
-
-  useEffect(() => {
-    setShareUrl(`${window.location.origin}/duel/${code}`);
-  }, [code]);
 
   if (status === 'lost' || (error && !view)) {
     return (
