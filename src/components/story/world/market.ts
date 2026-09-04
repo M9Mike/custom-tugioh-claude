@@ -798,85 +798,91 @@ export function buildMarket(anisotropy: number): BuiltArea {
   const gateX = MR_W - 1;
 
   /*
-   * A lattice you can see through, not a shutter you cannot.
+   * The gate is open, and this is the day it opened.
    *
-   * The whole job of this end is to say "the arcade carries on and this part of
-   * it is closed", and a solid surface says the opposite — it says the arcade
-   * ends here and always did. So it is barred, and the space behind it is built
-   * and lit: floor, side walls, and a wall at the far end with a notice on it.
-   * Six metres of geometry nobody can reach, earning its place by making the
-   * other forty-six believable.
+   * It stood here shut for five areas, barred, with a notice behind it reading
+   * STATION — THIS WAY, because the comment on its solid in `areas.ts` said
+   * the arcade genuinely carried on and one day the shutter would go up. It has.
+   * The lattice is rolled back against the two piers, the four metres between
+   * them are a doorway, and what is behind it is the first two metres of
+   * Domino Station's entrance lobby rather than a wall with a sign on it.
    */
   const barMat = matt(own, '#3f4348');
-  const bars = 34;
-  for (let i = 0; i <= bars; i++) {
-    root.add(box(own, 0.07, 3.0, 0.07, barMat,
-                 gateX, 1.65, -MR_FRONT + (MR_FRONT * 2 / bars) * i));
-  }
-  for (const ry of [0.32, 1.72, 3.06]) {
-    root.add(box(own, 0.1, 0.1, MR_FRONT * 2, barMat, gateX, ry, 0));
-  }
-  /*
-   * And a kick plate along the foot of it.
-   *
-   * The lowest rail is at thirty-two centimetres and the bars stop there, so
-   * under the gate there was a clear strip straight through to the vestibule
-   * floor — which is lit by a fifty-watt lamp and reads, from the arcade, as a
-   * band of daylight under a closed gate. Mike photographed it and called it
-   * sky, which is what it looks like. Every shutter in this arcade has one of
-   * these; this one did not.
-   */
-  root.add(box(own, 0.14, 0.3, MR_FRONT * 2, matt(own, '#34383c'), gateX, 0.15, 0));
-  /* The box the gate rolls into, and the runner it hangs off. */
-  /* The lintel and the beam over it are *seated* on the walls, not driven 20 and
-     30 cm into them. Six centimetres of bearing each side is enough to read as
-     carried, and leaves no long intersection line down either wall. */
-  root.add(box(own, 0.6, 0.5, MR_FRONT * 2 + 0.08, matt(own, '#4a443c'), gateX, 3.44, 0));
-  root.add(box(own, 0.9, 0.9, MR_FRONT * 2 + 0.08, matt(own, '#3a352e'), gateX, 4.1, 0));
+  const gateHalf = 2;
 
-  /* The vestibule on the far side: walls, floor, and a wall to stop the view. */
+  /* The two piers, exactly the two solids either side of the doorway. */
   for (const s of [-1, 1] as const) {
-    root.add(box(own, 6, 8.6, 4, blockSkin, gateX + 4, 4.3, s * (MR_FRONT + 2)));
+    const mid = s * (gateHalf + MR_FRONT) / 2;
+    const depth = MR_FRONT - gateHalf;
+    root.add(box(own, 2.04, 6.4, depth, blockSkin, gateX, 3.2, mid));
+    /* A stone reveal on the doorway side, so you walk *through* something. */
+    /* Proud of the pier by seventeen centimetres, not flush with it: cut to
+       the same line, the reveal and the pier share a five-metre face and
+       `npm run shimmer` reads it as 1.35% of the frame flipping. */
+    root.add(box(own, 2.24, 5.0, 0.34, matt(own, '#8b857a'), gateX, 2.5, s * (gateHalf - 0.05)));
+    /* And the gate itself, concertinaed back against the pier. */
+    for (let i = 0; i < 5; i++) {
+      root.add(box(own, 0.12, 3.0, 0.08, barMat, gateX - 0.86, 1.65, s * (gateHalf + 0.24 + i * 0.13)));
+    }
+    root.add(box(own, 0.2, 0.26, 0.9, matt(own, '#34383c'), gateX - 0.86, 1.72, s * (gateHalf + 0.5)));
   }
-  /* A little taller than the blocks it stands behind: at a shared 8.6 their
-     roofs were one plane over five square metres. */
-  /* Also a little short of the blocks in front of it, so their ends and its
-     ends are not the same two planes. */
-  root.add(box(own, 1.4, 8.74, MR_FRONT * 2 + 7.88, blockSkin, gateX + 6.4, 4.37, 0));
-  /* Starting *at* the arcade floor's own edge, x 23 — not under it, and not
-     past it. Under it, two planes at y 0 shared 40 cm of ground and
-     `npm run coplanar` found four square metres of z-fighting; 80 cm past it,
-     there was a strip of nothing between the two floors, and through the
-     gate's lower panel that strip was the void — a flat band of sky colour
-     behind the bars, from the mouth of the passage to Black Crown. Edge to
-     edge, a millimetre apart in height, they share no area and leave no gap. */
-  /*
-   * Not the arcade's own floor. In the same pale tiles, lit by nothing but the
-   * sky — the gate lamp is a night lamp and the blocks shade the sun — the
-   * strip behind the bars read as a flat band of daylight from the passage
-   * mouth, which is the second time this end has been photographed as sky.
-   * A dark, worn floor in shadow reads as a dark, worn floor.
-   */
-  const vestibule = new THREE.Mesh(
-    own.keep(new THREE.PlaneGeometry(6.2, MR_FRONT * 2)),
-    matt(own, '#5e5347', surfaceOf(own, () => paving({ dirt: 0.6 }), 2.7, 5, anisotropy))
-  );
-  vestibule.rotation.x = -Math.PI / 2;
-  vestibule.position.set(gateX + 4.1, 0.001, 0);
-  vestibule.receiveShadow = true;
-  root.add(vestibule);
-
-  /* The notice on the wall at the end, which is the only thing in this area that
-     tells you where the arcade goes next. */
+  /* The runner it hangs off, the lintel over the doorway, and the head above. */
+  root.add(box(own, 0.16, 0.14, gateHalf * 2 + 0.8, barMat, gateX - 0.86, 3.28, 0));
+  root.add(box(own, 2.4, 0.62, gateHalf * 2 + 0.9, matt(own, '#4a443c'), gateX, 5.31, 0));
+  root.add(box(own, 1.92, 1.1, gateHalf * 2 + 0.4, blockSkin, gateX, 6.15, 0));
+  /* The notice, now over the way through rather than behind a shut gate. */
   const noticeMat = own.keep(new THREE.MeshBasicMaterial({
-    map: surfaceOf(own, () => signBoard('STATION', '#e8dcc0', '#2f3a48', 'THIS WAY', 2.6 / 0.8),
+    map: surfaceOf(own, () => signBoard('DOMINO STATION', '#e8dcc0', '#2f3a48', undefined, 2.9 / 0.62),
                    1, 1, anisotropy),
     color: '#9a917e',
   }));
-  const notice = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(2.6, 0.8)), noticeMat);
-  notice.position.set(gateX + 5.65, 2.5, 0);
+  const notice = new THREE.Mesh(own.keep(new THREE.PlaneGeometry(2.9, 0.62)), noticeMat);
+  notice.position.set(gateX - 1.02, 4.55, 0);
   notice.rotation.y = -Math.PI / 2;
   root.add(notice);
+  const gateLamp = new THREE.PointLight('#ffc186', 90, 14, 2);
+  gateLamp.position.set(gateX - 1.6, 4.0, 0);
+  root.add(gateLamp);
+  lights.push(gateLamp);
+
+  /*
+   * And the station's lobby beyond, built as a backdrop.
+   *
+   * A closed box: two returns, a back and the head above as its lid, sized so
+   * no sight line through a four-metre doorway from four metres back can reach
+   * an edge of it. What stands in it is the two metres of the place beyond that
+   * stop a gateway being a hole — the lobby's own floor running on, a lit
+   * window, and a warm light out of shot.
+   */
+  for (const s of [-1, 1] as const) {
+    root.add(box(own, 8, 9.2, 4.6, blockSkin, gateX + 5, 4.6, s * (MR_FRONT + 2.3)));
+  }
+  root.add(box(own, 1.8, 9.34, MR_FRONT * 2 + 9.2 - 0.4, blockSkin, gateX + 8.4, 4.67, 0));
+  root.add(box(own, 9.2, 1.2, MR_FRONT * 2 + 9.6, matt(own, '#2c2f33'), gateX + 4.6, 8.4, 0));
+  /* Edge to edge with the arcade's own floor at x 23, a millimetre apart in
+     height: overlapping, they share four square metres of one plane; short of
+     it, the strip between them is the void. */
+  const vestibule = new THREE.Mesh(
+    own.keep(new THREE.PlaneGeometry(8.4, MR_FRONT * 2 + 4)),
+    matt(own, '#8d846f', surfaceOf(own, () => paving({ dirt: 0.3 }), 3.4, 5.6, anisotropy))
+  );
+  vestibule.rotation.x = -Math.PI / 2;
+  vestibule.position.set(gateX + 5.2, 0.001, 0);
+  vestibule.receiveShadow = true;
+  root.add(vestibule);
+  /* A lit window on the back wall, which is the ticket office seen from the
+     arcade, and the lamp that puts light on the floor between. */
+  root.add(box(own, 0.14, 2.0, 3.4, matt(own, '#3c3630'), gateX + 7.32, 2.4, 0));
+  root.add(box(own, 0.06, 1.7, 3.1, glow(own, '#a4824a'), gateX + 7.25, 2.4, 0));
+  for (const bz of [-1.0, 0, 1.0]) {
+    root.add(box(own, 0.1, 1.76, 0.09, matt(own, '#4a4238'), gateX + 7.21, 2.4, bz));
+  }
+  root.add(box(own, 0.1, 0.09, 3.16, matt(own, '#4a4238'), gateX + 7.21, 2.42, 0));
+  root.add(box(own, 0.5, 0.34, 4.0, matt(own, '#8b857a'), gateX + 7.2, 3.58, 0));
+  const lobbyLamp = new THREE.PointLight('#ffc186', 190, 22, 2);
+  lobbyLamp.position.set(gateX + 4.4, 4.4, 0);
+  root.add(lobbyLamp);
+  lights.push(lobbyLamp);
 
   const gateLight = new THREE.PointLight('#c4a274', 52, 11, 2);
   gateLight.position.set(gateX + 3.4, 4.0, 0);

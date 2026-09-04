@@ -30,13 +30,14 @@
  *   Domino City's coordinates, so the map cannot fold over itself as it grows.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   AREAS, FIRST_AREA, MARKET_GOODS, MARKET_GOODS_LIMIT, PLAYER_RADIUS, SEAM_TOLERANCE,
   STEP_LANE_CLIMB, STEP_LANE_HALF, STEP_LANE_RISE, STEP_LANE_THINGS, climbPlatforms, groundAt,
   arrivalThrough, hasStoreys, partnerOf, settle, toWorld, inside,
   type Area, type AreaId, type Rect,
 } from '../src/story/areas';
+import { ENCLOSED, OPEN } from './seam-check';
 import { STEP, walkableCells as reachable } from './walkable';
 
 let failures = 0;
@@ -420,8 +421,17 @@ console.log('\nevery shadow has a normal bias');
    * saying what it should be. The scan skips a caster whose name is `sky.key`
    * and instead insists the builder passed the option.
    */
+  /*
+   * Read off the directory, not off a list.
+   *
+   * It was a list of six, written when there were six, and it had quietly
+   * fallen two areas behind — the burial ground and the shop with galleries in
+   * it were never scanned, and a ninth area would have been the third. That is
+   * the same silent rot the sweep check below exists to stop, and the fix for
+   * it is the same one: ask the thing itself.
+   */
   const dir = new URL('../src/components/story/world/', import.meta.url);
-  const world = ['shop.ts', 'street.ts', 'market.ts', 'steplane.ts', 'shrine.ts', 'blackcrown.ts'];
+  const world = readdirSync(dir).filter((f) => f.endsWith('.ts')).sort();
   for (const file of world) {
     const src = readFileSync(new URL(file, dir), 'utf8');
     /* The whole dotted name, so `sky.key` is distinguishable from a local
@@ -454,6 +464,28 @@ console.log('\nevery area is in the sweeps that need naming');
   const sweep = readFileSync(new URL('./coplanar-check.mjs', import.meta.url), 'utf8');
   const unswept = ids.filter((id) => !sweep.includes(`'${id}'`));
   check(unswept.length === 0, 'coplanar-check.mjs visits every area', unswept.join(', '));
+
+  /*
+   * And the seam sweep, which is worse if it falls behind — it is the check
+   * that says you cannot see out of the world, and an area it has never heard
+   * of is an area it reports as clean.
+   *
+   * It cannot simply take every area: the shrine precinct has a real horizon
+   * on three sides. So it holds two lists, and the rule here is that they
+   * cover the world between them.
+   */
+  const seen = new Set<AreaId>([...ENCLOSED, ...OPEN]);
+  const unseamed = ids.filter((id) => !seen.has(id));
+  check(unseamed.length === 0, 'seam-check.ts knows about every area, closed or open',
+        unseamed.join(', '));
+  const both = ENCLOSED.filter((id) => OPEN.includes(id));
+  check(both.length === 0, 'and none of them is on both lists', both.join(', '));
+
+  /* And the flicker sweep, which is the third hand-written list in this
+     toolchain and had fallen two areas behind by the time anybody looked. */
+  const flicker = readFileSync(new URL('./shimmer-check.ts', import.meta.url), 'utf8');
+  const unwatched = ids.filter((id) => !flicker.includes(`'${id}'`));
+  check(unwatched.length === 0, 'shimmer-check.ts has a view in every area', unwatched.join(', '));
 }
 
 /* ---------------------------------------------------------------- */

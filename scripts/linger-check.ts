@@ -90,14 +90,25 @@ async function main() {
   await browser.close();
   if (rows.length < 3) { console.log('\nLINGER: too short to say ❌\n'); process.exit(1); }
   /*
-   * From the third sample, not the second. She turns through four headings
-   * in the first minute, and the renderer uploads a geometry or a texture
-   * the first time it is *seen* — so the counts climb for as long as there
-   * is somewhere she has not looked yet, and that is warming up, not
-   * leaking. Two more of each is the slack a late corner gets. Draw calls
-   * depend on where she is facing and are reported, not judged.
+   * The second half against the last sample — measured by *position in the
+   * run*, not by sample number.
+   *
+   * She turns through four headings in the first minute, and the renderer
+   * uploads a geometry or a texture the first time it is *seen* — so the
+   * counts climb for as long as there is somewhere she has not looked yet,
+   * and that is warming up, not leaking. This used to take the third sample
+   * as the baseline, which is the same instant only if every area samples at
+   * the same rate. It does not: the shop turns out fourteen samples in six
+   * minutes and Turtle Lane five, so "the third" was 1.3 minutes in one area
+   * and 4.1 in another — and Domino Station failed on four textures that had
+   * all arrived before the second minute and never moved again. Half way
+   * through is half way through whatever the cadence.
+   *
+   * Two more of each is the slack a late corner still gets. Draw calls depend
+   * on where she is facing and are reported, not judged.
    */
-  const a = rows[Math.min(2, rows.length - 2)], b = rows[rows.length - 1];
+  const a = rows[Math.min(Math.max(1, Math.floor(rows.length / 2)), rows.length - 2)];
+  const b = rows[rows.length - 1];
   let bad = 0;
   const flat = (label: string, x: number, y: number, slack = 0) => {
     if (y > x + slack) { console.log(`  ❌ ${label} went up: ${x} → ${y}`); bad++; } else console.log(`  ✅ ${label} did not grow (${x} → ${y})`);

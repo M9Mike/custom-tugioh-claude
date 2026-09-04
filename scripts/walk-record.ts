@@ -65,6 +65,12 @@ const ROUTES: Route[] = [
   { name: 'up to the shrine', area: 'domino-shrine', from: { x: 0, z: -22.6, facing: 0 }, key: 'w', frames: 44 },
   { name: 'along the sando', area: 'domino-shrine', from: { x: 0, z: -14, facing: 0 }, key: 'w', frames: 44 },
   { name: 'into the east trees', area: 'domino-shrine', from: { x: 14, z: 6, facing: Math.PI / 4 }, key: 'w', frames: 40 },
+  { name: 'into the station from the arcade', area: 'domino-station', from: { x: -40, z: 40, facing: (Math.PI * 3) / 4 }, key: 'w', frames: 48 },
+  { name: 'through the ticket gates', area: 'domino-station', from: { x: 0, z: 26, facing: Math.PI }, key: 'w', frames: 44 },
+  /* Off the column line: the columns run down the middle of every platform, so
+     a walk started on one is a walk into it — churn 0%, forty-eight frames of
+     the same picture. */
+  { name: 'up the middle platform', area: 'domino-station', from: { x: 4, z: 4, facing: Math.PI }, key: 'w', frames: 48 },
   { name: 'up the cemetery avenue', area: 'old-cemetery', from: { x: 12.4, z: -46, facing: 0 }, key: 'w', frames: 48 },
   /* Down a row, which runs north — the stones are 1.8 m apart along a row and
      the rows are 2.8 m apart, so this is the passable direction and across it

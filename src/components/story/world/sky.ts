@@ -102,6 +102,7 @@ export class Sky {
   private readonly root: THREE.Group;
   private readonly own: Owned;
   private readonly lamps: { light: THREE.PointLight; full: number }[] = [];
+  private readonly kept = new Set<THREE.Object3D>();
   private readonly glows: { at: THREE.Color; was: THREE.Color }[] = [];
 
   constructor(own: Owned, root: THREE.Group, o: SkyOptions) {
@@ -151,6 +152,23 @@ export class Sky {
   }
 
   /**
+   * A lamp that does not go out.
+   *
+   * Every lamp in this world so far has been street lighting, and street
+   * lighting is off at noon — that rule is what stops a night scene being a day
+   * scene with the brightness turned up. A covered building breaks it: the
+   * gallery under Domino Station's roof is in the shade of eleven thousand
+   * square metres of sheet at every hour there is, and the four brackets along
+   * its wall burn all day for exactly the reason the ticket office's does.
+   *
+   * `claim` skips these, so they keep whatever the builder gave them.
+   */
+  burning(light: THREE.PointLight): THREE.PointLight {
+    this.kept.add(light);
+    return light;
+  }
+
+  /**
    * Every lamp in the area, found rather than registered.
    *
    * Called once at the end of a builder. An area has between four and thirty
@@ -163,7 +181,7 @@ export class Sky {
   claim(): void {
     this.lamps.length = 0;
     this.root.traverse((o) => {
-      if ((o as THREE.PointLight).isPointLight) {
+      if ((o as THREE.PointLight).isPointLight && !this.kept.has(o)) {
         const l = o as THREE.PointLight;
         this.lamps.push({ light: l, full: l.intensity });
       }

@@ -124,6 +124,21 @@ const VANTAGES: Vantage[] = [
      one — arriving in a building starts you on the floor you walked in on — so
      these are the views from the floor that have three storeys of geometry in
      them, which is where a shelf edge would crawl if it were going to. */
+  /* The Old Cemetery: the avenue, a row of stones, and the ossuary. */
+  { name: 'up the avenue', area: 'old-cemetery', x: 12.4, z: -40, facing: 0 },
+  { name: 'along a row of stones', area: 'old-cemetery', x: -21, z: -30, facing: 0 },
+  { name: 'the ossuary porch', area: 'old-cemetery', x: 21, z: 30, facing: 0 },
+
+  /* Domino Station: the hall, the gate line, the shed both ways, a platform
+     edge against a train and one against an empty road, and the terrace. */
+  { name: 'the hall from the lobby', area: 'domino-station', x: -40, z: 30, facing: Math.PI / 2 },
+  { name: 'the gate line', area: 'domino-station', x: 0, z: 24, facing: Math.PI },
+  { name: 'up the middle platform', area: 'domino-station', x: 0, z: 4, facing: Math.PI },
+  { name: 'back down the shed', area: 'domino-station', x: 0, z: -40, facing: 0 },
+  { name: 'beside the green train', area: 'domino-station', x: -32, z: -20, facing: Math.PI },
+  { name: 'over the empty road', area: 'domino-station', x: -13.5, z: -20, facing: Math.PI / 2 },
+  { name: 'the terrace over the hall', area: 'domino-station', x: 0, z: 40, facing: Math.PI },
+
   { name: 'the shop, from the mat', area: 'crown-shop', x: -11.5, z: 0, facing: Math.PI / 2 },
   { name: 'the shop, under the galleries', area: 'crown-shop', x: -12, z: -8, facing: Math.PI / 2 },
   { name: 'the shop counter', area: 'crown-shop', x: 6, z: 6, facing: Math.PI / 4 },

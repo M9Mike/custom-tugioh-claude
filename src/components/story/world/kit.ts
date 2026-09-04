@@ -116,17 +116,70 @@ export function basePlate(
   own: Owned,
   root: THREE.Group,
   bounds: { x: number; z: number; hw: number; hd: number },
-  colour = '#2b2723'
+  colour = '#2b2723',
+  /*
+   * How far down, and it is six centimetres unless an area digs.
+   *
+   * Domino Station has four roads a metre and five centimetres below its
+   * platforms, drawn with ballast and rail — and every one of them was hidden
+   * behind this plane, which is nearer the eye than the trench floor and
+   * spans the whole area. Looking across an empty road you saw a flat dark
+   * slot six centimetres deep. An area with ground below zero has to put its
+   * backstop below that ground.
+   */
+  y = -0.06
 ): THREE.Mesh {
   const base = new THREE.Mesh(
     own.keep(new THREE.PlaneGeometry(bounds.hw * 2 + 16, bounds.hd * 2 + 16)),
     matt(own, colour)
   );
   base.rotation.x = -Math.PI / 2;
-  base.position.set(bounds.x, -0.06, bounds.z);
+  base.position.set(bounds.x, y, bounds.z);
   base.receiveShadow = true;
   root.add(base);
   return base;
+}
+
+/**
+ * One box that went into a merged mesh, in the mesh's own frame:
+ * `[minX, minY, minZ, maxX, maxY, maxZ, turned]`.
+ *
+ * `turned` is 1 when the box was rotated before it was baked, and it matters to
+ * exactly one reader. `npm run coplanar` is about *faces*, and the sides of a
+ * turned box's bounding box are not its faces — they touch it along an edge.
+ * The sweep already skips turned meshes for that reason; without this flag a
+ * baked roof slope would come back looking square and every pair of rafters in
+ * the shed would be reported as sharing a plane neither of them has.
+ */
+export type BakedPart = [number, number, number, number, number, number, number];
+
+/**
+ * What a merged mesh was made of, written where the checks can read it.
+ *
+ * ## Why this exists
+ *
+ * Four of the gates read the scene as *boxes* — `footing` asks what is drawn
+ * under a point, `walls` asks what stopped you and whether anything is drawn
+ * where you stand, `embedded` asks what is driven into what, `coplanar` asks
+ * which faces share a plane — and every one of them takes a mesh's bounding
+ * box as its shape. That is exact for a box and a lie for a merge: a hundred
+ * light fittings baked into one mesh have a bounding box the size of the
+ * building, and a check handed that box believes there is geometry everywhere
+ * inside it.
+ *
+ * Which is the worst failure this toolchain has: not a check that fails, a
+ * check that cannot. The seam sweep spent five days reporting "none" because
+ * every ray it cast started from a NaN, and this is the same shape of fault
+ * waiting to happen the moment an area merges anything.
+ *
+ * So a builder that merges says what it merged. The checks expand `parts` in
+ * place of the mesh's own box and see exactly what they would have seen if
+ * nothing had been merged at all — and the area gets its draw calls back for
+ * nothing. Domino Station is 1294 calls unmerged and 228 merged.
+ */
+export function bakedFrom(mesh: THREE.Mesh, parts: BakedPart[]): THREE.Mesh {
+  mesh.userData.parts = parts;
+  return mesh;
 }
 
 export function surfaceOf(
@@ -184,6 +237,23 @@ export function glow(own: Owned, colour: string): THREE.MeshBasicMaterial {
   const m = own.keep(new THREE.MeshBasicMaterial({ color: colour }));
   own.glows.push(m);
   return m;
+}
+
+/**
+ * An unlit material that does *not* go out.
+ *
+ * `glow` is street lighting: the sky dims every one of them towards a fifth by
+ * day, because a window burning at noon is the single most obvious way to say
+ * "this is a night scene with the brightness turned up". A departure board is
+ * not street lighting. It is on at ten in the morning for the same reason the
+ * ticket office light is, and drawn as a `glow` it is a black rectangle over
+ * the ticket gates at every hour the sun is up.
+ *
+ * So: unlit, owned, and left out of `Owned.glows`, which is the list the sky
+ * walks. The lamp equivalent is `Sky.burning`.
+ */
+export function lit(own: Owned, colour: string): THREE.MeshBasicMaterial {
+  return own.keep(new THREE.MeshBasicMaterial({ color: colour }));
 }
 
 /** Deterministic, so an area is the same place every time it is entered. */

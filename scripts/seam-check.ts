@@ -80,11 +80,29 @@ const GONE = 400;
  * a ray leaving it is the view, not a fault. Listing them is honest about that
  * rather than tuning a threshold until the shrine goes quiet.
  */
-const ENCLOSED: AreaId[] = [
+export const ENCLOSED: AreaId[] = [
   'grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'black-crown', 'crown-shop',
   /* Walled on all four sides, which is what makes a burial ground set apart —
      and what makes it checkable. */
   'old-cemetery',
+  /* Four walls and a roof, which is the most closed thing in the city. */
+  'domino-station',
+];
+
+/**
+ * And the areas that are deliberately not.
+ *
+ * Written down rather than left out, because a list of the closed ones is a
+ * list that goes quiet the moment somebody forgets to add to it — which is
+ * exactly what happened: Domino Station was built, walled and roofed, and this
+ * sweep passed for two days without ever looking at it. `npm run areas` holds
+ * these two lists to covering every area between them, the same way it holds
+ * the coplanar sweep to naming all of them.
+ */
+export const OPEN: AreaId[] = [
+  /* A real horizon on three sides: a ray leaving the precinct is the view, not
+     a fault. */
+  'domino-shrine',
 ];
 
 /**

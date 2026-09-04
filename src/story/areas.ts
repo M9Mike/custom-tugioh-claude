@@ -46,7 +46,8 @@ export type AreaId =
   | 'domino-shrine'
   | 'black-crown'
   | 'crown-shop'
-  | 'old-cemetery';
+  | 'old-cemetery'
+  | 'domino-station';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -778,7 +779,17 @@ const MARKET_ROW: Area = {
      * pretending the arcade was always this long. A dead end you can see the
      * reason for is a place. One you cannot is a budget.
      */
-    { x: MR_W - 1, z: 0, hw: 1, hd: MR_FRONT, tall: true },
+    /*
+     * The far gates, and the four metres of them that are now a way through.
+     *
+     * They were shut, and the comment above them said what would happen when
+     * they opened: the arcade genuinely continues towards the station, and this
+     * is the day the shutter went up. Two piers of wall either side of a
+     * doorway on the arcade's own centre line — which is world z 0.5, which is
+     * where Domino Station's west wall is pierced, and `partnerOf` checks it.
+     */
+    { x: MR_W - 1, z: -3.5, hw: 1, hd: MR_FRONT - 3.5, tall: true },
+    { x: MR_W - 1, z: 3.5, hw: 1, hd: MR_FRONT - 3.5, tall: true },
 
     /* And everything left out on the floor, which is what `MARKET_GOODS`
        exists for: these rectangles and the crates drawn on them are the same
@@ -793,6 +804,10 @@ const MARKET_ROW: Area = {
        back west would otherwise put the camera through the wall and into the
        void where the street is not built. */
     { x: -MR_W + 1, z: 0, hw: 1, hd: 2.2 },
+    /* And the station gateway at the other end, for the same reason: past it
+       is a different scene, and a camera reversing east through it would be
+       standing in the void where the concourse is not built. */
+    { x: MR_W - 1, z: 0, hw: 1, hd: 2.2 },
 
     /*
      * The awnings, which the camera used to reverse straight into.
@@ -868,6 +883,25 @@ const MARKET_ROW: Area = {
        */
       arrive: { x: 16, z: 3.1, facing: -Math.PI / 2 },
       label: 'Black Crown',
+    },
+    {
+      id: 'market-to-station',
+      /* Across the gateway and as deep as it is wide, so walking east out of
+         the arcade always crosses it. */
+      trigger: { x: 21.3, z: 0, hw: 1.0, hd: 2.0 },
+      to: 'domino-station',
+      seam: { x: MR_W, z: 0 },
+      /*
+       * Coming back out of the station: well down the arcade, facing west.
+       *
+       * Far enough in that the camera has its distance. It sits four and a
+       * half metres behind a duelist facing west, and the gateway is closed to
+       * it — from x 18 that closure is what the shot is pressed against, the
+       * same fault the Black Crown passage had at x 19. From 15.5 the camera
+       * has four metres of open arcade and what you see is the arcade.
+       */
+      arrive: { x: 15.5, z: 0, facing: -Math.PI / 2 },
+      label: 'Domino Station',
     },
   ],
   spawn: { x: -15.0, z: 0, facing: Math.PI / 2 },
@@ -2368,6 +2402,428 @@ const OLD_CEMETERY: Area = {
   spawn: { x: 12.4, z: -44, facing: 0 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Domino Station                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The terminus at the east end of Market Row's arcade. Ninety-six metres
+ * square, and the first place in this city with a roof you can see the far end
+ * of.
+ *
+ * The ward plan gives it one job the old ward never asked for: *vast, roofed
+ * and outdoors at once — the camera gets a lid for the first time.* Everything
+ * below follows from taking that literally. A concourse ninety-two metres
+ * across, five platforms and four roads under a five-span train shed, two
+ * trains standing and two roads empty so that the rails are something you can
+ * actually see, and a terrace over the south range to look down the whole
+ * length of it from.
+ *
+ * ## The one thing a station has that nothing else here does
+ *
+ * **Ground the player must never reach.** A road is a metre and five
+ * centimetres below the platform beside it, and the collision in this world
+ * cannot express a drop — walk off the edge and you would stand in the trench
+ * at the height of the platform, with the ballast a metre under your feet, and
+ * `settle` would then treat the platform you fell off as a wall and keep you
+ * there. So every platform edge carries the barrier every Japanese platform
+ * has grown in the last twenty years: a waist-high run of gates, closed,
+ * drawn exactly where the collision is. The roads are enclosed by them, by the
+ * buffer stops at the head and by the screen at the north end, and nothing can
+ * get in. `walkableCells` is a flood fill from the spawn, so the trench is
+ * never sampled by any check either — which is the correct answer, because
+ * nobody is ever standing on it.
+ *
+ * ## Why it is a terminus
+ *
+ * Because a terminus has a cross passage. Four roads between five platforms is
+ * four walls a player cannot cross; run the tracks through and each platform
+ * needs its own bridge or subway, which is six areas' worth of work for a
+ * junction the plan puts in the *plaza*. Buffer stops at the head of every road
+ * and one passage across the ends of all five platforms is the same place, one
+ * level, and you can walk to any of it.
+ *
+ * ## The grid
+ *
+ * Everything across is a multiple of 9.6 m from the middle: platforms 15.6 m
+ * wide on centres 19.2 m apart, roads 3.6 m between them, and the roof's ridges
+ * and columns on the platform centres. That is not tidiness for its own sake —
+ * the two failure modes in this world are geometry placed rather than designed
+ * and numbers *near* the right one, and a grid is what makes a wrong number
+ * stand out beside its neighbours.
+ */
+
+const DS_W = 48;   // half-width, so 96 m east to west
+const DS_D = 48;   // half-depth, so 96 m north to south
+
+/** The lines the station is built on, along z. Everything here is a face. */
+/** The inner face of the frontage wall. */
+export const DS_SOUTH = 46;
+/** The face of the south range onto the hall, and the terrace's north edge. */
+export const DS_RANGE = 36.5;
+/** The gate line: the ticket barrier, and the mouth of the shed. */
+export const DS_GATE = 16;
+/** Where the cross passage ends and the roads begin. */
+export const DS_CROSS = 6;
+/** The buffer beams, at the head of every road. */
+export const DS_BUFF = 2;
+/** The inner face of the north screen, where the roads leave the shed. */
+export const DS_NORTH = -46;
+
+/** A platform, across. */
+export const DS_PLAT = 15.6;
+/** A road, across. */
+export const DS_ROAD = 3.6;
+/** The five platforms, by their centre line. */
+export const DS_PLATFORMS = [-38.4, -19.2, 0, 19.2, 38.4];
+/**
+ * The four roads, by their centre line, and what is standing in each.
+ *
+ * Two trains and two empty roads, and the empty ones are the point: a shed
+ * with a train in every road is a shed with no railway in it. What you can see
+ * over the barriers of road two is ballast, rail, a chair, a signal — which is
+ * the only place in Domino City where the thing the whole building is *for* is
+ * visible.
+ */
+export const DS_ROADS: { x: number; livery: 'green' | 'maroon' | null }[] = [
+  { x: -28.8, livery: 'green' },
+  { x: -9.6, livery: null },
+  { x: 9.6, livery: 'maroon' },
+  { x: 28.8, livery: null },
+];
+/** How far the trackbed is below the platforms. */
+export const DS_TRACK = -1.05;
+/** The tail of a standing train: two cars, and where the second one ends. */
+export const DS_TRAIN_TAIL = -37;
+/** How high the barrier along a platform edge stands, and how deep it is. */
+export const DS_BARRIER = { h: 1.2, d: 0.24 };
+
+/**
+ * The terrace over the south range, and the two flights up to it.
+ *
+ * Two metres and ten centimetres, and that number is load-bearing in a way
+ * nothing about it looks. `settle` treats a platform more than a stride above
+ * you as the face of a step and stops you at it, and more than 2.2 m above you
+ * as a ceiling that is not in your way at all — which is the line `hasStoreys`
+ * draws between a podium and a storey. Under it, the terrace's own edge is the
+ * wall that keeps you off it and the flights are the only way up, with no
+ * solids to write and no floor-aware collision to switch on for an area that
+ * does not otherwise need it. Over it, every one of those would have to be
+ * built by hand, and the checks that have been signed off flat would all be
+ * re-litigated at once.
+ *
+ * Two metres is also enough. From up here your eye is at 3.7 m: over the
+ * barrier line at 2.6, under the transverse arch at 9.6, and looking straight
+ * down sixty-two metres of shed.
+ */
+export const DS_TERRACE = 2.1;
+/** Where the flights up to it stand, and how wide they are. */
+export const DS_FLIGHTS = [-24, 24];
+export const DS_FLIGHT_HALF = 2.45;
+/** The top tread, which is one riser below the terrace: the terrace's edge is
+    the last riser, so no tread top is ever in the terrace's plane. */
+export const DS_FLIGHT_RISE = 0.175;
+export const DS_FLIGHT_TOP = DS_TERRACE - DS_FLIGHT_RISE;
+/** Where the flights begin, out in the hall. */
+export const DS_FLIGHT_FOOT = 30.5;
+
+/**
+ * The ticket gates: seven machines and eight aisles, centred on the middle.
+ *
+ * The aisles are a metre and a half, which is nearly three times a real one —
+ * and a real one is 55 cm, which a duelist 76 cm through the shoulders does not
+ * fit down. A door is the end of a walk and not a target you aim at; this is
+ * the same reasoning that widened the shop's own doorway twice.
+ */
+export const DS_GATE_PITCH = 2.1;
+export const DS_GATE_HALF = 8.1;
+export const DS_GATES = [-3, -2, -1, 0, 1, 2, 3].map((i) => i * DS_GATE_PITCH);
+/** The four columns carrying the arch across the mouth of the shed. */
+export const DS_ARCH_COLUMNS = [-28.8, -9.6, 9.6, 28.8];
+export const DS_ARCH_AT = 15;
+
+/** The columns down each platform, carrying the ridge over it. */
+export const DS_COLUMNS = [-42, -31, -20, -9, 2];
+
+/**
+ * Everything left standing about the place, written once.
+ *
+ * A seat, a bin, a bench, a kiosk: each of these is a thing you can see and
+ * therefore a thing you bump into, and the only way that stays true as either
+ * list is edited is for there to be one list. `world/station.ts` draws from
+ * this and the solids below are spread from it — the same arrangement Market
+ * Row's crates have had since `npm run walls` first went looking for geometry
+ * behind a rectangle.
+ */
+export interface StationThing {
+  kind: 'seat' | 'bin' | 'fountain' | 'bench' | 'kiosk' | 'notice' | 'perch';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+}
+
+export const DS_THINGS: StationThing[] = [
+  ...DS_PLATFORMS.flatMap((x): StationThing[] => [
+    { kind: 'seat', x, z: DS_NORTH + 16, hw: 0.78, hd: 1.85 },
+    { kind: 'seat', x, z: DS_NORTH + 34, hw: 0.78, hd: 1.85 },
+    { kind: 'bin', x: x - 2.2, z: DS_NORTH + 25, hw: 0.34, hd: 0.34 },
+    { kind: 'fountain', x: x + 2.2, z: DS_NORTH + 25, hw: 0.26, hd: 0.24 },
+  ]),
+  ...[-33, -22, 22, 33].flatMap((x): StationThing[] => [
+    { kind: 'bench', x, z: 19.5, hw: 2.25, hd: 0.72 },
+    { kind: 'bin', x: x + 2.9, z: 19.5, hw: 0.32, hd: 0.32 },
+  ]),
+  { kind: 'kiosk', x: -34, z: 28, hw: 3.5, hd: 2.4 },
+  /* The notice board in the lobby, which stands proud of the stair core. */
+  { kind: 'notice', x: -33.3, z: 42, hw: 0.3, hd: 2.2 },
+  /* And the benches on the terrace, which look out over the hall. Their
+     footprint is over the range, where the ground floor is not walked. */
+  ...[-20, -12, 12, 20].map((x): StationThing => (
+    { kind: 'perch', x, z: DS_RANGE + 2.4, hw: 1.35, hd: 0.42 })),
+];
+
+/**
+ * The frontage of the range: ticket machines, lockers and the office window.
+ *
+ * They stand *out* of the plinth by a quarter of a metre, which is what a bank
+ * of machines does — and a quarter of a metre is more than the eighteen
+ * centimetres of clearance a duelist stopped by the terrace's own edge has, so
+ * without these you walk into all sixteen of them. `npm run walls` found
+ * eighty-nine cells of it.
+ */
+export const DS_FRONT: Rect[] = [
+  /* Machines west of the west flight, lockers east of the east one, the office
+     between the two. The first pass ran both banks straight through the
+     flights they stand beside. */
+  ...Array.from({ length: 7 }, (_, i) => ({ x: -43 + i * 2.1, z: DS_RANGE - 0.26, hw: 0.75, hd: 0.25 })),
+  ...Array.from({ length: 8 }, (_, i) => ({ x: 30 + i * 2.0, z: DS_RANGE - 0.28, hw: 0.85, hd: 0.28 })),
+  { x: -3, z: DS_RANGE - 0.32, hw: 6.3, hd: 0.32 },
+];
+/**
+ * The columns in the hall — on the *valley* lines, and nowhere else.
+ *
+ * The grid says a column every 9.6 m, which is every ridge and every valley,
+ * and drawn that way it put one dead on the centre line six metres in front of
+ * the ticket gates: the one axis in the building everybody walks down, with a
+ * metre and a half of stone in the middle of it. Geometry placed rather than
+ * designed, exactly.
+ *
+ * The valleys are the honest answer. A gutter is the deepest structure in the
+ * roof and the one thing that must be carried continuously; a ridge can be
+ * hung off a tie beam between two of them, which is what the trusses in
+ * `world/station.ts` do. So the hall's columns stand over the roads' lines
+ * only, and the middle of every span is clear floor — which is what you want
+ * of a concourse anyway.
+ */
+export const DS_HALL_COLUMNS = [-28.8, -9.6, 9.6, 28.8];
+export const DS_HALL_ROWS = [22, 33];
+
+/**
+ * Where the roof is: a valley over every road, a ridge over every platform.
+ *
+ * One roof over the whole ninety-six metres, concourse included, rather than a
+ * shed with a ceiling beside it. Two spans meeting over a road is a junction
+ * this world can build; a flat ceiling running into the side of a pitched roof
+ * is a gable, and a gable made of axis-aligned boxes is a staircase. The
+ * terminus that is one great volume is also the better building.
+ */
+export const DS_EAVES = 10;
+export const DS_RIDGE = 14.4;
+/** How far a ridge is from the valley beside it: half the platform pitch. */
+export const DS_SPAN = 9.6;
+/**
+ * The girder across the mouth of the shed, and what the camera is held under.
+ *
+ * Its soffit clears the valley gutters overhead — which run at 9.85 and are
+ * the lowest thing the roof has — so the whole building has one lid and the
+ * camera has one number.
+ */
+export const DS_ARCH = 8.6;
+/** The top of the four walls, which is over the highest ridge. */
+export const DS_WALL = 14.6;
+
+const DOMINO_STATION: Area = {
+  id: 'domino-station',
+  name: 'Domino Station',
+  kind: 'exterior',
+  /*
+   * Due east of Market Row, and as far north as Black Crown will allow.
+   *
+   * x is forced: the arcade's east threshold is at Market Row's local 23, which
+   * is world 64, and this area's west wall is pierced at local −48. z is forced
+   * by the city rather than by the doorway — Black Crown's yard reaches world
+   * z 7.5 from x 29 to 113, and ninety-six metres of station hung on a doorway
+   * at world z 0.5 would stand in it. So the station runs *north* from the
+   * arcade and the arcade comes in at its south-west corner, which is why the
+   * entrance is a corner lobby and not a middle one.
+   */
+  world: { x: 112, z: -43 },
+  bounds: { x: 0, z: 0, hw: DS_W - 1, hd: DS_D - 1 },
+  /*
+   * The terrace, and the flights up to it. Nothing else in this area is off
+   * the ground: a station concourse is one floor and a station platform is the
+   * same floor with a trench cut beside it.
+   */
+  platforms: [
+    { x: 0, z: (DS_RANGE + DS_SOUTH) / 2, hw: 30, hd: (DS_SOUTH - DS_RANGE) / 2, y: DS_TERRACE },
+    ...DS_FLIGHTS.flatMap((cross) => flightPlatforms({
+      along: 'z',
+      start: DS_FLIGHT_FOOT,
+      end: DS_RANGE,
+      from: 0,
+      to: DS_FLIGHT_TOP,
+      half: DS_FLIGHT_HALF,
+      cross,
+      rise: DS_FLIGHT_RISE,
+    })),
+  ],
+  solids: [
+    /* ---- the box the whole thing is in ---- */
+    /* The frontage, on the plaza that is not built yet. */
+    { x: 0, z: DS_SOUTH + 0.9, hw: DS_W, hd: 0.9, tall: true },
+    /* The west wall, in two runs with the arcade's gateway between them. */
+    { x: -DS_W + 0.9, z: (-DS_D + 41.5) / 2, hw: 0.9, hd: (DS_D + 41.5) / 2, tall: true },
+    { x: -DS_W + 0.9, z: (45.5 + DS_SOUTH + 1.8) / 2, hw: 0.9, hd: (DS_SOUTH + 1.8 - 45.5) / 2, tall: true },
+    { x: DS_W - 0.9, z: 0, hw: 0.9, hd: DS_D, tall: true },
+    /*
+     * The north screen, whole across the width.
+     *
+     * It is drawn with four portals in it, one per road, and the collision runs
+     * straight through them — which is not a wall of air, because a portal is
+     * over a road and a road is somewhere nobody can be. What a duelist meets
+     * at the north end of a platform is the screen, and the screen is there.
+     */
+    { x: 0, z: DS_NORTH - 0.8, hw: DS_W, hd: 0.8, tall: true },
+
+    /* ---- the south range ---- */
+    /*
+     * The two blocks that close the terrace's ends, and rise past it: the
+     * stair core over the lobby and the station offices at the east end. The
+     * terrace between them needs no solid at all — a platform 2.1 m up is
+     * already the wall that keeps you off it.
+     */
+    { x: -31.5, z: (DS_RANGE + DS_SOUTH) / 2, hw: 1.5, hd: (DS_SOUTH - DS_RANGE) / 2, tall: true },
+    { x: (30 + DS_W - 1.8) / 2, z: (DS_RANGE + DS_SOUTH) / 2, hw: (DS_W - 1.8 - 30) / 2, hd: (DS_SOUTH - DS_RANGE) / 2, tall: true },
+    /*
+     * The balustrade along the terrace's north edge, broken where each flight
+     * arrives.
+     *
+     * It stands inside the terrace's own footprint, so at ground level it is
+     * inside a rectangle that already stops you and changes nothing. Up on the
+     * terrace it is the only thing between a duelist and a two-metre drop into
+     * the hall.
+     */
+    { x: -28.25, z: DS_RANGE + 0.25, hw: 1.75, hd: 0.25 },
+    { x: 0, z: DS_RANGE + 0.25, hw: 21.5, hd: 0.25 },
+    { x: 28.25, z: DS_RANGE + 0.25, hw: 1.75, hd: 0.25 },
+    /* And the cheeks of each flight, which are the walls the stepped mass of
+       it is drawn as. */
+    /*
+     * The cheeks of each flight, which are the walls the stepped mass is drawn
+     * as — and their half-depth is `DS_RANGE - DS_FLIGHT_FOOT`, in that order.
+     *
+     * Written the other way round it is *negative*, `pushOut` returns null for
+     * every test against it, and all four cheeks are inert: eight metres of
+     * stone either side of both flights that a duelist walks straight through.
+     * The area passed `areas`, `footing` and `seams` in that state. `npm run
+     * walls` is the check that stands where you can stand and looks at what
+     * stops you, and it found the eight cells where the drawing and the
+     * nothing overlapped.
+     */
+    ...DS_FLIGHTS.flatMap((cross) => [-1, 1].map((s) => ({
+      x: cross + s * (DS_FLIGHT_HALF + 0.2),
+      z: (DS_FLIGHT_FOOT + DS_RANGE) / 2 - 0.15,
+      hw: 0.23,
+      hd: (DS_RANGE - DS_FLIGHT_FOOT) / 2 + 0.15,
+    }))),
+
+    /* ---- the hall ---- */
+    /* The columns carrying the roof over the hall, on the same grid. */
+    ...DS_HALL_COLUMNS.flatMap((x) => DS_HALL_ROWS.map((z) => ({ x, z, hw: 0.6, hd: 0.6, tall: true }))),
+    /* The barrier line, and the gates in it. */
+    { x: (-DS_W + 1.8 - DS_GATE_HALF) / 2, z: DS_GATE, hw: (DS_W - 1.8 - DS_GATE_HALF) / 2, hd: 0.4, tall: true },
+    { x: (DS_W - 1.8 + DS_GATE_HALF) / 2, z: DS_GATE, hw: (DS_W - 1.8 - DS_GATE_HALF) / 2, hd: 0.4, tall: true },
+    ...DS_GATES.map((x) => ({ x, z: DS_GATE, hw: 0.3, hd: 1.1 })),
+    /* The four columns just inside the gate line, carrying the arch. They
+       stand in the cross passage rather than in the screen, because a column
+       buried in a wall is a column nobody sees and a check calls embedded. */
+    ...DS_ARCH_COLUMNS.map((x) => ({ x, z: DS_ARCH_AT, hw: 0.45, hd: 0.45, tall: true })),
+
+    /* ---- the shed ---- */
+    /* The buffer stops at the head of every road, empty or not. */
+    ...DS_ROADS.map((r) => ({ x: r.x, z: (DS_BUFF + DS_CROSS) / 2, hw: DS_ROAD / 2, hd: (DS_CROSS - DS_BUFF) / 2 })),
+    /*
+     * The trains, tall — which is about the camera and not about the duelist,
+     * who cannot get near them. A camera four and a half metres behind
+     * somebody standing at a platform edge is otherwise inside a carriage.
+     */
+    ...DS_ROADS.filter((r) => r.livery).map((r) => ({
+      x: r.x,
+      z: (DS_BUFF + DS_TRAIN_TAIL) / 2,
+      hw: DS_ROAD / 2,
+      hd: (DS_BUFF - DS_TRAIN_TAIL) / 2,
+      tall: true,
+    })),
+    /* The platform edge barriers: both sides of every road, the whole length
+       of it, drawn exactly here. */
+    ...DS_ROADS.flatMap((r) => [-1, 1].map((s) => ({
+      x: r.x + s * (DS_ROAD / 2 + DS_BARRIER.d / 2),
+      z: (DS_CROSS + DS_NORTH) / 2,
+      hw: DS_BARRIER.d / 2,
+      hd: (DS_CROSS - DS_NORTH) / 2,
+    }))),
+    /* The columns down each platform, which carry the ridge over it. */
+    ...DS_PLATFORMS.flatMap((x) => DS_COLUMNS.map((z) => ({ x, z, hw: 0.5, hd: 0.5, tall: true }))),
+    /* And everything left out on the floor — the same lists the builder draws
+       from, read twice. */
+    ...DS_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd })),
+    ...DS_FRONT,
+    /*
+     * The shut east exit: two jambs and the shutter between them.
+     *
+     * The same three rectangles Black Crown's shop door needed, and for the
+     * same reason — everything that makes a doorway stands *in front of* the
+     * wall it is cut into, so a duelist stopped by the wall is standing inside
+     * the jamb. Seventy-two centimetres of it, here.
+     */
+    { x: 45.83, z: 21, hw: 0.4, hd: 0.4, tall: true },
+    { x: 45.83, z: 31, hw: 0.4, hd: 0.4, tall: true },
+    { x: 46.06, z: 26, hw: 0.15, hd: 4.5, tall: true },
+  ],
+  /* The lowest lid over anywhere a duelist stands is the arch across the mouth
+     of the shed at 9.6; the concourse ceiling is at 10.5 and the shed's eaves
+     at 10. Under an open sky the camera may climb as far as it likes, and
+     under this one it may not. */
+  ceiling: DS_ARCH - 0.4,
+  camSolids: [
+    /* The arcade's gateway, closed to the camera: past it is Market Row, which
+       is a different scene. */
+    { x: -DS_W + 1.4, z: 43.5, hw: 1.4, hd: 2.2 },
+  ],
+  doors: [
+    {
+      id: 'station-to-market',
+      trigger: { x: -DS_W + 2.4, z: 43.5, hw: 1.3, hd: 2.0 },
+      to: 'market-row',
+      seam: { x: -DS_W, z: 43.5 },
+      /*
+       * Six metres into the lobby, turned north-east.
+       *
+       * Which is the whole reason the entrance being in a corner is not a
+       * problem. Face east and you are looking along the frontage wall at the
+       * ticket office; face north and you are looking up the west platform.
+       * North-east is the one direction from which the place explains itself
+       * in a single frame — ninety metres of hall running away, the barrier
+       * line across the end of it, and the shed roof over the top.
+       */
+      arrive: { x: -40, z: 40, facing: (Math.PI * 3) / 4 },
+      label: 'Market Row',
+    },
+  ],
+  spawn: { x: -40, z: 40, facing: (Math.PI * 3) / 4 },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
@@ -2377,6 +2833,7 @@ export const AREAS: Record<AreaId, Area> = {
   'black-crown': BLACK_CROWN,
   'crown-shop': CROWN_SHOP,
   'old-cemetery': OLD_CEMETERY,
+  'domino-station': DOMINO_STATION,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

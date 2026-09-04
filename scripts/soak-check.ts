@@ -63,6 +63,8 @@ interface Sample {
 const CIRCUIT: [AreaId, string][] = [
   ['grandpa-shop', 'shop-to-street'],
   ['starting-area', 'street-to-market'],
+  ['market-row', 'market-to-station'],
+  ['domino-station', 'station-to-market'],
   ['market-row', 'market-to-crown'],
   ['black-crown', 'crown-to-shop'],
   ['crown-shop', 'shop-to-crown'],

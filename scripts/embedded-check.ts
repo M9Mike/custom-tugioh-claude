@@ -135,6 +135,7 @@ async function main() {
           };
           matrixWorld: { elements: number[] };
           material?: { color?: { getHexString(): string } };
+          userData?: { parts?: number[][] };
         }
         interface XYZ { x: number; y: number; z: number }
         const w = window as unknown as {
@@ -156,12 +157,39 @@ async function main() {
           } | null;
         }[] = [];
         w.__scene?.updateMatrixWorld(true);
+        /*
+         * A merged mesh comes in as the boxes it was made of.
+         *
+         * Without this the station has nothing to say to this check at all: a
+         * merge cannot be a container (see `fills` below), and after Domino
+         * Station baked its whole structure into two hundred meshes, the one
+         * area with a hundred and eighteen solids in it passed "0 found" by
+         * never being looked at. A check that cannot fail is worse than one
+         * that does. See `bakedFrom` in `world/kit.ts`.
+         */
+        const parts: { o: Obj3D; bb: { min: XYZ; max: XYZ }; whole: boolean }[] = [];
         w.__scene?.traverse((o) => {
           if (!o.isMesh || o.isSkinnedMesh || !o.geometry) return;
           const g = o.geometry;
           if (!g.boundingBox) g.computeBoundingBox();
           const bb = g.boundingBox;
           if (!bb) return;
+          const baked = (o.userData as { parts?: number[][] } | undefined)?.parts;
+          if (baked?.length) {
+            for (const p of baked) {
+              parts.push({
+                o,
+                bb: { min: { x: p[0], y: p[1], z: p[2] }, max: { x: p[3], y: p[4], z: p[5] } },
+                whole: true,
+              });
+            }
+          } else {
+            parts.push({ o, bb, whole: false });
+          }
+        });
+        for (const part of parts) {
+          const o = part.o;
+          const bb = part.bb;
           const lo = [Infinity, Infinity, Infinity];
           const hi = [-Infinity, -Infinity, -Infinity];
           const m = o.matrixWorld.elements;
@@ -211,7 +239,7 @@ async function main() {
           const size = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
           /* Anything flat is a panel, a decal or a plane; it cannot be "inside"
              something in the sense this is looking for. */
-          if (Math.min(size[0], size[1], size[2]) < 0.02) return;
+          if (Math.min(size[0], size[1], size[2]) < 0.02) continue;
           /*
            * Whether this mesh fills its own bounding box.
            *
@@ -229,8 +257,9 @@ async function main() {
            * not a container at all. Only containers are asked this — the small
            * thing being swallowed can be any shape it likes.
            */
-          let fills = 0;
-          const pos = o.geometry.attributes?.position;
+          /* A baked part is a box, and a box fills its own bounding box. */
+          let fills = part.whole ? 1 : 0;
+          const pos = part.whole ? null : o.geometry?.attributes?.position;
           if (pos) {
             const face: (number[] | null)[] = [null, null, null, null, null, null];
             for (let vi = 0; vi < pos.count; vi++) {
@@ -278,7 +307,7 @@ async function main() {
             size: size.map((n) => +n.toFixed(2)),
             at: [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2].map((n) => +n.toFixed(2)),
           });
-        });
+        }
 
         const out: { depth: number; line: string }[] = [];
         for (const small of boxes) {

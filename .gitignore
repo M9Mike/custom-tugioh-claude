@@ -50,3 +50,4 @@ next-env.d.ts
 # A build artefact of the comparison: stale the moment it exists.
 /src/game/ai-baseline.ts
 scripts/.bench/
+scratch/

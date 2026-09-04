@@ -866,6 +866,80 @@ export function gravel(): THREE.CanvasTexture | null {
  * hundred metres of it is not one colour. Anything with a direction would come
  * back as stripes the moment it repeats.
  */
+/**
+ * Track ballast: the broken stone a railway is laid on.
+ *
+ * Not `gravel`, which is the shrine's yard and draws twenty-six rake furrows —
+ * a swept pattern under a running rail is the one thing ballast never has. This
+ * is the opposite material at the opposite scale: stones two or three times the
+ * size, angular rather than rounded, a far wider tonal range because a broken
+ * face catches the light and a weathered one does not, and everything between
+ * them dark. Nothing in here is bigger than a few centimetres, for the same
+ * reason nothing in `gravel` is: the tile repeats, and anything large in it
+ * reads as a grid long before it reads as stone.
+ */
+export function ballast(): THREE.CanvasTexture | null {
+  return surface(1024, (ctx, s) => {
+    const rnd = seeded(0x5eed17);
+    /*
+     * The shadow between the stones, which is most of what you actually see.
+     *
+     * Lighter than it looks like it should be, and that is about where this
+     * ends up: a road is a metre below a platform under a roof, and everything
+     * that reaches it is ambient. Drawn at the value real ballast has in the
+     * open, the trench under Domino Station's empty roads came out as a black
+     * band between two barriers — the one place in the area the railway is
+     * supposed to be visible from. A tint cannot fix that: it multiplies, so it
+     * can only take the drawing further down.
+     */
+    ctx.fillStyle = '#57544d';
+    ctx.fillRect(0, 0, s, s);
+
+    /* The stones. Angular: three or four strokes rather than a rectangle, so
+       an edge catches and a face beside it does not. */
+    for (let i = 0; i < 9000; i++) {
+      const x = rnd() * s;
+      const y = rnd() * s;
+      const r = 3.2 + rnd() * 6.4;
+      const v = 112 + rnd() * 92;
+      ctx.fillStyle = `rgb(${v},${v - 4},${v - 11})`;
+      ctx.beginPath();
+      const sides = 4 + Math.floor(rnd() * 2);
+      for (let k = 0; k < sides; k++) {
+        const a = (k / sides) * Math.PI * 2 + rnd() * 0.5;
+        const d = r * (0.55 + rnd() * 0.45);
+        const px = x + Math.cos(a) * d;
+        const py = y + Math.sin(a) * d;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      /* A lit top edge on some of them, which is what makes a heap of stone
+         read as stone rather than as noise. */
+      if (rnd() < 0.35) {
+        ctx.fillStyle = `rgba(255,250,238,${0.08 + rnd() * 0.12})`;
+        ctx.fillRect(x - r * 0.5, y - r * 0.72, r, 1.8);
+      }
+    }
+
+    /* Oil and brake dust down the middle of the road, in patches far smaller
+       than the tile. */
+    for (let i = 0; i < 260; i++) {
+      const x = rnd() * s;
+      const y = rnd() * s;
+      const r = 6 + rnd() * 20;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(24,20,17,${0.12 + rnd() * 0.15})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    speckle(ctx, s, rnd, 5200, 0.05);
+    soften(ctx, s, s, 0.5);
+  });
+}
+
 export function turf(): THREE.CanvasTexture | null {
   return surface(1024, (ctx, s) => {
     const rnd = seeded(0x7c9f3a);

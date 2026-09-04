@@ -73,6 +73,8 @@ interface ObjectLike {
   isMesh?: boolean;
   geometry?: GeometryLike;
   matrixWorld: { elements: ArrayLike<number> };
+  /** What a merged mesh was made of. See `world/kit.ts`'s `bakedFrom`. */
+  userData?: { parts?: number[][] };
 }
 interface SceneLike {
   updateMatrixWorld(force: boolean): void;
@@ -99,21 +101,36 @@ async function boxesOf(page: Page): Promise<Box[]> {
       const bb = g.boundingBox;
       if (!bb) return;
       const e = obj.matrixWorld.elements;
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-      for (const cx of [bb.min.x, bb.max.x]) {
-        for (const cy of [bb.min.y, bb.max.y]) {
-          for (const cz of [bb.min.z, bb.max.z]) {
-            const x = e[0] * cx + e[4] * cy + e[8] * cz + e[12];
-            const y = e[1] * cx + e[5] * cy + e[9] * cz + e[13];
-            const z = e[2] * cx + e[6] * cy + e[10] * cz + e[14];
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+      /*
+       * A merge answers with what it was made of, not with its own box.
+       *
+       * Eighty light fittings baked into one mesh have a bounding box the size
+       * of the shed and a top at eight metres; a ticket machine baked into the
+       * same mesh puts that top at 1.75 and the box under every cell in the
+       * area. Domino Station's first merged build failed here on sixty
+       * thousand cells for exactly that. See `bakedFrom` in `world/kit.ts`.
+       */
+      const parts = obj.userData?.parts;
+      const corners: [number, number, number, number, number, number][] = parts?.length
+        ? parts.map((p) => [p[0], p[1], p[2], p[3], p[4], p[5]])
+        : [[bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z]];
+      for (const c of corners) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (const cx of [c[0], c[3]]) {
+          for (const cy of [c[1], c[4]]) {
+            for (const cz of [c[2], c[5]]) {
+              const x = e[0] * cx + e[4] * cy + e[8] * cz + e[12];
+              const y = e[1] * cx + e[5] * cy + e[9] * cz + e[13];
+              const z = e[2] * cx + e[6] * cy + e[10] * cz + e[14];
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+              if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
           }
         }
+        out.push({ minX, maxX, minY, maxY, minZ, maxZ });
       }
-      out.push({ minX, maxX, minY, maxY, minZ, maxZ });
     });
     return out;
   });

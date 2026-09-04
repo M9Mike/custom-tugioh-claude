@@ -50,6 +50,9 @@ const FLIGHTS: Flight[] = [
   { name: 'the shrine, up to the hall', area: 'domino-shrine', x: 0, z: 3.5, facing: 0, hold: 3.0 },
   { name: 'the cemetery, up to the middle terrace', area: 'old-cemetery', x: 12.4, z: -18, facing: 0, hold: 4.0 },
   { name: 'the cemetery, up to the oldest ground', area: 'old-cemetery', x: 12.4, z: 10, facing: 0, hold: 4.0 },
+  { name: 'the station, up to the west terrace', area: 'domino-station', x: -24, z: 30.5, facing: 0, hold: 3.0 },
+  { name: 'the station, up to the east terrace', area: 'domino-station', x: 24, z: 30.5, facing: 0, hold: 3.0 },
+  { name: 'the station, down off the terrace', area: 'domino-station', x: 24, z: 36, facing: Math.PI, hold: 3.0 },
   { name: 'Turtle Lane, up the hill', area: 'step-lane', x: 14.6, z: 0, facing: -Math.PI / 2, hold: 6.0 },
   { name: 'Turtle Lane, down the hill', area: 'step-lane', x: -13, z: 0, facing: Math.PI / 2, hold: 6.0 },
 ];

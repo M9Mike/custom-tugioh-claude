@@ -144,6 +144,37 @@ const audit = async (label) => {
           }
         }
       }
+      /*
+       * A merge that says what it is made of comes in as those boxes.
+       *
+       * Otherwise it comes in as one, and everything inside it is never
+       * compared with anything — which for Domino Station, where the whole
+       * building is baked into two hundred meshes, would have meant this sweep
+       * looked at two hundred bounding boxes and none of the eleven hundred
+       * surfaces in them. See `bakedFrom` in `world/kit.ts`. The faces of a box
+       * are the whole of its sides, which is what a box means.
+       */
+      const parts = o.userData && o.userData.parts;
+      if (parts && parts.length && square) {
+        for (const p of parts) {
+          const plo = [p[0], p[1], p[2]];
+          const phi = [p[3], p[4], p[5]];
+          const pf = [];
+          for (let axis = 0; axis < 3; axis++) {
+            for (let side = 0; side < 2; side++) {
+              const d1 = (axis + 1) % 3;
+              const d2 = (axis + 2) % 3;
+              pf.push({ lo: [plo[d1], plo[d2]], hi: [phi[d1], phi[d2]] });
+            }
+          }
+          /* A turned box's bounding-box sides are not its faces — see
+             `BakedPart` in `world/kit.ts`. Same rule as `square` above. */
+          boxes.push({ name: `${o.name || o.type}#part`, lo: plo, hi: phi, offset,
+                       square: square && !p[6],
+                       faces: pf, size: [phi[0] - plo[0], phi[1] - plo[1], phi[2] - plo[2]] });
+        }
+        return;
+      }
       boxes.push({ name: o.name || o.type, lo, hi, offset, square, faces,
                    size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] });
     });
@@ -365,7 +396,7 @@ let total = 0;
 /* `node scripts/coplanar-check.mjs -- crown` for one area; see the note in
    `door-check.ts` on why every check in here grew a filter. */
 const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a) && !/^[\d.]+$/.test(a));
-const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop', 'old-cemetery']
+const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop', 'old-cemetery', 'domino-station']
   .filter((id) => !only.length || only.some((o) => id.includes(o)));
 for (const area of AREAS_TO_VISIT) {
   total += await visit(area);

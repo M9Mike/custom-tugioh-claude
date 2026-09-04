@@ -72,6 +72,17 @@ collector cannot see the card, and an area entered twenty times must cost what
 it cost the first. `npm run soak` walks one page through every door for six
 laps and fails if anything only ever goes up.
 
+**A merge says what it is made of.** Nothing in an area moves, so an area of any
+size bakes its repeats into one mesh per material — Domino Station is 1294 draw
+calls unmerged and 228 merged. But four of the gates read the scene as *boxes*
+(`footing`, `walls`, `embedded`, `coplanar`), and a mesh's bounding box is exact
+for a box and a lie for a merge: a hundred light fittings in one mesh have a box
+the size of the building, and a check handed that box believes there is geometry
+everywhere inside it. So a builder that merges writes the boxes it baked through
+`bakedFrom` (`world/kit.ts`) and the checks expand them. Skip it and you do not
+get a failing check, you get a check that cannot fail, which is the worst thing
+in this toolchain.
+
 **Smooth beats sharp.** The renderer watches its own frame time
 (`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it
 gives up frames; a phone starts at one and a half times its pixels, not two.
@@ -91,7 +102,7 @@ stairs. The ease that keeps feet on a step is clamped on the way up
 - `src/components/story/world/<area>.ts` — what it *looks like*. Reads the
   same constants the collision does; never a second copy of a number.
 - `src/components/story/world/kit.ts` — `box`, `slab`-style helpers, `matt`,
-  `glow`, `decal`, `basePlate`, `surfaceOf`, `tiled`, `Owned`.
+  `glow`, `decal`, `basePlate`, `surfaceOf`, `tiled`, `Owned`, `bakedFrom`.
 - `src/components/story/world/surfaces.ts` — every texture, drawn into a
   canvas at load. The project ships no image assets.
 - `src/components/story/world/sky.ts` — the `Sky` an area owns; the light rig
@@ -174,7 +185,11 @@ close the horizon. **When Mike names an object, go and look at the object.**
 
 And probe the instrument. When you loosen a check, put the fault back and
 prove the check still catches it. When you tighten one, prove it still passes
-on everything that was clean. A check that has never failed has never been
+on everything that was clean. Three of the sweeps are hand-written lists of
+areas — `coplanar-check.mjs`, `seam-check.ts`'s `ENCLOSED`/`OPEN`, and
+`shimmer-check.ts`'s views — and two of them had silently fallen behind by the
+time anybody looked; `npm run areas` now holds all three to naming every area
+there is. A check that has never failed has never been
 proved: the seams check reported "none" for five days because every standing
 place it used had a NaN height — `walkableCells` leaves `y` NaN in a
 single-storey area, a ray from a NaN origin hits everything at NaN, and NaN

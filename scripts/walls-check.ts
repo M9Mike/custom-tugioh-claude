@@ -140,22 +140,34 @@ async function cast(page: Page, rays: Ray[], stones: Obb[]): Promise<{ d: number
       if (!g.boundingBox) g.computeBoundingBox();
       const b = g.boundingBox;
       if (!b) return;
-      /* A merge has no faces its box describes. One box is twenty-four
-         vertices; more than that with a footprint over six metres is a
-         scatter — the stones, the wood, a grove — and the stones come in as
-         boxes of their own below. */
-      const pos = g.attributes.position;
+      /*
+       * A merge that says what it is made of comes in as those boxes.
+       *
+       * A merge that does not has no faces its box describes: one box is
+       * twenty-four vertices, and more than that with a footprint over six
+       * metres is a scatter — the stones, the wood, a grove — and the stones
+       * come in as boxes of their own below. See `bakedFrom` in `world/kit.ts`.
+       */
       const e = m.matrixWorld.elements;
-      const sx = Math.hypot(e[0], e[1], e[2]) * (b.max.x - b.min.x);
-      const sz = Math.hypot(e[8], e[9], e[10]) * (b.max.z - b.min.z);
-      if (pos && pos.count > 24 && (sx > 6 || sz > 6)) return;
-      /* Ground planes are not walls: anything under 5 cm tall is a floor. */
-      const sy = Math.hypot(e[4], e[5], e[6]) * (b.max.y - b.min.y);
-      if (sy < 0.05) return;
+      const parts = (m.userData as { parts?: number[][] } | undefined)?.parts;
+      const boxes: number[][] = parts?.length
+        ? parts
+        : [[b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]];
+      if (!parts?.length) {
+        const pos = g.attributes.position;
+        const sx = Math.hypot(e[0], e[1], e[2]) * (b.max.x - b.min.x);
+        const sz = Math.hypot(e[8], e[9], e[10]) * (b.max.z - b.min.z);
+        if (pos && pos.count > 24 && (sx > 6 || sz > 6)) return;
+      }
       m4.copy(m.matrixWorld).invert();
-      lo.push(b.min.x, b.min.y, b.min.z);
-      hi.push(b.max.x, b.max.y, b.max.z);
-      inv.push(...m4.elements);
+      for (const bx of boxes) {
+        /* Ground planes are not walls: anything under 5 cm tall is a floor. */
+        const sy = Math.hypot(e[4], e[5], e[6]) * (bx[4] - bx[1]);
+        if (sy < 0.05) continue;
+        lo.push(bx[0], bx[1], bx[2]);
+        hi.push(bx[3], bx[4], bx[5]);
+        inv.push(...m4.elements);
+      }
     });
     const n = lo.length / 3;
 
@@ -269,16 +281,31 @@ async function covered(page: Page, spots: Spot[], stones: Obb[]): Promise<number
       if (!g.boundingBox) g.computeBoundingBox();
       const b = g.boundingBox;
       if (!b) return;
-      /* Merges included here, unlike `cast`: a building drawn as one merged
-         mesh is solid and its box is its shape, and a scatter's box saying
-         "drawn" can only hide a wall of air, never invent one. */
+      /*
+       * Merges included here, unlike `cast` — but as their parts where they say
+       * what those are.
+       *
+       * A merge that does not is taken as its box, which "can only hide a wall
+       * of air, never invent one" and was the reasoning that let this pass. It
+       * is still the reasoning that lets the burial ground's stones through,
+       * and it is still the weakest sentence in this file: an area that merged
+       * everything would make this check answer "covered" everywhere and never
+       * fail again. `parts` is how a builder stops that happening to it — see
+       * `bakedFrom` in `world/kit.ts`.
+       */
       const e = m.matrixWorld.elements;
-      const sy = Math.hypot(e[4], e[5], e[6]) * (b.max.y - b.min.y);
-      if (sy < 0.05) return;
+      const parts = (m.userData as { parts?: number[][] } | undefined)?.parts;
+      const boxes: number[][] = parts?.length
+        ? parts
+        : [[b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]];
       m4.copy(m.matrixWorld).invert();
-      lo.push(b.min.x, b.min.y, b.min.z);
-      hi.push(b.max.x, b.max.y, b.max.z);
-      inv.push(...m4.elements);
+      for (const bx of boxes) {
+        const sy = Math.hypot(e[4], e[5], e[6]) * (bx[4] - bx[1]);
+        if (sy < 0.05) continue;
+        lo.push(bx[0], bx[1], bx[2]);
+        hi.push(bx[3], bx[4], bx[5]);
+        inv.push(...m4.elements);
+      }
     });
     const n = lo.length / 3;
     return spots.map((sp) => {
