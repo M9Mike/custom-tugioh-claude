@@ -47,6 +47,7 @@ import { buildBlackCrown } from './world/blackcrown';
 import { buildCrownShop } from './world/crownshop';
 import { buildCemetery } from './world/cemetery';
 import { buildStation } from './world/station';
+import { buildPlaza } from './world/plaza';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -346,6 +347,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'crown-shop': buildCrownShop,
       'old-cemetery': buildCemetery,
       'domino-station': buildStation,
+      'station-plaza': buildPlaza,
     };
 
     let built: BuiltArea | null = null;
@@ -629,6 +631,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       const sky = skyAt(hour);
       VOID.set(sky.voidColour);
       if (scene.fog instanceof THREE.Fog) {
+        /*
+         * The fog's colour as well as its distances.
+         *
+         * `new THREE.Fog(VOID, …)` *copies* the colour it is handed — the
+         * background keeps the reference and follows the hour, the fog kept a
+         * black from the first frame and never moved off it. Nothing showed it
+         * while the biggest area was under a roof: in an open square a hundred
+         * and thirty metres across, the far range and the whole skyline behind
+         * it faded to black under a blue afternoon sky.
+         */
+        scene.fog.color.copy(VOID);
         scene.fog.near = sky.fogNear;
         scene.fog.far = sky.fogFar;
       }

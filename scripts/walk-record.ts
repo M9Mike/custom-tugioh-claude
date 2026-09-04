@@ -65,6 +65,8 @@ const ROUTES: Route[] = [
   { name: 'up to the shrine', area: 'domino-shrine', from: { x: 0, z: -22.6, facing: 0 }, key: 'w', frames: 44 },
   { name: 'along the sando', area: 'domino-shrine', from: { x: 0, z: -14, facing: 0 }, key: 'w', frames: 44 },
   { name: 'into the east trees', area: 'domino-shrine', from: { x: 14, z: 6, facing: Math.PI / 4 }, key: 'w', frames: 40 },
+  { name: 'out on to the plaza', area: 'station-plaza', from: { x: -55, z: -10, facing: Math.PI / 2 }, key: 'w', frames: 56 },
+  { name: 'across the plaza to the clock', area: 'station-plaza', from: { x: -40, z: 0, facing: Math.PI / 2 }, key: 'w', frames: 56 },
   { name: 'into the station from the arcade', area: 'domino-station', from: { x: -40, z: 40, facing: (Math.PI * 3) / 4 }, key: 'w', frames: 48 },
   { name: 'through the ticket gates', area: 'domino-station', from: { x: 0, z: 26, facing: Math.PI }, key: 'w', frames: 44 },
   /* Off the column line: the columns run down the middle of every platform, so

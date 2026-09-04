@@ -129,6 +129,16 @@ const VANTAGES: Vantage[] = [
   { name: 'along a row of stones', area: 'old-cemetery', x: -21, z: -30, facing: 0 },
   { name: 'the ossuary porch', area: 'old-cemetery', x: 21, z: 30, facing: 0 },
 
+  /* Station Plaza: the arrival, the square both ways, the loop, the clock and
+     the three ways out. */
+  { name: 'out on to the forecourt', area: 'station-plaza', x: -55, z: -10, facing: Math.PI / 2 },
+  { name: 'across the square', area: 'station-plaza', x: -44, z: -10, facing: Math.PI / 2 },
+  { name: 'the clock from the west', area: 'station-plaza', x: -20, z: 0, facing: Math.PI / 2 },
+  { name: 'the bus loop, north leg', area: 'station-plaza', x: -19, z: -40, facing: Math.PI / 2 },
+  { name: 'the taxi rank', area: 'station-plaza', x: 44, z: -10, facing: -Math.PI / 2 },
+  { name: 'back at the station front', area: 'station-plaza', x: 13, z: 0, facing: -Math.PI / 2 },
+  { name: 'the way to Central Towers', area: 'station-plaza', x: -12, z: -46, facing: Math.PI },
+
   /* Domino Station: the hall, the gate line, the shed both ways, a platform
      edge against a train and one against an empty road, and the terrace. */
   { name: 'the hall from the lobby', area: 'domino-station', x: -40, z: 30, facing: Math.PI / 2 },

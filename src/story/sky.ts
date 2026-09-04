@@ -138,6 +138,16 @@ const NIGHT: Omit<SkyProfile, 'hour'> = {
   hemiIntensity: 0.55,
   ambientColour: '#2f3646',
   ambientIntensity: 0.26,
+  /*
+   * Night keeps its own distances, and they are the tight ones.
+   *
+   * The daylight numbers below were chosen when nothing in the city was more
+   * than forty-four metres away; at Station Plaza's hundred and thirty-two the
+   * far range came out as haze with no brick left in it, so the three daylight
+   * keyframes now reach two to three hundred metres — the air of a city, not of
+   * a room. Night does not follow them. Fog closed in at night is the point,
+   * and the void it closes into is black.
+   */
   voidColour: '#000000',
   fogNear: 26,
   fogFar: 62,
@@ -161,8 +171,8 @@ const KEYFRAMES: { at: number; p: Omit<SkyProfile, 'hour'> }[] = [
       ambientColour: '#7e7f96',
       ambientIntensity: 0.55,
       voidColour: '#5c5566',
-      fogNear: 40,
-      fogFar: 110,
+      fogNear: 55,
+      fogFar: 230,
       lamps: 0.45,
       exposure: 0.9,
     },
@@ -191,8 +201,8 @@ const KEYFRAMES: { at: number; p: Omit<SkyProfile, 'hour'> }[] = [
       ambientColour: '#b4c4d8',
       ambientIntensity: 0.5,
       voidColour: '#93aecb',
-      fogNear: 55,
-      fogFar: 150,
+      fogNear: 75,
+      fogFar: 320,
       lamps: 0,
       exposure: 0.74,
     },
@@ -211,8 +221,8 @@ const KEYFRAMES: { at: number; p: Omit<SkyProfile, 'hour'> }[] = [
       ambientColour: '#6e7189',
       ambientIntensity: 0.55,
       voidColour: '#3b3547',
-      fogNear: 38,
-      fogFar: 96,
+      fogNear: 52,
+      fogFar: 210,
       lamps: 0.6,
       exposure: 0.98,
     },

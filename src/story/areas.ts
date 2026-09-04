@@ -47,7 +47,8 @@ export type AreaId =
   | 'black-crown'
   | 'crown-shop'
   | 'old-cemetery'
-  | 'domino-station';
+  | 'domino-station'
+  | 'station-plaza';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -2542,6 +2543,23 @@ export const DS_GATES = [-3, -2, -1, 0, 1, 2, 3].map((i) => i * DS_GATE_PITCH);
 export const DS_ARCH_COLUMNS = [-28.8, -9.6, 9.6, 28.8];
 export const DS_ARCH_AT = 15;
 
+/** The east exit, on to Station Plaza: where it is and how wide it opens. */
+export const DS_EAST = 26;
+export const DS_EAST_HALF = 3.1;
+
+/**
+ * The two piers either side of the shut east exit.
+ *
+ * Written once, drawn from here by `world/station.ts` and collided from here
+ * by the solids below. Typed twice they drifted: the piers stand five metres
+ * either side of the doorway and their solids stood at three point six, so
+ * `npm run walls` found a duelist inside both of them — and only just, because
+ * a wall of air a metre and a half from what it is meant to be is inside the
+ * reach that check allows.
+ */
+export const DS_EAST_PIERS: Rect[] = [-1, 1].map((s) => (
+  { x: DS_W - 2.17, z: DS_EAST + s * 5.0, hw: 0.35, hd: 0.35 }));
+
 /** The columns down each platform, carrying the ridge over it. */
 export const DS_COLUMNS = [-42, -31, -20, -9, 2];
 
@@ -2685,7 +2703,16 @@ const DOMINO_STATION: Area = {
     /* The west wall, in two runs with the arcade's gateway between them. */
     { x: -DS_W + 0.9, z: (-DS_D + 41.5) / 2, hw: 0.9, hd: (DS_D + 41.5) / 2, tall: true },
     { x: -DS_W + 0.9, z: (45.5 + DS_SOUTH + 1.8) / 2, hw: 0.9, hd: (DS_SOUTH + 1.8 - 45.5) / 2, tall: true },
-    { x: DS_W - 0.9, z: 0, hw: 0.9, hd: DS_D, tall: true },
+    /*
+     * The east wall, with the exit to the plaza cut out of it.
+     *
+     * It was whole, and behind it was a rolled shutter and a notice reading
+     * EAST EXIT — CLOSED, because Station Plaza was in the plan and not in the
+     * world. It is now. Six metres and twenty of opening, which is the width
+     * the reveals leave and exactly the width you can walk.
+     */
+    { x: DS_W - 0.9, z: (-DS_D + DS_EAST - DS_EAST_HALF) / 2, hw: 0.9, hd: (DS_D + DS_EAST - DS_EAST_HALF) / 2, tall: true },
+    { x: DS_W - 0.9, z: (DS_EAST + DS_EAST_HALF + DS_D) / 2, hw: 0.9, hd: (DS_D - DS_EAST - DS_EAST_HALF) / 2, tall: true },
     /*
      * The north screen, whole across the width.
      *
@@ -2779,17 +2806,9 @@ const DOMINO_STATION: Area = {
        from, read twice. */
     ...DS_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd })),
     ...DS_FRONT,
-    /*
-     * The shut east exit: two jambs and the shutter between them.
-     *
-     * The same three rectangles Black Crown's shop door needed, and for the
-     * same reason — everything that makes a doorway stands *in front of* the
-     * wall it is cut into, so a duelist stopped by the wall is standing inside
-     * the jamb. Seventy-two centimetres of it, here.
-     */
-    { x: 45.83, z: 21, hw: 0.4, hd: 0.4, tall: true },
-    { x: 45.83, z: 31, hw: 0.4, hd: 0.4, tall: true },
-    { x: 46.06, z: 26, hw: 0.15, hd: 4.5, tall: true },
+    /* The piers either side of the east exit, which stand in front of the wall
+       the doorway is cut into — see `DS_EAST_PIERS`. */
+    ...DS_EAST_PIERS.map((p) => ({ ...p, tall: true })),
   ],
   /* The lowest lid over anywhere a duelist stands is the arch across the mouth
      of the shed at 9.6; the concourse ceiling is at 10.5 and the shed's eaves
@@ -2797,9 +2816,9 @@ const DOMINO_STATION: Area = {
      under this one it may not. */
   ceiling: DS_ARCH - 0.4,
   camSolids: [
-    /* The arcade's gateway, closed to the camera: past it is Market Row, which
-       is a different scene. */
+    /* The two doorways, closed to the camera: past each is a different scene. */
     { x: -DS_W + 1.4, z: 43.5, hw: 1.4, hd: 2.2 },
+    { x: DS_W - 1.2, z: DS_EAST, hw: 1.2, hd: DS_EAST_HALF + 0.3 },
   ],
   doors: [
     {
@@ -2820,8 +2839,413 @@ const DOMINO_STATION: Area = {
       arrive: { x: -40, z: 40, facing: (Math.PI * 3) / 4 },
       label: 'Market Row',
     },
+    {
+      id: 'station-to-plaza',
+      /* Across the doorway and as deep as it is wide, so walking east out of
+         the hall always crosses it. */
+      trigger: { x: DS_W - 2.4, z: DS_EAST, hw: 1.2, hd: DS_EAST_HALF - 0.4 },
+      to: 'station-plaza',
+      seam: { x: DS_W, z: DS_EAST },
+      /*
+       * Well into the hall, facing west along it.
+       *
+       * Not at the door: the camera sits four and a half metres behind and the
+       * doorway is closed to it, so arriving at x 41 presses the shot against
+       * that closure. From 38 it has its distance, and what it is pointed at is
+       * ninety metres of concourse with the shed over the end of it — which is
+       * the one shot this side of the building has that the plaza cannot match.
+       */
+      arrive: { x: 38, z: DS_EAST, facing: -Math.PI / 2 },
+      label: 'Station Plaza',
+    },
   ],
   spawn: { x: -40, z: 40, facing: (Math.PI * 3) / 4 },
+};
+
+/* ------------------------------------------------------------------ */
+/* Station Plaza                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The square outside Domino Station's east exit. A hundred and thirty-two
+ * metres by a hundred and twenty, and the largest open ground in the city.
+ *
+ * The ward plan gives it a job in one line: *the city's main junction — five
+ * doors off one square.* Four of those five are areas that do not exist yet, so
+ * what this has to be today is the junction itself — a place big enough that
+ * arriving in it feels like arriving in the city rather than in another room,
+ * and shaped so that the ways out are obvious the moment you see them.
+ *
+ * ## What is in it
+ *
+ * A bus loop round a central island, a clock pillar on the island, a taxi rank
+ * down the east side, and the station's own east elevation closing the west —
+ * the same brick, with the shed's roof standing up behind it, so the building
+ * you have just walked out of is recognisably the building you were in.
+ *
+ * ## The ground is four heights, and none of them is a storey
+ *
+ * The carriageway is the floor at zero; every pavement and the island are a
+ * kerb above it at 0.15; the clock stands on three steps; and the station's
+ * forecourt is a terrace 1.2 m up with a flight of seven down into the square.
+ * All of it is under the 2.2 m that separates a podium from a floor with
+ * another floor over it, so `settle` gives the terrace's edge and the kerbs
+ * their walls for nothing and `hasStoreys` stays false — see `DS_TERRACE` for
+ * the same argument at the station.
+ *
+ * ## What closes the horizon
+ *
+ * Four ranges of building, and behind them a city. A hundred and thirty-two
+ * metres of open ground with a fourteen-metre terrace round it is a courtyard;
+ * what makes it a *square* is the second and third rank standing behind that
+ * terrace, taller and set back, which is the same trick the burial ground's
+ * wood plays and the reason a city square reads as being in a city.
+ */
+
+const PZ_W = 66;   // half-width, so 132 m east to west
+const PZ_D = 60;   // half-depth, so 120 m north to south
+
+/**
+ * The room the square is, as *half-extents* — positive numbers, both ways.
+ *
+ * Written as four signed faces (`west: -62, north: -56`) this cost three
+ * separate faults in one afternoon, every one of them the same shape: a
+ * half-extent computed as `(PZ_W + PZ_FACE.west) / -2` or
+ * `(PZ_ROAD.hw - PZ_FACE.west) / 2`, positive when it should be negative or
+ * fifty when it should be twelve. Two of the square's four walls were not
+ * there at all, and a pavement covered half the carriageway. A half-extent is
+ * a difference of two magnitudes and nothing else, so the magnitudes are what
+ * is written down.
+ */
+export const PZ_IN = { x: 62, z: 56 };
+/** The same lines with their signs, for the handful of places that want them. */
+export const PZ_FACE = { west: -PZ_IN.x, east: PZ_IN.x, north: -PZ_IN.z, south: PZ_IN.z } as const;
+/** How far a kerb stands over the carriageway. Declared here because the
+    flight lands on it and the flight is written before the road is. */
+const PZ_KERB_HEIGHT = 0.15;
+/** Where the station's exit pierces the west range, and how wide. */
+export const PZ_DOOR = -10;
+export const PZ_DOOR_HALF = 3.1;
+
+/** The forecourt terrace along the station front, and how high it stands. */
+export const PZ_TERRACE = 1.2;
+export const PZ_FORECOURT = { x: -56, z: PZ_DOOR, hw: 6, hd: 20 };
+/** The flight down off it: east from the terrace's edge, seven treads. */
+export const PZ_STEP = 0.15;
+export const PZ_FLIGHT = { from: -50, to: -43.7, half: 5, cross: PZ_DOOR };
+/**
+ * The treads themselves, named rather than fished back out of `platforms`.
+ *
+ * The builder used to pick them out with `hw <= 6 && hd <= 6 && y < terrace`,
+ * which is also true of every one of the clock's three steps — so the flight
+ * was drawn twice, once where it is and once as a twelve-metre stair lying
+ * across the middle of the island. A list that already exists is cheaper to
+ * name than to describe.
+ */
+export const PZ_FLIGHT_STEPS: Platform[] = flightPlatforms({
+  along: 'x',
+  start: PZ_FLIGHT.from,
+  end: PZ_FLIGHT.to,
+  from: PZ_TERRACE,
+  /*
+   * One riser above the pavement, not on to it.
+   *
+   * Run down to the kerb's own height the last tread *is* the pavement — a
+   * ninety-centimetre box whose top is two millimetres under nine square
+   * metres of paving, which is the largest z-fight this square could have.
+   * The pavement is the seventh step.
+   */
+  to: PZ_KERB_HEIGHT + PZ_STEP,
+  half: PZ_FLIGHT.half,
+  cross: PZ_FLIGHT.cross,
+  rise: PZ_STEP,
+});
+
+/**
+ * The bus loop, as the two lines that define it.
+ *
+ * The island is what the loop is round; the carriageway is the eight and a half
+ * metres between it and the outer kerb. Everything else in the square is
+ * pavement, which is the same 0.15 up as the island — so the only ground at
+ * zero is road, and a duelist stepping off a kerb steps down exactly the
+ * fifteen centimetres a kerb is.
+ */
+export const PZ_ISLAND = { hw: 30, hd: 34 };
+export const PZ_ROAD = { hw: 38.5, hd: 42.5 };
+export const PZ_KERB = PZ_KERB_HEIGHT;
+
+/** The clock pillar, and the three steps it stands on. */
+export const PZ_CLOCK = [
+  { hw: 6.0, hd: 6.0, y: 0.30 },
+  { hw: 4.8, hd: 4.8, y: 0.45 },
+  { hw: 3.6, hd: 3.6, y: 0.60 },
+];
+
+/**
+ * The guard rail round the island, in six runs with the crossings between them.
+ *
+ * A bus island has one, and it is the thing that makes the two painted
+ * crossings mean anything: without it the island is a sixty-metre expanse you
+ * can step off anywhere, and the loop round it is a texture rather than a road.
+ * Broken exactly where the paint is.
+ */
+export const PZ_CROSS_HALF = 3.6;
+export const PZ_RAILS: Rect[] = [
+  /* North and east, whole. */
+  { x: 0, z: -PZ_ISLAND.hd + 0.6, hw: PZ_ISLAND.hw - 0.6, hd: 0.12 },
+  { x: PZ_ISLAND.hw - 0.6, z: 0, hw: 0.12, hd: PZ_ISLAND.hd - 0.6 },
+  /* West, broken where the crossing to the station lands. */
+  { x: -PZ_ISLAND.hw + 0.6, z: (-PZ_ISLAND.hd + PZ_DOOR - PZ_CROSS_HALF) / 2,
+    hw: 0.12, hd: (PZ_ISLAND.hd + PZ_DOOR - PZ_CROSS_HALF) / 2 - 0.6 },
+  { x: -PZ_ISLAND.hw + 0.6, z: (PZ_DOOR + PZ_CROSS_HALF + PZ_ISLAND.hd) / 2,
+    hw: 0.12, hd: (PZ_ISLAND.hd - PZ_DOOR - PZ_CROSS_HALF) / 2 - 0.6 },
+  /* South, broken where the crossing to Civic Square lands. */
+  { x: (-PZ_ISLAND.hw - PZ_CROSS_HALF) / 2, z: PZ_ISLAND.hd - 0.6,
+    hw: (PZ_ISLAND.hw - PZ_CROSS_HALF) / 2 - 0.6, hd: 0.12 },
+  { x: (PZ_ISLAND.hw + PZ_CROSS_HALF) / 2, z: PZ_ISLAND.hd - 0.6,
+    hw: (PZ_ISLAND.hw - PZ_CROSS_HALF) / 2 - 0.6, hd: 0.12 },
+];
+
+/**
+ * The three ways out that are not built yet, and where each is cut.
+ *
+ * `face` is the side of the square the opening is in, and everything drawn for
+ * it stands *proud* of that wall — a hoarding drawn inside the range it closes
+ * is a hoarding nobody sees.
+ */
+export interface PlazaWay {
+  x: number;
+  z: number;
+  /** How wide the opening is. */
+  w: number;
+  face: 'n' | 's' | 'w';
+  name: string;
+  sub: string;
+  kind: 'hoard' | 'gates' | 'shutter';
+}
+
+export const PZ_WAYS: PlazaWay[] = [
+  { x: -12, z: PZ_FACE.north, w: 14, face: 'n', name: 'CENTRAL TOWERS', sub: 'ROAD CLOSED', kind: 'hoard' },
+  { x: PZ_FACE.east, z: -24, w: 10, face: 'w', name: 'CITY LIBRARY', sub: 'CLOSED TODAY', kind: 'gates' },
+  { x: 16, z: PZ_FACE.south, w: 11, face: 's', name: 'CIVIC SQUARE', sub: 'DIVERSION', kind: 'shutter' },
+];
+
+/** What stands on the ground here, written once for the builder and the solids. */
+export interface PlazaThing {
+  kind: 'shelter' | 'bus' | 'taxi' | 'tree' | 'lamp' | 'bench' | 'planter' | 'bin' | 'kiosk' | 'bollardRun';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  /** Which way it faces, for the ones that have a front. */
+  turn?: number;
+  /** A label, for the ones that carry one. */
+  tag?: string;
+}
+
+/** The six bus stands, three down each long side of the island. */
+export const PZ_STANDS = [-19.2, 0, 19.2];
+
+export const PZ_THINGS: PlazaThing[] = [
+  /* Shelters on the island, facing the road they serve. */
+  ...PZ_STANDS.flatMap((x, i): PlazaThing[] => [
+    /* Backs to the island, open to the road — a shelter you sit in facing away
+       from the bus is a shelter nobody would wait in. */
+    { kind: 'shelter', x, z: -PZ_ISLAND.hd + 2.4, hw: 5.4, hd: 1.8, turn: Math.PI, tag: 'ABC'[i] },
+    { kind: 'shelter', x, z: PZ_ISLAND.hd - 2.4, hw: 5.4, hd: 1.8, turn: 0, tag: 'DEF'[i] },
+  ]),
+  /* Two buses standing on the north leg and one on the south, and a coach on
+     the east. A bus is eleven metres of solid you walk round. */
+  /* Standing off the kerb the width of a wing mirror, not scraping it: at 34.6
+     a bus's flank was in the same plane as the shelter's glass behind it. */
+  { kind: 'bus', x: -19.2, z: -35.7, hw: 5.6, hd: 1.35, tag: 'DOMINO HIGH' },
+  { kind: 'bus', x: 19.2, z: -35.7, hw: 5.6, hd: 1.35, tag: 'THE HARBOUR' },
+  { kind: 'bus', x: 0, z: 35.7, hw: 5.6, hd: 1.35, tag: 'CIVIC SQUARE' },
+  { kind: 'bus', x: 31.7, z: 12, hw: 1.35, hd: 5.6, turn: Math.PI / 2, tag: 'KAIBALAND' },
+  /* The taxi rank, nose to tail down the east leg. */
+  ...[-18, -12.4, -6.8, -1.2].map((z): PlazaThing => (
+    { kind: 'taxi', x: 34.6, z, hw: 0.95, hd: 2.4, turn: Math.PI / 2 })),
+  { kind: 'shelter', x: PZ_ISLAND.hw - 2.4, z: -10, hw: 1.8, hd: 4.4, turn: Math.PI / 2, tag: 'TAXI' },
+  /* The newsstand by the foot of the station steps, which is the one place in
+     the square anybody is actually standing still. */
+  { kind: 'kiosk', x: -41, z: -22, hw: 3.2, hd: 2.4, turn: Math.PI / 2 },
+  /* Trees in grates: two rows down the outer pavements, one row on the island. */
+  ...[-48, -24, 0, 24, 48].flatMap((x): PlazaThing[] => [
+    { kind: 'tree', x, z: -48, hw: 0.55, hd: 0.55 },
+    { kind: 'tree', x, z: 48, hw: 0.55, hd: 0.55 },
+  ]),
+  ...[-26, 0, 26].flatMap((z): PlazaThing[] => [
+    { kind: 'tree', x: -50, z, hw: 0.55, hd: 0.55 },
+    { kind: 'tree', x: 50, z, hw: 0.55, hd: 0.55 },
+  ]),
+  /* Lamp standards, on the same grid as everything else. */
+  /* On the pavement, not in the road: at z 40.5 the middle four of these stood
+     on the carriageway, which is the floor at zero, and were drawn fifteen
+     centimetres over it. Nothing in this world floats. */
+  ...[-45, -15, 15, 45].flatMap((x): PlazaThing[] => [
+    { kind: 'lamp', x, z: -45.5, hw: 0.3, hd: 0.3 },
+    { kind: 'lamp', x, z: 45.5, hw: 0.3, hd: 0.3 },
+  ]),
+  ...[-20, 20].flatMap((z): PlazaThing[] => [
+    { kind: 'lamp', x: -36.5, z, hw: 0.3, hd: 0.3 },
+    { kind: 'lamp', x: 36.5, z, hw: 0.3, hd: 0.3 },
+  ]),
+  /*
+   * And standards on the island itself.
+   *
+   * Twelve lamps round the *outside* of a square sixty metres across light the
+   * pavements and nothing else: at midnight the middle of the plaza — the
+   * clock, the benches, the crossings, all of it — was black ground with a
+   * glowing clock face hanging over it. Two rows either side of the monument
+   * and one at each corner of the island is what a square this size is lit by.
+   */
+  ...[-11, 11].flatMap((x): PlazaThing[] => [-22, -8, 8, 22].map((z): PlazaThing => (
+    { kind: 'lamp', x, z, hw: 0.3, hd: 0.3 }))),
+  ...[-26, 26].flatMap((x): PlazaThing[] => [-30, 30].map((z): PlazaThing => (
+    { kind: 'lamp', x, z, hw: 0.3, hd: 0.3 }))),
+  /* Benches and planters on the island, round the clock. */
+  ...[-14, 14].flatMap((x): PlazaThing[] => [
+    { kind: 'bench', x, z: -9, hw: 2.2, hd: 0.7 },
+    { kind: 'bench', x, z: 9, hw: 2.2, hd: 0.7 },
+  ]),
+  ...[-20, 20].flatMap((x): PlazaThing[] => [
+    { kind: 'planter', x, z: -24, hw: 2.4, hd: 1.6 },
+    { kind: 'planter', x, z: 24, hw: 2.4, hd: 1.6 },
+  ]),
+  /* Bins where people wait, which is at the shelters and by the clock. */
+  ...[-24, 24].flatMap((x): PlazaThing[] => [
+    { kind: 'bin', x, z: -18, hw: 0.36, hd: 0.36 },
+    { kind: 'bin', x, z: 18, hw: 0.36, hd: 0.36 },
+  ]),
+  /* And the balustrade along the forecourt terrace, in two runs with the
+     flight between them. */
+  /* From the terrace's own ends to the flight's cheeks, and not a metre past:
+     written nine and a half long it ran five metres out over the square with
+     nothing under it. */
+  { kind: 'bollardRun', x: -50.3, z: -22.75, hw: 0.3, hd: 7.25 },
+  { kind: 'bollardRun', x: -50.3, z: 2.75, hw: 0.3, hd: 7.25 },
+];
+
+const STATION_PLAZA: Area = {
+  id: 'station-plaza',
+  name: 'Station Plaza',
+  kind: 'exterior',
+  /*
+   * Due east of Domino Station, hung on its east exit.
+   *
+   * x is forced: the station's east wall's outer face is at its local 48, which
+   * is world 160, and this square's west range is pierced at local −66. z is
+   * forced the same way — the exit is at the station's local z 26, world −17,
+   * and the doorway is ten metres north of this square's middle. Everything
+   * east of world x 160 is empty ground; Black Crown's yard, the only thing
+   * that reaches this far south, stops at x 113.
+   */
+  world: { x: 226, z: -7 },
+  bounds: { x: 0, z: 0, hw: PZ_W - 1, hd: PZ_D - 1 },
+  /*
+   * Four heights and no storey. The carriageway is the floor at zero and
+   * everything else is a platform over it: the pavements and the island a kerb
+   * up, the clock's three steps, and the station's forecourt terrace.
+   */
+  platforms: [
+    /*
+     * The pavements: four rectangles that tile the square outside the loop,
+     * each with exactly *one* side facing the road.
+     *
+     * North and south run the full width; east and west only the road's depth
+     * between them. Which matters because the kerb is drawn as the road-facing
+     * edge of each: cut the other way, the west pavement's kerb would carry on
+     * past the loop's corner and up the middle of the pavement.
+     */
+    ...[-1, 1].map((s) => (
+      { x: 0, z: s * (PZ_IN.z + PZ_ROAD.hd) / 2, hw: PZ_IN.x, hd: (PZ_IN.z - PZ_ROAD.hd) / 2, y: PZ_KERB })),
+    ...[-1, 1].map((s) => (
+      { x: s * (PZ_IN.x + PZ_ROAD.hw) / 2, z: 0, hw: (PZ_IN.x - PZ_ROAD.hw) / 2, hd: PZ_ROAD.hd, y: PZ_KERB })),
+    /* The island the loop goes round. */
+    { x: 0, z: 0, hw: PZ_ISLAND.hw, hd: PZ_ISLAND.hd, y: PZ_KERB },
+    /* The clock's steps. */
+    ...PZ_CLOCK.map((c) => ({ x: 0, z: 0, hw: c.hw, hd: c.hd, y: c.y })),
+    /* The forecourt terrace, and the flight down off it. */
+    { ...PZ_FORECOURT, y: PZ_TERRACE },
+    ...PZ_FLIGHT_STEPS,
+  ],
+  solids: [
+    /*
+     * The four ranges. Nothing here is an invisible wall: west is the station's
+     * own east elevation, and the other three are terraces of building with the
+     * ways to Central Towers, the City Library and Civic Square hoarded off in
+     * them — a dead end you can see the reason for is a place.
+     */
+    /*
+     * Half an extent is `(outer - inner) / 2` and it is positive on all four
+     * sides. Written `(PZ_W + PZ_FACE.west) / -2` the west and north ranges
+     * came out *negative*, `pushOut` returned null for every test against
+     * them, and two of the square's four walls were not there at all — you
+     * could walk into the station's frontage and out through the north
+     * terrace. The same fault the station's flight cheeks had, and the same
+     * check found it: `npm run footing`, on ten thousand cells standing on a
+     * base plate six centimetres under a floor that was not there.
+     */
+    { x: -(PZ_W + PZ_IN.x) / 2, z: (-PZ_D + PZ_DOOR - PZ_DOOR_HALF) / 2,
+      hw: (PZ_W - PZ_IN.x) / 2, hd: (PZ_D + PZ_DOOR - PZ_DOOR_HALF) / 2, tall: true },
+    { x: -(PZ_W + PZ_IN.x) / 2, z: (PZ_DOOR + PZ_DOOR_HALF + PZ_D) / 2,
+      hw: (PZ_W - PZ_IN.x) / 2, hd: (PZ_D - PZ_DOOR - PZ_DOOR_HALF) / 2, tall: true },
+    { x: (PZ_W + PZ_IN.x) / 2 - 0.225, z: 0, hw: (PZ_W - PZ_IN.x) / 2 + 0.225, hd: PZ_D, tall: true },
+    /* Between the east and west ranges, not across their ends: run the full
+       width and the four corners interpenetrate, which is four planes with
+       sixty square metres in them. The station's own walls settled this. */
+    /* Forty-five centimetres thicker on the square side than the brick is:
+       the shopfront line — pilasters and fascia — stands proud of the wall
+       above it, and that line is what you meet. See `world/plaza.ts`. */
+    ...[-1, 1].map((s) => (
+      { x: 0, z: s * ((PZ_D + PZ_IN.z) / 2 - 0.225), hw: PZ_IN.x,
+        hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true })),
+    /* And the surround of each way out, which stands a metre proud of the wall
+       it is cut into — see `PZ_WAYS`. */
+    ...PZ_WAYS.map((o) => (o.face === 'w'
+      ? { x: o.x - 0.6, z: o.z, hw: 0.6, hd: o.w / 2 + 1.5, tall: true }
+      : { x: o.x, z: o.z + (o.face === 'n' ? 0.6 : -0.6), hw: o.w / 2 + 1.5, hd: 0.6, tall: true })),
+
+    /* The clock pillar, which is the one thing in the square you can see from
+       every corner of it. */
+    { x: 0, z: 0, hw: 1.05, hd: 1.05, tall: true },
+
+    /* The cheeks of the station's flight, drawn as the stepped mass they are. */
+    ...[-1, 1].map((s) => ({
+      x: (PZ_FLIGHT.from + PZ_FLIGHT.to) / 2 + 0.15,
+      z: PZ_FLIGHT.cross + s * (PZ_FLIGHT.half + 0.25),
+      hw: (PZ_FLIGHT.to - PZ_FLIGHT.from) / 2 + 0.15,
+      hd: 0.25,
+    })),
+
+    /* And everything left out on the square — the same list the builder draws
+       from, read twice. */
+    ...PZ_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd, tall: t.kind === 'bus' })),
+    ...PZ_RAILS,
+  ],
+  camSolids: [
+    /* The station's doorway, closed to the camera: past it is a different scene. */
+    { x: PZ_FACE.west - 1.4, z: PZ_DOOR, hw: 1.4, hd: PZ_DOOR_HALF + 0.3 },
+  ],
+  doors: [
+    {
+      id: 'plaza-to-station',
+      trigger: { x: PZ_FACE.west + 1.2, z: PZ_DOOR, hw: 1.3, hd: PZ_DOOR_HALF - 0.4 },
+      to: 'domino-station',
+      seam: { x: -PZ_W, z: PZ_DOOR },
+      /*
+       * On the forecourt terrace, six metres out from the door, facing east.
+       *
+       * The terrace is 1.2 m over the square and that is the whole reason it is
+       * here: you come out of a covered hall on to a step above a hundred and
+       * thirty metres of open ground, and the clock is straight ahead. Down at
+       * square level the same arrival is a wall of parked buses.
+       */
+      arrive: { x: -55, z: PZ_DOOR, facing: Math.PI / 2 },
+      label: 'Domino Station',
+    },
+  ],
+  spawn: { x: -55, z: PZ_DOOR, facing: Math.PI / 2 },
 };
 
 export const AREAS: Record<AreaId, Area> = {
@@ -2834,6 +3258,7 @@ export const AREAS: Record<AreaId, Area> = {
   'crown-shop': CROWN_SHOP,
   'old-cemetery': OLD_CEMETERY,
   'domino-station': DOMINO_STATION,
+  'station-plaza': STATION_PLAZA,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

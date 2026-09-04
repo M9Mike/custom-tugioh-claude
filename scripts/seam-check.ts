@@ -87,6 +87,9 @@ export const ENCLOSED: AreaId[] = [
   'old-cemetery',
   /* Four walls and a roof, which is the most closed thing in the city. */
   'domino-station',
+  /* Four ranges of building and a city behind them. Open to the sky, which
+     this sweep does not mind — it casts level and downwards. */
+  'station-plaza',
 ];
 
 /**

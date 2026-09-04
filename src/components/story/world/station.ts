@@ -63,7 +63,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ballast, brick, concrete, darkWood, paving, render, shutter, signBoard } from './surfaces';
+import { ballast, brick, concrete, darkWood, paving, render, signBoard } from './surfaces';
 import {
   Owned, bakedFrom, basePlate, decal, glow, lit, matt, scaleBoxUVs, surfaceOf, tiled,
   type BakedPart, type BuiltArea,
@@ -71,7 +71,7 @@ import {
 import { Sky, ownSky } from './sky';
 import {
   AREAS, DS_ARCH, DS_ARCH_AT, DS_ARCH_COLUMNS, DS_BARRIER, DS_BUFF, DS_COLUMNS, DS_CROSS,
-  DS_EAVES, DS_FLIGHT_HALF, DS_GATE, DS_GATES, DS_GATE_HALF, DS_HALL_COLUMNS, DS_HALL_ROWS,
+  DS_EAST, DS_EAST_HALF, DS_EAST_PIERS, DS_EAVES, DS_FLIGHT_HALF, DS_GATE, DS_GATES, DS_GATE_HALF, DS_HALL_COLUMNS, DS_HALL_ROWS,
   DS_NORTH, DS_PLAT, DS_PLATFORMS, DS_RANGE, DS_RIDGE, DS_ROAD, DS_ROADS, DS_SOUTH, DS_SPAN,
   DS_FRONT, DS_TERRACE, DS_THINGS, DS_TRACK, DS_TRAIN_TAIL, DS_WALL, type StationThing,
 } from '@/story/areas';
@@ -139,7 +139,6 @@ export function buildStation(anisotropy: number): BuiltArea {
   const renderTex = surfaceOf(own, () => render('#b3a894'), 1, 1, anisotropy);
   const ballastTex = surfaceOf(own, ballast, 1, 1, anisotropy);
   const woodTex = surfaceOf(own, darkWood, 1, 2, anisotropy);
-  const shutTex = surfaceOf(own, () => shutter('#6d6154'), 1, 1, anisotropy);
 
   /* White over the tinted drawings, because the colour is already in them: a
      tint on top of a drawn texture only takes light away. */
@@ -371,7 +370,12 @@ export function buildStation(anisotropy: number): BuiltArea {
   wall('x', -W, W, DS_SOUTH + 0.9, DS_WALL);
   wall('z', -OUT, 41.5, -OUT + 0.9, DS_WALL);
   wall('z', 45.5, DS_SOUTH + 1.8, -OUT + 0.9, DS_WALL);
-  wall('z', -OUT, DS_SOUTH + 1.8, OUT - 0.9, DS_WALL);
+  /* And the east wall, with the way out to Station Plaza cut through it: the
+     plaza is built now, so what used to be a shutter is a doorway. */
+  wall('z', -OUT, DS_EAST - DS_EAST_HALF, OUT - 0.9, DS_WALL);
+  wall('z', DS_EAST + DS_EAST_HALF, DS_SOUTH + 1.8, OUT - 0.9, DS_WALL);
+  put(1.8, DS_WALL - 6.16, DS_EAST_HALF * 2, brickwork,
+      OUT - 0.9, (6.16 + DS_WALL) / 2, DS_EAST);
   /* The coping, as a ring: north and south the full width, east and west
      between them. */
   {
@@ -543,20 +547,24 @@ export function buildStation(anisotropy: number): BuiltArea {
   }
 
   /*
-   * The east exit, shut.
+   * The east exit, open.
    *
-   * The plan puts Station Plaza on the other side of this wall and it is not
-   * built, so the way to it is a rolled shutter with the notice still on it —
-   * the same answer Market Row's far gates gave for five areas. A dead end you
-   * can see the reason for is a place; one you cannot is a budget.
+   * It was a rolled shutter with CLOSED on it for as long as Station Plaza was
+   * a line in the ward plan. The plaza stands, the door works, and a door that
+   * works behind a shutter is the worst of both — you walk through a picture of
+   * a shut gate. So: piers, a hood, and the plaza's name where the notice was.
    */
   {
     const ex = W - 0.14;
-    put(0.24, 5.4, 9, matt(own, '#ffffff', shutTex), ex, 2.7, 26);
-    for (const s of [-1, 1] as const) put(0.7, 6.1, 0.7, stone, ex - 0.23, 3.05, 26 + s * 5.0);
+    for (const p of DS_EAST_PIERS) put(p.hw * 2, 6.1, p.hd * 2, stone, p.x, 3.05, p.z);
     put(0.94, 0.5, 10.6, kerb, ex - 0.38, 5.91, 26);
-    const noticeTex = surfaceOf(own, () => signBoard('EAST EXIT', '#2f2a24', '#c3b795', 'CLOSED', 3), 1, 1, anisotropy);
-    put(0.1, 0.9, 2.7, matt(own, '#ffffff', noticeTex), ex - 0.18, 2.6, 26);
+    const noticeTex = surfaceOf(own, () => signBoard('STATION PLAZA', '#e2d3ae', '#2f2a24', 'WAY OUT', 3.4), 1, 1, anisotropy);
+    put(0.12, 1.1, 3.74, matt(own, '#ffffff', noticeTex), ex - 0.62, 4.6, 26);
+    const l = new THREE.PointLight('#ffbe78', 60, 14, 2);
+    l.position.set(ex - 1.9, 4.6, 26);
+    root.add(l);
+    lights.push(l);
+    burning.push(l);
   }
 
   /* ---- the two flights up to the terrace ---- */
@@ -1170,6 +1178,34 @@ export function buildStation(anisotropy: number): BuiltArea {
     put(0.8, 0.1, 0.8, lamplight, gx - 3.2, 4.74, 43.5);
     const l = new THREE.PointLight('#ffbe78', 120, 20, 2);
     l.position.set(gx - 3.2, 4.6, 43.5);
+    root.add(l);
+    lights.push(l);
+  }
+
+  /*
+   * And Station Plaza, east of the way out.
+   *
+   * A closed box with the first two metres of the square in it: the forecourt
+   * paving running on at the floor level you are standing on, the balustrade
+   * along the head of its steps, a standard lamp burning, and the pale flank
+   * of the range across the way. Its floor reaches the wall — a strip of
+   * nothing under a doorway is the void seen through a doorway.
+   */
+  {
+    const gx = OUT;
+    put(2.6, 15, 17, stone, gx + 9.4, 5.5, DS_EAST);
+    for (const s of [-1, 1] as const) put(9.4, 15.4, 2.6, stone, gx + 4.7, 5.6, DS_EAST + s * 8.2);
+    put(11, 1.4, 18, dark, gx + 4.6, 12.2, DS_EAST);
+    slab(11.4, 15, gx + 3.9, 0.02, DS_EAST, flags);
+    put(0.5, 1.1, 13, kerb, gx + 7.4, 0.55, DS_EAST);
+    put(0.66, 0.18, 13.2, brass, gx + 7.4, 1.19, DS_EAST);
+    for (const s of [-1, 1] as const) {
+      put(0.34, 4.6, 0.34, iron, gx + 2.6, 2.3, DS_EAST + s * 5.4);
+      put(0.9, 0.3, 0.9, iron, gx + 2.6, 4.75, DS_EAST + s * 5.4);
+      put(0.8, 0.12, 0.8, lamplight, gx + 2.6, 4.55, DS_EAST + s * 5.4);
+    }
+    const l = new THREE.PointLight('#ffbe78', 170, 24, 2);
+    l.position.set(gx + 3.4, 4.4, DS_EAST);
     root.add(l);
     lights.push(l);
   }

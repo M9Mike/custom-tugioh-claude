@@ -396,7 +396,7 @@ let total = 0;
 /* `node scripts/coplanar-check.mjs -- crown` for one area; see the note in
    `door-check.ts` on why every check in here grew a filter. */
 const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:\/\//.test(a) && !/^[\d.]+$/.test(a));
-const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop', 'old-cemetery', 'domino-station']
+const AREAS_TO_VISIT = ['grandpa-shop', 'starting-area', 'market-row', 'step-lane', 'domino-shrine', 'black-crown', 'crown-shop', 'old-cemetery', 'domino-station', 'station-plaza']
   .filter((id) => !only.length || only.some((o) => id.includes(o)));
 for (const area of AREAS_TO_VISIT) {
   total += await visit(area);

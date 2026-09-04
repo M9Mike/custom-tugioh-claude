@@ -57,7 +57,12 @@ a rail round the leftovers), and numbers *near* the right one (slabs to ±16
 with walls at ±17, a boundary wall 3.4 m tall on ground that climbs 3.6). When
 a fault list clusters in one place, that place was never designed — redo it,
 do not patch it. Before shipping a room, read its sibling calls as a column: a
-wrong number hides alone and stands out beside its neighbours.
+wrong number hides alone and stands out beside its neighbours. The third mode is
+a *sign*: a half-extent written `(OUT - IN) / -2`, a paired helper whose two
+axes take their arguments in mirrored order, a shopfront pushed `- n` into the
+wall it should stand `+ n` proud of. None of them throw — they make geometry
+that is inert, inside-out or buried. Hold magnitudes as magnitudes (`PZ_IN`),
+and give paired helpers the same argument order.
 
 **Textures are sized in metres.** `box()` scales its UVs by the mesh; `slab()`
 does the same when the material says `tiled(m, metres)`. A plane's UVs run 0–1
@@ -82,6 +87,24 @@ everywhere inside it. So a builder that merges writes the boxes it baked through
 `bakedFrom` (`world/kit.ts`) and the checks expand them. Skip it and you do not
 get a failing check, you get a check that cannot fail, which is the worst thing
 in this toolchain.
+
+**Air is measured in metres, and it is the colour of the sky.** The fog is not
+decoration: it is what makes the edge of an area read as distance rather than as
+a hole. `new THREE.Fog(VOID, …)` *copies* the colour it is handed, so for months
+the background followed the hour and the fog kept the black it was built with —
+invisible while the largest area was 44 m across and under a roof, and a wall of
+black buildings under a blue sky the moment Station Plaza opened 132 m of
+daylight. The daylight keyframes now reach two to three hundred metres
+(`src/story/sky.ts`); night keeps its tight ones, because fog closed in at night
+is the point. Build an area bigger than the last one and you must stand in the
+middle of it at 12:00 and look at the far side.
+
+**When a neighbour gets built, open the door you drew shut.** Domino Station's
+east exit was a rolled shutter with CLOSED on it for as long as the plaza was a
+line in the ward plan. The plaza stood, `npm run doors` walked through it, every
+gate was green — and you walked out through a picture of a shut gate. A dead end
+that is no longer a dead end is a drawing job, and no check will ask you for it:
+`npm run doorshots` photographs it and you have to look.
 
 **Smooth beats sharp.** The renderer watches its own frame time
 (`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it

@@ -136,11 +136,28 @@ async function boxesOf(page: Page): Promise<Box[]> {
   });
 }
 
+/**
+ * Narrower than this in plan and it is not a floor, it is a thing on one.
+ *
+ * A duelist is 76 cm across the shoulders. Nothing 17 cm wide is what they are
+ * standing on — and Station Plaza has fifty-one pigeons on its island, each one
+ * a 17 by 28 cm box whose back is 32 cm up. Every cell whose centre fell inside
+ * a bird was reported as feet seventeen centimetres inside the floor.
+ *
+ * The alternative was making each bird a solid, which pushes a duelist half a
+ * metre away from fifty-one of them; the island would be a pinball table. The
+ * honest line is that a surface you cannot stand on is not the surface you are
+ * standing on. A tread, a kerb course, a platform edge — everything this check
+ * exists to measure — is metres across.
+ */
+const FOOTHOLD = 0.3;
+
 /** The highest thing drawn under a point that anybody could stand on. */
 function surfaceUnder(boxes: Box[], x: number, z: number, told: number): number | null {
   let best: number | null = null;
   for (const b of boxes) {
     if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
+    if (Math.min(b.maxX - b.minX, b.maxZ - b.minZ) < FOOTHOLD) continue;
     /*
      * Underfoot, not overhead — and *underfoot* is relative to where the ground
      * is, not to zero.
