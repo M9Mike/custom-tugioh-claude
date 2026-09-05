@@ -3019,14 +3019,25 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
 const MAX_TRIGGER_DEPTH = 16;
 let triggerDepth = 0;
 
-function fireTriggers(state: DuelState, c: CardInstance, controller: PlayerId, trigger: CardEffect['trigger'], trig: TriggerContext, targets: string[] = []) {
+/** Which half of a two-phase trigger this pass is for — see `afterDamage`. */
+type TriggerPhase = 'beforeDamage' | 'afterDamage';
+
+function fireTriggers(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  trigger: CardEffect['trigger'],
+  trig: TriggerContext,
+  targets: string[] = [],
+  phase?: TriggerPhase
+) {
   if (c.isToken || c.flags.negated || state.winner) return;
   const def = CARDS[c.slug];
   if (!def) return;
   if (triggerDepth >= MAX_TRIGGER_DEPTH) return;
   triggerDepth += 1;
   try {
-    fireTriggersInner(state, c, controller, trigger, trig, targets, def);
+    fireTriggersInner(state, c, controller, trigger, trig, targets, def, false, phase);
   } finally {
     triggerDepth -= 1;
   }
@@ -3050,10 +3061,17 @@ function fireTriggersInner(
    * targets, was indistinguishable from nobody having been asked, and asked
    * again, and again. Declining Uraby's shatter hung the duel.
    */
-  resumed = false
+  resumed = false,
+  phase?: TriggerPhase
 ) {
   for (const eff of def.effects) {
     if (eff.trigger !== trigger) continue;
+    /* The two halves of `onAttacked`, kept apart: the battle calls this twice
+       — once before the damage step for the answers that stop it landing,
+       once after for the answers that follow it — and each pass takes only
+       the effects that belong to it. Every other trigger fires in one pass
+       and `phase` is undefined, so nothing else can notice. */
+    if (phase && !!eff.afterDamage !== (phase === 'afterDamage')) continue;
     if (!conditionMet(state, eff, c, controller, trig)) continue;
     /* "Once per turn" used to mean it only for an ignition, where the count
        lives on the card instance — which is no use to a card that dies and
@@ -3623,7 +3641,18 @@ function resolveBattle(state: DuelState) {
     fireTriggers(state, target, defender, 'onFlip', { attackerUid: attacker.uid, targetUid: target.uid });
   };
 
-  fireTriggers(state, target, defender, 'onAttacked', { attackerUid: attacker.uid, targetUid: target.uid });
+  /** The answers that FOLLOW the blow, run whether or not the wall survived
+   *  it — a card that promises to send the attacker home after the damage
+   *  step keeps that promise as it falls, exactly like a flip effect. */
+  const resolveAfterDamage = () => {
+    if (state.winner) return;
+    fireTriggers(state, target, defender, 'onAttacked', { attackerUid: attacker.uid, targetUid: target.uid }, [], 'afterDamage');
+  };
+
+  /* The answers that stop the blow landing. A bounce here calls the battle
+     off — Kelbek's whole card — and the damage step never happens, so the
+     after-damage half never fires either. */
+  fireTriggers(state, target, defender, 'onAttacked', { attackerUid: attacker.uid, targetUid: target.uid }, [], 'beforeDamage');
   if (state.winner || !findOnField(state, attacker.uid) || !findOnField(state, target.uid)) {
     // The battle was called off, but the monster was still turned face-up.
     resolveFlip();
@@ -3757,6 +3786,7 @@ function resolveBattle(state: DuelState) {
   }
 
   resolveFlip();
+  resolveAfterDamage();
 }
 
 /* ------------------------------------------------------------------ */

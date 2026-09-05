@@ -884,6 +884,21 @@ export interface CardEffect {
   /** Effect only usable once per turn (ignition effects default to true). */
   oncePerTurn?: boolean;
   /**
+   * `onAttacked` only: this waits for the damage step instead of replacing it.
+   *
+   * An `onAttacked` effect that removes the attacker calls the whole battle
+   * off — which is exactly right for a card whose promise is that the attack
+   * never lands, and exactly wrong for one whose text says it acts *after the
+   * damage step*. Wall of Illusion says the latter and was doing the former:
+   * a 1700 walked into it, was sent home, and the wall neither took the blow
+   * nor fell to it. Reported from a real duel.
+   *
+   * Marked here rather than inferred from the ops, because which one a card
+   * is, is a claim its own text makes. The engine reads the flag and nothing
+   * else: any future "after damage" answer inherits the sequencing for free.
+   */
+  afterDamage?: boolean;
+  /**
    * Continuous Trap that keeps working after it is face-up, firing again every
    * time its window opens. Without this a Continuous Trap resolves once and
    * then sits face-up forever, dead, holding the only Spell/Trap Zone hostage.

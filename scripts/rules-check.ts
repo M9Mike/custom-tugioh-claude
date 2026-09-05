@@ -9106,6 +9106,73 @@ console.log('\nOdion: every face-down card is a question');
     const sent = act(hit, FOE, { type: 'attack', uid: charger.uid, targetUid: shield.uid });
     ok(lp - sent.players[FOE].lp === 800, 'and being attacked costs them 800 now',
       String(lp - sent.players[FOE].lp));
+
+    /* "After the damage step" is a promise about ORDER, and it was being kept
+       backwards: the bounce ran first, the battle was called off, and a 1700
+       walked into the wall without either of them feeling it. The owner
+       reported the half of that they could see — the wall never died. */
+    const swing = (wallPos: 'atk' | 'def', attackerSlug: string) => {
+      const s2 = odion();
+      s2.phase = 'battle';
+      s2.active = FOE;
+      const wall2 = card(ME, 'wall-of-illusion');
+      wall2.position = wallPos;
+      wall2.summonedOnTurn = 0;
+      s2.players[ME].monsters = [wall2, null, null];
+      const beast = card(FOE, attackerSlug);
+      beast.summonedOnTurn = 0;
+      s2.players[FOE].monsters = [beast, null, null];
+      const before = { me: s2.players[ME].lp, foe: s2.players[FOE].lp };
+      const after = act(s2, FOE, { type: 'attack', uid: beast.uid, targetUid: wall2.uid });
+      return {
+        wallStands: after.players[ME].monsters.some((m) => m?.uid === wall2.uid),
+        wallBuried: after.players[ME].grave.some((c) => c.uid === wall2.uid),
+        wentHome: after.players[FOE].hand.some((c) => c.uid === beast.uid),
+        mePaid: before.me - after.players[ME].lp,
+        foePaid: before.foe - after.players[FOE].lp,
+      };
+    };
+
+    /* Standing up, the wall is a 1000 body and a 1700 breaks it — and the
+       attacker is still sent home over its ruins, because the card promises
+       the return after the damage step, not instead of it. */
+    const broken = swing('atk', 'axe-raider');
+    ok(broken.wallBuried, 'a stronger attacker breaks the wall it walked into', broken.wallStands ? 'still standing' : 'vanished');
+    ok(broken.wentHome, 'and is still sent home over the ruins', 'stayed on the field');
+    ok(broken.mePaid === 700, 'the blow lands first, for the difference', String(broken.mePaid));
+    ok(broken.foePaid === 800, "and the wall's parting shot still costs 800", String(broken.foePaid));
+
+    /* Kneeling, 1850 DEF is more than the same 1700 can break — the wall
+       holds and the attacker pays for the difference on its way home. That
+       is the DEF stat doing its job, not the effect refusing to work. */
+    const held = swing('def', 'axe-raider');
+    ok(held.wallStands, 'a wall in Defence outlasts an attacker it outsizes', 'it fell');
+    ok(held.foePaid === 150 + 800, 'which costs the attacker the difference and the 800', String(held.foePaid));
+    ok(held.wentHome, 'and the attacker goes home either way', 'stayed on the field');
+
+    /* And a big enough blow gets through the kneeling wall too. */
+    const crushed = swing('def', 'summoned-skull');
+    ok(crushed.wallBuried, 'a big enough attacker breaks it even kneeling', crushed.wallStands ? 'still standing' : 'vanished');
+    ok(crushed.wentHome, 'and that one is sent home too', 'stayed on the field');
+
+    /* CONTROL: Kelbek's text promises the attack never lands, and it must
+       keep promising that — the damage step is what she PREVENTS, and the
+       split above must not quietly turn her into a second Wall. */
+    const k = odion();
+    k.phase = 'battle';
+    k.active = FOE;
+    const kel = card(ME, 'kelbek');
+    kel.summonedOnTurn = 0;
+    k.players[ME].monsters = [kel, null, null];
+    const skull = card(FOE, 'summoned-skull');
+    skull.summonedOnTurn = 0;
+    k.players[FOE].monsters = [skull, null, null];
+    const kLp = k.players[ME].lp;
+    const stopped = act(k, FOE, { type: 'attack', uid: skull.uid, targetUid: kel.uid });
+    ok(stopped.players[ME].monsters.some((m) => m?.uid === kel.uid),
+      'CONTROL: Kelbek still stops the attack before it lands', 'she was run over');
+    ok(stopped.players[ME].lp === kLp, 'and no damage is worked out at all', String(kLp - stopped.players[ME].lp));
+    ok(stopped.players[FOE].hand.some((c) => c.uid === skull.uid), 'while the attacker is sent home', 'stayed on the field');
   }
 }
 
