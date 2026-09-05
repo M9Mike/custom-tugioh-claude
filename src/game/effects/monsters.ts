@@ -4242,7 +4242,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'A shield does not need to strike back.',
     effects: [
       {
+        /* After the damage step, as the text says and as it was not: the
+           bounce ran first, called the battle off, and the wall neither took
+           the blow nor fell to it — a 1700 walked into it and nothing
+           happened to either of them. The blow lands first now; a stronger
+           attacker breaks the wall on its way home, and the attacker still
+           goes home. Reported from a real duel. */
         trigger: 'onAttacked',
+        afterDamage: true,
         ops: [
           { op: 'bounce', target: sel('opp', 'attacker') },
           { op: 'damage', amount: 800, to: 'opp' },
