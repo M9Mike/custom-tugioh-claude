@@ -65,6 +65,8 @@ const CIRCUIT: [AreaId, string][] = [
   ['starting-area', 'street-to-market'],
   ['market-row', 'market-to-station'],
   ['domino-station', 'station-to-plaza'],
+  ['station-plaza', 'plaza-to-high'],
+  ['domino-high', 'high-to-plaza'],
   ['station-plaza', 'plaza-to-station'],
   ['domino-station', 'station-to-market'],
   ['market-row', 'market-to-crown'],

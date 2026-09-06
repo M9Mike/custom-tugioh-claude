@@ -48,6 +48,7 @@ import { buildCrownShop } from './world/crownshop';
 import { buildCemetery } from './world/cemetery';
 import { buildStation } from './world/station';
 import { buildPlaza } from './world/plaza';
+import { buildHigh } from './world/high';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -348,6 +349,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       'old-cemetery': buildCemetery,
       'domino-station': buildStation,
       'station-plaza': buildPlaza,
+      'domino-high': buildHigh,
     };
 
     let built: BuiltArea | null = null;

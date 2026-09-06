@@ -106,6 +106,10 @@ export const OPEN: AreaId[] = [
   /* A real horizon on three sides: a ray leaving the precinct is the view, not
      a fault. */
   'domino-shrine',
+  /* Two hundred metres of school with a two-and-a-half-metre wall round it:
+     from the far touchline you see over that wall, and you are meant to —
+     what closes this horizon is the city standing behind it. */
+  'domino-high',
 ];
 
 /**

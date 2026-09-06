@@ -31,6 +31,14 @@ the city gets bigger from here, not smaller.
 stays joined to its owner. A light has a fixture — a lamp, a rod, a bracket —
 or it does not exist. Three rounds of Mike's feedback were this sentence.
 
+**A step is at least three hundred millimetres deep.** `footing` will not take
+a drawn box smaller than that in plan as the floor — the rule that stops a
+pigeon being the ground — so a flight with 290 mm treads is a flight that check
+cannot see, and a hundred and sixty cells of one were a duelist standing on air.
+The same rule cuts the other way: a desk is 1.1 m by 0.55 and therefore *is* the
+floor unless something collides with it, so the furniture in a room you can walk
+into belongs in `solids` as well as in the drawing.
+
 **The drawn thing is the colliding thing.** A tree trunk drawn at a quarter of
 its solid is an invisible ring a metre out from a tree you can see all of. The
 walking surface is exactly the number `groundAt` answers; a floor reaches its
@@ -50,6 +58,15 @@ room, look at it at 16:00 *and* at 00:00 and 12:00.
 height you are already at, which is what tells a gallery from the floor under
 it. `hasStoreys` is opt-in per area; the checks that assume one storey stay
 stable for everything else.
+
+**A wall that never sees the sun is a material decision.** Domino High's two
+long blocks run east to west, so the corridor elevation — the one the gate and
+the drive point at — is in its own shade at every hour of every day. In brick it
+was black at four in the afternoon and black again at noon, and no amount of
+`fill` fixed it: the answer was to build it out of pale render, which is what a
+school of that period is anyway. Before you place a building, work out which of
+its faces the sun never reaches and give that face something that reads without
+it — then look at it at noon, because if it is dark at noon it is dark always.
 
 **Numbers reach things.** The two failure modes that graded A− five times:
 geometry *placed* rather than designed (a stair in whichever corner was free,
@@ -242,7 +259,12 @@ fail. `npm run seams -- <area> --shots` and `npm run walls -- <area>
   metre, not per second), and a dev server that has hot-reloaded for hours
   wedges long-lived pages — a `page.evaluate` that never returns and a race
   that never fires. Restart the dev server before `npm run soak`, and never
-  edit `src/` while it runs.
+  edit `src/` while it runs. And a fifth: **a page wears out**. `npm run walk`
+  built two dozen areas on one page and reported, three runs running, exactly
+  one route that "never finished building" — a different route each time. A
+  check that fails somewhere new every run is the instrument, not the world;
+  each route gets its own context now. When a failure moves, suspect the
+  harness before the geometry.
 
 ## Where things live
 

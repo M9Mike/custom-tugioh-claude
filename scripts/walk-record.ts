@@ -67,6 +67,9 @@ const ROUTES: Route[] = [
   { name: 'into the east trees', area: 'domino-shrine', from: { x: 14, z: 6, facing: Math.PI / 4 }, key: 'w', frames: 40 },
   { name: 'out on to the plaza', area: 'station-plaza', from: { x: -55, z: -10, facing: Math.PI / 2 }, key: 'w', frames: 56 },
   { name: 'across the plaza to the clock', area: 'station-plaza', from: { x: -40, z: 0, facing: Math.PI / 2 }, key: 'w', frames: 56 },
+  { name: 'in at the school gate', area: 'domino-high', from: { x: 0, z: -78, facing: 0 }, key: 'w', frames: 56 },
+  { name: 'down the school corridor', area: 'domino-high', from: { x: -60, z: -49.2, facing: Math.PI / 2 }, key: 'w', frames: 56 },
+  { name: 'out across the school field', area: 'domino-high', from: { x: 8, z: 30, facing: -Math.PI / 2 }, key: 'w', frames: 56 },
   { name: 'into the station from the arcade', area: 'domino-station', from: { x: -40, z: 40, facing: (Math.PI * 3) / 4 }, key: 'w', frames: 48 },
   { name: 'through the ticket gates', area: 'domino-station', from: { x: 0, z: 26, facing: Math.PI }, key: 'w', frames: 44 },
   /* Off the column line: the columns run down the middle of every platform, so
@@ -181,8 +184,6 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
   });
-  const page = await (await browser.newContext({ viewport: { width: 800, height: 560 } })).newPage();
-
   console.log('\nWalking, and watching for what argues with itself\n');
 
   for (const r of routes) {
@@ -191,10 +192,25 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
 
+    /*
+     * A fresh context per route, and not one page for all of them.
+     *
+     * Every route builds a whole area on that page, and a page that has built
+     * twenty of them stops finishing the twenty-first: three runs in a row
+     * reported exactly one route that "never finished building" and it was a
+     * different route each time — Step Lane, then Market Row, then the arch out
+     * of the starting area. That is the browser giving up its WebGL contexts,
+     * not the world, and a check that fails somewhere new every run is a check
+     * nobody can read. The rest of this file is unchanged: a route that really
+     * does not build still counts, and `missing` still fails the run.
+     */
+    const context = await browser.newContext({ viewport: { width: 800, height: 560 } });
+    const page = await context.newPage();
     const shots = await walk(page, r, dir);
     if (!shots) {
       console.log(`  ⚠️  ${r.area}: ${r.name} — the area never finished building`);
       missing++;
+      await context.close();
       continue;
     }
 
@@ -210,6 +226,7 @@ async function main() {
     }
 
     const { share, worst } = await score(shots, `/tmp/walk/${slug}-churn.png`);
+    await context.close();
     console.log(
       `  🎬 ${r.area}: ${r.name} — /tmp/walk/${slug}.mp4` +
         `  (churn ${(share * 100).toFixed(0)}%${worst.length ? `, densest at ${worst[0][0]}` : ''})`

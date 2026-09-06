@@ -109,19 +109,51 @@ async function main() {
    */
   const a = rows[Math.min(Math.max(1, Math.floor(rows.length / 2)), rows.length - 2)];
   const b = rows[rows.length - 1];
+  /*
+   * And the last quarter on its own, because a leak is still leaking at the end.
+   *
+   * Half way through is not late enough for two hundred metres of school:
+   * Domino High is thirty-four thousand square metres and the renderer is
+   * still uploading a geometry the first time it is *seen*, so the count was
+   * four over its half-way figure and had been flat for the last three
+   * samples. Warming up stops; leaking does not. So a metric fails only if it
+   * is above the half-way mark **and** still climbing over the final quarter —
+   * which a real leak does by definition, and which was put back and watched
+   * to fail before this was left in.
+   */
+  const c = rows[Math.max(0, rows.length - 1 - Math.ceil(rows.length / 4))];
   let bad = 0;
-  const flat = (label: string, x: number, y: number, slack = 0) => {
-    if (y > x + slack) { console.log(`  ❌ ${label} went up: ${x} → ${y}`); bad++; } else console.log(`  ✅ ${label} did not grow (${x} → ${y})`);
+  const flat = (label: string, x: number, y: number, slack = 0, tail?: number) => {
+    const rising = tail === undefined || y > tail;
+    if (y > x + slack && rising) { console.log(`  ❌ ${label} went up: ${x} → ${y}`); bad++; }
+    else console.log(`  ✅ ${label} did not grow (${x} → ${y})`);
   };
-  flat('geometries', a.geo, b.geo, 2);
-  flat('textures', a.tex, b.tex, 2);
-  flat('shader programs', a.prog, b.prog);
-  flat('objects in the scene', a.objs, b.objs);
+  flat('geometries', a.geo, b.geo, 2, c.geo);
+  flat('textures', a.tex, b.tex, 2, c.tex);
+  flat('shader programs', a.prog, b.prog, 0, c.prog);
+  flat('objects in the scene', a.objs, b.objs, 0, c.objs);
   flat('DOM nodes', a.nodes, b.nodes, 20);
   flat('event listeners', a.listeners, b.listeners, 4);
   console.log(`  ·  draw calls ${rows.map((r) => r.calls).join(' ')} (facing-dependent)`);
   if (a.heap > 0 && b.heap > a.heap * 1.25 + 10) { console.log(`  ❌ the heap grew: ${a.heap} → ${b.heap} MB`); bad++; } else console.log(`  ✅ the heap is not growing (${a.heap} → ${b.heap} MB)`);
-  if (a.fps > 0 && b.fps < a.fps * 0.7) { console.log(`  ❌ the frame rate fell: ${a.fps} → ${b.fps}`); bad++; } else console.log(`  ✅ the frame rate held (${a.fps} → ${b.fps})`);
+  /*
+   * The middle of the second half against the middle of the first, not one
+   * sample against one sample.
+   *
+   * A frame's cost here is *what she is facing*: the same spot in Domino High
+   * is thirty-five draw calls one way and a hundred and fifty the other, and
+   * the sampler takes whatever heading the clock left her on. Compared pair to
+   * pair that is a forty per cent swing with nothing wrong, and this failed on
+   * it. A page that is genuinely getting slower drags the whole distribution
+   * down, so the medians catch it and the facing does not.
+   */
+  const median = (xs: number[]) => {
+    const v = [...xs].sort((p, q) => p - q);
+    return v.length ? v[Math.floor(v.length / 2)] : 0;
+  };
+  const early = median(rows.slice(0, Math.ceil(rows.length / 2)).map((r) => r.fps));
+  const late = median(rows.slice(Math.floor(rows.length / 2)).map((r) => r.fps));
+  if (early > 0 && late < early * 0.7) { console.log(`  ❌ the frame rate fell: ${early} → ${late}`); bad++; } else console.log(`  ✅ the frame rate held (${early} → ${late})`);
   /* Headless Chromium draws in software at about a frame a second, which is
      exactly the slowness the governor exists for: by the end it must have
      stepped down. On a machine that keeps up it stays at nought, and that is

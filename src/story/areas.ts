@@ -48,7 +48,8 @@ export type AreaId =
   | 'crown-shop'
   | 'old-cemetery'
   | 'domino-station'
-  | 'station-plaza';
+  | 'station-plaza'
+  | 'domino-high';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -1051,6 +1052,44 @@ export function flightPlatforms(o: {
       o.from + ((o.to - o.from) / steps) * (i + 1)
     ));
   }
+  return out;
+}
+
+/**
+ * A run of wall with holes cut in it.
+ *
+ * A school is walls with doorways, and writing each piece by hand is how a
+ * doorway ends up half a metre from where it is drawn. Give it the run and the
+ * openings and it gives back the pieces between them — so the hole in the
+ * collision and the hole in the drawing are the same two numbers.
+ *
+ * `wallX` runs along x at a fixed z; `wallZ` runs along z at a fixed x.
+ */
+function wallX(
+  z: number, hd: number, from: number, to: number,
+  holes: [number, number][] = [], extra: Partial<Rect> = {}
+): Rect[] {
+  const out: Rect[] = [];
+  let at = from;
+  for (const [a, b] of [...holes].sort((p, q) => p[0] - q[0])) {
+    if (a > at) out.push({ x: (at + a) / 2, z, hw: (a - at) / 2, hd, tall: true, ...extra });
+    at = Math.max(at, b);
+  }
+  if (to > at) out.push({ x: (at + to) / 2, z, hw: (to - at) / 2, hd, tall: true, ...extra });
+  return out;
+}
+
+function wallZ(
+  x: number, hw: number, from: number, to: number,
+  holes: [number, number][] = [], extra: Partial<Rect> = {}
+): Rect[] {
+  const out: Rect[] = [];
+  let at = from;
+  for (const [a, b] of [...holes].sort((p, q) => p[0] - q[0])) {
+    if (a > at) out.push({ x, z: (at + a) / 2, hw, hd: (a - at) / 2, tall: true, ...extra });
+    at = Math.max(at, b);
+  }
+  if (to > at) out.push({ x, z: (at + to) / 2, hw, hd: (to - at) / 2, tall: true, ...extra });
   return out;
 }
 
@@ -3021,13 +3060,21 @@ export interface PlazaWay {
   face: 'n' | 's' | 'w';
   name: string;
   sub: string;
-  kind: 'hoard' | 'gates' | 'shutter';
+  kind: 'hoard' | 'gates' | 'shutter' | 'open';
 }
+
+/** The way through the south range to Domino High. */
+export const PZ_HIGH = -26;
+export const PZ_HIGH_HALF = 6;
 
 export const PZ_WAYS: PlazaWay[] = [
   { x: -12, z: PZ_FACE.north, w: 14, face: 'n', name: 'CENTRAL TOWERS', sub: 'ROAD CLOSED', kind: 'hoard' },
   { x: PZ_FACE.east, z: -24, w: 10, face: 'w', name: 'CITY LIBRARY', sub: 'CLOSED TODAY', kind: 'gates' },
   { x: 16, z: PZ_FACE.south, w: 11, face: 's', name: 'CIVIC SQUARE', sub: 'DIVERSION', kind: 'shutter' },
+  /* And the one that is open. A square with four ways out of it and three of
+     them hoarded is a room; this is the one you can walk through. */
+  { x: PZ_HIGH, z: PZ_FACE.south, w: PZ_HIGH_HALF * 2, face: 's',
+    name: 'DOMINO HIGH', sub: 'AND CIVIC SOUTH', kind: 'open' },
 ];
 
 /** What stands on the ground here, written once for the builder and the solids. */
@@ -3197,8 +3244,14 @@ const STATION_PLAZA: Area = {
     /* Forty-five centimetres thicker on the square side than the brick is:
        the shopfront line — pilasters and fascia — stands proud of the wall
        above it, and that line is what you meet. See `world/plaza.ts`. */
-    ...[-1, 1].map((s) => (
-      { x: 0, z: s * ((PZ_D + PZ_IN.z) / 2 - 0.225), hw: PZ_IN.x,
+    { x: 0, z: -((PZ_D + PZ_IN.z) / 2 - 0.225), hw: PZ_IN.x,
+      hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true },
+    /* The south range in two pieces, with the way to Domino High between
+       them: the one opening in this square that is a doorway and not a
+       picture of one. */
+    ...[[-PZ_IN.x, PZ_HIGH - PZ_HIGH_HALF], [PZ_HIGH + PZ_HIGH_HALF, PZ_IN.x]]
+      .map(([a, b]) => ({
+        x: (a + b) / 2, z: (PZ_D + PZ_IN.z) / 2 - 0.225, hw: (b - a) / 2,
         hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true })),
     /* And the surround of each way out, which stands a metre proud of the wall
        it is cut into — see `PZ_WAYS`. */
@@ -3226,6 +3279,7 @@ const STATION_PLAZA: Area = {
   camSolids: [
     /* The station's doorway, closed to the camera: past it is a different scene. */
     { x: PZ_FACE.west - 1.4, z: PZ_DOOR, hw: 1.4, hd: PZ_DOOR_HALF + 0.3 },
+    { x: PZ_HIGH, z: PZ_FACE.south + 1.4, hw: PZ_HIGH_HALF + 0.3, hd: 1.4 },
   ],
   doors: [
     {
@@ -3244,8 +3298,483 @@ const STATION_PLAZA: Area = {
       arrive: { x: -55, z: PZ_DOOR, facing: Math.PI / 2 },
       label: 'Domino Station',
     },
+    {
+      id: 'plaza-to-high',
+      trigger: { x: PZ_HIGH, z: PZ_FACE.south - 1.2, hw: PZ_HIGH_HALF - 1.4, hd: 1.3 },
+      to: 'domino-high',
+      seam: { x: PZ_HIGH, z: PZ_D },
+      /*
+       * Seven and a half metres out, not four: the camera trails four point
+       * six behind and this arrival faces *back* across the square, so at four
+       * the camera was standing in the range's own shopfront line and the
+       * first thing you saw coming out of school was the top of your own head.
+       */
+      arrive: { x: PZ_HIGH, z: PZ_FACE.south - 7.5, facing: Math.PI },
+      label: 'Domino High',
+    },
   ],
   spawn: { x: -55, z: PZ_DOOR, facing: Math.PI / 2 },
+};
+
+/* ------------------------------------------------------------------ */
+/* Domino High                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Two hundred metres by a hundred and seventy: a school with a field on it.
+ *
+ * ## Why it is this big
+ *
+ * Because a school is. The plot a Japanese high school stands on is two to
+ * three hectares and almost none of it is building — a teaching wing along one
+ * edge, a gym in a corner, and the rest is ground: the approach from the gate,
+ * the courtyard between the blocks, and a sports field with a running track
+ * round it that on its own is bigger than Station Plaza. Drawn at the size a
+ * corridor needs you get a corridor; drawn at the size a school needs you get
+ * somewhere it takes two and a half minutes to walk from the gate to the far
+ * touchline, and the walk is the point.
+ *
+ * ## What is new here
+ *
+ * Corridors. Every area in the city so far is crossed — you can see where you
+ * are going from where you are standing. A hundred and forty-four metres of
+ * teaching block on two floors is the first place that has to be *navigated*:
+ * a corridor with fifteen bays off it, an entrance hall in the middle of it,
+ * and a stair tower at each end that is the only way up.
+ *
+ * Which makes this the second area in the city with storeys (`hasStoreys`
+ * infers them from the block's two slabs) and the first outdoor one — Black
+ * Crown's shop is a room three storeys high, this is a field with a building
+ * on the north side of it.
+ */
+
+const DH_W = 100;   // half-width, so 200 m east to west
+const DH_D = 85;    // half-depth, so 170 m north to south
+
+/**
+ * The inner face of the boundary wall, held as *magnitudes*.
+ *
+ * The plaza's ranges were written `(OUT - IN) / -2` and came out negative, and
+ * two of its four walls were not there at all. Positive numbers and one place
+ * that turns them into faces.
+ */
+export const DH_IN = { x: 98, z: 83 };
+export const DH_FACE = {
+  west: -DH_IN.x, east: DH_IN.x, north: -DH_IN.z, south: DH_IN.z,
+} as const;
+
+/** The gate in the north wall, which is the way back to Station Plaza. */
+export const DH_GATE = 0;
+export const DH_GATE_HALF = 5;
+
+/** The yard is zero; the buildings stand a step above it, as they do. */
+export const DH_FLOOR = 0.3;
+export const DH_UPPER = 4.5;
+export const DH_EAVES = 9.4;
+
+/**
+ * The main teaching block: a hundred and forty-four metres of it, two floors.
+ *
+ * Corridor along the north face where the light is worst, classrooms along the
+ * south where it is best, which is the way every school of this kind is
+ * planned and the reason the courtyard is on the sunny side.
+ */
+export const DH_MAIN = { hw: 72, north: -52, south: -38 };
+export const DH_CORR = { north: -51, south: -47.4 };
+export const DH_ROOM = { north: -47.4, south: -39 };
+/**
+ * The bays run *between* the block's two end walls, not across them.
+ *
+ * Written from the outside face, the first and last bay's brick sat inside the
+ * end wall it meets — one plane at x = ±72 with a square metre of two walls in
+ * it, at every course, on both floors. The same corner fault the plaza's
+ * ranges had, one storey down.
+ */
+export const DH_INNER = 71;
+export const DH_BAYS = 15;
+export const DH_BAY = (DH_INNER * 2) / DH_BAYS;
+/** The middle bay is the entrance hall: open through the block, both faces. */
+export const DH_HALL = 7;
+/** Which classrooms are open, ground floor and first. */
+export const DH_OPEN = [1, 4, 10, 13];
+export const DH_OPEN_UP = [3, 11];
+/** The centre of bay `i`. */
+export const dhBay = (i: number): number => -DH_INNER + DH_BAY * (i + 0.5);
+
+/**
+ * Thirty desks in five rows of six, off the bay's centre and the room's own
+ * north wall — and they are *solids*.
+ *
+ * A desk is 1.1 m by 0.55, which is bigger in both directions than the
+ * smallest thing `footing` will accept as the floor, so a classroom full of
+ * furniture nothing collides with is a classroom where two hundred cells of
+ * duelist stand on the desktops. Written once here, read by the builder and by
+ * the collision.
+ *
+ * Sixteen and not thirty, in four columns and four rows: at six across there
+ * was two hundred millimetres between one desk and the next and the room was a
+ * room you could see into and not walk into.
+ */
+export const DH_DESKS: { dx: number; dz: number }[] =
+  Array.from({ length: 16 }, (_, k) => ({
+    dx: -3.15 + (k % 4) * 2.1,
+    dz: 2.6 + Math.floor(k / 4) * 1.6,
+  }));
+
+/**
+ * The stair towers, which are the only way to the first floor.
+ *
+ * Outside the block's north wall and open to the yard at the bottom, so the
+ * flight is a thing you can see from the forecourt and walk into rather than a
+ * hole in a corridor. You come out at the top into the corridor itself.
+ */
+export const DH_TOWERS = [-48, 48];
+/*
+ * Five and a half metres wide, which is the flight and its two walls and
+ * nothing else.
+ *
+ * At ten metres wide there were two and a half metres of floor down each side
+ * of the stair, and a duelist standing on that floor is standing *under* the
+ * flight — inside two and a half metres of drawn stone, which is what
+ * `npm run walls` found a hundred and eight cells of. A stair core is the
+ * stair.
+ */
+export const DH_TOWER = { hw: 2.75, north: -61.2, south: -52 };
+/*
+ * Seven point two metres of run for four point two of rise: twenty-one treads
+ * of three hundred and forty millimetres.
+ *
+ * Not twenty of two-ninety, which is what a five-point-eight-metre tower gave
+ * and which is *below the size at which a drawn box counts as a floor at all*
+ * — `footing`'s FOOTHOLD is three hundred millimetres, put there so a pigeon
+ * is not the ground. A stair whose treads are smaller than a pigeon is a
+ * stair that check cannot see, and a hundred and sixty cells of this one were
+ * a duelist standing on air.
+ */
+export const DH_FLIGHT = { from: -60.4, to: -53.2, half: 2.4, rise: 0.2 };
+export const DH_FLIGHT_STEPS: Platform[] = DH_TOWERS.flatMap((c) => flightPlatforms({
+  along: 'z', start: DH_FLIGHT.from, end: DH_FLIGHT.to,
+  from: DH_FLOOR, to: DH_UPPER, half: DH_FLIGHT.half, cross: c, rise: DH_FLIGHT.rise,
+}));
+
+/**
+ * The special block, on the far side of the courtyard.
+ *
+ * Single storey and mostly shut — the science rooms and the art room are
+ * behind their doors. What is open is the library in the middle of it, which
+ * is the one room in this school with anything in it worth stopping for.
+ */
+export const DH_SPECIAL = { hw: 56, north: -6, south: 4 };
+export const DH_LIBRARY = { hw: 18, north: -6, south: 4 };
+
+/** The gymnasium: one volume, and the biggest room in the city. */
+export const DH_GYM = { west: 34, east: 82, north: 18, south: 50, high: 11 };
+export const DH_GYM_DOOR = { z: 30, half: 3 };
+
+/** The field, its track, and the pool beyond it. */
+export const DH_FIELD = { west: -92, east: 16, north: 12, south: 78 };
+export const DH_TRACK = { x: -38, z: 45, hw: 50, hd: 30 };
+export const DH_POOL = { west: 36, east: 76, north: 58, south: 78 };
+
+/** The covered walkways between the blocks. */
+export const DH_WALKS = [-30, 30];
+
+/** What stands on the ground here, written once for the builder and the
+    solids — the same contract Station Plaza's furniture has. */
+export interface HighThing {
+  kind: 'tree' | 'bench' | 'lamp' | 'bin' | 'planter' | 'bikeShed' | 'goal'
+      | 'backstop' | 'hut' | 'stone' | 'flagpole' | 'vending' | 'bollard' | 'post';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  turn?: number;
+  tag?: string;
+}
+
+export const DH_THINGS: HighThing[] = [
+  /* The forecourt: the name stone, the flag, the gatekeeper's hut. */
+  { kind: 'stone', x: -13, z: -76, hw: 2.4, hd: 0.7, tag: 'DOMINO HIGH SCHOOL' },
+  { kind: 'hut', x: 11, z: -76.5, hw: 2.4, hd: 2.2 },
+  { kind: 'flagpole', x: -9, z: -64, hw: 0.5, hd: 0.5 },
+  { kind: 'vending', x: -12, z: -53.4, hw: 1.1, hd: 0.5 },
+  { kind: 'vending', x: -9.4, z: -53.4, hw: 1.1, hd: 0.5 },
+  /* Cherry trees down both sides of the drive. */
+  ...[-72, -66, -60].flatMap((z): HighThing[] => [
+    { kind: 'tree', x: -20, z, hw: 0.7, hd: 0.7 },
+    { kind: 'tree', x: 20, z, hw: 0.7, hd: 0.7 },
+  ]),
+  /* Bike sheds, one each side of the forecourt. */
+  { kind: 'bikeShed', x: -62, z: -66, hw: 4, hd: 12, tag: 'A' },
+  { kind: 'bikeShed', x: 62, z: -66, hw: 4, hd: 12, tag: 'B' },
+  /* Lamps on the drive and round the courtyard. */
+  ...[-74, -62].flatMap((z): HighThing[] => [
+    { kind: 'lamp', x: -30, z, hw: 0.28, hd: 0.28 },
+    { kind: 'lamp', x: 30, z, hw: 0.28, hd: 0.28 },
+  ]),
+  ...[-30, -16, -2].flatMap((z): HighThing[] => [
+    { kind: 'lamp', x: -58, z, hw: 0.28, hd: 0.28 },
+    { kind: 'lamp', x: 58, z, hw: 0.28, hd: 0.28 },
+  ]),
+  /* The courtyard: trees, benches and planters between the two blocks. */
+  ...[-56, -42, 42, 56].flatMap((x): HighThing[] => [
+    { kind: 'tree', x, z: -30, hw: 0.7, hd: 0.7 },
+    { kind: 'tree', x, z: -14, hw: 0.7, hd: 0.7 },
+  ]),
+  ...[-20, 20].flatMap((x): HighThing[] => [
+    { kind: 'bench', x, z: -28, hw: 1.4, hd: 0.5 },
+    { kind: 'bench', x, z: -16, hw: 1.4, hd: 0.5 },
+  ]),
+  { kind: 'planter', x: -10, z: -22, hw: 3, hd: 3 },
+  { kind: 'planter', x: 10, z: -22, hw: 3, hd: 3 },
+  { kind: 'bin', x: -6.5, z: -34.5, hw: 0.4, hd: 0.4 },
+  { kind: 'bin', x: 6.5, z: -34.5, hw: 0.4, hd: 0.4 },
+  /* The field: two goals, a backstop and the run of bollards along its edge. */
+  { kind: 'goal', x: -38, z: 16.5, hw: 3.7, hd: 0.6 },
+  { kind: 'goal', x: -38, z: 73.5, hw: 3.7, hd: 0.6 },
+  { kind: 'backstop', x: -84, z: 45, hw: 0.6, hd: 8 },
+  ...[20, 34, 48, 62, 76].map((z): HighThing => (
+    { kind: 'bollard', x: 20, z, hw: 0.24, hd: 0.24 })),
+  /* And the goalposts' own lighting, on the two corners that need it. */
+  ...[24, 66].flatMap((z): HighThing[] => [
+    { kind: 'post', x: -88, z, hw: 0.5, hd: 0.5 },
+    { kind: 'post', x: 12, z, hw: 0.5, hd: 0.5 },
+  ]),
+  /* Benches along the touchline, and the bin by the pool gate. */
+  ...[30, 44, 58].map((z): HighThing => ({ kind: 'bench', x: 22, z, hw: 0.5, hd: 1.4, turn: Math.PI / 2 })),
+  { kind: 'bin', x: 32, z: 62, hw: 0.4, hd: 0.4 },
+];
+
+const DOMINO_HIGH: Area = {
+  id: 'domino-high',
+  name: 'Domino High',
+  kind: 'exterior',
+  /*
+   * South of Station Plaza, hung on the second way out of its south range.
+   *
+   * The square's south wall's outer face is at its local z 60, world 53, and
+   * this school's boundary wall is pierced at local −85: the two walls stand
+   * back to back with the gate in both of them. x is forced the same way — the
+   * way out is at the square's local x −26, world 200, and the gate is in the
+   * middle of this site's north wall.
+   */
+  world: { x: 200, z: 138 },
+  bounds: { x: 0, z: 0, hw: DH_W - 1, hd: DH_D - 1 },
+  /*
+   * The camera's lid, which is only ever asked outdoors: inside the teaching
+   * block the floor over your head is a *storey* and the camera's own clamp
+   * against it does the work. Twelve is over the block's parapet and under
+   * nothing, which is what an open site wants.
+   */
+  ceiling: 12,
+  /*
+   * Two floors in the teaching block and a step up into every building — which
+   * is what makes `hasStoreys` true here, and this the first outdoor area in
+   * the city where it is.
+   */
+  platforms: [
+    { x: 0, z: (DH_MAIN.north + DH_MAIN.south) / 2, hw: DH_MAIN.hw - 1,
+      hd: (DH_MAIN.south - DH_MAIN.north) / 2 - 1, y: DH_FLOOR },
+    { x: 0, z: (DH_MAIN.north + DH_MAIN.south) / 2, hw: DH_MAIN.hw - 1,
+      hd: (DH_MAIN.south - DH_MAIN.north) / 2 - 1, y: DH_UPPER },
+    /* The towers: their own floor at the bottom, the flight, and the landing
+       at the top that the corridor opens on to. */
+    ...DH_TOWERS.flatMap((c): Platform[] => [
+      /* The step in at the bottom, and the landing at the top. Between them is
+         the flight, and there is no floor beside it because there is no room
+         beside it. */
+      { x: c, z: DH_TOWER.north + 0.4, hw: DH_TOWER.hw - 0.3, hd: 0.45, y: DH_FLOOR },
+      { x: c, z: -52.6, hw: DH_FLIGHT.half, hd: 0.6, y: DH_UPPER },
+    ]),
+    ...DH_FLIGHT_STEPS,
+    /*
+     * The thresholds — the floor *inside* a doorway.
+     *
+     * Every building here stands a step above the yard, and a doorway is a
+     * metre of wall thickness between the two. Without a platform in it the
+     * step happens at the wall's inner face and the metre in between is yard
+     * at zero with a floor drawn over it; without a floor drawn in it the
+     * duelist walks a metre on nothing. Both are written here.
+     */
+    /* Each one reaches a hundred millimetres past the step it is under: a cell
+       settled hard against a doorway's own edge must not fall off the floor
+       that is drawn there, and two hundred of them did. */
+    ...[-1, 1].map((s): Platform => (
+      { x: dhBay(DH_HALL), z: s < 0 ? DH_MAIN.north + 0.45 : DH_MAIN.south - 0.45,
+        hw: DH_BAY / 2 - 0.2, hd: 0.55, y: DH_FLOOR })),
+    ...DH_TOWERS.map((c): Platform => (
+      { x: c, z: DH_MAIN.north + 0.5, hw: DH_FLIGHT.half, hd: 0.5, y: DH_UPPER })),
+    { x: 0, z: DH_LIBRARY.north + 0.15, hw: 1.4, hd: 0.25, y: DH_FLOOR },
+    { x: DH_GYM.west + 0.35, z: DH_GYM_DOOR.z, hw: 0.45, hd: DH_GYM_DOOR.half, y: DH_FLOOR },
+    /* The special block's one open room, and the gym. */
+    { x: 0, z: (DH_LIBRARY.north + DH_LIBRARY.south) / 2, hw: DH_LIBRARY.hw - 0.4,
+      hd: (DH_LIBRARY.south - DH_LIBRARY.north) / 2 - 0.4, y: DH_FLOOR },
+    { x: (DH_GYM.west + DH_GYM.east) / 2, z: (DH_GYM.north + DH_GYM.south) / 2,
+      hw: (DH_GYM.east - DH_GYM.west) / 2 - 0.5, hd: (DH_GYM.south - DH_GYM.north) / 2 - 0.5,
+      y: DH_FLOOR },
+    /* The pool deck: four strips round the water and not one slab over it, so
+       there is no floor written where there is a swimming pool drawn. */
+    /* A hundred millimetres wider than the deck is drawn, all round: the fence
+       is what stops you and it stands on the outer edge, so a cell settled
+       against it must not fall off the platform it is standing on. */
+    ...[-1, 1].map((s): Platform => (
+      { x: 56, z: 68 + s * 8.175, hw: 20.1, hd: 1.925, y: DH_FLOOR })),
+    ...[-1, 1].map((s): Platform => (
+      { x: 56 + s * 16.425, z: 68, hw: 3.675, hd: 6.35, y: DH_FLOOR })),
+  ],
+  solids: [
+    /* ---- the boundary, with the gate in the north wall ---- */
+    /* The gate's piers and the leaves rolled back against them: everything the
+       builder draws at the gateway, collided at the same numbers. */
+    ...[-1, 1].flatMap((s): Rect[] => [
+      { x: DH_GATE + s * (DH_GATE_HALF + 0.4), z: -DH_D + 1, hw: 1.05, hd: 1.05, tall: true },
+      { x: DH_GATE + s * (DH_GATE_HALF + 1.5), z: -DH_D + 3.7, hw: 0.14, hd: 2.35, tall: true },
+    ]),
+    ...wallX(-DH_D + 1, 1, -DH_W, DH_W, [[DH_GATE - DH_GATE_HALF, DH_GATE + DH_GATE_HALF]]),
+    { x: 0, z: DH_D - 1, hw: DH_W, hd: 1, tall: true },
+    /* East and west fit *between* the other two: run them the full depth and
+       the four corners interpenetrate, which is the plaza's lesson. */
+    ...[-1, 1].map((s): Rect => ({ x: s * (DH_W - 1), z: 0, hw: 1, hd: DH_IN.z, tall: true })),
+
+    /* ---- the main teaching block ---- */
+    /* Its north wall: open at the entrance hall on the ground floor, open at
+       the two stair towers on the first — which is the only difference between
+       the two storeys, and the reason the towers are the only way up. */
+    ...wallX((DH_MAIN.north + DH_CORR.north) / 2, 0.5, -DH_INNER, DH_INNER,
+      [[dhBay(DH_HALL) - DH_BAY / 2, dhBay(DH_HALL) + DH_BAY / 2]], { to: DH_FLOOR }),
+    ...wallX((DH_MAIN.north + DH_CORR.north) / 2, 0.5, -DH_INNER, DH_INNER,
+      DH_TOWERS.map((c): [number, number] => [c - DH_FLIGHT.half, c + DH_FLIGHT.half]),
+      { from: DH_UPPER }),
+    /* Its south wall: the hall goes through to the courtyard. */
+    ...wallX((DH_ROOM.south + DH_MAIN.south) / 2, 0.5, -DH_INNER, DH_INNER,
+      [[dhBay(DH_HALL) - DH_BAY / 2, dhBay(DH_HALL) + DH_BAY / 2]], { to: DH_FLOOR }),
+    { x: 0, z: (DH_ROOM.south + DH_MAIN.south) / 2, hw: DH_INNER, hd: 0.5,
+      tall: true, from: DH_UPPER },
+    /* Its two ends. */
+    ...[-1, 1].map((s): Rect => ({
+      x: s * (DH_MAIN.hw - 0.5), z: (DH_MAIN.north + DH_MAIN.south) / 2,
+      hw: 0.5, hd: (DH_MAIN.south - DH_MAIN.north) / 2, tall: true })),
+    /* The corridor wall, with a door into every classroom that is open — and
+       nothing at all across the entrance hall. */
+    ...wallX(DH_ROOM.north - 0.15, 0.15, -DH_INNER, DH_INNER,
+      [
+        [dhBay(DH_HALL) - DH_BAY / 2, dhBay(DH_HALL) + DH_BAY / 2],
+        ...DH_OPEN.map((i): [number, number] => [dhBay(i) - 0.9, dhBay(i) + 0.9]),
+      ], { to: DH_FLOOR }),
+    ...wallX(DH_ROOM.north - 0.15, 0.15, -DH_INNER, DH_INNER,
+      DH_OPEN_UP.map((i): [number, number] => [dhBay(i) - 0.9, dhBay(i) + 0.9]),
+      { from: DH_UPPER }),
+    /* And the wall between one classroom and the next, on both floors. */
+    ...Array.from({ length: DH_BAYS - 1 }, (_, k): Rect => ({
+      x: -DH_INNER + DH_BAY * (k + 1), z: (DH_ROOM.north + DH_ROOM.south) / 2,
+      hw: 0.15, hd: (DH_ROOM.south - DH_ROOM.north) / 2, tall: true })),
+
+    /*
+     * Everything inside a room you can walk into, because a desk you walk
+     * through is a desk you stand on.
+     */
+    ...[[DH_FLOOR, DH_OPEN], [DH_UPPER, DH_OPEN_UP]].flatMap(([f, bays]) =>
+      (bays as number[]).flatMap((i): Rect[] => [
+        /* The teacher's table at the front, and the thirty desks behind it. */
+        { x: dhBay(i), z: DH_ROOM.north + 1.2, hw: 0.85, hd: 0.4,
+          ...(f === DH_FLOOR ? { to: DH_FLOOR } : { from: DH_UPPER }) },
+        ...DH_DESKS.map((d): Rect => ({
+          x: dhBay(i) + d.dx, z: DH_ROOM.north + d.dz, hw: 0.58, hd: 0.45,
+          ...(f === DH_FLOOR ? { to: DH_FLOOR } : { from: DH_UPPER }),
+        })),
+      ])),
+    /* The shoe lockers down both sides of the entrance hall. */
+    ...[-1, 1].flatMap((s): Rect[] => [0, 1, 2, 3].map((k): Rect => ({
+      x: dhBay(DH_HALL) + s * (DH_BAY / 2 - 0.4), z: DH_ROOM.north + 0.9 + k * 2.0,
+      hw: 0.25, hd: 0.9, to: DH_FLOOR }))),
+
+    /* ---- the stair towers ---- */
+    ...DH_TOWERS.flatMap((c): Rect[] => [-1, 1].map((s): Rect => ({
+      x: c + s * (DH_TOWER.hw - 0.15), z: (DH_TOWER.north + DH_TOWER.south) / 2,
+      hw: 0.15, hd: (DH_TOWER.south - DH_TOWER.north) / 2, tall: true }))),
+
+    /* ---- the special block: shut, except the library in the middle ---- */
+    /* Fifty millimetres proud of the brick on the room side: a solid whose face
+       is exactly the drawn face leaves a cell settled against it reading as a
+       cell inside it. */
+    ...[-1, 1].map((s): Rect => ({
+      x: s * (DH_SPECIAL.hw + DH_LIBRARY.hw - 0.1) / 2, z: (DH_SPECIAL.north + DH_SPECIAL.south) / 2,
+      hw: (DH_SPECIAL.hw - DH_LIBRARY.hw + 0.1) / 2, hd: (DH_SPECIAL.south - DH_SPECIAL.north) / 2,
+      tall: true })),
+    ...wallX(DH_LIBRARY.north + 0.2, 0.25, -DH_LIBRARY.hw, DH_LIBRARY.hw, [[-1.4, 1.4]]),
+    { x: 0, z: DH_LIBRARY.south - 0.2, hw: DH_LIBRARY.hw, hd: 0.25, tall: true },
+    /* The stacks and the two tables, which are the room. */
+    ...[-1, 1].flatMap((s): Rect[] => [0, 1, 2, 3].map((k): Rect => ({
+      x: s * (5.4 + k * 3.2), z: (DH_LIBRARY.north + DH_LIBRARY.south) / 2,
+      hw: 0.35, hd: 3.2, tall: true }))),
+    ...[-1, 1].map((s): Rect => (
+      { x: s * 2, z: (DH_LIBRARY.north + DH_LIBRARY.south) / 2, hw: 1.7, hd: 0.6 })),
+
+    /* ---- the gymnasium ---- */
+    ...wallZ(DH_GYM.west + 0.4, 0.4, DH_GYM.north, DH_GYM.south,
+      [[DH_GYM_DOOR.z - DH_GYM_DOOR.half, DH_GYM_DOOR.z + DH_GYM_DOOR.half]]),
+    { x: DH_GYM.east - 0.4, z: (DH_GYM.north + DH_GYM.south) / 2, hw: 0.4,
+      hd: (DH_GYM.south - DH_GYM.north) / 2, tall: true },
+    ...[-1, 1].map((s): Rect => ({
+      x: (DH_GYM.west + DH_GYM.east) / 2,
+      z: s < 0 ? DH_GYM.north + 0.4 : DH_GYM.south - 0.4,
+      hw: (DH_GYM.east - DH_GYM.west) / 2 - 0.8, hd: 0.4, tall: true })),
+
+    /* The gym's stage, its two hoop frames and the wall bars along its north
+       side — the only things standing on that floor. */
+    { x: DH_GYM.east - 5.4, z: (DH_GYM.north + DH_GYM.south) / 2, hw: 5,
+      hd: (DH_GYM.south - DH_GYM.north) / 2 - 2 },
+    ...[-1, 1].map((s): Rect => (
+      { x: (DH_GYM.west + DH_GYM.east) / 2 + s * 19,
+        z: (DH_GYM.north + DH_GYM.south) / 2, hw: 0.16, hd: 0.16, tall: true })),
+    ...[0, 1, 2, 3, 4].map((i): Rect => (
+      { x: DH_GYM.west + 8 + i * 6, z: DH_GYM.north + 0.9, hw: 1.3, hd: 0.16 })),
+
+    /* ---- the pool, behind its fence and inside its coping ---- */
+    ...wallX(DH_POOL.north + 0.06, 0.06, DH_POOL.west, DH_POOL.east, [[54, 58]], { tall: true }),
+    { x: (DH_POOL.west + DH_POOL.east) / 2, z: DH_POOL.south - 0.06,
+      hw: (DH_POOL.east - DH_POOL.west) / 2, hd: 0.06, tall: true },
+    ...[-1, 1].map((s): Rect => ({
+      x: s < 0 ? DH_POOL.west + 0.06 : DH_POOL.east - 0.06,
+      z: (DH_POOL.north + DH_POOL.south) / 2, hw: 0.06,
+      hd: (DH_POOL.south - DH_POOL.north) / 2 - 0.12, tall: true })),
+    /* The water, which is not somewhere you walk: the coping round it is. */
+    ...[-1, 1].map((s): Rect => ({ x: 56, z: 68 + s * 6.35, hw: 12.85, hd: 0.35 })),
+    ...[-1, 1].map((s): Rect => ({ x: 56 + s * 12.85, z: 68, hw: 0.35, hd: 6 })),
+
+    /* ---- the covered walkways between the blocks ---- */
+    ...DH_WALKS.flatMap((x): Rect[] =>
+      [-34, -26, -18, -10].map((z): Rect => ({ x, z, hw: 0.22, hd: 0.22, tall: true }))),
+
+    /* ---- and everything standing on the ground, read from the one list ---- */
+    ...DH_THINGS.map((t): Rect => ({
+      x: t.x, z: t.z, hw: t.hw, hd: t.hd,
+      tall: t.kind === 'bikeShed' || t.kind === 'hut' || t.kind === 'backstop',
+    })),
+  ],
+  camSolids: [
+    /* The gateway, closed to the camera: past it is a different scene. */
+    { x: DH_GATE, z: DH_FACE.north - 1.4, hw: DH_GATE_HALF + 0.4, hd: 1.4 },
+  ],
+  doors: [
+    {
+      id: 'high-to-plaza',
+      trigger: { x: DH_GATE, z: DH_FACE.north + 1.3, hw: DH_GATE_HALF - 1.4, hd: 1.3 },
+      to: 'station-plaza',
+      seam: { x: DH_GATE, z: -DH_D },
+      /*
+       * Eleven metres inside the gate, facing down the drive.
+       *
+       * Far enough in that the camera's four and a half metres are on the
+       * forecourt and not in the gateway, and turned so that what you see on
+       * arriving is the thing worth seeing: a hundred and forty-four metres of
+       * teaching block across the end of the drive.
+       */
+      arrive: { x: DH_GATE, z: -74, facing: 0 },
+      label: 'Station Plaza',
+    },
+  ],
+  spawn: { x: DH_GATE, z: -74, facing: 0 },
 };
 
 export const AREAS: Record<AreaId, Area> = {
@@ -3259,6 +3788,7 @@ export const AREAS: Record<AreaId, Area> = {
   'old-cemetery': OLD_CEMETERY,
   'domino-station': DOMINO_STATION,
   'station-plaza': STATION_PLAZA,
+  'domino-high': DOMINO_HIGH,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */

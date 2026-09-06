@@ -47,7 +47,7 @@ import { Sky, ownSky } from './sky';
 import {
   AREAS, DS_EAVES, DS_RIDGE, DS_SPAN, groundAt, PZ_CLOCK, PZ_DOOR, PZ_DOOR_HALF, PZ_FACE, PZ_FLIGHT,
   PZ_CROSS_HALF, PZ_FLIGHT_STEPS, PZ_IN, PZ_ISLAND, PZ_KERB, PZ_RAILS, PZ_ROAD, PZ_TERRACE,
-  PZ_THINGS, PZ_WAYS, type PlazaThing, type PlazaWay,
+  PZ_HIGH, PZ_THINGS, PZ_WAYS, type PlazaThing, type PlazaWay,
 } from '@/story/areas';
 
 const AREA = AREAS['station-plaza'];
@@ -392,7 +392,49 @@ export function buildPlaza(anisotropy: number): BuiltArea {
     const lengthwise = o.face === 'n' || o.face === 's';
     const ox = lengthwise ? -0.8 : 0.5;
     const oz = lengthwise ? 0.5 : -0.8;
-    put(o.hw * 2, o.h, o.hd * 2, o.skin, o.x, o.h / 2, o.z, { group: o.group });
+    /*
+     * The block — in pieces, where a way out is actually a way out.
+     *
+     * Three of this square's four openings are hoarded, gated or shuttered and
+     * the wall behind them is solid; the fourth is a doorway to Domino High
+     * and there has to be a hole in the brick for it. The head over each hole
+     * is the same piece the station's east exit needed.
+     */
+    /*
+     * Matched by *where it is*, not by which way it faces.
+     *
+     * A range's `face` is the side it looks at — the south range faces north —
+     * and a way out's `face` is the wall it is cut into. Compared to each other
+     * they never agree, so the south range was drawn as one unbroken block
+     * with a doorway's worth of furniture buried in it.
+     */
+    const cuts = PZ_WAYS
+      .filter((w) => w.kind === 'open'
+        && Math.abs((lengthwise ? w.z : w.x) - (lengthwise ? o.z : o.x)) < (lengthwise ? o.hd : o.hw) + 1)
+      .map((w): [number, number] => {
+        const at = lengthwise ? w.x : w.z;
+        return [at - w.w / 2, at + w.w / 2];
+      })
+      .sort((a, b) => a[0] - b[0]);
+    const half = lengthwise ? o.hw : o.hd;
+    const mid = lengthwise ? o.x : o.z;
+    const runs: [number, number][] = [];
+    let at = mid - half;
+    for (const [a, b] of cuts) { if (a > at) runs.push([at, a]); at = Math.max(at, b); }
+    if (mid + half > at) runs.push([at, mid + half]);
+    const HEAD = 6.4;
+    for (const [a, b] of runs) {
+      const c = (a + b) / 2;
+      const w = (b - a) / 2;
+      put(lengthwise ? w * 2 : o.hw * 2, o.h, lengthwise ? o.hd * 2 : w * 2, o.skin,
+          lengthwise ? c : o.x, o.h / 2, lengthwise ? o.z : c, { group: o.group });
+    }
+    for (const [a, b] of cuts) {
+      const c = (a + b) / 2;
+      const w = (b - a) / 2;
+      put(lengthwise ? w * 2 : o.hw * 2, o.h - HEAD, lengthwise ? o.hd * 2 : w * 2, o.skin,
+          lengthwise ? c : o.x, (HEAD + o.h) / 2, lengthwise ? o.z : c, { group: o.group });
+    }
     put(o.hw * 2 + ox, 0.44, o.hd * 2 + oz, kerb, o.x, o.h + 0.22, o.z, { group: o.group });
     /* A string course at first-floor level, which is what stops a fifteen-metre
        wall reading as one slab of brick. */
@@ -442,8 +484,16 @@ export function buildPlaza(anisotropy: number): BuiltArea {
           fx + (across ? ux * 0.225 : t), (3.6 + PZ_KERB) / 2, fz + (across ? t : uz * 0.225), { group: o.group });
     }
     const span = across ? PZ_IN.z - 0.5 : along;
-    put(wide(span * 2, 0.45), 0.7, deep(span * 2, 0.45), kerb,
-        fx + ux * 0.225, 3.95, fz + uz * 0.225, { group: o.group });
+    /* The fascia in the same pieces the wall is in: run across a doorway it is
+       a beam at four metres through the middle of it. */
+    for (const [a, b] of runs) {
+      const lo = Math.max(a, mid - span);
+      const hi = Math.min(b, mid + span);
+      if (hi - lo < 0.4) continue;
+      put(wide(hi - lo, 0.45), 0.7, deep(hi - lo, 0.45), kerb,
+          (across ? fx : (lo + hi) / 2) + ux * 0.225, 3.95,
+          (across ? (lo + hi) / 2 : fz) + uz * 0.225, { group: o.group });
+    }
     for (let i = 0; i < bays; i++) {
       const t = -along + (along * 2 / bays) * (i + 0.5);
       if (!clear(t)) continue;
@@ -529,10 +579,12 @@ export function buildPlaza(anisotropy: number): BuiltArea {
     const deep = (along: number, thick: number) => (across ? along : thick);
     /* The opening's own surround: jambs, a soffit and a keystone. */
     for (const s of [-1, 1] as const) {
-      put(wide(0.9, 1.1), 7.6, deep(0.9, 1.1), ashlar,
-          o.x + (across ? nx * 0.4 : s * (o.w / 2 + 0.45)),
+      /* A hand's width wider than the hole, so a jamb *overlaps* the wall it is
+         set into rather than ending flush with the brick beside it. */
+      put(wide(1.2, 1.1), 7.6, deep(1.2, 1.1), ashlar,
+          o.x + (across ? nx * 0.4 : s * (o.w / 2 + 0.5)),
           3.8,
-          o.z + (across ? s * (o.w / 2 + 0.45) : nz * 0.4));
+          o.z + (across ? s * (o.w / 2 + 0.5) : nz * 0.4));
     }
     put(wide(o.w + 2.6, 1.4), 1.2, deep(o.w + 2.6, 1.4), ashlar, o.x + nx * 0.4, 8.2, o.z + nz * 0.4);
     put(wide(o.w + 3.4, 1.8), 0.4, deep(o.w + 3.4, 1.8), kerb, o.x + nx * 0.4, 8.95, o.z + nz * 0.4);
@@ -570,6 +622,24 @@ export function buildPlaza(anisotropy: number): BuiltArea {
       }
       /* Behind them, the dark of a building nobody has opened today. */
       put(wide(o.w + 1, 0.44), 6.4, deep(o.w + 1, 0.44), dark, o.x + nx * 0.25, 3.2, o.z + nz * 0.25);
+    } else if (o.kind === 'open') {
+      /* Nothing across it — this one is a way out. What it gets instead is the
+         floor through the gateway, at the pavement's own height so the step is
+         the kerb you were going to step over anyway. */
+      /*
+       * Written with `wide`/`deep` these came out square: those two take the
+       * size *along* the opening and the size *through* the wall, and a
+       * threshold runs the other way — the length of it is the wall's own
+       * thickness. Four metres of gateway floor came out thirteen metres
+       * square and buried in the range either side of it.
+       */
+      put(across ? 4.4 : o.w, PZ_KERB, across ? o.w : 4.4, setts,
+          o.x - nx * 2.2, PZ_KERB / 2, o.z - nz * 2.2);
+      for (const s of [-1, 1] as const) {
+        put(across ? 4.2 : 0.5, 0.5, across ? 0.5 : 4.2, kerbDark,
+            o.x + (across ? -nx * 2.1 : s * (o.w / 2 - 0.25)), 0.25 + PZ_KERB,
+            o.z + (across ? s * (o.w / 2 - 0.25) : -nz * 2.1));
+      }
     } else {
       put(wide(o.w, 0.26), 5.2, deep(o.w, 0.26), matt(own, '#ffffff', shutTex), o.x + nx * 0.5, 2.6 + PZ_KERB, o.z + nz * 0.5);
       put(wide(o.w + 0.5, 0.5), 0.6, deep(o.w + 0.5, 0.5), kerbDark, o.x + nx * 0.55, 5.5 + PZ_KERB, o.z + nz * 0.55);
@@ -1077,6 +1147,38 @@ export function buildPlaza(anisotropy: number): BuiltArea {
       }
     };
     for (const side of ['n', 's', 'e', 'w'] as const) for (let r = 0; r < 3; r++) lay(side, r);
+  }
+
+  /*
+   * And Domino High, south of the way out of the south range.
+   *
+   * A closed box with the first two metres of the school in it: its own
+   * boundary wall running away either side, the drive going on, a cherry tree
+   * over it and a lamp burning — the two metres of the place beyond that stop
+   * a doorway being a hole in the world.
+   */
+  {
+    const sz = PZ_FACE.south + 4;
+    const skin = tiled(matt(own, '#ffffff', renderTex), 3);
+    put(2.6, 14, 17, skin, PZ_HIGH, sz + 9.4, 0);
+    put(2.6, 14, 17, skin, PZ_HIGH, 7, sz + 9.4);
+    for (const s of [-1, 1] as const) put(2.6, 14.6, 9, skin, PZ_HIGH + s * 8.2, 7.3, sz + 4.5);
+    put(18.6, 1.4, 10.4, matt(own, '#2c2f33'), PZ_HIGH, 12.5, sz + 4.6);
+    slab(16, 9.6, PZ_HIGH, PZ_KERB + 0.02, sz + 4.4, setts);
+    /* The tree, and the lamp under it. */
+    put(0.5, 4.4, 0.5, bark, PZ_HIGH - 5, 2.2 + PZ_KERB, sz + 6);
+    for (let i = 0; i < 3; i++) {
+      put(5.2 - i, 1.4, 5.2 - i, i % 2 ? leaf : leafPale, PZ_HIGH - 5, 5.1 + i * 1.05 + PZ_KERB,
+          sz + 6, { rotY: 0.4 + i * 0.7 });
+    }
+    put(0.34, 4.6, 0.34, iron, PZ_HIGH + 5, 2.3 + PZ_KERB, sz + 5.5);
+    put(0.9, 0.3, 0.9, iron, PZ_HIGH + 5, 4.75 + PZ_KERB, sz + 5.5);
+    put(0.8, 0.12, 0.8, lampGlass, PZ_HIGH + 5, 4.55 + PZ_KERB, sz + 5.5);
+    const l = new THREE.PointLight('#ffbe78', 190, 24, 2);
+    l.position.set(PZ_HIGH + 4, 4.4, sz + 5);
+    root.add(l);
+    lights.push(l);
+    burning.push(l);
   }
 
   /*
