@@ -117,6 +117,37 @@ interface Props {
 /** SCAFFOLDING: show the coordinate readout. Set to false to hide it. */
 const SHOW_WHERE = true;
 
+/**
+ * SCAFFOLDING: on to the clipboard, however this browser will have it.
+ *
+ * `navigator.clipboard` wants a secure context and a focused document — https
+ * and localhost are secure, a phone reading this over a LAN address is not,
+ * and that is exactly the case this readout exists for. So the old textarea
+ * trick underneath it, tried whenever the first way throws rather than only
+ * when the API is missing.
+ *
+ * And it answers whether it worked, because a button that says "copied" when
+ * nothing was copied is worse than one that says nothing.
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* the old way, then */ }
+  const box = document.createElement('textarea');
+  box.value = text;
+  box.style.position = 'fixed';
+  box.style.top = '-1000px';
+  document.body.appendChild(box);
+  box.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  document.body.removeChild(box);
+  return ok;
+}
+
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   /*
@@ -207,6 +238,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * nothing else refers to it. `SHOW_WHERE` turns it off without deleting it.
    */
   const [where, setWhere] = useState('');
+  /* SCAFFOLDING: what the tap has to say for itself, if anything. */
+  const [copied, setCopied] = useState<string | null>(null);
   /**
    * The black sheet a door transition plays behind.
    *
@@ -1675,19 +1708,37 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       </div>
 
       {/* ---- SCAFFOLDING: the coordinate readout. Delete this block, the
-              `where` state, and the `setWhere` call in the frame loop, and it
-              is gone without a trace. ---- */}
-      {SHOW_WHERE && !talkingTo && (
-        <p
-          className="pointer-events-none absolute bottom-0 right-0 select-text font-mono text-[10px] leading-none text-amber-200/70"
+              `where`/`copied` state, and the `setWhere` call in the frame
+              loop, and it is gone without a trace.
+
+              A button rather than a line of text, because the point of it is
+              to be pasted into a message: tap it and it is on the clipboard.
+              `pointer-events-auto` over a canvas that is otherwise listening
+              for drags — the look handler is on the canvas itself, so a tap
+              that lands here never reaches it — and `tabIndex={-1}` with a
+              blur after, so a focused button cannot start eating the space
+              bar in a game played on WASD. ---- */}
+      {SHOW_WHERE && !talkingTo && where && (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            void copyText(where).then((ok) => {
+              setCopied(ok ? 'copied — paste it to me' : 'hold to select and copy');
+              window.setTimeout(() => setCopied(null), 1600);
+            });
+          }}
+          className="pointer-events-auto absolute bottom-0 right-0 cursor-pointer select-text rounded border border-amber-200/20 bg-black/35 px-2 py-1 font-mono text-[10px] leading-none text-amber-200/75 active:bg-black/60"
           style={{
-            marginBottom: 'calc(var(--safe-bottom) + 46px)',
-            marginRight: 'calc(var(--safe-right) + 16px)',
+            marginBottom: 'calc(var(--safe-bottom) + 42px)',
+            marginRight: 'calc(var(--safe-right) + 14px)',
             textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+            WebkitTapHighlightColor: 'transparent',
           }}
         >
-          {where}
-        </p>
+          {copied ?? where}
+        </button>
       )}
 
       {!talkingTo && (

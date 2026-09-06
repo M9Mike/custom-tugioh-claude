@@ -691,14 +691,25 @@ export function buildPlaza(anisotropy: number): BuiltArea {
       put(wide(o.w + 0.5, 0.5), 0.6, deep(o.w + 0.5, 0.5), kerbDark, o.x + nx * 0.55, 5.5 + PZ_KERB, o.z + nz * 0.55);
     }
 
-    /* And the name, which is the whole point of the thing. */
-    const tex = surfaceOf(own, () => signBoard(o.name, '#e2d3ae', '#2f2a24', o.sub, 4.4), 1, 1, anisotropy);
-    put(wide(o.w * 0.8, 0.12), o.w * 0.8 / 4.4, deep(o.w * 0.8, 0.12), matt(own, '#ffffff', tex),
-        o.x + nx * 0.62, 9.9, o.z + nz * 0.62);
-    const sl = new THREE.PointLight('#ffbe78', 52, 12, 2);
-    sl.position.set(o.x + nx * 2.4, 10.6, o.z + nz * 2.4);
-    root.add(sl);
-    lights.push(sl);
+    /*
+     * And the name, which is the whole point of the thing — once.
+     *
+     * At 9.9 m it is a line across the frontage, and for the three ways you
+     * cannot use that is where it belongs: you read them from across the
+     * square, not from under them. The open one carries its own board on the
+     * head of the arch instead, at the height a destination board is read
+     * from, and having both was the same name written twice on one wall with
+     * a stone band between them.
+     */
+    if (o.kind !== 'open') {
+      const tex = surfaceOf(own, () => signBoard(o.name, '#e2d3ae', '#2f2a24', o.sub, 4.4), 1, 1, anisotropy);
+      put(wide(o.w * 0.8, 0.12), o.w * 0.8 / 4.4, deep(o.w * 0.8, 0.12), matt(own, '#ffffff', tex),
+          o.x + nx * 0.62, 9.9, o.z + nz * 0.62);
+      const sl = new THREE.PointLight('#ffbe78', 52, 12, 2);
+      sl.position.set(o.x + nx * 2.4, 10.6, o.z + nz * 2.4);
+      root.add(sl);
+      lights.push(sl);
+    }
   };
 
   for (const o of PZ_WAYS) wayOut(o);
