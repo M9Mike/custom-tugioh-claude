@@ -55,6 +55,10 @@ const SHOTS: Shot[] = [
   { name: 'plaza, the way to Central Towers', area: 'station-plaza', x: -12, z: -46, facing: N },
   { name: 'plaza, the way to the City Library', area: 'station-plaza', x: 52, z: -24, facing: E },
   { name: 'plaza, the way to Civic Square', area: 'station-plaza', x: 16, z: 46, facing: S },
+  /* The one you can walk through. Written last and left out of this list,
+     which is how a doorway that reads as a shopfront went unlooked at. */
+  { name: 'plaza, the way to Domino High', area: 'station-plaza', x: -26, z: 46, facing: S },
+  { name: 'plaza, in at the school gate', area: 'station-plaza', x: -26, z: 52, facing: S },
   { name: 'plaza, the north-west corner', area: 'station-plaza', x: -56, z: -50, facing: NW },
   { name: 'plaza, the north-east corner', area: 'station-plaza', x: 56, z: -50, facing: NE },
   { name: 'plaza, the south-west corner', area: 'station-plaza', x: -56, z: 50, facing: SW },

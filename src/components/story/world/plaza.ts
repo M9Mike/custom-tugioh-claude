@@ -390,6 +390,21 @@ export function buildPlaza(anisotropy: number): BuiltArea {
      * the range they stop short instead.
      */
     const lengthwise = o.face === 'n' || o.face === 's';
+    /*
+     * The ways out that are in *this* range — matched by where they are, and
+     * not by which way they face.
+     *
+     * A range's `face` is the side it looks at; a way out's is the wall it is
+     * cut into. The south range faces north and its ways face south, so
+     * `wy.face === o.face` is never true — and the bays below read that test
+     * to decide where *not* to put a shopfront. Every way out of this square
+     * had a shopfront drawn straight across it, which is why the one you can
+     * walk through looked exactly like the closed shops either side of it: it
+     * had one of them standing in the gateway. The hole in the brick was
+     * matched by position months ago; the dressing in front of it was not.
+     */
+    const ways = PZ_WAYS.filter((w) =>
+      Math.abs((lengthwise ? w.z : w.x) - (lengthwise ? o.z : o.x)) < (lengthwise ? o.hd : o.hw) + 1);
     const ox = lengthwise ? -0.8 : 0.5;
     const oz = lengthwise ? 0.5 : -0.8;
     /*
@@ -408,9 +423,8 @@ export function buildPlaza(anisotropy: number): BuiltArea {
      * they never agree, so the south range was drawn as one unbroken block
      * with a doorway's worth of furniture buried in it.
      */
-    const cuts = PZ_WAYS
-      .filter((w) => w.kind === 'open'
-        && Math.abs((lengthwise ? w.z : w.x) - (lengthwise ? o.z : o.x)) < (lengthwise ? o.hd : o.hw) + 1)
+    const cuts = ways
+      .filter((w) => w.kind === 'open')
       .map((w): [number, number] => {
         const at = lengthwise ? w.x : w.z;
         return [at - w.w / 2, at + w.w / 2];
@@ -466,8 +480,8 @@ export function buildPlaza(anisotropy: number): BuiltArea {
      */
     const edge = (across ? PZ_IN.z : PZ_IN.x) - 0.4;
     const clear = (t: number) => Math.abs((across ? fz + t : fx + t)) <= edge
-      && !PZ_WAYS.some((wy) => wy.face === o.face
-        && Math.abs((across ? fz + t : fx + t) - (across ? wy.z : wy.x)) < wy.w / 2 + 2.4);
+      && !ways.some((wy) =>
+        Math.abs((across ? fz + t : fx + t) - (across ? wy.z : wy.x)) < wy.w / 2 + 2.4);
     const bays = Math.max(1, Math.round(along / 4.2));
     const wide = (a: number, b: number) => (across ? b : a);
     const deep = (a: number, b: number) => (across ? a : b);
@@ -639,6 +653,38 @@ export function buildPlaza(anisotropy: number): BuiltArea {
         put(across ? 4.2 : 0.5, 0.5, across ? 0.5 : 4.2, kerbDark,
             o.x + (across ? -nx * 2.1 : s * (o.w / 2 - 0.25)), 0.25 + PZ_KERB,
             o.z + (across ? s * (o.w / 2 - 0.25) : -nz * 2.1));
+      }
+      /*
+       * The name again, on the head of the arch, and a lamp on each jamb.
+       *
+       * Every way out of this square carries its name at 9.9 m, which is a
+       * line across the frontage and is right for the three you cannot use.
+       * On the one you can, it is above the top of the screen from anywhere
+       * you would stand: at ten metres back you are looking forty-eight
+       * degrees up at it. So this one says it twice, and the second time at
+       * the height a destination board is read from — on the brick head
+       * between the opening at 6.4 and the soffit at 7.6.
+       *
+       * And lit. Every shopfront down this range burns a lamp and the gateway
+       * burned none, so the only way out of Station Plaza was the darkest
+       * thing on the wall.
+       */
+      const board = surfaceOf(own, () => signBoard(o.name, '#e2d3ae', '#2f2a24', o.sub, 4.4), 1, 1, anisotropy);
+      put(wide(5.2, 0.12), 5.2 / 4.4, deep(5.2, 0.12), matt(own, '#ffffff', board),
+          o.x + nx * 0.56, 7.0, o.z + nz * 0.56);
+      for (const s of [-1, 1] as const) {
+        const jx = o.x + (across ? nx * 0.55 : s * (o.w / 2 + 0.5));
+        const jz = o.z + (across ? s * (o.w / 2 + 0.5) : nz * 0.55);
+        put(wide(0.24, 0.7), 0.16, deep(0.24, 0.7), iron, jx + nx * 0.5, 5.5, jz + nz * 0.5);
+        put(wide(0.5, 0.5), 0.16, deep(0.5, 0.5), lampGlass, jx + nx * 0.72, 5.36, jz + nz * 0.72);
+        /* Street lighting, not covered lighting: these two are on the square's
+           own face and go out at noon with every other lamp out here. What
+           stays burning is inside the box, which has a lid over it and is in
+           shade at every hour there is. */
+        const gl = new THREE.PointLight('#ffbe78', 92, 17, 2);
+        gl.position.set(jx + nx * 0.8, 5.2, jz + nz * 0.8);
+        root.add(gl);
+        lights.push(gl);
       }
     } else {
       put(wide(o.w, 0.26), 5.2, deep(o.w, 0.26), matt(own, '#ffffff', shutTex), o.x + nx * 0.5, 2.6 + PZ_KERB, o.z + nz * 0.5);
@@ -1121,6 +1167,19 @@ export function buildPlaza(anisotropy: number): BuiltArea {
    * Domino and the Civic ward are on the plan.
    */
   {
+    /*
+     * The school's box is a hole in the city.
+     *
+     * `lay('s', 0)` sets its rank back twelve metres from the world's edge and
+     * gives each block up to twenty-four of depth, so its blocks reach forward
+     * to z 60 — the outer face of the south range, and the first metre of the
+     * closed box behind the way to Domino High. A twenty-five metre tower
+     * stood *inside* that box, filling the gateway from a metre past the
+     * brick, and what you saw through the one open door in this square was the
+     * unlit north face of a building nobody built. Nothing may stand inside a
+     * closed box you can see into: that is what the box is for.
+     */
+    const KEEP = { x0: PZ_HIGH - 13, x1: PZ_HIGH + 13, z0: PZ_FACE.south + 2, z1: PZ_FACE.south + 15 };
     /* Pale enough to be a city and not a shadow: at #5d5750 a vertical face
        took less than half the light the ground did under a noon sun, and three
        ranks of them read as one black band under a blue sky. */
@@ -1128,6 +1187,8 @@ export function buildPlaza(anisotropy: number): BuiltArea {
     /* Each block goes into the ground its own depth: buried the same metre,
        a hundred and eight of them shared one underside at y = −1. */
     const piece = (w: number, h: number, d: number, x: number, z: number) => {
+      if (x + w / 2 > KEEP.x0 && x - w / 2 < KEEP.x1
+          && z + d / 2 > KEEP.z0 && z - d / 2 < KEEP.z1) return;
       const sink = 1 + rnd() * 3;
       put(w, h + sink, d, city, x, (h + sink) / 2 - sink, z,
           { cast: false, group: `city${x.toFixed(0)}:${z.toFixed(0)}` });
@@ -1160,25 +1221,73 @@ export function buildPlaza(anisotropy: number): BuiltArea {
   {
     const sz = PZ_FACE.south + 4;
     const skin = tiled(matt(own, '#ffffff', renderTex), 3);
-    put(2.6, 14, 17, skin, PZ_HIGH, sz + 9.4, 0);
-    put(2.6, 14, 17, skin, PZ_HIGH, 7, sz + 9.4);
-    for (const s of [-1, 1] as const) put(2.6, 14.6, 9, skin, PZ_HIGH + s * 8.2, 7.3, sz + 4.5);
-    put(18.6, 1.4, 10.4, matt(own, '#2c2f33'), PZ_HIGH, 12.5, sz + 4.6);
-    slab(16, 9.6, PZ_HIGH, PZ_KERB + 0.02, sz + 4.4, setts);
-    /* The tree, and the lamp under it. */
-    put(0.5, 4.4, 0.5, bark, PZ_HIGH - 5, 2.2 + PZ_KERB, sz + 6);
-    for (let i = 0; i < 3; i++) {
-      put(5.2 - i, 1.4, 5.2 - i, i % 2 ? leaf : leafPale, PZ_HIGH - 5, 5.1 + i * 1.05 + PZ_KERB,
-          sz + 6, { rotY: 0.4 + i * 0.7 });
+    /*
+     * This box opens *south*. Copied from the station's, which opens west, and
+     * never turned: `put` takes (w, h, d, material, x, y, z), and the back came
+     * out 2.6 m thin in x instead of in z — a fourteen-metre fin standing on
+     * edge down the middle of a twelve-metre gateway, which is the black shape
+     * you walked up to and read as a shopfront. The second copy of it had y
+     * and z swapped as well and hung a slab sixty-nine metres over the middle
+     * of the square. Neither was a back, so this box never had one.
+     *
+     * A back is thin along the way you are looking. The returns run away from
+     * you and are thin across. Say which axis each one is thin in and the
+     * whole thing is legible: 21.4 × 16 × 2.6 is a wall, 2.6 × 16.7 × 9.4 is a
+     * return, and no reading of them swaps.
+     */
+    const BACK = sz + 9.4; // the wall you see straight down the drive
+    const SIDE = 9.9;      // and how far out the two that run to meet it stand
+    put(21.4, 16, 2.6, skin, PZ_HIGH, 7, BACK);
+    /* Taller and longer than the back at both ends, so the three walls of the
+       box share neither a top, an underside, nor an end. */
+    for (const s of [-1, 1] as const) {
+      put(2.6, 16.7, 9.4, skin, PZ_HIGH + s * SIDE, 7.05, sz + 4.7);
     }
-    put(0.34, 4.6, 0.34, iron, PZ_HIGH + 5, 2.3 + PZ_KERB, sz + 5.5);
-    put(0.9, 0.3, 0.9, iron, PZ_HIGH + 5, 4.75 + PZ_KERB, sz + 5.5);
-    put(0.8, 0.12, 0.8, lampGlass, PZ_HIGH + 5, 4.55 + PZ_KERB, sz + 5.5);
-    const l = new THREE.PointLight('#ffbe78', 190, 24, 2);
-    l.position.set(PZ_HIGH + 4, 4.4, sz + 5);
-    root.add(l);
-    lights.push(l);
-    burning.push(l);
+    /* Fifteen metres up, not seven: the ray that leaves a duelist's eye and
+       grazes the head of the opening is climbing at better than one in one,
+       and a lid low enough to catch it near the gate is a ceiling over a
+       school drive. Up here the back catches that ray first and the lid is
+       only ever seen edge-on. */
+    put(23.4, 1.4, 11.4, matt(own, '#2c2f33'), PZ_HIGH, 16, sz + 4.9);
+    slab(17.6, 10, PZ_HIGH, PZ_KERB + 0.02, sz + 4.6, setts);
+    /* The cherry, off the centre line so the drive runs clear through the
+       gate, and deep enough in to read as standing in the school's grounds. */
+    put(0.5, 4.4, 0.5, bark, PZ_HIGH - 5.5, 2.2 + PZ_KERB, sz + 7);
+    for (let i = 0; i < 3; i++) {
+      put(5.2 - i, 1.4, 5.2 - i, i % 2 ? leaf : leafPale, PZ_HIGH - 5.5, 5.1 + i * 1.05 + PZ_KERB,
+          sz + 7, { rotY: 0.4 + i * 0.7 });
+    }
+    /*
+     * Two standards and not one, the near one just inside the gate.
+     *
+     * A single lamp five metres in is the first thing the lamp budget in
+     * `OpenWorld` turns off when you are out in the middle of the square, and
+     * then the one open way out of the plaza is a black rectangle again from
+     * every distance but arm's length. The near one is always within reach of
+     * a duelist at the gate; the far one carries the drive.
+     */
+    /* Both standards down the east verge, which is what a drive has, and which
+       keeps them off the cherry on the west: at x −30.5 the near one stood five
+       metres under the canopy and lit its underside to a colour no leaf is. */
+    for (const [k, at, reach] of [[5, 5.5, 34], [4.2, 1.8, 26]] as const) {
+      put(0.34, 4.6, 0.34, iron, PZ_HIGH + k, 2.3 + PZ_KERB, sz + at);
+      put(0.9, 0.3, 0.9, iron, PZ_HIGH + k, 4.75 + PZ_KERB, sz + at);
+      put(0.8, 0.12, 0.8, lampGlass, PZ_HIGH + k, 4.55 + PZ_KERB, sz + at);
+      /*
+       * And these go out at noon too, unlike the station's concourse pendants.
+       *
+       * A school drive is open ground with a lid over it only because a box
+       * needs one — and `burning` at 190 made the one shaded thing in the
+       * square the *brightest* thing in it under a midday sun, which is the
+       * inversion that says "lamps on at noon" from a hundred metres away.
+       * The hemisphere and ambient lights are not occluded by the lid, so what
+       * is left at noon is a drive in shade, which is what it is.
+       */
+      const l = new THREE.PointLight('#ffbe78', 190, reach, 2);
+      l.position.set(PZ_HIGH + k, 4.4, sz + at + 0.5);
+      root.add(l);
+      lights.push(l);
+    }
   }
 
   /*

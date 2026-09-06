@@ -123,6 +123,35 @@ gate was green — and you walked out through a picture of a shut gate. A dead e
 that is no longer a dead end is a drawing job, and no check will ask you for it:
 `npm run doorshots` photographs it and you have to look.
 
+**A lamp costs the whole picture.** Three.js evaluates every point light for
+every lit fragment, so a lamp you cannot see costs exactly what one you can
+costs. Station Plaza had fifty-three and ran at a *ninth* of the frame rate it
+runs at with fourteen — 0.42 fps against 3.5, the geometry held still at 404
+draw calls. Every lamp here is written with a `distance` and contributes
+nothing past it, and counted over a metre grid of every area there is, the
+worst-lit square metre in the city is reached by ten. So `OpenWorld` lights the
+nearest fourteen. The number is *fixed* and not a radius: the count of visible
+lights is part of a material's shader key, and one that varies as you walk
+recompiles every program in the scene. Build a big area and count its lamps.
+
+**A way out has to look like one, and only your eye will say so.** The plaza's
+one open gateway was drawn with a shopfront standing across it, its name ten
+metres up where no camera points, no lamp on it while every closed shop beside
+it burned two, and a twenty-five metre city block parked inside the closed box
+behind it. Twenty gates were green — `doors` walked through it, `seams`,
+`walls`, `footing` and `coplanar` all passed — and Mike could not find the way
+to Domino High. `seams` *cannot* fail on this: a ray out through a doorway is
+excused as a door, which is right, and nothing then asks whether the box behind
+it is closed. The instrument is a vantage in `corner-shots.ts` at every way out
+of every area, and looking at it. Three of the plaza's four ways had one.
+
+**When you fix a predicate, grep for its twin.** A range's `face` is the side it
+looks at; a way out's is the wall it is cut into, so `wy.face === o.face` is
+never true. That was found and fixed for the hole in the brick — and the test
+that decides where *not* to draw a shopfront kept the old form, so all four
+ways out of the square had one drawn across them. Two readings of one word,
+eight lines apart, and only one of them was corrected.
+
 **Smooth beats sharp.** The renderer watches its own frame time
 (`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it
 gives up frames; a phone starts at one and a half times its pixels, not two.
@@ -162,7 +191,9 @@ stairs. The ease that keeps feet on a step is clamped on the way up
 2. A builder in `world/`, registered in `OpenWorld`'s `BUILDERS`.
 3. A `Sky` with a shadow camera that covers the whole area *and* whatever
    stands outside its walls to close the horizon.
-4. Vantages in `scripts/corner-shots.ts`, flights in `scripts/stairs-check.ts`,
+4. Vantages in `scripts/corner-shots.ts` — including one standing in front of
+   every way out, which is the only thing that ever looks at whether a door
+   reads as a door — flights in `scripts/stairs-check.ts`,
    walks in `scripts/walk-record.ts`, a line in `scripts/soak-check.ts`'s
    circuit. `npm run areas` refuses an area missing from a sweep that needs
    naming.

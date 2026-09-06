@@ -114,6 +114,9 @@ interface Props {
   resume?: { npcId: string; node: string } | null;
 }
 
+/** SCAFFOLDING: show the coordinate readout. Set to false to hide it. */
+const SHOW_WHERE = true;
+
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   /*
@@ -194,6 +197,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   const areaRef = useRef<AreaId>(start.area);
   /** The name of the place just entered, shown briefly and then faded out. */
   const [entered, setEntered] = useState<string | null>(null);
+  /*
+   * ---- SCAFFOLDING: the coordinate readout ----------------------------
+   *
+   * Where you are, in the corner, so a thing you can see can be named: "the
+   * lamp at −26, 48", "there is nothing under me at 12, −40". It is not part
+   * of the game and it comes out again — delete this state, the `setWhere`
+   * call in the frame loop, and the block at the bottom of the markup, and
+   * nothing else refers to it. `SHOW_WHERE` turns it off without deleting it.
+   */
+  const [where, setWhere] = useState('');
   /**
    * The black sheet a door transition plays behind.
    *
@@ -356,6 +369,90 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     let area = areaById(areaRef.current);
     const anisotropy = renderer.capabilities.getMaxAnisotropy();
 
+    /*
+     * How many of an area's lamps may be lit at once.
+     *
+     * ## Why there is a number at all
+     *
+     * A point light is not scenery: three.js evaluates every one of them for
+     * every lit fragment on the screen, so the cost of a lamp is paid by the
+     * whole picture whether or not you can see the lamp. Station Plaza is a
+     * hundred and thirty-two metres of square with fifty-three of them on it —
+     * the standards round the island, the shopfronts, the shelters, the ways
+     * out — and it ran at half the frame rate of Domino Station on *fewer*
+     * triangles. Not the geometry. The lights.
+     *
+     * Measured, at t16, three interleaved rounds on one page, with the
+     * geometry held still at 404 draw calls and 96,829 triangles and nothing
+     * changing but how many lamps were lit:
+     *
+     *     52 lit   0.42  0.40  0.58 fps
+     *     24 lit   1.24  1.17  0.99 fps
+     *     14 lit   3.71  3.53  3.47 fps
+     *
+     * ## Why it is free
+     *
+     * Every lamp in this world is written with a `distance`, and a three.js
+     * point light contributes exactly nothing beyond it. Counted over a metre
+     * grid of every area there is — how many lamps actually reach a duelist's
+     * head standing on that square metre — the worst place in the city is lit
+     * by ten:
+     *
+     *     station-plaza   53 lamps, reach 9–27 m, at most  9 reach you
+     *     domino-high     53 lamps, reach 7–42 m, at most 10
+     *     domino-station  27 lamps, reach 12–34 m, at most 8
+     *     old-cemetery    17 lamps, reach 6–15 m, at most  4
+     *
+     * So fourteen is not a compromise: it is every lamp that is doing anything
+     * plus four spare, and the other thirty-nine were being multiplied through
+     * the fragment shader to add zero.
+     *
+     * Sorted by the distance to a lamp's *pool* rather than to the lamp, so a
+     * tall standard reaching twenty-seven metres outranks a shop light nearer
+     * to you and reaching nine: what has to stay lit is the ground you can
+     * see, not the fitting nearest your shoulder.
+     *
+     * ## Why the count is fixed and not a radius
+     *
+     * Because the *number* of visible lights is part of a material's shader
+     * key: let it vary with where you stand and every few steps recompiles
+     * every program in the scene, which is a stutter far worse than the cost
+     * it saves. Exactly `LAMP_BUDGET` are lit whenever there are that many, so
+     * the count never moves and no shader is ever rebuilt for it.
+     */
+    const LAMP_BUDGET = 14;
+    let lamps: THREE.PointLight[] = [];
+    const lampOrder: number[] = [];
+    let lampTick = 0;
+    /* SCAFFOLDING: when the coordinate readout last spoke. */
+    let whereAt = 0;
+
+    /**
+     * The nearest `LAMP_BUDGET` lamps on, the rest off.
+     *
+     * Called once on the way into an area and every fourth frame after, and
+     * the entry call is not a nicety: three.js keys a material's shader on the
+     * number of visible lights, so an area that renders even one frame with
+     * all fifty-six of its lamps on compiles every program in it twice — once
+     * at fifty-six and once at fourteen — and pays a stall for each. Twenty
+     * doors, six laps, and that is two hundred and forty compilations.
+     * Measured: `npm run soak` finished holding 61 shader programs without
+     * this call and 32 with it, and the frame time it had been failing on
+     * stopped growing.
+     *
+     * Sorted by distance to the lamp's *pool*, not to the lamp: a standard
+     * reaching twenty-seven metres from thirty away is lighting ground you can
+     * see, and a shop light reaching nine from fifteen away is lighting
+     * nothing.
+     */
+    const budgetLamps = (x: number, y: number, z: number) => {
+      if (lamps.length <= LAMP_BUDGET) return;
+      const reach = (l: THREE.PointLight) =>
+        Math.hypot(l.position.x - x, l.position.y - y, l.position.z - z) - l.distance;
+      lampOrder.sort((a, b) => reach(lamps[a]) - reach(lamps[b]));
+      for (let i = 0; i < lampOrder.length; i++) lamps[lampOrder[i]].visible = i < LAMP_BUDGET;
+    };
+
     const enter = (id: AreaId) => {
       if (built) {
         scene.remove(built.root);
@@ -365,6 +462,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       area = areaById(id);
       areaRef.current = area.id;
       built = BUILDERS[area.id](anisotropy);
+      lamps = [];
+      built.root.traverse((o) => {
+        if ((o as THREE.PointLight).isPointLight) lamps.push(o as THREE.PointLight);
+      });
+      lampOrder.length = 0;
+      for (let i = 0; i < lamps.length; i++) lampOrder.push(i);
+      /* From wherever the duelist stands as this area opens — the spawn, or a
+         door's landing. Which fourteen is a detail the next frame corrects;
+         that it is *fourteen* is what keeps the shader key still. */
+      budgetLamps(here.current.x, standingOn(area, here.current.x, here.current.z) + 1, here.current.z);
       scene.add(built.root);
       populate(area.id);
       setEntered(area.name);
@@ -650,6 +757,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       renderer.toneMappingExposure = sky.exposure;
       built?.setTime?.(hour);
 
+      /*
+       * And the nearest `LAMP_BUDGET` of them are the ones that are on.
+       *
+       * Every fourth frame, because the answer changes at walking pace and
+       * fifty-odd square roots is not something to do sixty times a second for
+       * a list that has not moved. Measured from the duelist and not from the
+       * camera: the camera is four and a half metres behind her and the lamp
+       * she is standing under is the one that has to be lit.
+       */
+      if ((lampTick++ & 3) === 0) budgetLamps(here.current.x, groundY + 1, here.current.z);
+
       /* A conversation holds you still. Not by disabling the controls — the
          stick is hidden and the keys are simply not read — so that letting go
          of the stick to tap a reply cannot leave a held direction behind to
@@ -797,6 +915,15 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            to a stand instead of marching on the spot. */
         const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
         rig.update(dt, Math.min(stride, covered / TOP_SPEED), covered);
+      }
+
+      /* SCAFFOLDING: the coordinate readout, four times a second rather than
+         sixty — React does not need to hear about a tenth of a metre. */
+      if (SHOW_WHERE && performance.now() - whereAt > 250) {
+        whereAt = performance.now();
+        const deg = Math.round(((p.facing * 180) / Math.PI + 360)) % 360;
+        setWhere(`${areaRef.current}  x ${p.x.toFixed(1)}  z ${p.z.toFixed(1)}`
+                 + `  y ${groundY.toFixed(2)}  facing ${deg}°`);
       }
 
       /**
@@ -1546,6 +1673,22 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           className="pointer-events-none h-[52px] w-[52px] rounded-full border border-brassdim bg-[#1c222b]/85"
         />
       </div>
+
+      {/* ---- SCAFFOLDING: the coordinate readout. Delete this block, the
+              `where` state, and the `setWhere` call in the frame loop, and it
+              is gone without a trace. ---- */}
+      {SHOW_WHERE && !talkingTo && (
+        <p
+          className="pointer-events-none absolute bottom-0 right-0 select-text font-mono text-[10px] leading-none text-amber-200/70"
+          style={{
+            marginBottom: 'calc(var(--safe-bottom) + 46px)',
+            marginRight: 'calc(var(--safe-right) + 16px)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+          }}
+        >
+          {where}
+        </p>
+      )}
 
       {!talkingTo && (
         <p

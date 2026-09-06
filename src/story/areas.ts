@@ -3117,10 +3117,17 @@ export const PZ_THINGS: PlazaThing[] = [
      the square anybody is actually standing still. */
   { kind: 'kiosk', x: -41, z: -22, hw: 3.2, hd: 2.4, turn: Math.PI / 2 },
   /* Trees in grates: two rows down the outer pavements, one row on the island. */
-  ...[-48, -24, 0, 24, 48].flatMap((x): PlazaThing[] => [
-    { kind: 'tree', x, z: -48, hw: 0.55, hd: 0.55 },
-    { kind: 'tree', x, z: 48, hw: 0.55, hd: 0.55 },
-  ]),
+  ...[-48, -24, 0, 24, 48].map((x): PlazaThing => ({ kind: 'tree', x, z: -48, hw: 0.55, hd: 0.55 })),
+  /*
+   * The south row steps aside for the school gate.
+   *
+   * A row laid on a twenty-four metre grid put a tree at x −24: two metres off
+   * the centre line of the one opening in this square you can walk through,
+   * eight metres in front of it, with five metres of canopy over the approach.
+   * The pair at −34 and −18 flank the twelve-metre gateway instead, which is
+   * what an avenue does when it meets a gate.
+   */
+  ...[-48, -34, -18, 0, 24, 48].map((x): PlazaThing => ({ kind: 'tree', x, z: 48, hw: 0.55, hd: 0.55 })),
   ...[-26, 0, 26].flatMap((z): PlazaThing[] => [
     { kind: 'tree', x: -50, z, hw: 0.55, hd: 0.55 },
     { kind: 'tree', x: 50, z, hw: 0.55, hd: 0.55 },
@@ -3129,10 +3136,10 @@ export const PZ_THINGS: PlazaThing[] = [
   /* On the pavement, not in the road: at z 40.5 the middle four of these stood
      on the carriageway, which is the floor at zero, and were drawn fifteen
      centimetres over it. Nothing in this world floats. */
-  ...[-45, -15, 15, 45].flatMap((x): PlazaThing[] => [
-    { kind: 'lamp', x, z: -45.5, hw: 0.3, hd: 0.3 },
-    { kind: 'lamp', x, z: 45.5, hw: 0.3, hd: 0.3 },
-  ]),
+  ...[-45, -15, 15, 45].map((x): PlazaThing => ({ kind: 'lamp', x, z: -45.5, hw: 0.3, hd: 0.3 })),
+  /* And the standard that was at −15 moves to −12, out from under the canopy
+     of the tree that moved to −18. */
+  ...[-45, -12, 15, 45].map((x): PlazaThing => ({ kind: 'lamp', x, z: 45.5, hw: 0.3, hd: 0.3 })),
   ...[-20, 20].flatMap((z): PlazaThing[] => [
     { kind: 'lamp', x: -36.5, z, hw: 0.3, hd: 0.3 },
     { kind: 'lamp', x: 36.5, z, hw: 0.3, hd: 0.3 },
@@ -3215,6 +3222,12 @@ const STATION_PLAZA: Area = {
     /* The forecourt terrace, and the flight down off it. */
     { ...PZ_FORECOURT, y: PZ_TERRACE },
     ...PZ_FLIGHT_STEPS,
+    /* The floor through the open gateway, at the pavement's own height so
+       there is no step at the threshold and no strip of nothing between the
+       two. Four metres of range to walk through: the wall is thick. */
+    ...PZ_WAYS.filter((o) => o.kind === 'open').map((o) => ({
+      x: o.x, z: o.z + 2.2, hw: o.w / 2, hd: 2.2, y: PZ_KERB,
+    })),
   ],
   solids: [
     /*
@@ -3253,11 +3266,37 @@ const STATION_PLAZA: Area = {
       .map(([a, b]) => ({
         x: (a + b) / 2, z: (PZ_D + PZ_IN.z) / 2 - 0.225, hw: (b - a) / 2,
         hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true })),
-    /* And the surround of each way out, which stands a metre proud of the wall
-       it is cut into — see `PZ_WAYS`. */
-    ...PZ_WAYS.map((o) => (o.face === 'w'
-      ? { x: o.x - 0.6, z: o.z, hw: 0.6, hd: o.w / 2 + 1.5, tall: true }
-      : { x: o.x, z: o.z + (o.face === 'n' ? 0.6 : -0.6), hw: o.w / 2 + 1.5, hd: 0.6, tall: true })),
+    /*
+     * And the surround of each way out, which stands a metre proud of the wall
+     * it is cut into — see `PZ_WAYS`.
+     *
+     * Across the whole opening for the three that are shut, because a
+     * hoarding, a pair of gates and a rolled shutter are what you walk into.
+     * Two jambs and nothing between them for the fourth, because it is a
+     * doorway: one expression covering four cases put a tall wall of air
+     * across twelve metres of gateway and the only way through this square
+     * was a door trigger firing two and a half metres before you reached it.
+     * The same fault as the station's east shutter, one layer down — the
+     * drawing was opened and the collision was not.
+     *
+     * The jamb is the piece `wayOut` draws, at the size it draws it: 1.2 along
+     * the wall by 1.1 through it, centred half a metre out from the reveal.
+     */
+    ...PZ_WAYS.flatMap((o) => {
+      const runs: [number, number][] = o.kind === 'open'
+        ? [[-(o.w / 2 + 0.5), 0.6], [o.w / 2 + 0.5, 0.6]]
+        : [[0, o.w / 2 + 1.5]];
+      const t = o.kind === 'open' ? 0.55 : 0.6;
+      return runs.map(([at, along]) => (o.face === 'w'
+        ? { x: o.x - t, z: o.z + at, hw: t, hd: along, tall: true }
+        : { x: o.x + at, z: o.z + (o.face === 'n' ? t : -t), hw: along, hd: t, tall: true }));
+    }),
+    /* The edging down either side of the open gateway — half a metre of dark
+       kerb, which is over the climb and so is something you walk round. Drawn
+       in `wayOut`; a duelist stood inside both of them until it was here. */
+    ...(PZ_WAYS.filter((o) => o.kind === 'open').flatMap((o) => [-1, 1].map((s) => ({
+      x: o.x + s * (o.w / 2 - 0.25), z: o.z + 2.1, hw: 0.25, hd: 2.1,
+    })))),
 
     /* The clock pillar, which is the one thing in the square you can see from
        every corner of it. */
@@ -3300,7 +3339,11 @@ const STATION_PLAZA: Area = {
     },
     {
       id: 'plaza-to-high',
-      trigger: { x: PZ_HIGH, z: PZ_FACE.south - 1.2, hw: PZ_HIGH_HALF - 1.4, hd: 1.3 },
+      /* The whole gateway, not a patch on the pavement in front of it. Sized
+         to the opening's walkable width and running from a metre short of the
+         threshold to the far side of four metres of range, so there is no slot
+         down either jamb you can walk through the wall by. */
+      trigger: { x: PZ_HIGH, z: PZ_FACE.south + 1.2, hw: PZ_HIGH_HALF - 0.2, hd: 2.4 },
       to: 'domino-high',
       seam: { x: PZ_HIGH, z: PZ_D },
       /*
