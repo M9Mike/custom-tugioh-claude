@@ -713,6 +713,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * and a half metres off her own doorstep.
      */
     let groundY = standingOn(areaById(areaRef.current), here.current.x, here.current.z);
+    /* The floor under her feet, which is `groundY` without the ease. */
+    let standing = groundY;
     /* The direction of travel, held from the last frame there was input, so a
        stop keeps going the way it was going while the legs slow down. */
     let heading = here.current.facing;
@@ -884,9 +886,47 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * order-dependent in a corner: pushed out of one wall into another, the
          * second pass is what puts you back in the room.
          */
-        /* On their floor: a gallery's railing is not a thing you walk into
-           from underneath it. See `settle`. */
-        const fixed = settle(area, p.x, p.z, PLAYER_RADIUS, groundY);
+        /*
+         * On their floor — the floor, not the height she is drawn at.
+         *
+         * `settle`'s `atY` means "which floor the duelist is on", and this was
+         * handing it `groundY`, which is the *eased* height the rig is drawn
+         * at. On the flat they are the same number. On a flight they are not,
+         * and the difference is a stutter you can feel:
+         *
+         * `settle` treats a platform more than a stride above `atY` as the
+         * face of a step and pushes you out of it. An exponential ease
+         * approaches the tread it is climbing to but never arrives, so the
+         * tread three ahead stayed "more than a stride up" for as long as the
+         * ease was converging — she walked a third of a metre, was pinned
+         * against a tread she was about to stand on, waited for `groundY` to
+         * close the last millimetres, took another step, and stopped again.
+         * Simulated at sixty frames a second up the school's west tower,
+         * *eighty-two per cent* of frames made no progress. Told the floor
+         * instead: none of them.
+         *
+         * Descending never showed it, because everything below you is skipped
+         * by the same test — which is exactly what Mike reported: "walking up
+         * the stairs stops and goes, walking down is ok".
+         *
+         * And only the school's towers showed it, because only they rise two
+         * hundred millimetres against a four-hundred stride: the tread two
+         * above sits exactly on the boundary, so the *third* is the blocker
+         * and there is no slack left for the ease to eat. Every other flight
+         * in the city rises 180 or 360 and never met it — measured, all nine
+         * of them climb in the same number of frames before and after this.
+         * The same coincidence that made these two unclimbable at all.
+         *
+         * The *higher* of the two, and that is not a hedge. Going up, the ease
+         * lags below the floor and the unlagged answer is the higher one, which
+         * is the fix. Going down, the ease lags *above* it — and handing the
+         * lower number there makes more platforms count as walls than did
+         * before, which is a change nobody asked for: it put four doors out of
+         * reach and sent `npm run soak` through the wrong one on the first lap.
+         * Taking the higher can only ever remove a wall, never add one, so
+         * climbing is fixed and descending is left exactly as it was.
+         */
+        const fixed = settle(area, p.x, p.z, PLAYER_RADIUS, Math.max(groundY, standing));
         p.x = fixed.x;
         p.z = fixed.z;
         /**
@@ -929,6 +969,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          building with storeys in it which floor they are on: without it,
          walking under a gallery puts them on top of it. See `groundAt`. */
       const wantY = groundAt(areaById(areaRef.current), p.x, p.z, groundY);
+      /* And what she is standing on, for the next frame's `settle` — the
+         answer without the ease on it. See above. */
+      standing = wantY;
       groundY += (wantY - groundY) * Math.min(1, dt * 12);
       /*
        * And never below the floor, whatever the ease says.
