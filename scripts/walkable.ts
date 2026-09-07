@@ -40,7 +40,13 @@ function snap(area: Area): { ix: number; iz: number } | null {
         const iz = cz + dz;
         const x = ix * STEP;
         const z = iz * STEP;
-        if (standable(area, x, z, hasStoreys(area) ? groundAt(area, x, z, 0) : Number.NaN)) {
+        /* From the area's own street, not from nought. Every area up to
+           Central Towers had its ground floor at nought and the two were the
+           same question; that one stands its whole site six metres up so a
+           sunken forecourt can have the base plate, and seeded from nought the
+           fill began at the bottom of the hole and called it the ground. */
+        const near = area.street ?? 0;
+        if (standable(area, x, z, hasStoreys(area) ? groundAt(area, x, z, near) : Number.NaN)) {
           return { ix, iz };
         }
       }
@@ -116,7 +122,7 @@ export function walkableCells(area: Area): { x: number; z: number; y: number }[]
    */
   const cellKey = (ix: number, iz: number, y: number) =>
     `${ix},${iz},${Number.isFinite(y) ? Math.round(y / 0.5) : 0}`;
-  const startY = floorAt(start.ix * STEP, start.iz * STEP, 0);
+  const startY = floorAt(start.ix * STEP, start.iz * STEP, area.street ?? 0);
   const queue: { ix: number; iz: number; y: number }[] = [{ ...start, y: startY }];
   seen.add(cellKey(start.ix, start.iz, startY));
 

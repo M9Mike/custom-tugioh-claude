@@ -49,7 +49,8 @@ export type AreaId =
   | 'old-cemetery'
   | 'domino-station'
   | 'station-plaza'
-  | 'domino-high';
+  | 'domino-high'
+  | 'central-towers';
 
 /** A rectangle on the ground, centred on (x, z). */
 export interface Rect {
@@ -172,6 +173,18 @@ export interface Area {
    * an origin has to be something. Everything else is measured from it.
    */
   world: { x: number; z: number };
+  /**
+   * How high this area's street is, when it is not nought.
+   *
+   * `standingOn` — the answer somebody *arriving* gets, from a spawn or a
+   * door's landing — asks what you could step on to from the bottom of the
+   * world, because in every area up to now the ground floor has been at nought
+   * and that was the same question. Central Towers stands its whole site six
+   * metres up so that a sunken forecourt can have the base plate (nothing can
+   * be below it), and there arriving answered *nought*: the floor of the hole,
+   * under two hundred metres of street.
+   */
+  street?: number;
   /** The outer limit of walking, set *inside* the enclosing geometry. */
   bounds: Rect;
   /** Everything you cannot walk through. */
@@ -3065,10 +3078,26 @@ export interface PlazaWay {
 
 /** The way through the south range to Domino High. */
 export const PZ_HIGH = -26;
+/**
+ * And the way north, to Central Towers — towards the square's north-east
+ * corner rather than the middle of the wall.
+ *
+ * Not a composition choice: a door's seam fixes its neighbour's position in
+ * the world, and with this at x −12 the towers' two hundred and forty metres
+ * reached back over Domino Station's train shed. `npm run areas` counts the
+ * cells two areas share and there were eleven thousand of them. Moved east,
+ * the site starts a metre past the station's east wall.
+ */
+export const PZ_TOW = 53;
+export const PZ_TOW_HALF = 6;
 export const PZ_HIGH_HALF = 6;
 
 export const PZ_WAYS: PlazaWay[] = [
-  { x: -12, z: PZ_FACE.north, w: 14, face: 'n', name: 'CENTRAL TOWERS', sub: 'ROAD CLOSED', kind: 'hoard' },
+  /* Open since the towers were built. It said ROAD CLOSED for as long as the
+     ward north of here was a line in the plan, and a hoarding in front of a
+     door that works is the fault the station's east shutter was. */
+  { x: PZ_TOW, z: PZ_FACE.north, w: PZ_TOW_HALF * 2, face: 'n',
+    name: 'CENTRAL TOWERS', sub: 'AND NORTH DOMINO', kind: 'open' },
   { x: PZ_FACE.east, z: -24, w: 10, face: 'w', name: 'CITY LIBRARY', sub: 'CLOSED TODAY', kind: 'gates' },
   { x: 16, z: PZ_FACE.south, w: 11, face: 's', name: 'CIVIC SQUARE', sub: 'DIVERSION', kind: 'shutter' },
   /* And the one that is open. A square with four ways out of it and three of
@@ -3226,7 +3255,7 @@ const STATION_PLAZA: Area = {
        there is no step at the threshold and no strip of nothing between the
        two. Four metres of range to walk through: the wall is thick. */
     ...PZ_WAYS.filter((o) => o.kind === 'open').map((o) => ({
-      x: o.x, z: o.z + 2.2, hw: o.w / 2, hd: 2.2, y: PZ_KERB,
+      x: o.x, z: o.z + (o.face === 'n' ? -2.2 : 2.2), hw: o.w / 2, hd: 2.2, y: PZ_KERB,
     })),
   ],
   solids: [
@@ -3257,8 +3286,12 @@ const STATION_PLAZA: Area = {
     /* Forty-five centimetres thicker on the square side than the brick is:
        the shopfront line — pilasters and fascia — stands proud of the wall
        above it, and that line is what you meet. See `world/plaza.ts`. */
-    { x: 0, z: -((PZ_D + PZ_IN.z) / 2 - 0.225), hw: PZ_IN.x,
-      hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true },
+    /* The north range in two pieces, with the way to Central Towers between
+       them — the second doorway in this square that is a doorway. */
+    ...[[-PZ_IN.x, PZ_TOW - PZ_TOW_HALF], [PZ_TOW + PZ_TOW_HALF, PZ_IN.x]]
+      .map(([a, b]) => ({
+        x: (a + b) / 2, z: -((PZ_D + PZ_IN.z) / 2 - 0.225), hw: (b - a) / 2,
+        hd: (PZ_D - PZ_IN.z) / 2 + 0.225, tall: true })),
     /* The south range in two pieces, with the way to Domino High between
        them: the one opening in this square that is a doorway and not a
        picture of one. */
@@ -3295,7 +3328,7 @@ const STATION_PLAZA: Area = {
        kerb, which is over the climb and so is something you walk round. Drawn
        in `wayOut`; a duelist stood inside both of them until it was here. */
     ...(PZ_WAYS.filter((o) => o.kind === 'open').flatMap((o) => [-1, 1].map((s) => ({
-      x: o.x + s * (o.w / 2 - 0.25), z: o.z + 2.1, hw: 0.25, hd: 2.1,
+      x: o.x + s * (o.w / 2 - 0.25), z: o.z + (o.face === 'n' ? -2.1 : 2.1), hw: 0.25, hd: 2.1,
     })))),
 
     /* The clock pillar, which is the one thing in the square you can see from
@@ -3319,6 +3352,7 @@ const STATION_PLAZA: Area = {
     /* The station's doorway, closed to the camera: past it is a different scene. */
     { x: PZ_FACE.west - 1.4, z: PZ_DOOR, hw: 1.4, hd: PZ_DOOR_HALF + 0.3 },
     { x: PZ_HIGH, z: PZ_FACE.south + 1.4, hw: PZ_HIGH_HALF + 0.3, hd: 1.4 },
+    { x: PZ_TOW, z: PZ_FACE.north - 1.4, hw: PZ_TOW_HALF + 0.3, hd: 1.4 },
   ],
   doors: [
     {
@@ -3354,6 +3388,17 @@ const STATION_PLAZA: Area = {
        */
       arrive: { x: PZ_HIGH, z: PZ_FACE.south - 7.5, facing: Math.PI },
       label: 'Domino High',
+    },
+    {
+      id: 'plaza-to-towers',
+      trigger: { x: PZ_TOW, z: PZ_FACE.north - 1.2, hw: PZ_TOW_HALF - 0.2, hd: 2.4 },
+      to: 'central-towers',
+      seam: { x: PZ_TOW, z: -PZ_D },
+      /* Seven and a half metres out and facing back into the square, for the
+         same reason the way to the school is: at four the camera stands in the
+         range's own shopfront line. */
+      arrive: { x: PZ_TOW, z: PZ_FACE.north + 7.5, facing: 0 },
+      label: 'Central Towers',
     },
   ],
   spawn: { x: -55, z: PZ_DOOR, facing: Math.PI / 2 },
@@ -3820,6 +3865,374 @@ const DOMINO_HIGH: Area = {
   spawn: { x: DH_GATE, z: -74, facing: 0 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Central Towers                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A glass canyon, and the first area in the city you go *down* into.
+ *
+ * Two hundred and forty metres by two hundred — bigger than the school, which
+ * was bigger than the square, which was bigger than the station. At a walk it
+ * is four minutes corner to corner and you cannot see all of it from anywhere,
+ * which is the point: this one is a maze rather than a room.
+ *
+ * Five floors you can stand on and they are not stacked in a tower, they are
+ * threaded through each other:
+ *
+ *   +7.6  the podium deck, outside, over the east tower's shops
+ *   +6.4  the lobby mezzanines, inside both towers
+ *   +0.6  the lobby floors, a step up off the street
+ *   +0.15 the pavements; the two cross streets are the road at nought
+ *   −6.0  the sunken forecourt, open to the sky in the middle of the canyon,
+ *         and the concourse that runs under the street away from it
+ *
+ * The concourse is the thing that makes this a maze: it links the two lobbies
+ * underneath the canyon, so the way from one tower to the other is either
+ * across the open or down and along, and the two do not look like each other.
+ */
+const CT_W = 120;   // half-width, so 240 m east to west
+const CT_D = 100;   // half-depth, so 200 m north to south
+
+/** The inner face of the perimeter, as magnitudes. See `DH_IN`. */
+export const CT_IN = { x: 118, z: 98 };
+export const CT_FACE = {
+  west: -CT_IN.x, east: CT_IN.x, north: -CT_IN.z, south: CT_IN.z,
+} as const;
+
+/** The way back to Station Plaza, cut through the south perimeter. */
+export const CT_GATE = 0;
+export const CT_GATE_HALF = 6;
+
+/*
+ * The floors, from the bottom up — and the bottom one is nought.
+ *
+ * Not because a sunken forecourt is at ground level, but because `groundAt`
+ * starts its search at zero and takes the highest platform above it: the base
+ * plate is the floor of the world and nothing can be under it. Every area in
+ * the city so far has been a single surface with things standing on it, so it
+ * never came up. This is the first with something *below* the street, and the
+ * honest way to build it is to stand the street six metres up and let the
+ * concourse have the base plate.
+ */
+export const CT_LOW = 0;
+export const CT_ROAD = 6.0;
+export const CT_WALK = 6.15;
+/* A step up off the pavement and no more: over four hundred millimetres and
+   the lobby floor stops being a step and becomes a wall you cannot climb. */
+export const CT_LOBBY = 6.45;
+export const CT_MEZZ = 12.4;
+export const CT_DECK = 13.6;
+
+/** The canyon: forty-four metres of paving between two towers. */
+export const CT_CANYON = 22;
+
+/**
+ * The two towers, as podium and shaft.
+ *
+ * A slab that goes straight from the pavement to the sky is a wall, not a
+ * tower. Each has a podium the height of the street's own buildings and a
+ * shaft set back off it, so what you look up at steps away from you.
+ */
+export const CT_WEST = { x0: -90, x1: -22, z0: -60, z1: 40, top: 21 };
+export const CT_WEST_SHAFT = { x0: -78, x1: -34, z0: -52, z1: 28, top: 72 };
+export const CT_EAST = { x0: 22, x1: 90, z0: -40, z1: 60, top: 23 };
+export const CT_EAST_SHAFT = { x0: 34, x1: 78, z0: -32, z1: 52, top: 84 };
+
+/** The service alley behind the west tower, and the colonnade east of the east. */
+export const CT_ALLEY = { x0: -98, x1: -90 };
+export const CT_ARCADE = { x0: 90, x1: 98 };
+
+/**
+ * The two lobbies, and the forecourt they both open on to underground.
+ *
+ * Both reach the canyon and both reach the middle of the site in z, which is
+ * what lets the concourse run straight into them: an arm that has to turn a
+ * corner to find its stair is an arm with a flight under a floor in it, and a
+ * flight under the floor it climbs to is a flight you get shoved off.
+ */
+export const CT_WLOBBY = { x0: -60, x1: -22, z0: -8, z1: 28 };
+export const CT_ELOBBY = { x0: 22, x1: 60, z0: -28, z1: 8 };
+/** Where each lobby's doors are, in the wall that faces the canyon. */
+export const CT_WDOOR = 16;
+export const CT_EDOOR = -16;
+export const CT_DOOR_HALF = 4;
+
+/**
+ * The sunken forecourt, open to the sky in the middle of the canyon, and the
+ * two arms that run out of it under the podiums into the towers' basements.
+ */
+export const CT_WELL = { x0: -16, x1: 16, z0: -16, z1: 16 };
+export const CT_ARM = { z0: -5, z1: 5 };
+export const CT_ARM_W = { x0: -28, x1: -16 };
+export const CT_ARM_E = { x0: 16, x1: 28 };
+
+/** The two grand flights down into the forecourt, north and south of it. */
+export const CT_DROP = { half: 13, run: 11.4, rise: 0.205 };
+export const CT_DROP_N = { start: -27.4, end: -16 };
+export const CT_DROP_S = { start: 27.4, end: 16 };
+/**
+ * And the two inside, up out of each arm into its lobby.
+ *
+ * Landing *beside* the lobby floor, never underneath it: `settle` treats a
+ * platform more than a stride above you as the face of a step, so a flight
+ * that runs under the floor it is climbing to is a flight that pushes you
+ * sideways off itself. The lobby's floor plate is cut round this slot.
+ */
+export const CT_RISE = { half: 3, run: 11.5, rise: 0.215 };
+/** The open stair in each lobby, up to the gallery round two of its sides. */
+export const CT_STAIR = { half: 2.4, run: 15.6, rise: 0.18 };
+export const CT_GALLERY = 8;
+/**
+ * The deck: the south end of the east podium, and its roof is the terrace.
+ *
+ * Its mass is `to`-limited rather than `tall`, because a tall solid is one you
+ * can never stand on top of — and standing on top of it is the whole idea.
+ */
+export const CT_DECK_AT = { x0: 22, x1: 60, z0: 20, z1: 60 };
+export const CT_UP = { half: 2.4, run: 14, rise: 0.18 };
+export const CT_UP_AT = 30;
+
+/**
+ * Central Towers.
+ *
+ * North of Station Plaza, hung on the way out of its north range. The square's
+ * north wall's outer face is at its local z −60, world −67, and this site's
+ * perimeter is pierced at local +100: the two stand back to back with the gate
+ * in both. x is forced the same way — the way out is at the square's local
+ * x −12, world 214, and the gate is in the middle of this site's south wall.
+ */
+const CENTRAL_TOWERS: Area = {
+  id: 'central-towers',
+  name: 'Central Towers',
+  kind: 'exterior',
+  world: { x: 279, z: -167 },
+  bounds: { x: 0, z: 0, hw: CT_W - 1, hd: CT_D - 1 },
+  /*
+   * High, because what you are meant to do here is look up. The camera's lid
+   * is only asked outdoors; inside the lobbies the mezzanine over your head is
+   * a storey and the camera's own clamp does the work.
+   */
+  ceiling: 22,
+  /* Six metres up, so the forecourt can have the base plate. */
+  street: CT_WALK,
+  platforms: [
+    /*
+     * The pavement, tiled around the things that are not pavement.
+     *
+     * One rectangle over the whole site would be quicker and wrong twice: it
+     * would cover the two cross streets, whose carriageway is fifteen
+     * centimetres lower, and it would roof the flights down into the forecourt
+     * — you would walk out over the top of them on a floor that is not there.
+     */
+    { x: 0, z: -95, hw: CT_IN.x, hd: 3, y: CT_WALK },
+    { x: 0, z: 95, hw: CT_IN.x, hd: 3, y: CT_WALK },
+    /* The two cross streets. Their carriageway is a floor in its own right
+       here: with the whole site standing six metres up, the road is no longer
+       the base plate and a street with no platform on it is the bottom of the
+       world. */
+    ...[-1, 1].map((s) => ({ x: 0, z: s * 86, hw: CT_IN.x, hd: 6, y: CT_ROAD })),
+    /* The block, north of the north flight and south of the south one. */
+    { x: 0, z: (-80 + CT_DROP_N.start) / 2, hw: CT_IN.x, hd: (CT_DROP_N.start + 80) / 2, y: CT_WALK },
+    { x: 0, z: (80 + CT_DROP_S.start) / 2, hw: CT_IN.x, hd: (80 - CT_DROP_S.start) / 2, y: CT_WALK },
+    /* Beside each flight, and beside the well. */
+    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => [-1, 1].map((s) => ({
+      x: s * (CT_IN.x + CT_DROP.half) / 2, z: (f.start + f.end) / 2,
+      hw: (CT_IN.x - CT_DROP.half) / 2, hd: Math.abs(f.end - f.start) / 2, y: CT_WALK,
+    }))),
+    ...[-1, 1].map((s) => ({
+      x: s * (CT_IN.x + CT_WELL.x1) / 2, z: 0,
+      hw: (CT_IN.x - CT_WELL.x1) / 2, hd: CT_WELL.z1, y: CT_WALK,
+    })),
+    /* The sunken forecourt, and the two arms out of it. Its floor is the base
+       plate, so nothing here needs a platform — but declaring it says what it
+       is, and `hasStoreys` reads this list. */
+    { x: 0, z: 0, hw: CT_WELL.x1, hd: CT_WELL.z1, y: CT_LOW },
+    ...[CT_ARM_W, CT_ARM_E].map((a) => ({
+      x: (a.x0 + a.x1) / 2, z: (CT_ARM.z0 + CT_ARM.z1) / 2,
+      hw: (a.x1 - a.x0) / 2, hd: (CT_ARM.z1 - CT_ARM.z0) / 2, y: CT_LOW,
+    })),
+    /* The two grand flights down into the forecourt. */
+    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => flightPlatforms({
+      along: 'z', start: f.start, end: f.end, from: CT_WALK, to: CT_LOW,
+      half: CT_DROP.half, cross: 0, rise: CT_DROP.rise,
+    })),
+    /*
+     * The lobby floors, cut round the slot each arm's flight rises through.
+     *
+     * Three pieces rather than one plate: a flight that runs under the floor
+     * it climbs to is one `settle` pushes you sideways off, because until you
+     * are within a stride of it that floor is the face of a step.
+     */
+    ...[
+      /* The slot is always the strip on the canyon side, because that is the
+         side the arm's flight comes up through — so the plate is west of it in
+         the west lobby and *east* of it in the east one. Written as one clever
+         mirror it gave the east lobby a floor nought metres wide. */
+      { l: CT_WLOBBY, slot0: CT_WLOBBY.x1 - 6, slot1: CT_WLOBBY.x1, plate: CT_WLOBBY.x0 },
+      { l: CT_ELOBBY, slot0: CT_ELOBBY.x0, slot1: CT_ELOBBY.x0 + 6, plate: CT_ELOBBY.x1 },
+    ].flatMap(({ l, slot0, slot1, plate }) => [
+      { x: (plate + (plate < 0 ? slot0 : slot1)) / 2, z: (l.z0 + l.z1) / 2,
+        hw: Math.abs((plate < 0 ? slot0 : slot1) - plate) / 2,
+        hd: (l.z1 - l.z0) / 2, y: CT_LOBBY },
+      { x: (slot0 + slot1) / 2, z: (CT_ARM.z1 + l.z1) / 2, hw: (slot1 - slot0) / 2,
+        hd: (l.z1 - CT_ARM.z1) / 2, y: CT_LOBBY },
+      { x: (slot0 + slot1) / 2, z: (l.z0 + CT_ARM.z0) / 2, hw: (slot1 - slot0) / 2,
+        hd: (CT_ARM.z0 - l.z0) / 2, y: CT_LOBBY },
+    ]),
+    /* And the flights up out of each arm, landing beside those plates. */
+    ...flightPlatforms({
+      along: 'x', start: CT_ARM_W.x1, end: CT_ARM_W.x1 - CT_RISE.run,
+      from: CT_LOW, to: CT_LOBBY, half: CT_RISE.half, cross: 0, rise: CT_RISE.rise,
+    }),
+    ...flightPlatforms({
+      along: 'x', start: CT_ARM_E.x0, end: CT_ARM_E.x0 + CT_RISE.run,
+      from: CT_LOW, to: CT_LOBBY, half: CT_RISE.half, cross: 0, rise: CT_RISE.rise,
+    }),
+    /*
+     * The galleries: an L round the far side of each lobby, and the open stair
+     * up to it — which rises through the void, not under the gallery, for the
+     * same reason the arm's flight does not run under the lobby.
+     */
+    ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => [
+      { x: (l.x0 + l.x1) / 2, z: l.z1 - CT_GALLERY / 2, hw: (l.x1 - l.x0) / 2,
+        hd: CT_GALLERY / 2, y: CT_MEZZ },
+      { x: l.x0 + CT_GALLERY / 2, z: (l.z0 + l.z1 - CT_GALLERY) / 2, hw: CT_GALLERY / 2,
+        hd: (l.z1 - l.z0 - CT_GALLERY) / 2, y: CT_MEZZ },
+    ]),
+    ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => flightPlatforms({
+      along: 'z', start: l.z1 - CT_GALLERY - CT_STAIR.run, end: l.z1 - CT_GALLERY,
+      from: CT_LOBBY, to: CT_MEZZ, half: CT_STAIR.half,
+      cross: (l.x0 + l.x1) / 2 + 6, rise: CT_STAIR.rise,
+    })),
+    /* The podium deck, and the flight up on to it out of the canyon. */
+    { x: (CT_DECK_AT.x0 + CT_DECK_AT.x1) / 2, z: (CT_DECK_AT.z0 + CT_DECK_AT.z1) / 2,
+      hw: (CT_DECK_AT.x1 - CT_DECK_AT.x0) / 2, hd: (CT_DECK_AT.z1 - CT_DECK_AT.z0) / 2, y: CT_DECK },
+    ...flightPlatforms({
+      along: 'x', start: CT_DECK_AT.x0, end: CT_DECK_AT.x0 - CT_UP.run,
+      from: CT_DECK, to: CT_WALK, half: CT_UP.half, cross: CT_UP_AT, rise: CT_UP.rise,
+    }),
+    /* The gateway through the south wall, at the pavement's own height. */
+    { x: CT_GATE, z: (CT_IN.z + CT_D) / 2, hw: CT_GATE_HALF, hd: (CT_D - CT_IN.z) / 2 + 0.4, y: CT_WALK },
+  ],
+  solids: [
+    /* The perimeter, with the gate to Station Plaza cut through the south. */
+    ...wallX((CT_IN.z + CT_D) / 2, (CT_D - CT_IN.z) / 2, -CT_W, CT_W,
+      [[CT_GATE - CT_GATE_HALF, CT_GATE + CT_GATE_HALF]]),
+    ...wallX(-(CT_IN.z + CT_D) / 2, (CT_D - CT_IN.z) / 2, -CT_W, CT_W),
+    ...[-1, 1].map((s) => ({
+      x: s * (CT_IN.x + CT_W) / 2, z: 0, hw: (CT_W - CT_IN.x) / 2, hd: CT_D, tall: true,
+    })),
+    ...[-1, 1].map((s) => ({
+      x: CT_GATE + s * (CT_GATE_HALF + 1), z: (CT_IN.z + CT_D) / 2,
+      hw: 1, hd: (CT_D - CT_IN.z) / 2 + 0.6, tall: true,
+    })),
+    /* The city either side: twenty metres of block along each long edge, which
+       is what the alley and the colonnade have their backs against. */
+    ...[[-CT_IN.x, CT_ALLEY.x0], [CT_ARCADE.x1, CT_IN.x]].map(([a, b]) => ({
+      x: (a + b) / 2, z: 0, hw: (b - a) / 2, hd: CT_IN.z - 6, tall: true,
+    })),
+    /*
+     * The west tower's podium, solid but for the lobby cut out of it — three
+     * pieces and two walls rather than one block with a hole, because a hole
+     * is not a thing you can write and the walls are where the doors go.
+     */
+    { x: (CT_WEST.x0 + CT_WLOBBY.x0) / 2, z: (CT_WEST.z0 + CT_WEST.z1) / 2,
+      hw: (CT_WLOBBY.x0 - CT_WEST.x0) / 2, hd: (CT_WEST.z1 - CT_WEST.z0) / 2, tall: true },
+    { x: (CT_WLOBBY.x0 + CT_WEST.x1) / 2, z: (CT_WEST.z0 + CT_WLOBBY.z0) / 2,
+      hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WLOBBY.z0 - CT_WEST.z0) / 2, tall: true },
+    { x: (CT_WLOBBY.x0 + CT_WEST.x1) / 2, z: (CT_WLOBBY.z1 + CT_WEST.z1) / 2,
+      hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WEST.z1 - CT_WLOBBY.z1) / 2, tall: true },
+    ...wallZ(CT_WLOBBY.x1 + 0.5, 0.5, CT_WLOBBY.z0 - 1, CT_WLOBBY.z1 + 1,
+      [[CT_WDOOR - CT_DOOR_HALF, CT_WDOOR + CT_DOOR_HALF]]),
+    /* And the east tower's, the same the other way about — but its southern
+       third is the deck's mass, which is `to`-limited so its roof can be
+       stood on. A tall solid is one you can never be on top of. */
+    { x: (CT_ELOBBY.x1 + CT_EAST.x1) / 2, z: (CT_EAST.z0 + CT_DECK_AT.z0) / 2,
+      hw: (CT_EAST.x1 - CT_ELOBBY.x1) / 2, hd: (CT_DECK_AT.z0 - CT_EAST.z0) / 2, tall: true },
+    { x: (CT_EAST.x0 + CT_ELOBBY.x1) / 2, z: (CT_ELOBBY.z1 + CT_DECK_AT.z0) / 2,
+      hw: (CT_ELOBBY.x1 - CT_EAST.x0) / 2, hd: (CT_DECK_AT.z0 - CT_ELOBBY.z1) / 2, tall: true },
+    { x: (CT_EAST.x0 + CT_ELOBBY.x1) / 2, z: (CT_EAST.z0 + CT_ELOBBY.z0) / 2,
+      hw: (CT_ELOBBY.x1 - CT_EAST.x0) / 2, hd: (CT_ELOBBY.z0 - CT_EAST.z0) / 2, tall: true },
+    { x: (CT_DECK_AT.x0 + CT_EAST.x1) / 2, z: (CT_DECK_AT.z0 + CT_DECK_AT.z1) / 2,
+      hw: (CT_EAST.x1 - CT_DECK_AT.x0) / 2, hd: (CT_DECK_AT.z1 - CT_DECK_AT.z0) / 2,
+      to: CT_DECK - 1 },
+    ...wallZ(CT_ELOBBY.x0 - 0.5, 0.5, CT_ELOBBY.z0 - 1, CT_ELOBBY.z1 + 1,
+      [[CT_EDOOR - CT_DOOR_HALF, CT_EDOOR + CT_DOOR_HALF]]),
+    /*
+     * The well's parapet — a rail round a six-metre hole in the pavement, and
+     * nothing at all down in the forecourt: `from` is what says "this is only
+     * in the way when you are up on the street".
+     */
+    ...[-1, 1].flatMap((s) => wallZ(s * (CT_WELL.x1 + 0.4), 0.4,
+      CT_WELL.z0 - 0.8, CT_WELL.z1 + 0.8, [[CT_ARM.z0, CT_ARM.z1]])),
+    ...[CT_WELL.z0, CT_WELL.z1].flatMap((z) => wallX(z + Math.sign(z) * 0.4, 0.4,
+      CT_WELL.x0 - 0.8, CT_WELL.x1 + 0.8, [[-CT_DROP.half, CT_DROP.half]])),
+    /* The still water table the forecourt is built round — half a metre of
+       granite kerb, which is over the climb and so is something you walk
+       round. Drawn in `world/towers.ts`; without it you stand in the water. */
+    { x: -6, z: 0, hw: 6.8, hd: 3.8 },
+    /* The cheeks down either side of each flight, which are a wall from below
+       and a parapet from above, and so are the same rectangle at both. */
+    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => [-1, 1].map((s) => ({
+      x: s * (CT_DROP.half + 0.5), z: (f.start + f.end) / 2,
+      hw: 0.5, hd: Math.abs(f.end - f.start) / 2, tall: true,
+    }))),
+    /*
+     * The arms, which are corridors in a basement: their walls apply below the
+     * street only, or they would be a wall down the middle of the canyon.
+     */
+    ...[CT_ARM_W, CT_ARM_E].flatMap((a) => [
+      ...[CT_ARM.z0, CT_ARM.z1].map((z) => ({
+        x: (a.x0 + a.x1) / 2, z: z + Math.sign(z) * 0.5, hw: (a.x1 - a.x0) / 2, hd: 0.5,
+        tall: true, to: CT_ROAD - 1,
+      })),
+      /* And the far end, past the top of its flight. Without it the basement
+         has no wall at that end and you walk out under the whole site on the
+         base plate — six metres beneath the pavement, on a floor that is only
+         there because nothing can be below nought. */
+      { x: a.x0 < 0 ? a.x0 - 0.5 : a.x1 + 0.5, z: 0, hw: 0.5, hd: CT_ARM.z1 + 1,
+        tall: true, to: CT_ROAD - 1 },
+    ]),
+    /* The gallery's edge, in the way only when you are on it. */
+    ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => [
+      /* From the inner corner, not from the wall: run it the gallery's whole
+         width and it walls the two arms of the L off from each other, and half
+         the gallery is somewhere you can see and not reach. */
+      ...wallX(l.z1 - CT_GALLERY - 0.2, 0.2, l.x0 + CT_GALLERY, l.x1,
+        [[(l.x0 + l.x1) / 2 + 6 - CT_STAIR.half, (l.x0 + l.x1) / 2 + 6 + CT_STAIR.half]],
+        { from: CT_MEZZ }),
+      { x: l.x0 + CT_GALLERY + 0.2, z: (l.z0 + l.z1 - CT_GALLERY) / 2, hw: 0.2,
+        hd: (l.z1 - l.z0 - CT_GALLERY) / 2, tall: true, from: CT_MEZZ },
+    ]),
+    /* And the deck's, cut where the flight lands. */
+    ...wallZ(CT_DECK_AT.x0 + 0.2, 0.2, CT_DECK_AT.z0, CT_DECK_AT.z1,
+      [[CT_UP_AT - CT_UP.half, CT_UP_AT + CT_UP.half]], { from: CT_DECK }),
+    { x: (CT_DECK_AT.x0 + CT_DECK_AT.x1) / 2, z: CT_DECK_AT.z1 - 0.2,
+      hw: (CT_DECK_AT.x1 - CT_DECK_AT.x0) / 2, hd: 0.2, tall: true, from: CT_DECK },
+  ],
+  camSolids: [
+    /* Past the gate is a different scene. */
+    { x: CT_GATE, z: CT_FACE.south - 1.4, hw: CT_GATE_HALF + 0.3, hd: 1.4 },
+  ],
+  doors: [
+    {
+      id: 'towers-to-plaza',
+      /* The whole gateway, not a patch of pavement in front of it: no slot
+         down either jamb you can walk through the wall by. */
+      trigger: { x: CT_GATE, z: CT_FACE.south + 1.2, hw: CT_GATE_HALF - 0.2, hd: 2.4 },
+      to: 'station-plaza',
+      seam: { x: CT_GATE, z: CT_D },
+      /* Eight metres in, facing back down the canyon — the camera trails four
+         point six and this arrival looks *into* the site, so the first thing
+         you see is what you came for. */
+      arrive: { x: CT_GATE, z: CT_FACE.south - 12, facing: Math.PI },
+      label: 'Station Plaza',
+    },
+  ],
+  spawn: { x: CT_GATE, z: CT_FACE.south - 12, facing: Math.PI },
+};
+
 export const AREAS: Record<AreaId, Area> = {
   'grandpa-shop': GRANDPA_SHOP,
   'starting-area': STARTING_AREA,
@@ -3832,6 +4245,7 @@ export const AREAS: Record<AreaId, Area> = {
   'domino-station': DOMINO_STATION,
   'station-plaza': STATION_PLAZA,
   'domino-high': DOMINO_HIGH,
+  'central-towers': CENTRAL_TOWERS,
 };
 
 /** Where a brand new duelist begins: inside the shop, in front of Grandpa. */
@@ -4380,7 +4794,8 @@ export function standingOn(area: Area, x: number, z: number): number {
    * `settle` treat the podium as a wall and shove the shop's own doorstep three
    * and a half metres into the square.
    */
-  return hasStoreys(area) ? groundAt(area, x, z, 0) : groundAt(area, x, z);
+  const street = area.street ?? 0;
+  return hasStoreys(area) ? groundAt(area, x, z, street) : groundAt(area, x, z);
 }
 
 export function landing(

@@ -102,6 +102,9 @@ const FLIGHTS: Flight[] = [
   { name: 'the school, up the west tower', area: 'domino-high', x: -48, z: -62.5, facing: 0, hold: 25.0, goes: 'up' },
   { name: 'the school, down the west tower', area: 'domino-high', x: -48, z: -62.5, facing: 0, hold: 25.0, goes: 'down', upFirst: 25.0 },
   { name: 'the school, up the east tower', area: 'domino-high', x: 48, z: -62.5, facing: 0, hold: 25.0, goes: 'up' },
+  { name: 'the towers, down into the forecourt', area: 'central-towers', x: 0, z: 32, facing: Math.PI, hold: 6.0, goes: 'down' },
+  { name: 'the towers, up out of the forecourt', area: 'central-towers', x: 0, z: 32, facing: Math.PI, hold: 6.0, goes: 'up', upFirst: 6.0 },
+  { name: 'the towers, up into the west lobby', area: 'central-towers', x: -10, z: 0, facing: -Math.PI / 2, hold: 12.0, goes: 'up' },
   { name: 'Turtle Lane, up the hill', area: 'step-lane', x: 14.6, z: 0, facing: -Math.PI / 2, hold: 6.0, goes: 'up' },
   { name: 'Turtle Lane, down the hill', area: 'step-lane', x: -13, z: 0, facing: Math.PI / 2, hold: 6.0, goes: 'down' },
 ];

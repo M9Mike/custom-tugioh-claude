@@ -90,6 +90,9 @@ export const ENCLOSED: AreaId[] = [
   /* Four ranges of building and a city behind them. Open to the sky, which
      this sweep does not mind — it casts level and downwards. */
   'station-plaza',
+  /* Walled on all four sides, and the hole in the middle of it is a hole in
+     the floor rather than in the horizon. */
+  'central-towers',
 ];
 
 /**

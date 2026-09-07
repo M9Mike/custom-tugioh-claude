@@ -138,6 +138,9 @@ const VANTAGES: Vantage[] = [
   { name: 'the taxi rank', area: 'station-plaza', x: 44, z: -10, facing: -Math.PI / 2 },
   { name: 'back at the station front', area: 'station-plaza', x: 13, z: 0, facing: -Math.PI / 2 },
   { name: 'the way to Central Towers', area: 'station-plaza', x: -12, z: -46, facing: Math.PI },
+  { name: 'the canyon', area: 'central-towers', x: 0, z: 60, facing: Math.PI },
+  { name: 'the sunken forecourt', area: 'central-towers', x: 0, z: 0, facing: Math.PI },
+  { name: 'the west lobby', area: 'central-towers', x: -30, z: 16, facing: -Math.PI / 2 },
 
   /* Domino High: the drive, the corridor on both floors, the courtyard, the
      field's far side and the gym floor. */

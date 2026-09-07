@@ -106,6 +106,23 @@ const SHOTS: Shot[] = [
   /* Domino High: the arrival, the drive, the corridor at both ends and on both
      floors, a classroom, the hall, the courtyard, the library, the gym, the
      field, the pool, and the four corners of the site. */
+  /* Central Towers: in at the gate, down the canyon, the hole, both lobbies,
+     a gallery, the deck, the arms, and one standing at each way out. */
+  { name: 'towers, in at the gate', area: 'central-towers', x: 0, z: 88, facing: N },
+  { name: 'towers, up the canyon', area: 'central-towers', x: 0, z: 64, facing: N },
+  { name: 'towers, down the canyon', area: 'central-towers', x: 0, z: -64, facing: S },
+  { name: 'towers, over the forecourt', area: 'central-towers', x: 0, z: 30, facing: N },
+  { name: 'towers, in the forecourt', area: 'central-towers', x: 4, z: 8, facing: N, floor: 0,
+    climb: { x: 0, z: 30, facing: N, upTo: -1 } },
+  { name: 'towers, at the west doors', area: 'central-towers', x: -14, z: 16, facing: W },
+  { name: 'towers, at the east doors', area: 'central-towers', x: 14, z: -16, facing: E },
+  { name: 'towers, the west lobby', area: 'central-towers', x: -34, z: 16, facing: W, floor: 6.45 },
+  { name: 'towers, the east lobby', area: 'central-towers', x: 34, z: -16, facing: E, floor: 6.45 },
+  { name: 'towers, the colonnade', area: 'central-towers', x: 94, z: 0, facing: N },
+  { name: 'towers, the alley', area: 'central-towers', x: -94, z: 0, facing: N },
+  { name: 'towers, the north cross street', area: 'central-towers', x: 0, z: -86, facing: E },
+  { name: 'towers, the north-west corner', area: 'central-towers', x: -110, z: -90, facing: SE },
+  { name: 'towers, the south-east corner', area: 'central-towers', x: 110, z: 90, facing: NW },
   { name: 'high, in at the gate', area: 'domino-high', x: 0, z: -76, facing: S },
   { name: 'high, up the drive', area: 'domino-high', x: 0, z: -62, facing: S },
   { name: 'high, the bike sheds', area: 'domino-high', x: 50, z: -66, facing: E },
