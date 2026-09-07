@@ -32,6 +32,7 @@ import {
   type AreaId,
   type Door,
   groundAt,
+  floorNear,
   standingOn,
   cameraReach,
 } from '@/story/areas';
@@ -733,7 +734,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         here.current.facing = facing;
         heading = facing;
         camYaw = facing + Math.PI;
-        groundY = standingOn(area, x, z);
+        /*
+         * The floor here nearest the one she is on — which upstairs is
+         * upstairs, and on the station's forecourt is the terrace.
+         *
+         * `standingOn` alone dropped her through an upper corridor, and
+         * `groundAt` alone put her on nought where the only floor is a metre
+         * and a fifth up with nothing under it: `npm run soak` teleports to
+         * the plaza's door on the forecourt and stopped reaching the station.
+         * `floorNear` is both answers in the right order.
+         */
+        groundY = floorNear(area, x, z, groundY);
       };
     /* 0 walking, 1 talking; eased, and read by the camera below. */
     let talkBlend = 0;

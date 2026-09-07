@@ -324,8 +324,29 @@ export function buildHigh(anisotropy: number): BuiltArea {
             -OUT_Z + 1.6 + i * 0.52);
       }
     }
+    /*
+     * The name, on the face of the west pier.
+     *
+     * `put` takes (w, h, d), and this was written 0.12 × 0.9 × 3.24 — three
+     * and a quarter metres of board running along *z*, which at a gate in a
+     * wall that also runs along z is three and a quarter metres driven
+     * straight through the wall behind it. Two and a half of it was inside
+     * stone; what you could read from the drive was "DO".
+     *
+     * A board on a wall is thin in the direction it faces. This one is thin in
+     * z and long in x — and no longer than the pier it is bolted to, which is
+     * 1.8 m. It sits in the metre and a half of pier that stands above the
+     * wall, where a school's name goes.
+     *
+     * Facing *south*, into the grounds, which is the opposite of where a
+     * school puts its name and the only place anybody can read it from: north
+     * of the wall is outside the area, the drive is the one long sight line
+     * there is, and you walk up it towards the gate every time you leave.
+     */
+    const NAME_W = 1.5;
     const nameTex = surfaceOf(own, () => signBoard('DOMINO HIGH SCHOOL', '#2f2a24', '#c9bf9e', undefined, 3.6), 1, 1, anisotropy);
-    put(0.12, 0.9, 3.24, matt(own, '#ffffff', nameTex), DH_GATE - DH_GATE_HALF - 1.42, 2.6, -OUT_Z + 1);
+    put(NAME_W, NAME_W / 3.6, 0.14, matt(own, '#ffffff', nameTex),
+        DH_GATE - (DH_GATE_HALF + 0.4), 3.36, -OUT_Z + 1 + 0.9 + 0.07);
     /* On the pier, not floating over the gateway. */
     for (const s of [-1, 1] as const) {
       put(0.44, 0.5, 0.44, iron, DH_GATE + s * (DH_GATE_HALF + 0.4), 4.74, -OUT_Z + 1);
@@ -377,8 +398,29 @@ export function buildHigh(anisotropy: number): BuiltArea {
          doorway where the entrance hall or a stair tower cuts through it. */
       for (let i = 0; i < DH_BAYS; i++) {
         const c = dhBay(i);
-        const tower = f === DH_UPPER && DH_TOWERS.some((t) => Math.abs(t - c) < DH_BAY / 2);
-        if (holeAt(f, i) || tower) {
+        const at = f === DH_UPPER ? DH_TOWERS.find((t) => Math.abs(t - c) < DH_BAY / 2) : undefined;
+        if (at !== undefined) {
+          /*
+           * A tower's doorway is the flight's own width, not the bay's.
+           *
+           * Drawn as a whole open bay it was nine and a half metres of hole in
+           * front of a four-metre-eight opening, and the two and a bit metres
+           * either side were wall in the collision with nothing drawn on them.
+           * Nobody could see it because nobody could get up here: the towers
+           * were unclimbable, so `walls` had never once sampled this floor.
+           * It failed on the first run after they opened.
+           */
+          for (const q of [-1, 1] as const) {
+            const a = q < 0 ? c - DH_BAY / 2 : at + DH_FLIGHT.half;
+            const b = q < 0 ? at - DH_FLIGHT.half : c + DH_BAY / 2;
+            if (b - a > 0.02) {
+              put(b - a, top - f, 1, pale, (a + b) / 2, (f + top) / 2, FRONT + 0.5, { group: 'main' });
+            }
+          }
+          put(DH_FLIGHT.half * 2, top - (f + 2.8), 1, pale, at, (f + 2.8 + top) / 2, FRONT + 0.5, { group: 'main' });
+          continue;
+        }
+        if (holeAt(f, i)) {
           /* The head over the opening, and nothing under it. */
           put(DH_BAY, top - (f + 2.8), 1, pale, c, (f + 2.8 + top) / 2, FRONT + 0.5, { group: 'main' });
           continue;

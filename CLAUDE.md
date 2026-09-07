@@ -152,6 +152,31 @@ that decides where *not* to draw a shopfront kept the old form, so all four
 ways out of the square had one drawn across them. Two readings of one word,
 eight lines apart, and only one of them was corrected.
 
+**A tread exactly a stride up is a coin toss.** Domino High's towers rise 200 mm
+a tread and `CLIMB` is 400, so every second tread sits exactly one stride above
+the last — and `0.3 + 0.2 * 3` is `0.9000000000000001`, which is not `<= 0.9`.
+The tread she was about to step on stopped being a floor and became "a step you
+cannot climb", which `settle` treats as a wall: it pushed her back down the
+stairs. **Both towers were unclimbable and the school's upper floor could not be
+reached at all** — and every gate was green, because `stairs` measured her feet
+against `groundAt` asked from the height the game itself reported (which agrees
+with the game by construction), `footing` only asks about places you can already
+stand, and `walls` compares collision with what is drawn, which up there
+matched. `REACH = CLIMB + 1e-6` is the fix and `groundAt` and `settle` must read
+the *same* one: a tread one will put her on and the other will not let her reach
+is a duelist stuck against thin air. A flight now has to *gain height* to pass
+`npm run stairs`, and that rule found two more flights that were never being
+climbed.
+
+**A floor nobody can reach is a floor nobody has looked at.** All twenty-two of
+Domino High's vantages were on the ground, because a save carries x, z and a
+facing but no floor and an upstairs vantage photographs the room underneath it.
+The moment the towers opened, `walls` failed on the first run: the doorway at
+the head of each was *drawn* a whole 9.5 m bay wide against a 4.8 m opening in
+the collision, so two metres either side was wall with nothing on it. A vantage
+can `climb` now — walk up until the probe says she is there, then teleport,
+which keeps the floor. Build a storey, put a vantage on it.
+
 **Smooth beats sharp.** The renderer watches its own frame time
 (`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it
 gives up frames; a phone starts at one and a half times its pixels, not two.

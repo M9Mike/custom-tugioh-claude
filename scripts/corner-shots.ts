@@ -17,12 +17,29 @@ import { chromium, type Page } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { AREAS, groundAt, hasStoreys, type AreaId } from '../src/story/areas';
 import { standable } from './walkable';
-import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote } from './story-setup';
+import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote, walkUntil } from './story-setup';
 
 interface Shot {
   name: string; area: AreaId; x: number; z: number; facing: number;
   /** The floor this vantage is written for, when it matters which one. */
   floor?: number;
+  /**
+   * How to get on to an upper floor before the picture is taken.
+   *
+   * A save carries x, z and a facing but no floor, so a vantage upstairs is
+   * photographed from the room underneath it — which is why every one of
+   * Domino High's twenty-two vantages was on the ground and nobody ever looked
+   * at its first floor. Two real faults were living up there: the stair towers
+   * could not be climbed at all, and the doorway at the head of each was drawn
+   * twice the width it collided at.
+   *
+   * So: start at `from`, walk *until she is actually up there* — a fixed
+   * number of seconds is a guess about distance and the guess is wrong,
+   * because headless Chromium walks these in slow motion and forty seconds of
+   * wall clock was three metres of stair — and then `__teleport` to the
+   * vantage, which keeps the floor she has climbed to.
+   */
+  climb?: { x: number; z: number; facing: number; upTo: number };
 }
 
 /** North-east is where +x meets −z: `facing` is a yaw, 0 down +z, a quarter turn to +x. */
@@ -107,6 +124,14 @@ const SHOTS: Shot[] = [
   { name: 'high, at the gym door', area: 'domino-high', x: 28, z: 30, facing: E },
   { name: 'high, inside the gym', area: 'domino-high', x: 42, z: 34, facing: E },
   { name: 'high, the pool', area: 'domino-high', x: 40, z: 68, facing: E },
+  /* Upstairs — reached by walking up the west tower, because there is no way
+     to ask a save to start on a first floor. */
+  { name: 'high, the head of the west stair', area: 'domino-high', x: -48, z: -52.6, facing: S,
+    climb: { x: -48, z: -62.5, facing: S, upTo: 4.4 }, floor: 4.5 },
+  { name: 'high, the upper corridor', area: 'domino-high', x: -40, z: -49.2, facing: E,
+    climb: { x: -48, z: -62.5, facing: S, upTo: 4.4 }, floor: 4.5 },
+  { name: 'high, an upstairs classroom', area: 'domino-high', x: -42, z: -43, facing: S,
+    climb: { x: -48, z: -62.5, facing: S, upTo: 4.4 }, floor: 4.5 },
   { name: 'high, the north-west corner', area: 'domino-high', x: -92, z: -76, facing: S },
   { name: 'high, the north-east corner', area: 'domino-high', x: 92, z: -76, facing: S },
   { name: 'high, the south-west corner', area: 'domino-high', x: -92, z: 76, facing: N },
@@ -278,7 +303,9 @@ async function main() {
      * makes every gallery balustrade in the shop apply on the ground floor, and
      * the guard refuses half the room.
      */
-    const floor = hasStoreys(area) ? groundAt(area, s.x, s.z, 0) : Number.NaN;
+    const floor = hasStoreys(area)
+      ? groundAt(area, s.x, s.z, s.floor ?? 0)
+      : Number.NaN;
     if (!standable(area, s.x, s.z, floor)) {
       console.log(`  ⛔ ${s.name} — (${s.x}, ${s.z}) is not somewhere a duelist can stand`);
       refused++;
@@ -287,13 +314,29 @@ async function main() {
     await fetch(`${BASE}/api/story/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: NAME, world: { area: s.area, x: s.x, z: s.z, facing: s.facing } }),
+      body: JSON.stringify({
+        username: NAME,
+        world: s.climb
+          ? { area: s.area, x: s.climb.x, z: s.climb.z, facing: s.climb.facing }
+          : { area: s.area, x: s.x, z: s.z, facing: s.facing },
+      }),
     }).catch(() => {});
     /* Once more before photographing nothing: a cold area can take longer to
        compile than the wait allows, and a frame of the sign-in card labelled
        "Step Lane, from the top" is worse than a late one. */
     let there = await enterStory(page, s.area, PINNED_HOUR);
     if (!there) there = await enterStory(page, s.area, PINNED_HOUR);
+    if (s.climb) {
+      const upTo = s.climb.upTo;
+      await walkUntil(page, 240_000, async () => (await page.evaluate(() =>
+        (window as unknown as { __probe?: { y: number } }).__probe?.y ?? 0
+      ).catch(() => 0)) >= upTo);
+      await page.evaluate(({ x, z, facing }) => {
+        (window as unknown as { __teleport?: (a: number, b: number, c: number) => void })
+          .__teleport?.(x, z, facing);
+      }, { x: s.x, z: s.z, facing: s.facing });
+      await page.waitForTimeout(700);
+    }
     await clear(page);
     await lookUp(page);
     await page.waitForTimeout(900);

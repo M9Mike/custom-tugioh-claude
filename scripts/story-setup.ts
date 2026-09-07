@@ -154,6 +154,32 @@ export async function walkForward(page: Page, ms: number): Promise<void> {
 }
 
 /**
+ * And back the way she came, without moving her.
+ *
+ * Input is read in the camera's frame — pushing the stick towards you is
+ * `camYaw`, which points from the duelist to the camera — so she turns round
+ * and walks back down whatever she has just walked up. Which is the only way
+ * to test a flight downwards in a building with storeys: a save carries x, z
+ * and a facing but no floor, so there is nothing to spawn on to at the top,
+ * and `__teleport` is no help because it re-grounds her with `standingOn`,
+ * which under a landing is the floor underneath it.
+ */
+export async function walkBack(page: Page, ms: number): Promise<void> {
+  const box = await page.locator('[aria-label="Move"]').boundingBox();
+  if (!box) throw new Error('the thumb stick is not on screen');
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx, box.y + box.height + 40, { steps: 8 });
+  try {
+    await page.waitForTimeout(ms);
+  } finally {
+    await page.mouse.up();
+  }
+}
+
+/**
  * Holds the stick until something happens, or until the time runs out.
  *
  * A fixed duration is a guess about distance, and the guess was wrong often

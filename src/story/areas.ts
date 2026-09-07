@@ -4022,7 +4022,7 @@ export function settle(
    */
   const from = Number.isFinite(atY) ? atY : standingOn(area, px, pz);
   for (const p of area.platforms ?? []) {
-    if (p.y <= from + CLIMB || p.y > from + 2.2) continue;
+    if (p.y <= from + REACH || p.y > from + 2.2) continue;
     const fixed = pushOut(p, px, pz, radius);
     if (fixed) {
       px = fixed.x;
@@ -4123,6 +4123,29 @@ export function cameraReach(
 const CLIMB = 0.4;
 
 /**
+ * And the hair of tolerance that stops a tread landing exactly *on* the line.
+ *
+ * Domino High's stair towers rise two hundred millimetres a tread and `CLIMB`
+ * is four hundred, so every second tread is exactly one stride above the one
+ * you are standing on — and `0.3 + 0.2 * 3` is not `0.9`, it is
+ * `0.9000000000000001`. `0.9000000000000001 <= 0.9` is false, so the tread she
+ * was about to step on stopped being a floor and became "a step you cannot
+ * climb", which `settle` treats as a wall: it pushed her back down the stairs.
+ * Both towers were unclimbable and the upper floor of the school could not be
+ * reached at all.
+ *
+ * Every gate was green. `stairs` measured her feet against `groundAt` asked
+ * from the height the game itself reported, which agrees with the game by
+ * construction; `footing` only ever asks about places you can already stand;
+ * and `walls` compares collision with what is drawn, which here matched.
+ *
+ * `groundAt` and `settle` both read this, and they have to read the *same*
+ * number: a tread one will put her on and the other will not let her reach is
+ * a duelist stuck against thin air.
+ */
+const REACH = CLIMB + 1e-6;
+
+/**
  * How high the ground is at a point — and, in a building with floors, *which*
  * ground.
  *
@@ -4167,7 +4190,7 @@ export function hasStoreys(area: Area): boolean {
 }
 
 export function groundAt(area: Area, x: number, z: number, near = Infinity): number {
-  const reach = near + CLIMB;
+  const reach = near + REACH;
   let y = reach >= 0 ? 0 : -Infinity;
   for (const p of area.platforms ?? []) {
     if (Math.abs(x - p.x) <= p.hw && Math.abs(z - p.z) <= p.hd && p.y <= reach && p.y > y) y = p.y;
@@ -4311,6 +4334,40 @@ export function arrivalThrough(
  * Arriving anywhere is always on the floor you walked in on, which is the one
  * `groundAt` gives with nothing climbed.
  */
+/**
+ * The floor here that is nearest the height you are already at.
+ *
+ * For teleporting, which is neither walking nor arriving. `groundAt` answers
+ * "what can I step on to from here", which is right for a stride and wrong for
+ * a jump: teleported along an upper corridor it drops you through it, and
+ * teleported from the square on to the station's forecourt — a metre and a
+ * fifth up, with nothing else under that spot — it answers zero, a floor that
+ * is not there, and `npm run soak` stopped reaching the station's door.
+ *
+ * `standingOn` has the opposite failing: it is the lowest floor indoors and
+ * the highest outdoors, and neither is "the one you were on".
+ *
+ * So: of the floors that actually exist at this spot, the one closest to where
+ * you were. Upstairs stays upstairs, a step up is a step up, and under a
+ * gallery you stay under it.
+ */
+export function floorNear(area: Area, x: number, z: number, at: number): number {
+  /*
+   * The higher of the two answers, which is the only one that is right twice.
+   *
+   * `standingOn` is what somebody *arriving* gets — the ground floor indoors,
+   * the highest surface outdoors — and on its own it drops you through an
+   * upper corridor. `groundAt` from the height you are at is what a *step*
+   * gets, and on its own it put the plaza's forecourt approach on the pavement
+   * a metre below the terrace, where the range's own wall is: `npm run soak`
+   * teleported there and walked under the terrace instead of into the door.
+   *
+   * Upstairs only `groundAt` sees the storey; on a terrace only `standingOn`
+   * sees the terrace; and in both the wanted answer is the taller one.
+   */
+  return Math.max(standingOn(area, x, z), groundAt(area, x, z, at));
+}
+
 export function standingOn(area: Area, x: number, z: number): number {
   /*
    * Indoors, the floor you walked in on. Outdoors, the highest thing here.
