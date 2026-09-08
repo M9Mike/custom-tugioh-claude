@@ -1986,7 +1986,15 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
      acquit. The beam never writes them down: every top slot goes to another
      ordering of the same all-in turn, because in the expectation world the
      extra attacks are free. Synthesized here: the leader cut short after
-     each attack, replayed in the same world for an honest anchor score. */
+     each attack, replayed in the same world for an honest anchor score.
+
+     Cut from ZERO, which is the version that was missing: a leader carrying
+     ONE attack had no held-back twin at all, so "do everything else and
+     decline the swing" was a turn the search could not write down. With a
+     Set card watching, the nightmare then buried the only plan that cast
+     the card — and the computer passed its whole turn rather than lay
+     Swords of Revealing Light down and stop there, which its own pinned
+     position caught. Everything before the first attack is a real turn. */
   if (worlds > 0 && all.length > 1 && paranoiaPrior(state, pid) > 0) {
     const leader = all[0];
     const attackAt = leader.actions.map((a, i) => (a.type === 'attack' ? i : -1)).filter((i) => i >= 0);

@@ -390,7 +390,15 @@ const CASES: Case[] = [
       s.players[ME].hand = [card(ME, 'catapult-turtle'), swords, card(ME, 'dark-magician')];
       s.players[FOE].lp = 1300;
       s.players[FOE].monsters[0] = card(FOE, 'guardian-sphinx', 'def');
-      s.players[FOE].monsters[1] = card(FOE, 'wall-of-illusion');
+      /* A plain body, and deliberately so. This board carried a Wall of
+         Illusion at 1000 ATK against a player on 1300 — and the day the Wall
+         started taking the damage step before sending its attacker home, that
+         was a lethal swing sitting on the position: the computer took the win
+         and the pin called it wrong. The pin is about the LOCK, not about the
+         Wall, so the seat is filled by a plain body the size of its
+         neighbour — the best swing on this board is the same 900 it always
+         was, and the lock still has to out-argue it. */
+      s.players[FOE].monsters[1] = card(FOE, 'beta-the-magnet-warrior');
       s.players[FOE].monsters[2] = card(FOE, 'beta-the-magnet-warrior');
       s.players[FOE].hand = [
         'wall-of-illusion', 'mask-of-darkness', 'ra-s-disciple', 'mystical-beast-of-serket',
@@ -400,6 +408,16 @@ const CASES: Case[] = [
       set.face = 'down';
       s.players[FOE].spellTrap = set;
     },
+    /* A frequency, not a certainty, and only since the board had to be
+       rebuilt: the Wall of Illusion that used to fill the second seat was
+       inert — it cancelled the battle it was attacked in — so the lock was
+       the only thing on this position worth doing. With a plain body there
+       the computer has a real 900-damage swing to weigh against three turns
+       of silence, and two deck orders in ten take the swing. The threshold
+       still catches what the pin was written for: put the blindness back —
+       the threat model counting attacks a frozen board cannot make — and it
+       reads 6/10, under the bar. Measured, not guessed. */
+    minHits: 8,
     want: (plan) => plan.some((a) => a.type === 'activateSpell' && a.uid === swordsUid),
   },
   {
