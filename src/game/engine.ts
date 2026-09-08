@@ -858,6 +858,12 @@ function removeFromAnywhere(state: DuelState, uid: string): CardInstance | null 
     if (mi >= 0) {
       const c = p.monsters[mi]!;
       p.monsters[mi] = null;
+      /* One door for "it left the field", whatever road it took out — see the
+         `onLeaveField` trigger. Queued rather than fired: a trigger that
+         summons, run from inside a removal, fills the zone its own caller is
+         about to use, and that refused a Tribute Summon with the tributes
+         already paid. `applyAction` drains this when the dust has settled. */
+      if (!c.isToken) (state.leftField ??= []).push({ uid: c.uid, controller: pid });
       return c;
     }
     if (p.spellTrap?.uid === uid) {
@@ -5183,6 +5189,20 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
        resolver cover the draws and searches they were written for, not those.
        Rather than chase every arrival, every completed action ends here.
        It is idempotent: the first line returns if the duel is already won. */
+    /* Everything that left a Monster Zone during this action now gets to say
+       so, with the board in the state the action left it — so a summon owed
+       to a departure lands in a zone that is genuinely free, or does not land
+       at all, which is the honest answer on a full board. */
+    let guard = 0;
+    while (res.state.leftField?.length && !res.state.winner && guard++ < 16) {
+      const gone = res.state.leftField;
+      res.state.leftField = [];
+      for (const { uid, controller } of gone) {
+        const c = findAnywhere(res.state, uid);
+        if (c) fireTriggers(res.state, c, controller, 'onLeaveField', {});
+      }
+    }
+    res.state.leftField = undefined;
     checkExodia(res.state);
     speakRemainingLog(res.state);
   }

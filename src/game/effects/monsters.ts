@@ -107,13 +107,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ],
       },
       /* And the last word. However this dragon leaves the field — broken in
-         battle, swept by an effect, spent as a Tribute, fed to a cost — the
-         light it was made of does not go out: Blue-Eyes Shining Dragon steps
-         out of the Extra Deck in its place. `onAnyToGrave` because "in any
-         way" is the owner's wording and this is the one trigger that means
-         all of them. */
+         battle, swept by an effect, spent as a Tribute, fed to a cost, or
+         simply sent back to a hand — the light it was made of does not go
+         out: Blue-Eyes Shining Dragon steps out of the Extra Deck in its
+         place. `onLeaveField`, not `onAnyToGrave`: the owner's rule is "any
+         kind", and a bounce is a way of leaving that never touches a
+         Graveyard. */
       {
-        trigger: 'onAnyToGrave',
+        trigger: 'onLeaveField',
         ops: [{ op: 'specialSummon', from: 'extra', filter: { slugs: ['blue-eyes-shining-dragon'] }, position: 'atk' }],
       },
     ],

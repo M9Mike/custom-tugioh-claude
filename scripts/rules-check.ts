@@ -11943,6 +11943,47 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(!said.includes('once per turn'), 'and no longer claims a clock it does not keep', 'the text still says once per turn');
   }
 
+  /* "Any kind" means any kind. A road that never touches a Graveyard is
+     still a road off the field, and a full board is still a full board. */
+  {
+    /* Sent back to a hand — no Graveyard anywhere in it. */
+    const s = kaiba();
+    const beud = card(ME, 'blue-eyes-ultimate-dragon');
+    beud.summonedOnTurn = 0;
+    s.players[ME].monsters = [beud, null, null];
+    s.players[ME].extra = [card(ME, 'blue-eyes-shining-dragon')];
+    s.active = FOE;
+    s.players[FOE].normalSummonUsed = false;
+    s.players[FOE].hand = [card(FOE, 'amazon-of-the-seas')];
+    let bounced = act(s, FOE, { type: 'normalSummon', uid: s.players[FOE].hand[0].uid, zone: 0, position: 'atk', face: 'up', targets: [beud.uid] });
+    let g = 0;
+    while (bounced.pending?.kind === 'choose' && g++ < 4) bounced = act(bounced, bounced.pending.player, { type: 'chooseCard', uids: [bounced.pending.options[0]] });
+    ok(bounced.players[ME].hand.some((h) => h.uid === beud.uid), 'the Ultimate Dragon really was sent to the hand', 'it went elsewhere');
+    ok(bounced.players[ME].monsters.some((m) => m?.slug === 'blue-eyes-shining-dragon'),
+      'and the light comes on for a road that never touches a Graveyard',
+      bounced.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Spent as a Tribute with nowhere for the light to stand. The summon it
+       paid for must still happen — this used to be refused outright, the
+       tributes gone and the monster they bought denied, because the arriving
+       Shining Dragon took the zone the Summon was headed for. */
+    const full = kaiba();
+    const paid = card(ME, 'blue-eyes-ultimate-dragon');
+    paid.summonedOnTurn = 0;
+    full.players[ME].monsters = [paid, card(ME, 'battle-ox'), card(ME, 'battle-ox')];
+    full.players[ME].extra = [card(ME, 'blue-eyes-shining-dragon')];
+    full.players[ME].hand = [card(ME, 'summoned-skull')];
+    full.players[ME].normalSummonUsed = false;
+    const bought = act(full, ME, { type: 'normalSummon', uid: full.players[ME].hand[0].uid, zone: 0, position: 'atk', face: 'up', tributes: [paid.uid] });
+    ok(bought.players[ME].monsters.some((m) => m?.slug === 'summoned-skull'), 'a Tribute paid with it still buys its monster on a full board',
+      bought.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!bought.players[ME].monsters.some((m) => m?.slug === 'blue-eyes-shining-dragon'),
+      'and with no room left, the light waits — a summon needs a zone',
+      bought.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(bought.players[ME].extra.some((c) => c.slug === 'blue-eyes-shining-dragon'), 'still in the Extra Deck, unspent',
+      bought.players[ME].extra.map((c) => c.slug).join(',') || '(empty)');
+  }
+
   /* Removal does not answer it: it steps out of the world, is paid for the
      trouble, and comes back standing the way it left. */
   {

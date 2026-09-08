@@ -100,6 +100,19 @@ export type Trigger =
   /** Passive aura, applied continuously while this card is face-up on the field. */
   | 'continuous'
   /** Monster was summoned face-up by any means, including Special Summons. */
+  /**
+   * The card left a Monster Zone — by ANY road: broken in battle, swept by an
+   * effect, spent as a Tribute or a cost, shuffled away, banished, or simply
+   * returned to a hand. `onAnyToGrave` is the narrower promise (it means the
+   * Graveyard and only the Graveyard); this one means "however it went".
+   *
+   * Queued as it happens and resolved once the action that caused it has
+   * finished, which is not tidiness: a trigger that summons cannot be allowed
+   * to fill the very zone the Summon paying for it is headed to. That exact
+   * fault refused a Tribute Summon outright — the tributes gone, the monster
+   * they bought denied — and the deferral is what makes it land.
+   */
+  | 'onLeaveField'
   | 'onSummon'
   /**
    * Monster was Normal Summoned or Flip Summoned — deliberately *not* fired by
@@ -1570,6 +1583,10 @@ export interface DuelState {
   version: number;
   /** Monotonic counter for card instance ids; lives in state so duels stay reproducible. */
   uidSeq: number;
+  /** Monsters that have left a Monster Zone during the action being applied,
+   *  waiting for it to finish so their `onLeaveField` effects can resolve
+   *  without standing in their own summon's way. Drained by `applyAction`. */
+  leftField?: { uid: string; controller: PlayerId }[];
   /** Set while a battle is paused waiting on a trap response.
    *
    *  `controller` is who declared it, read back when the battle resumes: a
