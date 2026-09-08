@@ -159,6 +159,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
            Deck is the limit: every shot is a card off the top, and the dragon
            is 500 lighter for it. */
         oncePerTurn: false,
+        condition: { anyBackrow: true },
         targets: 1,
         cost: { mill: 1 },
         ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 1 }) }],
@@ -735,10 +736,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         trigger: 'ignition',
         label: 'Return a Dragon, shatter a Spell/Trap',
         oncePerTurn: true,
-        condition: { graveHas: { type: 'Dragon' }, opponentHasBackrow: true },
+        /* Either side of the table: the text says "1 Spell or Trap" and names
+           nobody, and gating it on the OPPONENT's backrow left the card inert
+           with its owner's own Set card sitting there — reported from a real
+           duel, where the only thing worth shattering was mine. */
+        condition: { graveHas: { type: 'Dragon' }, anyBackrow: true },
         ops: [
           { op: 'shuffleIntoDeck', target: sel('own', 'chosen', { zone: 'grave', filter: { type: 'Dragon' } }) },
-          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) },
+          { op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow' }) },
         ],
       },
       {

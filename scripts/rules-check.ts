@@ -11967,6 +11967,39 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       dead.players[ME].banished.some((c) => c.uid === small.uid) ? 'it dodged a blow' : 'it survived');
   }
 
+  /* "1 Spell or Trap" names nobody, so it reaches either side. Reported: a
+     Luster Dragon standing over its owner's own Set card, with a Dragon in
+     the Graveyard to spend, and the button was not there at all. */
+  {
+    const s = kaiba();
+    const lus = card(ME, 'luster-dragon');
+    lus.summonedOnTurn = 0;
+    s.players[ME].monsters = [lus, null, null];
+    s.players[ME].grave = [card(ME, 'luster-dragon-2')];
+    const mine = { ...card(ME, 'mirror-force'), face: 'down' as const };
+    s.players[ME].spellTrap = mine;
+    ok(ignitionOptions(s, ME, lus).length > 0, 'Luster Dragon shatters a Spell or Trap on its own side too', 'the button was not offered');
+    const idx = ignitionOptions(s, ME, lus)[0]?.index;
+    let fired = act(s, ME, { type: 'ignition', uid: lus.uid, effectIndex: idx });
+    let guard = 0;
+    while (fired.pending?.kind === 'choose' && guard++ < 4) {
+      fired = act(fired, fired.pending.player, { type: 'chooseCard', uids: [fired.pending.options[0]] });
+    }
+    ok(!fired.players[ME].spellTrap, 'and the card it was pointed at is gone', fired.players[ME].spellTrap?.slug ?? '');
+    ok(fired.players[ME].deck.some((c) => c.slug === 'luster-dragon-2'), 'with the Dragon it spent back in the Deck',
+      fired.players[ME].grave.map((c) => c.slug).join(',') || '(empty grave)');
+
+    /* CONTROL: with nothing anywhere to shatter, the button stays away — a
+       card is never spent on nothing. */
+    const bare = kaiba();
+    const alone = card(ME, 'luster-dragon');
+    alone.summonedOnTurn = 0;
+    bare.players[ME].monsters = [alone, null, null];
+    bare.players[ME].grave = [card(ME, 'luster-dragon-2')];
+    ok(ignitionOptions(bare, ME, alone).length === 0, 'CONTROL: and not at all with no Spell or Trap on the table',
+      String(ignitionOptions(bare, ME, alone).length));
+  }
+
   /* The two Lusters hand each other up as they fall. */
   {
     const s = kaiba();

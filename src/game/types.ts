@@ -988,6 +988,12 @@ export interface EffectCondition {
   /** The same gate by kind rather than by name — "1 Dragon in your Graveyard"
    *  is a cost a card can name without naming a card. */
   graveHas?: CardFilter;
+  /** A Spell or Trap stands SOMEWHERE — either side of the table. The
+   *  opponent-only gate is the common one, and it is wrong for a card whose
+   *  text does not name a side: Luster Dragon shatters "1 Spell or Trap", and
+   *  gating it on the opponent's backrow left it inert while its owner's own
+   *  Set card sat there waiting to be cleared. Reported. */
+  anyBackrow?: boolean;
   /** The opponent is holding at least one card. */
   opponentHasHand?: boolean;
   /**

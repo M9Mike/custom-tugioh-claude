@@ -3059,6 +3059,11 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     const them = state.players[other(controller)];
     if (!them.spellTrap && !them.field) return false;
   }
+  if (cond.anyBackrow) {
+    const mine = state.players[controller];
+    const them = state.players[other(controller)];
+    if (!mine.spellTrap && !mine.field && !them.spellTrap && !them.field) return false;
+  }
   if (cond.typeOnField) {
     const anywhere = (['p1', 'p2'] as PlayerId[]).some((pid) =>
       state.players[pid].monsters.some((m) => m && m.face === 'up' && CARDS[m.slug]?.type === cond.typeOnField)
