@@ -117,122 +117,148 @@ function selfRuled(op: Op): boolean {
   return 'pick' in op && typeof op.pick === 'string' && SELF_RULED.has(op.pick);
 }
 
-function scanOps(ops: Op[], owner: string): TargetSpec | null {
-  for (const op of ops) {
-    if (selfRuled(op)) continue;
-    if (op.op === 'coinFlip') {
-      const r = scanOps(op.heads, owner) ?? scanOps(op.tails, owner);
-      if (r) return r;
-      continue;
-    }
-    if (op.op === 'diceRoll') {
-      const r = scanOps(op.perPip, owner);
-      if (r) return r;
-      continue;
-    }
-    if (op.op === 'specialSummon' && (op.from === 'grave' || op.from === 'hand')) {
-      return {
-        side: op.side === 'both' ? 'both' : 'own',
-        zone: op.from === 'grave' ? 'grave' : 'hand',
-        /* The op's own count, not a hardcoded 1. The Flute of Summoning Dragon
-           brings out *two* Dragons and only ever asked for one, so it resolved
-           the moment the first was picked and chose the second itself. */
-        count: op.count ?? 1,
-        prompt: 'Choose a monster to Special Summon',
-        /* "Monsters only" belongs to the *op*, not to the Graveyard.
-           `targetCandidates` used to hardcode it into the grave branch, which
-           was invisible while Monster Reborn and Call of the Haunted were the
-           only cards that looked in there — and wrong the moment Graverobber
-           did, because it takes any card and the pile in front of it held
-           nothing but Spells and Traps. Reported from a real duel as "there is
-           nothing it can target". Carried on the spec, each picker states its
-           own rule and the zone stops guessing. */
-        filter: { ...(op.filter ?? {}), kind: 'monster' },
-        revivableOnly: true,
-        revivableBy: owner,
-      };
-    }
-    if (op.op === 'search') {
-      return {
-        side: 'own',
-        zone: 'deck',
-        count: op.count ?? 1,
-        prompt: 'Choose a card to add to your hand',
-        filter: op.filter,
-      };
-    }
-    /* Naming tomorrow's draw is the whole card, so it has to be asked. The
-       Temple of the Kings resolved with an empty target list and the engine
-       took `deck[0]` — the card that was coming anyway, which is
-       indistinguishable from the effect not existing. Reported by the owner as
-       "it did not let me pick a card for the next draw". */
-    if (op.op === 'destinyDraw') {
-      return {
-        side: 'own',
-        zone: 'deck',
-        count: 1,
-        prompt: 'Choose the card you will draw next turn',
-      };
-    }
-    /* And so is which Trap gets Set. The same silence sat on Mask of Darkness
-       and Judgment of Anubis: the engine's fallback is "the first Trap in the
-       pile", which in a Deck is whatever the shuffle left nearest — a choice
-       the player was promised and never offered. */
-    if (op.op === 'setTrap') {
-      return {
-        side: 'own',
-        zone: op.from === 'deck' ? 'deck' : 'grave',
-        count: 1,
-        prompt: 'Choose a Trap to Set',
-        filter: { kind: 'trap' },
-      };
-    }
-    /* An equip that names its own host asks the player nothing. Spellbinding
-       Circle attaches to the monster that just declared the attack, and
-       falling through to the prompt below pointed the picker at the
-       *responder's* own Monster Zones — so the card could not be activated at
-       all when they controlled nothing, which is precisely when they are being
-       attacked directly and want it most. */
-    if (op.op === 'equipTo') {
-      if (op.target) continue;
-      /* What it fits, not "any monster you control". 7 Completed bolts onto a
-         Machine and nothing else, and the modal laid out every body on the
-         board — so the player picked a Spellcaster, the equip correctly
-         refused it at resolution, and the card was spent for nothing with the
-         Spell/Trap Zone occupied. Reported. The engine's own gate reads the
-         same filter; the two must not disagree about which hosts exist. */
-      return {
-        side: 'own',
-        zone: 'monster',
-        count: 1,
-        prompt: 'Choose a monster to equip',
-        filter: op.filter,
-      };
-    }
-    if ('target' in op && op.target && op.target.pick === 'chosen') {
-      const zone = (op.target.zone ?? 'monster') as TargetSpec['zone'];
-      const verb =
-        op.op === 'destroy'
-          ? 'Choose a card to destroy'
-          : op.op === 'takeControl'
-            ? 'Choose a monster to take'
-            : op.op === 'absorb'
-              ? 'Choose a monster to absorb'
-              : op.op === 'bounce'
-                ? 'Choose a card to return'
-                : op.op === 'gainAtk'
-                  ? 'Choose a monster to strengthen'
-                  : 'Choose a target';
-      /* Which op is asking, so the picker can drop the monsters it would
-         leave exactly as it found them. Stop Defense beside one kneeling
-         monster and one already attacking is a legal card with one real
-         answer, and the modal offered both — so the pick landed on the
-         standing one and the card was spent changing nothing. The gate reads
-         the same rule; the two must not disagree about which targets exist. */
-      return { side: op.target.side, zone, count: op.target.count ?? 1, prompt: verb, changing: op.op };
-    }
+/**
+ * The generic "you pick a card" question one op asks, if it asks one.
+ *
+ * Split out of `scanOps` so a card that asks *twice* can be walked — see
+ * `specChain`. Every other branch in `scanOps` describes a card that asks once
+ * and then goes; this is the one shape that can repeat.
+ */
+function chosenSpec(op: Op): TargetSpec | null {
+  if (selfRuled(op)) return null;
+  if (!('target' in op) || !op.target || op.target.pick !== 'chosen') return null;
+  const zone = (op.target.zone ?? 'monster') as TargetSpec['zone'];
+  const verb =
+    op.op === 'destroy'
+      ? 'Choose a card to destroy'
+      : op.op === 'takeControl'
+        ? 'Choose a monster to take'
+        : op.op === 'absorb'
+          ? 'Choose a monster to absorb'
+          : op.op === 'bounce'
+            ? 'Choose a card to return'
+            : op.op === 'gainAtk'
+              ? 'Choose a monster to strengthen'
+              /* Luster Dragon's price. It read "Choose a target", which nobody
+                 ever saw while the question went unasked, and which is no
+                 sentence at all now that it is put to the player. */
+              : op.op === 'shuffleIntoDeck'
+                ? 'Choose a card to shuffle into the Deck'
+                : 'Choose a target';
+  /* Which op is asking, so the picker can drop the monsters it would
+     leave exactly as it found them. Stop Defense beside one kneeling
+     monster and one already attacking is a legal card with one real
+     answer, and the modal offered both — so the pick landed on the
+     standing one and the card was spent changing nothing. The gate reads
+     the same rule; the two must not disagree about which targets exist. */
+  return { side: op.target.side, zone, count: op.target.count ?? 1, prompt: verb, changing: op.op };
+}
+
+/**
+ * The first question this list of ops asks, and which op asked it.
+ *
+ * The index is what lets `specChain` find the questions that come *after* it.
+ */
+function scanOpsAt(ops: Op[], owner: string): { spec: TargetSpec; at: number } | null {
+  for (let i = 0; i < ops.length; i++) {
+    const spec = scanOp(ops[i], owner);
+    if (spec) return { spec, at: i };
   }
   return null;
+}
+
+function scanOps(ops: Op[], owner: string): TargetSpec | null {
+  return scanOpsAt(ops, owner)?.spec ?? null;
+}
+
+function scanOp(op: Op, owner: string): TargetSpec | null {
+  if (selfRuled(op)) return null;
+  if (op.op === 'coinFlip') {
+    return scanOps(op.heads, owner) ?? scanOps(op.tails, owner);
+  }
+  if (op.op === 'diceRoll') {
+    return scanOps(op.perPip, owner);
+  }
+  if (op.op === 'specialSummon' && (op.from === 'grave' || op.from === 'hand')) {
+    return {
+      side: op.side === 'both' ? 'both' : 'own',
+      zone: op.from === 'grave' ? 'grave' : 'hand',
+      /* The op's own count, not a hardcoded 1. The Flute of Summoning Dragon
+         brings out *two* Dragons and only ever asked for one, so it resolved
+         the moment the first was picked and chose the second itself. */
+      count: op.count ?? 1,
+      prompt: 'Choose a monster to Special Summon',
+      /* "Monsters only" belongs to the *op*, not to the Graveyard.
+         `targetCandidates` used to hardcode it into the grave branch, which
+         was invisible while Monster Reborn and Call of the Haunted were the
+         only cards that looked in there — and wrong the moment Graverobber
+         did, because it takes any card and the pile in front of it held
+         nothing but Spells and Traps. Reported from a real duel as "there is
+         nothing it can target". Carried on the spec, each picker states its
+         own rule and the zone stops guessing. */
+      filter: { ...(op.filter ?? {}), kind: 'monster' },
+      revivableOnly: true,
+      revivableBy: owner,
+    };
+  }
+  if (op.op === 'search') {
+    return {
+      side: 'own',
+      zone: 'deck',
+      count: op.count ?? 1,
+      prompt: 'Choose a card to add to your hand',
+      filter: op.filter,
+    };
+  }
+  /* Naming tomorrow's draw is the whole card, so it has to be asked. The
+     Temple of the Kings resolved with an empty target list and the engine
+     took `deck[0]` — the card that was coming anyway, which is
+     indistinguishable from the effect not existing. Reported by the owner as
+     "it did not let me pick a card for the next draw". */
+  if (op.op === 'destinyDraw') {
+    return {
+      side: 'own',
+      zone: 'deck',
+      count: 1,
+      prompt: 'Choose the card you will draw next turn',
+    };
+  }
+  /* And so is which Trap gets Set. The same silence sat on Mask of Darkness
+     and Judgment of Anubis: the engine's fallback is "the first Trap in the
+     pile", which in a Deck is whatever the shuffle left nearest — a choice
+     the player was promised and never offered. */
+  if (op.op === 'setTrap') {
+    return {
+      side: 'own',
+      zone: op.from === 'deck' ? 'deck' : 'grave',
+      count: 1,
+      prompt: 'Choose a Trap to Set',
+      filter: { kind: 'trap' },
+    };
+  }
+  /* An equip that names its own host asks the player nothing. Spellbinding
+     Circle attaches to the monster that just declared the attack, and
+     falling through to the prompt below pointed the picker at the
+     *responder's* own Monster Zones — so the card could not be activated at
+     all when they controlled nothing, which is precisely when they are being
+     attacked directly and want it most. */
+  if (op.op === 'equipTo') {
+    if (op.target) return null;
+    /* What it fits, not "any monster you control". 7 Completed bolts onto a
+       Machine and nothing else, and the modal laid out every body on the
+       board — so the player picked a Spellcaster, the equip correctly
+       refused it at resolution, and the card was spent for nothing with the
+       Spell/Trap Zone occupied. Reported. The engine's own gate reads the
+       same filter; the two must not disagree about which hosts exist. */
+    return {
+      side: 'own',
+      zone: 'monster',
+      count: 1,
+      prompt: 'Choose a monster to equip',
+      filter: op.filter,
+    };
+  }
+  return chosenSpec(op);
 }
 
 function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
@@ -317,6 +343,48 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
     }
   }
   return null;
+}
+
+/**
+ * Every question one effect asks, in the order it asks them.
+ *
+ * Nearly every card has one. Two cards have two, and both were answering the
+ * second themselves: Luster Dragon's ignition asked which Dragon to shuffle
+ * back into the Deck and then destroyed a Spell or Trap of the engine's
+ * choosing — which, with the Field Zone in reach, can be your own Field Spell.
+ * Bickuribox names a monster and a Spell or Trap in one sentence and only ever
+ * asked about the monster.
+ *
+ * The head is exactly what `specFromEffect` has always returned, so a card that
+ * asks once is untouched; the tail is the generic `chosen` selectors that come
+ * after the op the head was read off. Only those repeat — a Deck search, a
+ * Tribute cost, an equip's host and a Special Summon's body are all "the one
+ * thing this card wants to know", and a card carrying two of those does not
+ * exist. When one does, this is where it goes.
+ */
+function specChain(eff: CardEffect, owner: string): TargetSpec[] {
+  const head = specFromEffect(eff, owner);
+  if (!head) return [];
+  const found = scanOpsAt(eff.ops, owner);
+  if (!found) return [head];
+  const tail: TargetSpec[] = [];
+  for (let i = found.at + 1; i < eff.ops.length; i++) {
+    const spec = chosenSpec(eff.ops[i]);
+    if (spec) tail.push(spec);
+  }
+  return [head, ...tail];
+}
+
+/** Every question this card's effect asks, for the trigger the board pressed. */
+export function specChainFor(slug: string, trigger: Trigger): TargetSpec[] {
+  const eff = CARDS[slug]?.effects.find((e) => e.trigger === trigger);
+  return eff ? specChain(eff, slug) : [];
+}
+
+/** The same, for a card carrying more than one effect on the same trigger. */
+export function specChainForEffect(slug: string, index: number): TargetSpec[] {
+  const eff = CARDS[slug]?.effects[index];
+  return eff ? specChain(eff, slug) : [];
 }
 
 /** What the player must pick before this card's effect can be sent. */
@@ -500,6 +568,12 @@ export function summonChoiceSpec(slug: string, trigger: Trigger): TargetSpec | n
 
 export function summonTargetSpec(slug: string): TargetSpec | null {
   return targetSpecFor(slug, 'onSummon') ?? targetSpecFor(slug, 'onNormalSummon');
+}
+
+/** Every question the arriving monster asks — see `specChain`. */
+export function summonSpecChain(slug: string): TargetSpec[] {
+  const onSummon = specChainFor(slug, 'onSummon');
+  return onSummon.length ? onSummon : specChainFor(slug, 'onNormalSummon');
 }
 
 /**

@@ -1450,7 +1450,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'extraAttacks', count: 1 },
           { op: 'destroy', target: OPP_PICK },
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'spellTrap' }) },
+          /* "1 Spell or Trap your opponent controls" — one card, and the player
+             says which. It used to be every card in their Spell & Trap Zone,
+             which since there is only one such zone came to the same number and
+             read the same on the board, and hid the part that was wrong: a
+             Field Spell is a Spell they control, and this could not touch it.
+             Toon World sat across the table from a Toon and was safe from it. */
+          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) },
         ],
       },
     ],

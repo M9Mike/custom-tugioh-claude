@@ -45,7 +45,7 @@ import {
   tributableBodies,
   tributesRequired, tributeSetFor } from './engine';
 import { changesAnything, matchesFilter } from './targeting';
-import { summonTargetSpec, targetSpecFor } from './ui';
+import { specChainFor, summonSpecChain, type TargetSpec } from './ui';
 import { type AiLevel } from './ai-levels';
 import { MONSTER_ZONES, type CardFilter, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
 
@@ -829,15 +829,8 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
 const byAtkDesc = (state: DuelState, pid: PlayerId) => (a: CardInstance, b: CardInstance) =>
   effAtk(state, b, pid) - effAtk(state, a, pid);
 
-/** Sensible target choices for an effect, best-first rather than random. */
-function targetsFor(
-  state: DuelState,
-  pid: PlayerId,
-  slug: string,
-  trigger: 'activate' | 'ignition' | 'trap' | 'onSummon' | 'handDiscard'
-): string[][] {
-  const spec = trigger === 'onSummon' ? summonTargetSpec(slug) : targetSpecFor(slug, trigger);
-  if (!spec) return [[]];
+/** Every card a spec could reach, built the way the board's picker builds it. */
+function poolFor(state: DuelState, pid: PlayerId, spec: TargetSpec): CardInstance[] {
   const foe = other(pid);
   const sides: PlayerId[] = spec.side === 'own' ? [pid] : spec.side === 'opp' ? [foe] : [pid, foe];
   const pool: CardInstance[] = [];
@@ -868,27 +861,88 @@ function targetsFor(
       pool.push(...p.deck);
     }
   }
-  if (!pool.length) return [[]];
+  return pool;
+}
 
-  /* Strongest first: for removal that is the opponent's best body, for equips
-     and revival it is the best body to invest in. EFFECTIVE strength for cards
-     on a field, base strength for cards in piles — base, not printed, because
-     our Uraby is a 400 ATK mine and the database still says 1500 — a Two-Headed King Rex standing at
-     2500 must outrank the 1700 beside it, and by printed ATK it never did, so
-     the AI kept pointing its removal at the wrong monster. */
+/**
+ * That pool in the order the AI wants to reach into it.
+ *
+ * Strongest first: for removal that is the opponent's best body, for equips
+ * and revival it is the best body to invest in. EFFECTIVE strength for cards
+ * on a field, base strength for cards in piles — base, not printed, because
+ * our Uraby is a 400 ATK mine and the database still says 1500 — a Two-Headed King Rex standing at
+ * 2500 must outrank the 1700 beside it, and by printed ATK it never did, so
+ * the AI kept pointing its removal at the wrong monster.
+ */
+function rankPool(state: DuelState, pool: CardInstance[]): CardInstance[] {
   const worth = (c: CardInstance): number => {
     for (const id of ['p1', 'p2'] as PlayerId[]) {
       if (state.players[id].monsters.some((m) => m?.uid === c.uid)) return effAtk(state, c, id) + menace(c.slug) * 0.8;
     }
     return baseAtk(c.slug) + menace(c.slug) * 0.8;
   };
-  const ranked = [...pool].sort((a, b) => worth(b) - worth(a));
+  return [...pool].sort((a, b) => worth(b) - worth(a));
+}
+
+/** Sensible target choices for an effect, best-first rather than random. */
+function targetsFor(
+  state: DuelState,
+  pid: PlayerId,
+  slug: string,
+  trigger: 'activate' | 'ignition' | 'trap' | 'onSummon' | 'handDiscard'
+): string[][] {
+  const chain = trigger === 'onSummon' ? summonSpecChain(slug) : specChainFor(slug, trigger);
+  const spec = chain[0];
+  if (!spec) return [[]];
+  const ranked = rankPool(state, poolFor(state, pid, spec));
   const out: string[][] = [];
   const take = Math.min(3, Math.max(0, ranked.length - spec.count + 1));
   for (let i = 0; i < take; i++) {
     out.push(ranked.slice(i, i + spec.count).map((c) => c.uid));
   }
-  return out.length ? out : [[]];
+  const branches = out.length ? out : [[]];
+
+  /* And the questions that come after the first one, which the AI was not
+     answering either — it named one target and the engine took "the strongest
+     legal card" for the rest. Across a *backrow* that is not the strongest
+     anything, it is whichever the pool reaches first, and for a selector that
+     spans both sides of the table the pool starts with your own: Luster
+     Dragon's ignition had Kaiba shattering his own Set card while the
+     opponent's sat there. One answer each, not a branch each — these are the
+     tail of a decision the search has already made, and multiplying the beam
+     by them buys nothing.
+     Empty for every card in the game but two, so the search this hangs off is
+     exactly the search it was. */
+  const tail = chain.slice(1);
+  if (!tail.length) return branches;
+  const extra: string[] = [];
+  for (const t of tail) {
+    const pool = poolFor(state, pid, t);
+    /* Theirs before mine when the op takes something away. A "1 Spell or Trap"
+       that names no side means either side, and the one worth breaking is
+       never your own. */
+    const theirs = takesAway(t.changing) ? pool.filter((c) => !ownsCard(state, pid, c)) : pool;
+    extra.push(...rankPool(state, theirs.length ? theirs : pool).slice(0, t.count).map((c) => c.uid));
+  }
+  return branches.map((b) => [...b, ...extra]);
+}
+
+/** Ops whose target is worse off for having been chosen. */
+const TAKES_AWAY = new Set(['destroy', 'bounce', 'banish', 'shuffleIntoDeck', 'discard', 'absorb']);
+function takesAway(op: string | undefined): boolean {
+  return !!op && TAKES_AWAY.has(op);
+}
+
+function ownsCard(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
+  const p = state.players[pid];
+  return (
+    p.monsters.some((m) => m?.uid === c.uid) ||
+    p.spellTrap?.uid === c.uid ||
+    p.field?.uid === c.uid ||
+    p.grave.some((g) => g.uid === c.uid) ||
+    p.hand.some((h) => h.uid === c.uid) ||
+    p.deck.some((d) => d.uid === c.uid)
+  );
 }
 
 /** Every action worth considering right now, roughly best-first. */

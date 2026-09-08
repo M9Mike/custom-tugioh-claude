@@ -7,7 +7,10 @@ import type { EffectDef } from './monsters';
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
 const OPP_PICK = sel('opp', 'chosen');
 const OPP_ALL = sel('opp', 'all');
-const OPP_ST = sel('opp', 'all', { zone: 'spellTrap' });
+/* "Every Spell and Trap they control" reaches the Field Zone, because a Field
+   Spell is a Spell they control. `spellTrap` is the one zone; `backrow` is the
+   sentence. */
+const OPP_ST = sel('opp', 'all', { zone: 'backrow' });
 /* "1 Spell or Trap your opponent controls" — a Field Spell is a Spell they
    control, so this reaches the Field Zone too and the player picks which.
    Toon World sat in that zone untouchable by everything that says those
@@ -310,10 +313,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'activate',
         targets: 1,
-        ops: [
-          { op: 'takeControl', target: OPP_PICK, duration: 'turn' },
-          { op: 'forceAttackPosition', target: sel('own', 'chosen') },
-        ],
+        /* `takeControl` stands the body up face-up in Attack Position itself,
+           so the second half of the sentence is already paid for. It used to be
+           written out as a second op pointed at "a monster you control" with
+           nobody to name it — and an unanswered pick falls back to the
+           strongest, which is not the monster you just took: a face-down
+           Summoned Skull of your own was dragged up and flipped, firing its own
+           effect, every time you seized something smaller. */
+        ops: [{ op: 'takeControl', target: OPP_PICK, duration: 'turn' }],
       },
       {
         trigger: 'trap',
@@ -544,9 +551,15 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'activate',
+        /* One sweep, not two. The Field Zone used to be a second op tacked on
+           behind the first, which worked and meant the words "every Spell and
+           Trap" were spelled out twice with two different zone names — and the
+           day a third card needed them, only one of the two got copied. There
+           is one word for "the cards in front of them that are not monsters"
+           and it is `backrow`; this is the last card in the game that said it
+           any other way. */
         ops: [
           { op: 'destroy', target: OPP_ST },
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'field' }) },
           { op: 'draw', count: 1, who: 'own' },
         ],
       },

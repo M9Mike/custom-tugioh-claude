@@ -33,7 +33,7 @@ import {
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
-import { pickerSides, summonChoiceSpec, summonRiderSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
+import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonRiderSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -107,6 +107,11 @@ type Mode =
        *  Black Illusion Ritual asks for a Tribute and then, because it puts
        *  Relinquished on the field, asks what to swallow. */
       carry?: string[];
+      /** The questions this same effect still has to ask — see `specChain`.
+       *  Luster Dragon's ignition asks which Dragon to shuffle away and then
+       *  which Spell or Trap to shatter; only the first was ever put to the
+       *  player, and the engine answered the second on its own. */
+      rest?: TargetSpec[];
     }
   | { kind: 'attack'; uid: string }
   /**
@@ -928,27 +933,47 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   /** Sends the summon, first collecting targets if the monster's own effect asks for one. */
   const finishSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down', tributes: string[], targets?: string[]) => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
-    const spec = face === 'up' && !targets ? summonTargetSpec(slug) : null;
-    if (spec) {
-      // Never the monster that is arriving — see `targetCandidates`.
-      const options = pickableUids(spec, uid);
-      const want = spec.count ?? 1;
-      // More candidates than the effect takes: that is a real choice. Exactly
-      // as many, or fewer: name them and go, rather than opening a prompt with
-      // nothing to decide. A summon whose effect has no legal target at all
-      // still happens — the monster is the point, its effect is a bonus.
-      if (mustAsk(spec, uid, want)) {
-        setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], summon: { position, face, tributes } });
-        return;
-      }
-      if (options.length) {
-        finishSummon(uid, position, face, tributes, options.slice(0, want));
+    if (face === 'up' && !targets) {
+      /* Every question the arriving monster asks, not only its first.
+         Bickuribox destroys "1 monster and 1 Spell or Trap" and was asked about
+         the monster alone. */
+      const chain = summonSpecChain(slug);
+      if (chain.length) {
+        askSummonChain(uid, { position, face, tributes }, [], chain);
         return;
       }
     }
     // Tributes free a zone, so resolve the destination after they are paid.
     const zone = Math.max(0, mine.monsters.findIndex((m) => !m || tributes.includes(m.uid)));
     void run({ type: 'normalSummon', uid, zone, position, face, tributes, targets });
+  };
+
+  /**
+   * Walk what an arriving monster still has to ask, then summon it.
+   *
+   * More candidates than the effect takes is a real choice and opens a picker.
+   * Exactly as many, or fewer: name them and move on, rather than a prompt with
+   * nothing to decide — and a question with no legal answer at all is skipped
+   * entirely, because a summon still happens when its bonus finds nobody.
+   */
+  const askSummonChain = (
+    uid: string,
+    summon: { position: 'atk' | 'def'; face: 'up' | 'down'; tributes: string[] },
+    answers: string[],
+    rest: TargetSpec[]
+  ) => {
+    let carried = answers;
+    for (let i = 0; i < rest.length; i++) {
+      const spec = rest[i];
+      const want = spec.count ?? 1;
+      // Never the monster that is arriving — see `targetCandidates`.
+      if (mustAsk(spec, uid, want)) {
+        setMode({ kind: 'target', source: 'summon', uid, spec, picked: [], carry: carried, rest: rest.slice(i + 1), summon });
+        return;
+      }
+      carried = [...carried, ...pickableUids(spec, uid).slice(0, want)];
+    }
+    finishSummon(uid, summon.position, summon.face, summon.tributes, carried);
   };
 
   /* One pool builder, in `ui.ts`, asked by the board and by the regressions
@@ -1018,6 +1043,36 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     else void run({ type: 'activateSetCard', uid, targets });
   };
 
+  /**
+   * Walk what this effect still has to ask, then send it.
+   *
+   * The summon path's twin — see `askSummonChain` for the rule about when a
+   * question is worth opening. Luster Dragon's ignition is the card this is
+   * for: which Dragon to shuffle back into the Deck, *then* which Spell or Trap
+   * to shatter. Only the first was ever put to the player, and an unanswered
+   * pick falls back to the strongest legal card — which for a backrow is
+   * whichever the engine reaches first, your own Field Spell included.
+   */
+  const advance = (
+    source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip',
+    uid: string,
+    answers: string[],
+    rest: TargetSpec[],
+    effectIndex?: number
+  ) => {
+    let carried = answers;
+    for (let i = 0; i < rest.length; i++) {
+      const spec = rest[i];
+      const want = spec.count ?? 1;
+      if (mustAsk(spec, uid, want)) {
+        setMode({ kind: 'target', source, uid, spec, picked: [], carry: carried, rest: rest.slice(i + 1), effectIndex });
+        return;
+      }
+      carried = [...carried, ...pickableUids(spec, uid).slice(0, want)];
+    }
+    send(source, uid, carried, effectIndex);
+  };
+
   const beginTargeting = (
     source: 'spell' | 'ignition' | 'setcard' | 'trap' | 'flip',
     uid: string,
@@ -1028,7 +1083,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        question and the engine resolves the other. */
     effectIndex?: number
   ) => {
+    const chain = effectIndex != null ? specChainForEffect(slug, effectIndex) : specChainFor(slug, trigger);
     const spec = effectIndex != null ? targetSpecForEffect(slug, effectIndex) : targetSpecFor(slug, trigger);
+    const rest = chain.slice(1);
     if (!spec) {
       /* No question of its own, but the monster it summons may have one. */
       const rider = source === 'spell' ? summonRiderSpec(slug, 'activate') : null;
@@ -1079,10 +1136,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        It did not always: `destroy` fell back to the strongest legal card while
        the damage beside it read the target list and found nothing. */
     if (!mustAsk(spec, uid, want)) {
-      send(source, uid, options.slice(0, want), effectIndex);
+      advance(source, uid, options.slice(0, want), rest, effectIndex);
       return;
     }
-    setMode({ kind: 'target', source, uid, spec, picked: [], effectIndex });
+    setMode({ kind: 'target', source, uid, spec, picked: [], rest, effectIndex });
   };
 
   /* What the monster you just picked wants to know, if anything. Looked up
@@ -1094,12 +1151,22 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
 
   const submitTargets = (picked: string[]) => {
     if (mode.kind !== 'target') return;
-    const { source, uid, summon, carry, effectIndex } = mode;
-    if (source === 'summon' && summon) {
-      finishSummon(uid, summon.position, summon.face, summon.tributes, picked);
+    const { source, uid, summon, carry, effectIndex, rest } = mode;
+    /* Returned whether or not the payload is there: a summon with no summon to
+       finish has nowhere else to go, and falling through would send it as a
+       Spell. Written this way round so the union below narrows. */
+    if (source === 'summon') {
+      if (summon) askSummonChain(uid, summon, [...(carry ?? []), ...picked], rest ?? []);
       return;
     }
     const answers = [...(carry ?? []), ...picked];
+    /* Anything this same effect still has to ask, before the rider questions
+       below — those belong to a monster the effect *summons*, which is a later
+       beat than the effect's own second target. */
+    if (rest?.length) {
+      advance(source, uid, answers, rest, effectIndex);
+      return;
+    }
     /* A Spell that offers a choice of monsters asks which, once its cost is
        paid — Fortress Whale's Oath names two and used to take the bigger one
        on its own. And once that is answered, the monster chosen may have a
@@ -1366,15 +1433,33 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     );
   };
 
+  /* A Field Spell is a Spell on the field, and everything that says "1 Spell or
+     Trap" can destroy one — `targetCandidates` has offered it for as long as
+     `backrow` has meant both zones. This zone was the one card on the board
+     that could not be tapped: no highlight, no pick, inspect only. So Luster
+     Dragon came down over a Field Spell and a Set card and the only answer the
+     player could give was the Set card. Reported. Written the same way as the
+     Spell/Trap zone beside it, because it is the same question. */
   const renderFieldZone = (owner: PlayerId) => {
     const c = state.players[owner].field;
+    const targetable = c ? targetableSet.has(c.uid) : false;
     return (
       <div
-        className={`zone ${SIDE_CARD} aspect-[59/86]`}
-        onClick={() => c && setInspect(c)}
+        className={`zone ${SIDE_CARD} aspect-[59/86] ${targetable ? 'zone-target' : ''}`}
+        onClick={() => {
+          if (!c) return;
+          if (targetable && mode.kind === 'target') return onPickTarget(c.uid);
+          setInspect(c);
+        }}
         onPointerEnter={hoverInspect(c)}
       >
-        {c ? <GameCard card={c} compact /> : <span className="absolute inset-0 grid place-items-center font-display text-[9px] text-ptextdim/40">FIELD</span>}
+        {c ? (
+          <div className={`absolute inset-0 ${targetable ? 'targetable' : ''}`}>
+            <GameCard card={c} compact />
+          </div>
+        ) : (
+          <span className="absolute inset-0 grid place-items-center font-display text-[9px] text-ptextdim/40">FIELD</span>
+        )}
       </div>
     );
   };

@@ -13,7 +13,7 @@ import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, summonChoiceSpec, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
+import { pickerSides, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
@@ -12192,6 +12192,155 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     bare.players[ME].grave = [card(ME, 'luster-dragon-2')];
     ok(ignitionOptions(bare, ME, alone).length === 0, 'CONTROL: and not at all with no Spell or Trap on the table',
       String(ignitionOptions(bare, ME, alone).length));
+  }
+
+  /* --- A Field Spell is a Spell, and every card that says so can reach it ---
+     "Luster Dragon should allow to select spell trap meaning a field spell as
+     well, all other monsters or cards that destroy a spell or trap card also
+     means field spell as well, now I can't pick the field spell I can only pick
+     the set face down card." The picker had offered it the whole time — the
+     board drew the Field Zone as a card you could look at and nothing else, and
+     `npm run picker` holds that wiring now. What is pinned here is the rest of
+     the sentence: the words, on every card that says them. */
+  {
+    /* Luster Dragon's ignition asks TWICE — which Dragon to spend, and which
+       Spell or Trap to shatter. The second was never put to the player: an
+       unanswered pick falls back to the strongest legal card, which across a
+       backrow is whichever the engine reaches first, your own Field Spell
+       included. Both answers travel now, in the order the ops consume them. */
+    const s = kaiba();
+    const lus = card(ME, 'luster-dragon');
+    lus.summonedOnTurn = 0;
+    s.players[ME].monsters = [lus, null, null];
+    s.players[ME].grave = [card(ME, 'curse-of-dragon'), card(ME, 'baby-dragon')];
+    const myField = card(ME, 'necrovalley');
+    s.players[ME].field = myField;
+    const theirSet = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[FOE].spellTrap = theirSet;
+
+    const chain = specChainForEffect('luster-dragon', 1);
+    ok(chain.length === 2, 'FIELD: Luster Dragon asks two questions, not one',
+      chain.map((c) => `${c.side}/${c.zone}`).join(' → ') || '(none)');
+    ok(chain[1]?.zone === 'backrow', 'FIELD: and the second reaches the Field Zone', chain[1]?.zone ?? '(none)');
+    /* Reported rather than thrown — see the note on `answer`. A falsification
+       that kills the process reports one failure where there are eight. */
+    const shatter = chain[1] ? targetCandidates(s, ME, chain[1]) : [];
+    ok(shatter.some((c) => c.uid === myField.uid), 'FIELD: the Field Spell is one of the answers on offer',
+      shatter.map((c) => c.slug).join(',') || '(none)');
+
+    const idx = ignitionOptions(s, ME, lus)[0]?.index;
+    // Both answers, the player's: the baby dragon spent, their own Field Spell
+    // left alone, and MY Necrovalley the thing that breaks.
+    const fired = act(s, ME, {
+      type: 'ignition', uid: lus.uid, effectIndex: idx,
+      targets: [s.players[ME].grave.find((c) => c.slug === 'baby-dragon')!.uid, myField.uid],
+    });
+    ok(!fired.players[ME].field, 'FIELD: and a Field Spell the player points at is destroyed',
+      fired.players[ME].field?.slug ?? '');
+    ok(!!fired.players[FOE].spellTrap, 'FIELD: while the card they did not point at stands',
+      fired.players[FOE].spellTrap?.slug ?? '(gone)');
+    ok(fired.players[ME].deck.some((c) => c.slug === 'baby-dragon'),
+      'FIELD: and the Dragon they named is the one that went back',
+      fired.players[ME].deck.filter((c) => /dragon/.test(c.slug)).map((c) => c.slug).join(',') || '(none)');
+  }
+
+  /* Bickuribox says "1 monster and 1 Spell or Trap" and asked about the monster
+     alone, sweeping their Spell/Trap Zone by itself — which since there is only
+     one such zone came to the same number and read the same on the board, and
+     hid the part that was wrong: it could never touch a Field Spell. Against
+     Pegasus that is Toon World, the card his whole deck stands on. */
+  {
+    const s = kaiba();
+    const bick = card(ME, 'bickuribox');
+    s.players[ME].hand = [bick];
+    s.players[ME].field = card(ME, 'toon-world');
+    const t1 = card(ME, 'battle-ox');
+    const t2 = card(ME, 'mystical-elf');
+    s.players[ME].monsters = [t1, t2, null];
+    const big = card(FOE, 'summoned-skull');
+    const small = card(FOE, 'battle-ox');
+    s.players[FOE].monsters = [big, small, null];
+    const theirField = card(FOE, 'necrovalley');
+    s.players[FOE].field = theirField;
+    const theirSet = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[FOE].spellTrap = theirSet;
+
+    const chain = summonSpecChain('bickuribox');
+    ok(chain.length === 2, 'FIELD: Bickuribox asks about the monster AND the Spell or Trap',
+      chain.map((c) => `${c.side}/${c.zone}`).join(' → ') || '(none)');
+
+    const out = act(s, ME, {
+      type: 'normalSummon', uid: bick.uid, zone: 0, position: 'atk', face: 'up',
+      tributes: [t1.uid, t2.uid], targets: [small.uid, theirField.uid],
+    });
+    ok(!out.players[FOE].field, 'FIELD: and it breaks the Field Spell it was pointed at',
+      out.players[FOE].field?.slug ?? '');
+    ok(!!out.players[FOE].spellTrap, 'FIELD: one card, so their Set card is still there',
+      out.players[FOE].spellTrap?.slug ?? '(gone)');
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === small.uid), 'FIELD: and the monster named is gone too');
+    ok(out.players[FOE].monsters.some((m) => m?.uid === big.uid), 'FIELD: not the biggest one, the chosen one');
+  }
+
+  /* "Destroy every Spell and Trap your opponent controls" — every one, the
+     Field Zone included, and none of mine. */
+  {
+    const s = kaiba();
+    const duster = card(ME, 'harpie-s-feather-duster');
+    s.players[ME].hand = [duster];
+    s.players[FOE].field = card(FOE, 'necrovalley');
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[ME].field = card(ME, 'toon-world');
+    const swept = act(s, ME, { type: 'activateSpell', uid: duster.uid });
+    ok(!swept.players[FOE].field && !swept.players[FOE].spellTrap,
+      'FIELD: the Duster takes their Field Spell along with the rest',
+      `${swept.players[FOE].field?.slug ?? '-'} / ${swept.players[FOE].spellTrap?.slug ?? '-'}`);
+    ok(!!swept.players[ME].field, 'FIELD: CONTROL: and leaves mine standing', swept.players[ME].field?.slug ?? '(gone)');
+  }
+
+  /* Every "Spell or Trap" in the game reads the whole backrow. The Field Zone
+     used to be reached by naming it in a second op beside the first, which
+     worked on the one card that did it and was forgotten by the two that did
+     not. One word, checked over the whole pool, so the next card to say those
+     words cannot say them the narrow way. */
+  {
+    const narrow: string[] = [];
+    const walk = (slug: string, ops: readonly Op[]) => {
+      for (const op of ops) {
+        const o = op as unknown as { op: string; heads?: Op[]; tails?: Op[]; perPip?: Op[]; target?: { zone?: string } };
+        if (o.heads) walk(slug, o.heads);
+        if (o.tails) walk(slug, o.tails);
+        if (o.perPip) walk(slug, o.perPip);
+        if (o.op === 'destroy' && o.target?.zone === 'spellTrap') narrow.push(slug);
+      }
+    };
+    for (const [slug, def] of Object.entries(CARDS)) for (const eff of def.effects) walk(slug, eff.ops);
+    ok(narrow.length === 0,
+      'FIELD: no card in the game destroys a Spell or Trap without seeing the Field Zone',
+      narrow.join(', '));
+  }
+
+  /* Enemy Controller stands the body it takes up in Attack Position by itself,
+     so the second half of its sentence had nothing left to do — and pointed at
+     "a monster you control" with nobody to name it, an unanswered pick fell
+     back to the strongest, which is not the monster you just took: a face-down
+     of your own was dragged up and flipped, firing its own effect. */
+  {
+    const s = kaiba();
+    const ec = card(ME, 'enemy-controller');
+    s.players[ME].hand = [ec];
+    const hidden = { ...card(ME, 'summoned-skull'), face: 'down' as const, position: 'def' as const };
+    s.players[ME].monsters = [hidden, null, null];
+    const prey = card(FOE, 'battle-ox');
+    s.players[FOE].monsters = [prey, null, null];
+    const took = act(s, ME, { type: 'activateSpell', uid: ec.uid, targets: [prey.uid] });
+    const mine2 = took.players[ME].monsters.find((m) => m?.uid === hidden.uid);
+    ok(mine2?.face === 'down' && mine2?.position === 'def',
+      'CONTROLLER: my own face-down is left exactly where it was',
+      `${mine2?.face ?? 'gone'}/${mine2?.position ?? '-'}`);
+    const stolen = took.players[ME].monsters.find((m) => m?.uid === prey.uid);
+    ok(stolen?.face === 'up' && stolen?.position === 'atk',
+      'CONTROLLER: and the body taken still stands up to fight',
+      `${stolen?.face ?? 'not mine'}/${stolen?.position ?? '-'}`);
   }
 
   /* The two Lusters hand each other up as they fall. */

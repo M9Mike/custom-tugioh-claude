@@ -45,6 +45,7 @@
  *   npx tsx scripts/picker-check.ts            # every card
  *   npx tsx scripts/picker-check.ts graverobber  # one card, verbose
  */
+import { readFileSync } from 'node:fs';
 import { canActivateFromHand, canActivateSetCard, canChangePosition, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import { pickerSides, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '../src/game/ui';
@@ -444,6 +445,55 @@ for (const def of Object.values(CARDS)) {
       `${def.name} (${def.slug}) [${trigger}] — its spec accepts any card, but with the ` +
         `${hostileSpec.side} ${hostileSpec.zone} holding only ${present.map((x) => x.slug).join(', ')} ` +
         'the board offers nothing: the picker is narrower than the card'
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* F. A zone the picker offers must be a zone the board can be tapped on.       */
+/* ------------------------------------------------------------------ */
+/*
+ * Everything above asks what `targetCandidates` returns. This asks the next
+ * question, which is the one that was never asked: can the player reach it.
+ *
+ * `backrow` has meant the Spell/Trap Zone *and* the Field Zone for as long as
+ * the word has existed, and every check in this file agreed — Luster Dragon's
+ * spec offered the Field Spell and the list was right. But the board drew the
+ * Field Zone as a card you could look at and nothing else: no highlight, no
+ * handler, inspect only. So the offer was real, the answer was unreachable, and
+ * the player watching a Field Spell they could not point at reported it as
+ * "I can only pick the set face down card". Twenty checks green, one card on
+ * the board that could not be touched.
+ *
+ * Read off the source because that is where the fault was: a zone renderer that
+ * never consults `targetableSet` cannot be caught by asking the picker
+ * anything. Every zone that can hold a card a spec names is listed here, and
+ * each one has to route a tap to `onPickTarget`.
+ */
+{
+  const board = readFileSync(new URL('../src/components/Duel.tsx', import.meta.url), 'utf8');
+  const zoneBody = (name: string): string => {
+    const at = board.indexOf(`const ${name} = (`);
+    if (at < 0) return '';
+    const next = board.indexOf('\n  const ', at + 1);
+    return board.slice(at, next < 0 ? board.length : next);
+  };
+  for (const zone of ['renderMonsterZone', 'renderSTZone', 'renderFieldZone']) {
+    const body = zoneBody(zone);
+    ok(
+      body.length > 0,
+      `${zone} is still on the board`,
+      `${zone} has gone from Duel.tsx — the picker check can no longer see whether it can be tapped`
+    );
+    ok(
+      body.includes('targetableSet'),
+      `${zone} knows which of its cards the picker is offering`,
+      `${zone} never reads targetableSet, so a card the picker offers there is drawn as untargetable`
+    );
+    ok(
+      body.includes('onPickTarget'),
+      `${zone} answers a tap with the card the picker asked for`,
+      `${zone} never calls onPickTarget, so a card the picker offers there cannot be chosen at all`
     );
   }
 }
