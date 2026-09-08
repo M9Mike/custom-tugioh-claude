@@ -687,8 +687,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'rude-kaiser': {
-    text: 'When this monster declares an attack: it gains 1000 ATK until the end of the turn.',
-    effects: [{ trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 1000, target: SELF, duration: 'turn' }] }],
+    /* The axes swing first and keep what they take. The 1000 is a loan against
+       one attack; the 200 is the part it keeps, so a Kaiser that has been
+       swinging all game is a bigger body than one that has not — which is the
+       owner's ruling and the same shape Battle Ox and Battle Steer already
+       wear, one notch smaller because this one is already hitting at 2800. */
+    text:
+      'When this monster declares an attack: it gains 1000 ATK until the end of the turn. ' +
+      'When this monster destroys a monster in battle: it gains 200 ATK permanently.',
+    effects: [
+      { trigger: 'onDeclareAttack', ops: [{ op: 'gainAtk', amount: 1000, target: SELF, duration: 'turn' }] },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'gainAtk', amount: 200, target: SELF, duration: 'permanent' }] },
+    ],
   },
 
   'judge-man': {

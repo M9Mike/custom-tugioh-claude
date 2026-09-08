@@ -5436,6 +5436,39 @@ console.log('\nKaiba: the ring stops biting its owner, and the giant fetches the
   const swung = act(r, ME, { type: 'attack', uid: kaiser.uid, targetUid: null });
   ok(swung.players[FOE].lp === 4000 - 2800, 'Rude Kaiser declares at 1800 + 1000', `LP ${swung.players[FOE].lp}`);
 
+  /* And it keeps 200 of every body it takes. The 1000 is a loan against one
+     attack and goes back at the End Phase; the 200 is the part the axes keep,
+     so a Kaiser that has been swinging all game is a bigger body than one that
+     has not — the owner's ruling, and the shape Battle Ox and Battle Steer
+     already wear. Read off `atkMod`, which is where `duration: 'permanent'`
+     lands, so the turn loan cannot be mistaken for the keep. */
+  {
+    const k = fresh('battle');
+    const axe = card(ME, 'rude-kaiser'); // 1800
+    axe.summonedOnTurn = 0;
+    k.players[ME].monsters = [axe, null, null];
+    const ox = card(FOE, 'battle-ox'); // 1700 — dies to 2800
+    ox.summonedOnTurn = 0;
+    const elf = card(FOE, 'mystical-elf'); // 800 — dies too
+    elf.summonedOnTurn = 0;
+    k.players[FOE].monsters = [ox, elf, null];
+    let kept = act(k, ME, { type: 'attack', uid: axe.uid, targetUid: ox.uid });
+    const after = () => kept.players[ME].monsters.find((m) => m?.uid === axe.uid)!;
+    ok(after().atkMod === 200, 'Rude Kaiser keeps 200 ATK of the monster it destroyed', `atkMod ${after().atkMod}`);
+    ok(effAtk(kept, after(), ME) === 1800 + 200 + 1000, 'and is still carrying the turn\'s loan on top', String(effAtk(kept, after(), ME)));
+    kept = act(kept, ME, { type: 'endTurn' });
+    ok(effAtk(kept, after(), ME) === 2000, 'CONTROL: the loan goes back, the keep does not', String(effAtk(kept, after(), ME)));
+
+    // And it stacks: a second kill is another 200 on top of the first.
+    kept.active = ME;
+    kept.phase = 'battle';
+    kept.turn += 1;
+    after().attacksUsed = 0;
+    after().attacked = [];
+    kept = act(kept, ME, { type: 'attack', uid: axe.uid, targetUid: elf.uid });
+    ok(after().atkMod === 400, 'and every kill after it adds another 200', `atkMod ${after().atkMod}`);
+  }
+
   /* Hitotsu-Me Giant takes Pot of Greed back out of its OWN Graveyard, and
      only Pot of Greed — the slug filter is what stops it looting the pile. */
   const h = fresh();
@@ -6401,6 +6434,56 @@ console.log('\nFive bugs reported from a real duel');
     'and the second takes their Blue-Eyes once the shield is gone',
     blown.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || '(empty)'
   );
+
+  /* 3. Two monsters out of one op is ONE arrival, and every question waits for
+        the last of them.
+        "When I special summoned with the flute 2 dragons (blue eyes and luster
+        dragon #2) it auto selected which of the 3 monsters I want to destroy
+        for the opponent, it selected the strongest one, did not let me choose,
+        I should pick post summoning both monsters."
+        The arrival fired inside the summoning loop, one monster at a time, and
+        was handed the targets nothing had claimed *yet* — which at that moment
+        still included the second dragon's own uid. A trigger holding a target
+        it cannot use asks nobody: `raiseChoice` reads a non-empty list as "the
+        player already pointed", so Blue-Eyes went straight to the auto-pick and
+        took the biggest body on the board. Two dragons, two arrivals, and not
+        one question between them. */
+  {
+    const both = fresh();
+    const pipe = card(ME, 'the-flute-of-summoning-dragon');
+    const bews = card(ME, 'blue-eyes-white-dragon');
+    const lus = card(ME, 'luster-dragon-2');
+    both.players[ME].hand = [pipe, bews, lus];
+    // Two Dragons down there, so Luster #2's own arrival is a real question too.
+    both.players[ME].grave = [card(ME, 'curse-of-dragon'), card(ME, 'baby-dragon')];
+    const skull = card(FOE, 'summoned-skull'); // 2500 — the auto-pick's answer
+    const elf = card(FOE, 'mystical-elf'); // 800 — mine
+    both.players[FOE].monsters = [skull, card(FOE, 'battle-ox'), elf];
+    let st = act(both, ME, { type: 'activateSpell', uid: pipe.uid, targets: [bews.uid, lus.uid] });
+    ok(
+      st.players[ME].monsters.filter((m) => m?.slug === 'blue-eyes-white-dragon' || m?.slug === 'luster-dragon-2').length === 2,
+      'FLUTE: both dragons are standing before either of them says a word',
+      st.players[ME].monsters.map((m) => m?.slug ?? '-').join(',')
+    );
+    // The weakest of the three, which is the one the fallback would never take.
+    st = answer(st, 'mystical-elf');
+    ok(
+      !st.players[FOE].monsters.some((m) => m?.uid === elf.uid),
+      'FLUTE: and the Blue-Eyes destroys the monster I named'
+    );
+    ok(
+      st.players[FOE].monsters.some((m) => m?.uid === skull.uid),
+      'FLUTE: not the strongest one on the board',
+      st.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).join(',') || '(empty)'
+    );
+    // And the second dragon's own arrival gets its question as well.
+    st = answer(st, 'baby-dragon');
+    ok(
+      st.players[ME].monsters.some((m) => m?.slug === 'baby-dragon'),
+      'FLUTE: Luster #2 revives the Dragon I named, not the biggest in the pile',
+      st.players[ME].monsters.map((m) => m?.slug ?? '-').join(',')
+    );
+  }
 
   /* CONTROL: an explicit choice still wins over the auto-pick, and a protected
      card is still protected when the player points at it by hand. */
@@ -9340,6 +9423,64 @@ console.log('\nPriest Seto: three Tributes, and everything that pays them');
     }
     ok(seen.join(',') === '2,2,1,1,gone',
       'and it crumbles after three of YOUR End Phases, not three turns', seen.join(','));
+  }
+
+  /* --- And the grip ends where the body does ---
+     "Why did the 2nd vorse raider I special summoned with monster reborn die?
+     I guess it had to do with a bug from Possessed Dark Soul on the first vorse
+     raider?" It did. `resetInstance` is the ceremony every road off the field
+     runs, and it cleared the "cannot attack" — `c.flags = {}` — while leaving
+     the clock ticking on the instance. Dark Hole took the hostage, its OWNER's
+     Monster Reborn brought it back to its own side, and it crumbled at the end
+     of the turn it was revived on: the Rod counted an End Phase for a theft
+     that had been over for a minute. Half a possession is not a possession. */
+  {
+    const s = seto();
+    const thief = card(ME, 'possessed-dark-soul');
+    thief.summonedOnTurn = 0;
+    s.players[ME].monsters = [thief, null, null];
+    const prey = card(FOE, 'vorse-raider');
+    s.players[FOE].monsters = [prey, null, null];
+    let st = act(s, ME, { type: 'ignition', uid: thief.uid, targets: [prey.uid] });
+    ok(
+      st.players[ME].monsters.some((m) => m?.uid === prey.uid),
+      'ROD: the body changes sides'
+    );
+    /* Two of the thief's three End Phases spent, so the clock stands at 1 and
+       one more tick would kill — which is exactly where the reported duel was
+       when Dark Hole landed. Their turn in between does not count. */
+    st = act(st, ME, { type: 'endTurn' });
+    st = act(st, FOE, { type: 'endTurn' });
+    st = act(st, ME, { type: 'endTurn' });
+    ok(
+      st.players[ME].monsters.find((m) => m?.uid === prey.uid)?.possessedEndPhases === 1,
+      'ROD: one End Phase left on the clock',
+      String(st.players[ME].monsters.find((m) => m?.uid === prey.uid)?.possessedEndPhases)
+    );
+
+    // Their turn. Dark Hole clears it, and their own Monster Reborn takes it back.
+    const hole = card(FOE, 'dark-hole');
+    const reborn = card(FOE, 'monster-reborn');
+    st.players[FOE].hand = [hole, reborn];
+    st = act(st, FOE, { type: 'activateSpell', uid: hole.uid });
+    ok(
+      st.players[FOE].grave.some((c) => c.uid === prey.uid),
+      'ROD: and Dark Hole sends the hostage to its OWNER\'s Graveyard',
+      st.players[FOE].grave.map((c) => c.slug).join(',') || '(empty)'
+    );
+    st = act(st, FOE, { type: 'activateSpell', uid: reborn.uid, targets: [prey.uid] });
+    const back = st.players[FOE].monsters.find((m) => m?.uid === prey.uid);
+    ok(!!back, 'ROD: Monster Reborn brings it home');
+    ok(back?.possessedEndPhases === undefined,
+      'ROD: and it comes back free of the clock', String(back?.possessedEndPhases));
+    ok(effFlags(st, back!, FOE).cannotAttack !== true,
+      'ROD: free to swing, too — both halves of the theft end together');
+    st = act(st, FOE, { type: 'endTurn' });
+    ok(
+      st.players[FOE].monsters.some((m) => m?.uid === prey.uid),
+      'ROD: and it is still standing at the end of the turn it was revived on',
+      st.players[FOE].monsters.map((m) => m?.slug ?? '-').join(',')
+    );
   }
 
   /* --- Millennium Seeker: the ramp --- */

@@ -932,6 +932,14 @@ function resetInstance(c: CardInstance) {
      OTHER road out of banishment is a road that broke the promise, and the
      card must not carry it into its next life. */
   c.returnsAtEndPhase = undefined;
+  /* And the Millennium Rod's grip. A possessed body cannot attack and crumbles
+     after three of its captor's End Phases, and the "cannot attack" was already
+     cleared by `c.flags = {}` above — the clock was not, so a Vorse Raider that
+     was possessed, wiped by Dark Hole and then brought back by its *owner's*
+     Monster Reborn came back free but still counting, and crumbled at the end
+     of the turn it was revived on. Both halves of the theft end when the body
+     leaves the field. */
+  c.possessedEndPhases = undefined;
 }
 
 /**
@@ -2457,6 +2465,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            pool are different disappointments and the player can act on the
            difference. */
         let blocked: 'zones' | 'pool' | null = null;
+        /* The bodies this one op put on the field, held back until every one of
+           them has landed. See the note below the loop. */
+        const landed: CardInstance[] = [];
         for (let i = 0; i < count; i++) {
           const zone = state.players[ctx.controller].monsters.findIndex((m) => !m);
           if (zone < 0) {
@@ -2512,16 +2523,29 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           landSpecialSummon(state, picked, ctx.controller, zone, op.position ?? 'atk', op.face ?? 'up', ctx.source.slug);
           arrived += 1;
           ctx.summoned = [...(ctx.summoned ?? []), picked.uid];
-          /* The targets the activating player named and nothing has claimed
-             yet. Black Illusion Ritual asks for a Tribute and then summons
-             Relinquished, whose own arrival asks what to swallow — and that
-             second choice had nowhere to travel, so the engine fell back to
-             "the strongest" and the player's pick was ignored. `fireTriggers`
-             has always taken a target list; the summon simply never passed
-             one. */
-          if (picked.face === 'up') {
-            fireTriggers(state, picked, ctx.controller, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
-          }
+          landed.push(picked);
+        }
+        /* Now that every body has arrived. One op that calls out two monsters
+           is one event: the Flute plays and both dragons are standing before
+           either of them says anything, which is both the ruling and what the
+           owner asked for — "I should pick post summoning both monsters".
+
+           Firing inside the loop above got the *targets* wrong as well, which
+           is how it was found. The list passed here is the targets the
+           activating player named that nothing has claimed yet — Black
+           Illusion Ritual asks for a Tribute and then summons Relinquished,
+           whose own arrival asks what to swallow, and that second choice needs
+           somewhere to travel. But the cursor only reaches its final place
+           when the loop is done: fired one monster early, the Flute handed
+           Blue-Eyes the *second dragon's* uid as its target, and a trigger
+           holding a target it cannot use asks nobody and falls back to "the
+           strongest". Three monsters across the table and no question. */
+        const rest = ctx.targets.slice(ctx.cursor);
+        for (const picked of landed) {
+          // A body an earlier arrival has already swept off the field says
+          // nothing and is announced as nothing.
+          if (picked.face !== 'up' || findOnField(state, picked.uid)?.zone !== 'monster') continue;
+          fireTriggers(state, picked, ctx.controller, 'onSummon', {}, rest);
           /* A Special Summon is a Summon, and Slifer's second mouth was only
              ever told about Normal and Fusion Summons — so a Monster Reborn'd
              Blue-Eyes, a revived anything, a searched-out Magnet Warrior, all
@@ -2534,9 +2558,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
              kind of Summon. Torrential Tribute and Apophis come along, and
              both of them have said "when your opponent Summons" the whole
              time. */
-          if (picked.face === 'up') {
-            announceSummon(state, ctx.controller, picked.uid, `${state.players[ctx.controller].name} Special Summoned ${displayName(state, picked)}.`);
-          }
+          announceSummon(state, ctx.controller, picked.uid, `${state.players[ctx.controller].name} Special Summoned ${displayName(state, picked)}.`);
         }
         if (!arrived && blocked) {
           emptyHanded(
