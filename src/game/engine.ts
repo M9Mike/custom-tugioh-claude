@@ -419,6 +419,36 @@ function auraCount(
  * 2000 or more attack could still attack". Nothing here reads another card's
  * aura, so nothing here can recurse.
  */
+/**
+ * What ONE source is already adding to (or taking off) a monster, for the
+ * benefit of that same source's ATK-bounded auras.
+ *
+ * A card that drains and then judges — The Dark Door — has to judge the number
+ * it made, or its two halves contradict each other in public. Only auras with
+ * no ATK bound of their own are counted: those are plain arithmetic, so no
+ * bonus is ever asked to decide whether it applies to itself, and nothing here
+ * reads another card's aura, so nothing here can recurse.
+ */
+function sameSourceAtk(state: DuelState, source: CardInstance, ctrl: PlayerId, target: CardInstance, targetCtrl: PlayerId): number {
+  const def = CARDS[source.slug];
+  if (!def) return 0;
+  let sum = 0;
+  for (const eff of def.effects) {
+    if (eff.trigger !== 'continuous' || !eff.aura || !eff.aura.atk) continue;
+    const s = eff.aura.target;
+    if (s.filter?.minAtk != null || s.filter?.maxAtk != null) continue;
+    if (eff.condition && !conditionMet(state, eff, source, ctrl)) continue;
+    const sameSide = ctrl === targetCtrl;
+    if (s.side === 'own' && !sameSide) continue;
+    if (s.side === 'opp' && sameSide) continue;
+    if (s.pick === 'self' && source.uid !== target.uid) continue;
+    if (s.excludeSelf && source.uid === target.uid) continue;
+    if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
+    sum += eff.aura.atk;
+  }
+  return sum;
+}
+
 function selfAtk(state: DuelState, target: CardInstance, ctrl: PlayerId): number {
   if (target.flags.infiniteAtk || target.turnFlags.infiniteAtk) return INFINITE_ATK;
   const base = target.isToken ? (target.tokenAtk ?? 0) : baseAtk(target.slug);
@@ -491,12 +521,22 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (s.pick === 'self' && source.uid !== target.uid) continue;
       if (s.excludeSelf && source.uid === target.uid) continue;
       /* ATK bounds in an aura's filter ask about the monster as IT stands —
-         see `selfAtk` above. The rest of the filter stays printed data. */
+         see `selfAtk` above — PLUS whatever this same card is already doing to
+         it. The Dark Door drains 300 and bars everything at 2000 or more, and
+         the two halves were not talking to each other: a Lord of D. standing
+         at 2000 was pushed to 1700 by the door and then held at the gate by
+         the same door for being 2000. Reported. Only this source's own
+         unbounded auras count — a bonus that itself depends on ATK cannot
+         help decide that ATK, which is what keeps this from chasing its own
+         tail. */
       if (s.pick !== 'self') {
         if (!matchesFilter(target, stripAtkBounds(s.filter))) continue;
         const f = s.filter;
-        if (f?.minAtk != null && selfAtk(state, target, targetController) < f.minAtk) continue;
-        if (f?.maxAtk != null && selfAtk(state, target, targetController) > f.maxAtk) continue;
+        if (f?.minAtk != null || f?.maxAtk != null) {
+          const asItStands = selfAtk(state, target, targetController) + sameSourceAtk(state, source, controller, target, targetController);
+          if (f.minAtk != null && asItStands < f.minAtk) continue;
+          if (f.maxAtk != null && asItStands > f.maxAtk) continue;
+        }
       }
       bonus.atk += eff.aura.atk ?? 0;
       bonus.def += eff.aura.def ?? 0;
@@ -3569,7 +3609,11 @@ function beginAttack(state: DuelState, attackerUid: string, targetUid: string | 
       : displayName(state, hit ?? attacker);
   log(state, `${displayName(state, attacker)} attacks ${targetName}!`, 'attack', controller, logSlug(attacker));
 
-  state.suspendedAttack = { attackerUid, targetUid };
+  state.suspendedAttack = {
+    attackerUid,
+    targetUid,
+    controller,
+  };
   const opened = openTrapWindow(state, defender, 'opponentDeclareAttack', `${displayName(state, attacker)} is attacking!`, {
     attackerUid,
     targetUid: targetUid ?? undefined,
@@ -3587,6 +3631,29 @@ function resolveBattle(state: DuelState) {
   const attacker = found.c;
   const controller = found.controller;
   const defender = other(controller);
+
+  /* An attack belongs to the player who declared it. Enemy Controller takes
+     the attacker mid-swing, and the swing was carrying on under its new
+     owner — with an empty board on the other side it turned around and hit
+     the player who had just seized it. Reported. Taking the attacker ends
+     the attack; nothing needs to say so on the card, because there is no
+     longer anybody attacking. */
+  if (controller !== susp.controller) {
+    log(state, `${displayName(state, attacker)} changes hands, and the attack with it.`, 'attack', controller, logSlug(attacker));
+    return;
+  }
+
+  /* A wall that arrives during the window is a wall. A direct attack is only
+     ever declared at an empty board, so bodies standing there now — Scapegoat
+     answering in the window, which is the whole reason that card is a
+     Quick-Play — mean the attack as declared cannot happen: it is called off
+     and the attacker keeps its swing for a target it may legally take. The
+     owner watched three Sheep Tokens arrive and the direct attack walk
+     straight past them for 2300. */
+  if (!susp.targetUid && state.players[defender].monsters.some(Boolean)) {
+    log(state, `${displayName(state, attacker)} finds its path blocked, and the attack is called off.`, 'attack', controller, logSlug(attacker));
+    return;
+  }
 
   attacker.attacksUsed += 1;
 

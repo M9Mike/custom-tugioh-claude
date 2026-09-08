@@ -1534,8 +1534,12 @@ export interface DuelState {
   version: number;
   /** Monotonic counter for card instance ids; lives in state so duels stay reproducible. */
   uidSeq: number;
-  /** Set while a battle is paused waiting on a trap response. */
-  suspendedAttack?: { attackerUid: string; targetUid: string | null } | null;
+  /** Set while a battle is paused waiting on a trap response.
+   *
+   *  `controller` is who declared it, read back when the battle resumes: a
+   *  window is long enough for the attack to stop being the attack that was
+   *  declared. See `resolveBattle`. */
+  suspendedAttack?: { attackerUid: string; targetUid: string | null; controller: PlayerId } | null;
   /**
    * Choices raised while another was already open. One Dark Hole can destroy
    * two Sangans; there is one `pending` slot and two questions, and the second
