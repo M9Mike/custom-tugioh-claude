@@ -650,6 +650,10 @@ export type Op =
   | { op: 'preventBattleDestruction'; who: Side; duration: Duration }
   | { op: 'indestructibleByBattle'; duration: Duration }
   | { op: 'indestructibleByEffect'; duration: Duration }
+  /** A card effect that would destroy this monster takes it out of play until
+   *  the End Phase instead, and pays its controller `pays` Life Points for the
+   *  attempt. Battle is untouched — see the `EquipGrant` of the same name. */
+  | { op: 'banishesInsteadOfDying'; pays?: number; duration: Duration }
   /**
    * Destruction is paid for out of the Graveyard instead of being suffered.
    *
@@ -759,6 +763,11 @@ export type EquipGrant =
   | 'doublesWhenAttacking'
   /** The first battle that would kill it turns it face-down instead — see `CardFlags`. */
   | 'flipsInsteadOfDying'
+  /** A card EFFECT that would destroy it takes it out of play until the End
+   *  Phase instead, and its controller is paid for the trouble. It comes back
+   *  standing the way it left. Battle still kills it, which is what keeps it
+   *  answerable: put something bigger in front of it. */
+  | 'banishesInsteadOfDying'
   /** Anything that attacks it does so at half strength. */
   | 'halvesAttacker'
   | 'pierce'
@@ -868,7 +877,7 @@ export interface CardEffect {
        * or the controller's hand — which is Slifer, whose ATK is "1000 for each
        * card in your hand" and therefore falls the moment you spend one.
        */
-      zone: 'ownGrave' | 'oppGrave' | 'eitherGrave' | 'ownField' | 'oppField' | 'field' | 'ownHand';
+      zone: 'ownGrave' | 'oppGrave' | 'eitherGrave' | 'ownField' | 'oppField' | 'field' | 'ownHand' | 'ownDeck';
       /** Only count cards matching this. Omit to count everything there. */
       filter?: CardFilter;
       /**
@@ -935,6 +944,9 @@ export interface CardEffect {
     discardHand?: boolean;
     /** Removes a named card from your Graveyard from the game to pay for this. */
     banishFromGrave?: string;
+    /** Cards off the top of your own Deck, into your own Graveyard. A price
+     *  the Shining Dragon pays in the very thing it is made of. */
+    mill?: number;
     tributeSelf?: boolean;
     tributeFilter?: CardFilter;
   };
@@ -973,6 +985,9 @@ export interface EffectCondition {
    * part of the condition rather than left to the ops to discover.
    */
   graveHasSlug?: string;
+  /** The same gate by kind rather than by name — "1 Dragon in your Graveyard"
+   *  is a cost a card can name without naming a card. */
+  graveHas?: CardFilter;
   /** The opponent is holding at least one card. */
   opponentHasHand?: boolean;
   /**
@@ -1129,6 +1144,12 @@ export interface CardFlags {
   flipsInsteadOfDying?: boolean;
   /** Set once `flipsInsteadOfDying` has been cashed. */
   usedFlipEscape?: boolean;
+  /** A card effect that would destroy it takes it out of play until the End
+   *  Phase instead — see the `EquipGrant` of the same name. Unlimited, on
+   *  purpose: battle is the answer to this monster, not attrition. */
+  banishesInsteadOfDying?: boolean;
+  /** Life Points its controller is paid each time that dodge is taken. */
+  banishDodgePays?: number;
   /**
    * What this monster has swallowed counts for half its printed ATK and DEF
    * rather than all of it. Serket grows on what it kills, and at full rate a
@@ -1226,6 +1247,12 @@ export interface CardInstance {
    * `summonToken.fleeting`. Bought to be spent, not to hold a board.
    */
   fleeting?: boolean;
+  /**
+   * Out of play until the End Phase of this turn, and the zone and posture it
+   * left standing in. A dodge, not a removal: `endOfTurnCleanup` puts it back
+   * exactly as it was, which is what "returns same position" means.
+   */
+  returnsAtEndPhase?: { turn: number; to: PlayerId; zone: number; position: Position; face: Face };
   /**
    * Whose Tributes this monster may pay for, besides its controller's, and
    * until when. Soul Exchange lends the opponent's bodies for one turn without

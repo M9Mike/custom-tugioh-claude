@@ -388,6 +388,9 @@ function auraCount(
   const pools: CardInstance[][] = [];
   const onField = (pid: PlayerId) => state.players[pid].monsters.filter((m): m is CardInstance => !!m);
   if (per.zone === 'ownHand') pools.push(state.players[controller].hand);
+  /* A monster whose strength is the Deck behind it falls as the Deck empties,
+     the way Slifer falls as a hand is spent — read live, never banked. */
+  else if (per.zone === 'ownDeck') pools.push(state.players[controller].deck);
   else if (per.zone === 'ownGrave') pools.push(state.players[controller].grave);
   else if (per.zone === 'oppGrave') pools.push(state.players[other(controller)].grave);
   else if (per.zone === 'eitherGrave') pools.push(state.players.p1.grave, state.players.p2.grave);
@@ -624,6 +627,7 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('attackCostDiscard')) merged.attackCostDiscard = true;
   if (grants.has('doublesWhenAttacking')) merged.doublesWhenAttacking = true;
   if (grants.has('flipsInsteadOfDying')) merged.flipsInsteadOfDying = true;
+  if (grants.has('banishesInsteadOfDying')) merged.banishesInsteadOfDying = true;
   if (grants.has('halvesAttacker')) merged.halvesAttacker = true;
   if (grants.has('attackAll')) merged.attackAll = true;
   if (grants.has('halvedBattleDamage')) merged.halvedBattleDamage = true;
@@ -917,6 +921,11 @@ function resetInstance(c: CardInstance) {
      death that earns the next return, and `destroyCard` lends it back across
      exactly that beat rather than letting it live here. */
   c.revivals = undefined;
+  /* And the promise to come back at the End Phase. The dodge writes it while
+     moving the card by hand precisely so this ceremony does not run — any
+     OTHER road out of banishment is a road that broke the promise, and the
+     card must not carry it into its next life. */
+  c.returnsAtEndPhase = undefined;
 }
 
 /**
@@ -1604,6 +1613,26 @@ function destroyCard(
     log(state, `${displayName(state, c)} sinks back into the sand rather than falling.`, 'effect', found.controller, logSlug(c));
     anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
     return false;
+  }
+  /* Out of play rather than into the Graveyard, and paid for. A card effect
+     that would destroy this monster takes it off the table until the End
+     Phase instead; it comes back in the zone and posture it left, and its
+     controller is the richer for the attempt. Unlimited on purpose — the
+     answer to it is battle, which this does not touch, so it is a wall
+     against removal and not against a bigger body. A God's decree still
+     collects, like every other price in this function. */
+  if (!byBattle && flags.banishesInsteadOfDying && !divine) {
+    const zone = state.players[found.controller].monsters.findIndex((m) => m?.uid === c.uid);
+    if (zone >= 0) {
+      c.returnsAtEndPhase = { turn: state.turn, to: found.controller, zone, position: c.position, face: c.face };
+      state.players[found.controller].monsters[zone] = null;
+      state.players[c.owner].banished.push(c);
+      log(state, `${displayName(state, c)} steps out of the world rather than falling.`, 'effect', found.controller, logSlug(c));
+      anim(state, { kind: 'note', uid: c.uid, slug: c.slug, player: found.controller });
+      const pay = flags.banishDodgePays ?? 0;
+      if (pay > 0) healPlayer(state, found.controller, pay);
+      return false;
+    }
   }
   /* The narrower bargain: a card *effect* takes everything this monster has
      swallowed instead of the monster. Battle is not covered — Serket is meant
@@ -2683,6 +2712,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'indestructibleByBattle':
         applyFlag(ctx.source, 'indestructibleByBattle', true, op.duration);
         break;
+      case 'banishesInsteadOfDying':
+        applyFlag(ctx.source, 'banishesInsteadOfDying', true, op.duration);
+        if (op.pays) applyFlag(ctx.source, 'banishDodgePays', op.pays, op.duration);
+        break;
       case 'indestructibleByEffect':
         applyFlag(ctx.source, 'indestructibleByEffect', true, op.duration);
         break;
@@ -3014,6 +3047,12 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   }
   if (cond.graveHasSlug) {
     if (!p.grave.some((g) => g.slug === cond.graveHasSlug)) return false;
+  }
+  /* The same gate asked by kind rather than by name: Luster Dragon spends "1
+     Dragon", not one named card, and a button offered over a pile with no
+     Dragon in it is a button that resolves into nothing. */
+  if (cond.graveHas) {
+    if (!p.grave.some((g) => matchesFilter(g, cond.graveHas))) return false;
   }
   if (cond.controlsMonster && p.monsters.every((m) => !m)) return false;
   if (cond.opponentHasBackrow) {
@@ -3903,6 +3942,32 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       }
     });
   }
+  /* And the ones that only stepped out of the world come back into it, in the
+     zone and posture they left — a dodge is not a removal. If the zone was
+     filled while they were away they take any free one; if the board filled
+     up entirely there is nowhere to stand and the Graveyard takes them,
+     which is the one way this bargain can still be lost. */
+  for (const who of ['p1', 'p2'] as PlayerId[]) {
+    const p = state.players[who];
+    for (const c of [...p.banished]) {
+      const mark = c.returnsAtEndPhase;
+      if (!mark || mark.turn !== state.turn) continue;
+      p.banished.splice(p.banished.indexOf(c), 1);
+      c.returnsAtEndPhase = undefined;
+      const home = state.players[mark.to];
+      const zone = home.monsters[mark.zone] ? home.monsters.findIndex((m) => !m) : mark.zone;
+      if (zone < 0) {
+        landInGrave(state, c, c.owner);
+        log(state, `${displayName(state, c)} returns to a full board, and falls after all.`, 'effect', mark.to, logSlug(c));
+        continue;
+      }
+      c.position = mark.position;
+      c.face = mark.face;
+      home.monsters[zone] = c;
+      log(state, `${displayName(state, c)} steps back into the world.`, 'effect', mark.to, logSlug(c));
+      anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: mark.to });
+    }
+  }
   /* Bodies bought for one turn go back to dust. The Millennium Ankh's three
      are meant to be *spent* — on a Tribute, on a cost — so any still standing
      when the turn closes were never really the point of the card. Swept before
@@ -4511,6 +4576,9 @@ function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: 
      reason `cost.discard` does — a Spell in hand cannot pay with itself. */
   if (eff.cost?.discardHand && p.hand.filter((h) => h.uid !== exclude).length < 1) return false;
   if (eff.cost?.banishFromGrave && !p.grave.some((g) => g.slug === eff.cost!.banishFromGrave)) return false;
+  /* A Deck that cannot pay is a Deck that is out — the price is real, and a
+     card whose cost would deck its owner simply stops being offered. */
+  if (eff.cost?.mill && p.deck.length < eff.cost.mill) return false;
   return true;
 }
 
@@ -4559,6 +4627,17 @@ function spendExtraCosts(
     p.banished.push(spent);
     log(state, `${card(want).name} is banished from the Graveyard.`, 'effect', pid, logSlug(spent));
     anim(state, { kind: 'activate', uid: spent.uid, slug: spent.slug, player: pid, reports: true, text: 'BANISHED' });
+  }
+  /* Off the top and into the pile, face up to everybody: the Shining
+     Dragon's shot costs a card out of the very Deck its ATK is counted
+     from, so every use shrinks the dragon by 500. */
+  if (eff?.cost?.mill) {
+    for (let i = 0; i < eff.cost.mill; i++) {
+      const top = p.deck.shift();
+      if (!top) break;
+      landInGrave(state, top, top.owner);
+      log(state, `${p.name} sends ${card(top.slug).name} from the top of the Deck to the Graveyard.`, 'effect', pid, logSlug(top));
+    }
   }
   return null;
 }
@@ -4954,12 +5033,19 @@ export function ignitionOptions(
 ): { index: number; eff: CardEffect; label: string }[] {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return [];
   if (c.face === 'down' || c.flags.negated) return [];
-  if (c.effectUsedOnTurn === state.turn) return [];
   const def = CARDS[c.slug];
   if (!def) return [];
   const out: { index: number; eff: CardEffect; label: string }[] = [];
   def.effects.forEach((eff, index) => {
     if (eff.trigger !== 'ignition') return;
+    /* An ignition is once a turn unless the card says otherwise — the default
+       the `oncePerTurn` comment has always claimed, now actually readable by
+       a card that wants out of it. Two of them do: the Ultimate Dragon pays a
+       Blue-Eyes out of its own Graveyard for every shot and the Shining
+       Dragon pays a card off the top of its Deck, so both count their uses in
+       ammunition, which is a harder limit than a clock. Asked per effect
+       rather than at the door, because a card may carry one of each. */
+    if (eff.oncePerTurn !== false && c.effectUsedOnTurn === state.turn) return;
     if (!canPayCost(state, pid, eff, c.uid)) return;
     /* A condition is as much a gate as a cost, and this never asked. No ignition
        carried one until the Ultimate Dragon — which spends a Blue-Eyes out of
@@ -5568,7 +5654,10 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
           toGrave(state, m.uid, true);
         }
       }
-      c.effectUsedOnTurn = state.turn;
+      /* An effect that opted out of the clock does not start it either — see
+         `ignitionOptions`. A card carrying one limited and one unlimited
+         ignition keeps the limit on the one that has it. */
+      if (eff.oncePerTurn !== false) c.effectUsedOnTurn = state.turn;
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
       /* The card's cry speaks for a card with one button. A card with two has
          two things to say, and "Obelisk — Fist of Fate!" over the effect that

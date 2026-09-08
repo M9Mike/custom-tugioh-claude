@@ -1291,7 +1291,7 @@ for (const def of Object.values(CARDS)) {
          insists the number moves by exactly the promised step. */
       if (aura?.per && selfCard) {
         const per = aura.per;
-        const feed = matchCard(per.filter, per.zone.endsWith('Grave') || per.zone === 'ownHand' ? 'any' : 'monster');
+        const feed = matchCard(per.filter, per.zone.endsWith('Grave') || per.zone === 'ownHand' || per.zone === 'ownDeck' ? 'any' : 'monster');
         const step = (per.atk ?? 0) || (per.def ?? 0);
         /* Read the stat on a card the aura actually reaches. Every scaling aura
            until now buffed its own body (Ra, Mudora, Two-Headed King Rex), so
@@ -1310,6 +1310,11 @@ for (const def of Object.values(CARDS)) {
         };
         const emptyPool = () => {
           if (per.zone === 'ownHand') s.players[ME].hand = [];
+          /* A Deck is never empty in a real duel, but the harness needs a
+             floor to measure the step from — the Shining Dragon is worth the
+             Deck behind it, so an unemptied one made every reading identical
+             and the check could not fail. */
+          else if (per.zone === 'ownDeck') s.players[ME].deck = [];
           else if (per.zone === 'ownGrave') s.players[ME].grave = [];
           else if (per.zone === 'oppGrave') s.players[FOE].grave = [];
           else if (per.zone === 'eitherGrave') { s.players[ME].grave = []; s.players[FOE].grave = []; }
@@ -1322,6 +1327,7 @@ for (const def of Object.values(CARDS)) {
           // Deliberately fed on the *far* side where the wording allows it, so a
           // card that only ever looks at its own is caught rather than flattered.
           if (per.zone === 'ownHand') s.players[ME].hand.push(mint(s, ME, feed.slug));
+          else if (per.zone === 'ownDeck') s.players[ME].deck.push(mint(s, ME, feed.slug));
           else if (per.zone === 'ownGrave') s.players[ME].grave.push(mint(s, ME, feed.slug));
           /* Across the table, which is the whole point of the zone. Fed on the
              near side this would have passed on a card that counts its own

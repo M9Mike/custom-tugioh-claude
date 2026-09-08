@@ -84,7 +84,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'ignition',
         label: 'Return a Blue-Eyes, shatter a Spell/Trap',
-        oncePerTurn: true,
+        /* No longer once a turn, by the owner's call: the cost is a Blue-Eyes
+           out of the Graveyard, and there are only ever three of those — the
+           card counts its own uses in ammunition, which is a better limit
+           than a clock and the reason the restriction could go. */
+        oncePerTurn: false,
         /* Both halves gated. The Graveyard has to hold the dragon it spends,
            and the opponent has to control something worth shattering — without
            the second the cost was paid into an empty board, which is the one
@@ -101,6 +105,63 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           },
           { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) },
         ],
+      },
+      /* And the last word. However this dragon leaves the field — broken in
+         battle, swept by an effect, spent as a Tribute, fed to a cost — the
+         light it was made of does not go out: Blue-Eyes Shining Dragon steps
+         out of the Extra Deck in its place. `onAnyToGrave` because "in any
+         way" is the owner's wording and this is the one trigger that means
+         all of them. */
+      {
+        trigger: 'onAnyToGrave',
+        ops: [{ op: 'specialSummon', from: 'extra', filter: { slugs: ['blue-eyes-shining-dragon'] }, position: 'atk' }],
+      },
+    ],
+  },
+
+  /* What the Ultimate Dragon becomes. It cannot be summoned any other way —
+     `summonOnlyBy` bars every road in but the one — and it is worth the Deck
+     standing behind it, read live: as the Deck is drawn down the dragon
+     shrinks with it, which is a clock nobody has to enforce.
+
+     Removal does not answer it. A card effect that would destroy it takes it
+     out of the world until the End Phase and pays its owner 3000 for the
+     attempt; it comes back in the zone and posture it left. Battle answers
+     it, and for now battle alone — the owner's own summary of the card, and
+     the reason it is a wall rather than a lock. */
+  'blue-eyes-shining-dragon': {
+    text:
+      'Cannot be Normal Summoned or Set. Can only be Special Summoned by the effect of "Blue-Eyes Ultimate Dragon". ' +
+      'Gains 500 ATK and DEF for each card in your Deck. ' +
+      'If this monster would be destroyed by a card effect: it is banished until the End Phase instead, you gain 3000 Life Points, and it returns in the same position. ' +
+      'Send 1 card from the top of your Deck to the Graveyard: destroy 1 Spell or Trap on the field.',
+    cry: 'Shining Neutron Blast!',
+    summonOnlyBy: ['blue-eyes-ultimate-dragon'],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: { side: 'own', pick: 'self' }, per: { zone: 'ownDeck', atk: 500, def: 500 } },
+      },
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'banishesInsteadOfDying', pays: 3000, duration: 'permanent' }],
+      },
+      /* Not once per turn and not aimed only across the table: the owner's
+         wording is "not restricted to the opponent, not restricted per turn".
+         The price is the Deck itself, which is also what the dragon is made
+         of — every shot fired costs it 500 ATK. */
+      {
+        trigger: 'ignition',
+        label: 'Send the top card, shatter a Spell/Trap',
+        /* Not once a turn and not only across the table — the owner's wording
+           is "not restricted to the opponent, not restricted per turn". The
+           Deck is the limit: every shot is a card off the top, and the dragon
+           is 500 lighter for it. */
+        oncePerTurn: false,
+        targets: 1,
+        cost: { mill: 1 },
+        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
     ],
   },
@@ -643,6 +704,66 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [
           { op: 'damage', amount: 500, to: 'opp' },
           { op: 'draw', count: 1, who: 'own' },
+        ],
+      },
+    ],
+  },
+
+  /* The two dragons Kaiba keeps in reserve. They are printed as vanilla
+     beaters and are anything but here: each one hands the other up out of the
+     Deck as it dies, so drawing either is drawing a thread — which is the
+     whole reason they replaced Stop Defense and Trap Hole, two cards that did
+     nothing on an empty board. Written to `onAnyToGrave` rather than
+     `onSentToGrave`, because "when sent to the Graveyard (any kind)" is the
+     owner's wording and means exactly that: battle, effect, Tribute, cost. */
+  'luster-dragon': {
+    text:
+      'When this monster is summoned: destroy 1 Spell or Trap your opponent controls. ' +
+      'Once per turn: shuffle 1 Dragon from your Graveyard into your Deck, then destroy 1 Spell or Trap. ' +
+      'When this monster is sent to the Graveyard: add 1 "Luster Dragon #2" from your Deck to your hand.',
+    cry: 'Cut from the sky itself!',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) }],
+      },
+      {
+        /* Both halves gated, the way the Ultimate Dragon's ignition is: no
+           dragon in the pile and no card across the table means a button that
+           resolves into nothing, which this file keeps relearning not to
+           offer. */
+        trigger: 'ignition',
+        label: 'Return a Dragon, shatter a Spell/Trap',
+        oncePerTurn: true,
+        condition: { graveHas: { type: 'Dragon' }, opponentHasBackrow: true },
+        ops: [
+          { op: 'shuffleIntoDeck', target: sel('own', 'chosen', { zone: 'grave', filter: { type: 'Dragon' } }) },
+          { op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow' }) },
+        ],
+      },
+      {
+        trigger: 'onAnyToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['luster-dragon-2'] } }],
+      },
+    ],
+  },
+
+  'luster-dragon-2': {
+    text:
+      'When this monster is summoned: Special Summon 1 Dragon from your Graveyard in face-up Attack Position. ' +
+      'When this monster is sent to the Graveyard: add 1 "Luster Dragon" from your Deck or Graveyard to your hand and gain 2400 Life Points.',
+    cry: 'The sky pays for itself.',
+    effects: [
+      {
+        trigger: 'onSummon',
+        targets: 1,
+        ops: [{ op: 'specialSummon', from: 'grave', filter: { type: 'Dragon' }, position: 'atk' }],
+      },
+      {
+        trigger: 'onAnyToGrave',
+        ops: [
+          { op: 'search', filter: { slugs: ['luster-dragon'] }, orGrave: true },
+          { op: 'heal', amount: 2400, to: 'own' },
         ],
       },
     ],

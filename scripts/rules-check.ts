@@ -11870,5 +11870,143 @@ console.log('\nA door judges the number it just made, and a die speaks once');
     effectBurn.map((l) => (l as { text?: string }).text).join(' | '));
 }
 
+/* ------------------------------------------------------------------ */
+/* Kaiba's new dragons                                                  */
+/* ------------------------------------------------------------------ */
+console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters');
+{
+  const kaiba = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      const p = s.players[pid];
+      p.monsters = [null, null, null];
+      p.hand = [];
+      p.grave = [];
+      p.banished = [];
+      p.spellTrap = null;
+      p.field = null;
+    }
+    return s;
+  };
+  const sweep = (s: DuelState, by: PlayerId) => {
+    const hole = card(by, 'dark-hole');
+    s.players[by].hand = [hole];
+    s.active = by;
+    let cur = act(s, by, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    let guard = 0;
+    while (cur.pending?.kind === 'choose' && guard++ < 6) {
+      cur = act(cur, cur.pending.player, { type: 'chooseCard', uids: [cur.pending.options[0]] });
+    }
+    return cur;
+  };
+
+  /* However the Ultimate Dragon leaves, the Shining Dragon takes its place. */
+  {
+    const s = kaiba();
+    const beud = card(ME, 'blue-eyes-ultimate-dragon');
+    beud.summonedOnTurn = 0;
+    s.players[ME].monsters = [beud, null, null];
+    s.players[ME].extra = [card(ME, 'blue-eyes-shining-dragon')];
+    const after = sweep(s, ME);
+    const shine = after.players[ME].monsters.find((m) => m?.slug === 'blue-eyes-shining-dragon');
+    ok(!!shine, 'a broken Ultimate Dragon leaves the Shining Dragon standing',
+      after.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* Worth the Deck behind it, read live rather than banked: spend a card and
+       the dragon is 500 lighter for it. */
+    if (shine) {
+      const first = effAtk(after, shine, ME);
+      const thinner = cloneState(after);
+      thinner.players[ME].deck = thinner.players[ME].deck.slice(1);
+      ok(first === 3000 + 500 * after.players[ME].deck.length, 'worth 500 for every card in the Deck', String(first));
+      ok(effAtk(thinner, shine, ME) === first - 500, 'and it shrinks as the Deck is spent', String(effAtk(thinner, shine, ME)));
+    }
+  }
+
+  /* Removal does not answer it: it steps out of the world, is paid for the
+     trouble, and comes back standing the way it left. */
+  {
+    const s = kaiba();
+    const shine = card(ME, 'blue-eyes-shining-dragon');
+    shine.position = 'def';
+    shine.summonedOnTurn = 0;
+    shine.flags = { banishesInsteadOfDying: true, banishDodgePays: 3000 };
+    s.players[ME].monsters = [shine, null, null];
+    s.players[ME].lp = 4000;
+    const dodged = sweep(s, FOE);
+    ok(dodged.players[ME].banished.some((c) => c.uid === shine.uid), 'a card effect takes it out of the world instead of killing it',
+      dodged.players[ME].grave.some((c) => c.uid === shine.uid) ? 'it went to the Graveyard' : 'it is still standing');
+    ok(dodged.players[ME].lp === 7000, 'and pays its owner 3000 for the attempt', String(dodged.players[ME].lp));
+    const back = act(dodged, FOE, { type: 'endTurn' });
+    const home = back.players[ME].monsters.find((m) => m?.uid === shine.uid);
+    ok(!!home, 'it steps back into the world at the End Phase', 'it never came back');
+    ok(home?.position === 'def', 'in the position it left', home?.position ?? '-');
+
+    /* CONTROL: battle is still the answer to it. */
+    const fight = kaiba();
+    fight.phase = 'battle';
+    fight.active = FOE;
+    const small = card(ME, 'blue-eyes-shining-dragon');
+    small.summonedOnTurn = 0;
+    small.flags = { banishesInsteadOfDying: true, banishDodgePays: 3000 };
+    small.atkMod = -20_000; // outgunned on purpose: the dodge must not save it
+    fight.players[ME].monsters = [small, null, null];
+    const killer = card(FOE, 'blue-eyes-white-dragon');
+    killer.summonedOnTurn = 0;
+    fight.players[FOE].monsters = [killer, null, null];
+    const dead = act(fight, FOE, { type: 'attack', uid: killer.uid, targetUid: small.uid });
+    ok(dead.players[ME].grave.some((c) => c.uid === small.uid), 'CONTROL: battle still kills it',
+      dead.players[ME].banished.some((c) => c.uid === small.uid) ? 'it dodged a blow' : 'it survived');
+  }
+
+  /* The two Lusters hand each other up as they fall. */
+  {
+    const s = kaiba();
+    const lus = card(ME, 'luster-dragon');
+    lus.summonedOnTurn = 0;
+    s.players[ME].monsters = [lus, null, null];
+    s.players[ME].deck = [card(ME, 'luster-dragon-2'), ...s.players[ME].deck];
+    const fell = sweep(s, FOE);
+    ok(fell.players[ME].hand.some((h) => h.slug === 'luster-dragon-2'), 'a fallen Luster Dragon hands up its number two',
+      fell.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+    const t = kaiba();
+    const two = card(ME, 'luster-dragon-2');
+    two.summonedOnTurn = 0;
+    t.players[ME].monsters = [two, null, null];
+    t.players[ME].lp = 3000;
+    t.players[ME].deck = [card(ME, 'luster-dragon'), ...t.players[ME].deck];
+    const gone = sweep(t, FOE);
+    ok(gone.players[ME].hand.some((h) => h.slug === 'luster-dragon'), 'and a fallen number two hands the first one back',
+      gone.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+    ok(gone.players[ME].lp === 5400, 'paying 2400 on the way down', String(gone.players[ME].lp));
+  }
+
+  /* Both dragons' shots are limited by ammunition, not by a clock. */
+  {
+    const s = kaiba();
+    const beud = card(ME, 'blue-eyes-ultimate-dragon');
+    beud.summonedOnTurn = 0;
+    s.players[ME].monsters = [beud, null, null];
+    s.players[ME].grave = [card(ME, 'blue-eyes-white-dragon'), card(ME, 'blue-eyes-white-dragon')];
+    s.players[FOE].spellTrap = card(FOE, 'mirror-force');
+    const idx = ignitionOptions(s, ME, beud)[0]?.index;
+    let fired = act(s, ME, { type: 'ignition', uid: beud.uid, effectIndex: idx });
+    while (fired.pending?.kind === 'choose') fired = act(fired, fired.pending.player, { type: 'chooseCard', uids: [fired.pending.options[0]] });
+    fired.players[FOE].spellTrap = card(FOE, 'mirror-force');
+    const again = ignitionOptions(fired, ME, fired.players[ME].monsters.find((m) => m?.uid === beud.uid)!);
+    ok(again.length > 0, 'the Ultimate Dragon shoots again the same turn, while a Blue-Eyes is left to spend', 'the clock stopped it');
+
+    /* CONTROL: a card that never asked for the exemption keeps its clock. */
+    const c = kaiba();
+    const paladin = card(ME, 'dark-paladin');
+    paladin.summonedOnTurn = 0;
+    paladin.effectUsedOnTurn = c.turn;
+    c.players[ME].monsters = [paladin, null, null];
+    c.players[FOE].spellTrap = card(FOE, 'mirror-force');
+    ok(ignitionOptions(c, ME, paladin).length === 0, 'CONTROL: an ordinary ignition is still once a turn',
+      String(ignitionOptions(c, ME, paladin).length));
+  }
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

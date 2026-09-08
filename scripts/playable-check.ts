@@ -310,7 +310,17 @@ for (const du of DUELISTS) {
        there, which is the whole reward for taking the coin flip. So before
        calling an Extra Deck card unreachable, ask whether anything in the same
        main deck names it in a `specialSummon ... from: 'extra'`. */
-    const calledOut = du.deck.some(([mainSlug]) =>
+    /* And the summoner is not always in the main deck. Blue-Eyes Shining
+       Dragon is called out of the Extra Deck by Blue-Eyes Ultimate Dragon,
+       which lives in the Extra Deck itself — so the search reads the main
+       deck plus every Extra Deck card that can get onto the field under its
+       own steam. A recipe-less card cannot vouch for another, which is what
+       stops two unreachable monsters swearing each other in. */
+    const vouchers = [
+      ...du.deck.map(([mainSlug]) => mainSlug),
+      ...(du.extra ?? []).filter((e) => e !== slug && (CARDS[e]?.fusionMaterials?.length ?? 0) > 0),
+    ];
+    const calledOut = vouchers.some((mainSlug) =>
       (CARDS[mainSlug]?.effects ?? []).some(function reaches(eff): boolean {
         const scan = (ops: readonly Op[]): boolean =>
           ops.some((o) => {
