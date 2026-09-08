@@ -11931,6 +11931,18 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     }
   }
 
+  /* The secret is kept on purpose. The Ultimate Dragon's text says nothing
+     about what happens when it falls — the owner wants it found in play, not
+     read off the card — so the silence is pinned like any other rule, and a
+     later hand tidying the wording will have to argue with this. The other
+     direction is pinned too: the card no longer claims a once-per-turn it
+     does not have. */
+  {
+    const said = CARDS['blue-eyes-ultimate-dragon'].text.toLowerCase();
+    ok(!said.includes('shining'), 'the Ultimate Dragon keeps its secret', 'the text gives it away');
+    ok(!said.includes('once per turn'), 'and no longer claims a clock it does not keep', 'the text still says once per turn');
+  }
+
   /* Removal does not answer it: it steps out of the world, is paid for the
      trouble, and comes back standing the way it left. */
   {

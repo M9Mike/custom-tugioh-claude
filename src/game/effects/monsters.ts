@@ -57,7 +57,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
 
   'blue-eyes-ultimate-dragon': {
-    text: 'Fusion: 3 × Blue-Eyes White Dragon. When Fusion Summoned: destroy every Spell, Trap and Field card your opponent controls. This monster attacks every monster your opponent controls once each and inflicts piercing battle damage. Once per turn: shuffle 1 "Blue-Eyes White Dragon" from your Graveyard into your Deck, then destroy 1 Spell or Trap your opponent controls.',
+    text: 'Fusion: 3 × Blue-Eyes White Dragon. When Fusion Summoned: destroy every Spell, Trap and Field card your opponent controls. This monster attacks every monster your opponent controls once each and inflicts piercing battle damage. Shuffle 1 "Blue-Eyes White Dragon" from your Graveyard into your Deck, then destroy 1 Spell or Trap your opponent controls.',
     cry: 'Neutron Blast!',
     fusionMaterials: ['blue-eyes-white-dragon', 'blue-eyes-white-dragon', 'blue-eyes-white-dragon'],
     effects: [
