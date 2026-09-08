@@ -47,7 +47,7 @@ import { Sky, ownSky } from './sky';
 import {
   AREAS, DS_EAVES, DS_RIDGE, DS_SPAN, groundAt, PZ_CLOCK, PZ_DOOR, PZ_DOOR_HALF, PZ_FACE, PZ_FLIGHT,
   PZ_CROSS_HALF, PZ_FLIGHT_STEPS, PZ_IN, PZ_ISLAND, PZ_KERB, PZ_RAILS, PZ_ROAD, PZ_TERRACE,
-  PZ_HIGH, PZ_THINGS, PZ_WAYS, type PlazaThing, type PlazaWay,
+  PZ_HIGH, PZ_THINGS, PZ_TOW, PZ_WAYS, type PlazaThing, type PlazaWay,
 } from '@/story/areas';
 
 const AREA = AREAS['station-plaza'];
@@ -1190,7 +1190,13 @@ export function buildPlaza(anisotropy: number): BuiltArea {
      * unlit north face of a building nobody built. Nothing may stand inside a
      * closed box you can see into: that is what the box is for.
      */
-    const KEEP = { x0: PZ_HIGH - 13, x1: PZ_HIGH + 13, z0: PZ_FACE.south + 2, z1: PZ_FACE.south + 15 };
+    /* One per closed box you can see into — the school's to the south and
+       Central Towers' to the north. A rank block standing inside either is the
+       unlit back of a building nobody built, filling the gateway. */
+    const KEEP = [
+      { x0: PZ_HIGH - 13, x1: PZ_HIGH + 13, z0: PZ_FACE.south + 2, z1: PZ_FACE.south + 15 },
+      { x0: PZ_TOW - 13, x1: PZ_TOW + 13, z0: PZ_FACE.north - 15, z1: PZ_FACE.north - 2 },
+    ];
     /* Pale enough to be a city and not a shadow: at #5d5750 a vertical face
        took less than half the light the ground did under a noon sun, and three
        ranks of them read as one black band under a blue sky. */
@@ -1198,9 +1204,13 @@ export function buildPlaza(anisotropy: number): BuiltArea {
     /* Each block goes into the ground its own depth: buried the same metre,
        a hundred and eight of them shared one underside at y = −1. */
     const piece = (w: number, h: number, d: number, x: number, z: number) => {
-      if (x + w / 2 > KEEP.x0 && x - w / 2 < KEEP.x1
-          && z + d / 2 > KEEP.z0 && z - d / 2 < KEEP.z1) return;
+      /* Drawn before the test, never after: `rnd()` is a sequence, so a block
+         that returns early without taking its number shifts every block after
+         it — add one box to keep out of and the whole city moves, and two of
+         them come out buried to the same depth sharing an underside. */
       const sink = 1 + rnd() * 3;
+      if (KEEP.some((k) => x + w / 2 > k.x0 && x - w / 2 < k.x1
+                        && z + d / 2 > k.z0 && z - d / 2 < k.z1)) return;
       put(w, h + sink, d, city, x, (h + sink) / 2 - sink, z,
           { cast: false, group: `city${x.toFixed(0)}:${z.toFixed(0)}` });
     };
@@ -1296,6 +1306,51 @@ export function buildPlaza(anisotropy: number): BuiltArea {
        */
       const l = new THREE.PointLight('#ffbe78', 190, reach, 2);
       l.position.set(PZ_HIGH + k, 4.4, sz + at + 0.5);
+      root.add(l);
+      lights.push(l);
+    }
+  }
+
+  /*
+   * And Central Towers, north of the way out of the north range.
+   *
+   * The one way out of this square that had no box of its own: what filled its
+   * gateway was whichever block of the city rank happened to stand behind it,
+   * which is a flat grey slab, and the sign over the arch said CENTRAL TOWERS
+   * above a wall. What stands in it now is the cross street the gate actually
+   * opens on to and the first building of that ward — a plinth, a string, and
+   * courses of glass — with a standard burning on the kerb.
+   */
+  {
+    const sz = PZ_FACE.north - 4;
+    const skin = tiled(matt(own, '#ffffff', renderTex), 3);
+    const glass = matt(own, '#5d686c');
+    /* This one opens *north*: the back is thin in z and the returns thin in x,
+       the same way round as the school's and mirrored in sign. */
+    const BACK = sz - 9.4;
+    const SIDE = 9.9;
+    put(21.4, 16, 2.6, skin, PZ_TOW, 7, BACK);
+    for (const s of [-1, 1] as const) {
+      put(2.6, 16.7, 9.4, skin, PZ_TOW + s * SIDE, 7.05, sz - 4.7);
+    }
+    put(23.4, 1.4, 11.4, matt(own, '#2c2f33'), PZ_TOW, 16, sz - 4.9);
+    slab(17.6, 10, PZ_TOW, PZ_KERB + 0.02, sz - 4.6, setts);
+    put(19, 0.16, 0.5, kerb, PZ_TOW, PZ_KERB + 0.08, sz - 2.2, { cast: false });
+    /* The building at the end of it, on the box's own back. */
+    {
+      const F = BACK + 1.3;
+      put(20, 1.3, 0.6, kerb, PZ_TOW, PZ_KERB + 0.65, F + 0.3);
+      put(20, 0.42, 0.5, kerb, PZ_TOW, 6.5, F + 0.25);
+      for (const [y, h] of [[3.6, 2.4], [8.9, 2.6], [12.2, 2.6]] as const) {
+        put(17, h, 0.4, glass, PZ_TOW, y, F + 0.2);
+      }
+    }
+    for (const [k, at, reach] of [[5.5, -5.5, 34], [-4.6, -1.8, 26]] as const) {
+      put(0.34, 4.6, 0.34, iron, PZ_TOW + k, 2.3 + PZ_KERB, sz + at);
+      put(0.9, 0.3, 0.9, iron, PZ_TOW + k, 4.75 + PZ_KERB, sz + at);
+      put(0.8, 0.12, 0.8, lampGlass, PZ_TOW + k, 4.55 + PZ_KERB, sz + at);
+      const l = new THREE.PointLight('#ffbe78', 190, reach, 2);
+      l.position.set(PZ_TOW + k, 4.4, sz + at - 0.5);
       root.add(l);
       lights.push(l);
     }

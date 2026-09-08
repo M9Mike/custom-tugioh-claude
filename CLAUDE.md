@@ -168,6 +168,33 @@ is a duelist stuck against thin air. A flight now has to *gain height* to pass
 `npm run stairs`, and that rule found two more flights that were never being
 climbed.
 
+**A rise over 200 mm is a staircase with no way up it.** The same rule that
+makes the side of a flight a wall — a platform more than a stride above you is
+the face of a step — makes the tread *two above the one you are on* a wall the
+moment two rises exceed `CLIMB`. That wall stands one going ahead of you and you
+are 380 mm wide, so at Central Towers' 205 and 215 mm it was inside your own
+body: the two grand flights out of the sunken forecourt could not be climbed at
+all, and the flight out of each arm stopped you on its second step. Under 200 mm
+the first wall is three treads up, two goings away, and a going is never that
+short. Every other stair in the city was already 180. `npm run stairs` said
+`+0.43 m` and passed it, because `GAINED` only asks that she moved *some* height
+— so `flightPlatforms` now refuses to build a flight it knows you cannot climb,
+which is a failure at import time, in every check and in the build.
+
+**A floor is any number `groundAt` will answer, and two of them are nobody's.**
+`groundAt` cannot go below the base plate, so at Central Towers — whose whole
+site stands six metres up so a forecourt can be sunk into it — every column with
+no platform in it answers *nought*, and nought is under the arms' staircases:
+the fill walked twelve metres up the basement inside the drawn stone of every
+tread. The other is a platform you drew for one place that keeps going into
+another: the canyon's pavement runs on under both podiums, which is harmless
+where the podium is solid stone and a trap where it is hollow — inside a lobby
+it was a second floor 300 mm under the real one, drawn nowhere, hanging over an
+open stairwell, and it was also a wall standing across the arm's flight where
+the treads came up past four metres. `footing` is satisfied by *a* floor and
+both of these are floors. Cut a platform where the thing above it stops, and
+give a mass you can walk under a floor of its own or no floor at all.
+
 **A floor nobody can reach is a floor nobody has looked at.** All twenty-two of
 Domino High's vantages were on the ground, because a save carries x, z and a
 facing but no floor and an upstairs vantage photographs the room underneath it.

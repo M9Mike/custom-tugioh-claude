@@ -222,6 +222,23 @@ async function main() {
     let worstSunk = '';
     let worstFloat = '';
     let firstHole = '';
+    /*
+     * And where they are, gathered into places.
+     *
+     * One cell out of four hundred thousand is a number you can act on; the
+     * *first* of sixteen thousand is a number you can only stare at. `walls`
+     * has clustered its faults since the day it was written and this is that,
+     * because a fault list is meant to be looked at rather than reasoned
+     * about — and a first pass at a new area is sixteen thousand cells in a
+     * handful of places, not sixteen thousand places.
+     */
+    const spots: { x: number; z: number; n: number; drawn: number; told: number; kind: string }[] = [];
+    const note = (kind: string, x: number, z: number, drawn: number, told: number) => {
+      const near = spots.find((k) => k.kind === kind && Math.abs(k.x - x) < 8 && Math.abs(k.z - z) < 8
+                                     && Math.abs(k.drawn - k.told - (drawn - told)) < 0.03);
+      if (near) near.n++;
+      else spots.push({ x, z, n: 1, drawn, told, kind });
+    };
 
     for (const p of cells) {
       /*
@@ -248,11 +265,13 @@ async function main() {
       const diff = drawn - told;
       if (diff > TOLERANCE) {
         sunk++;
+        note('inside', p.x, p.z, drawn, told);
         if (!worstSunk) {
           worstSunk = `(${p.x.toFixed(2)}, ${p.z.toFixed(2)}) drawn at ${drawn.toFixed(3)}, told ${told.toFixed(3)}`;
         }
       } else if (diff < -TOLERANCE) {
         floating++;
+        note('over', p.x, p.z, drawn, told);
         if (!worstFloat) {
           worstFloat = `(${p.x.toFixed(2)}, ${p.z.toFixed(2)}) drawn at ${drawn.toFixed(3)}, told ${told.toFixed(3)}`;
         }
@@ -266,6 +285,16 @@ async function main() {
           sunk ? `${sunk} cell(s), worst ${worstSunk}` : '');
     check(floating === 0, `${id}: and never hovering above it`,
           floating ? `${floating} cell(s), worst ${worstFloat}` : '');
+    if (spots.length) {
+      spots.sort((a, b) => b.n - a.n);
+      for (const k of spots.slice(0, 14)) {
+        console.log(`       ${String(k.n).padStart(6)} cells  ${k.kind === 'inside' ? 'feet in ' : 'hovering'}`
+                    + ` around ${k.x.toFixed(1)}, ${k.z.toFixed(1)}`
+                    + `  drawn ${k.drawn.toFixed(3)} told ${k.told.toFixed(3)}`
+                    + `  (${(k.drawn - k.told >= 0 ? '+' : '') + (k.drawn - k.told).toFixed(3)})`);
+      }
+      if (spots.length > 14) console.log(`       …and ${spots.length - 14} more place(s)`);
+    }
   }
 
   await browser.close();

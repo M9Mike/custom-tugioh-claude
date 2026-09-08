@@ -40,6 +40,16 @@ interface Shot {
    * vantage, which keeps the floor she has climbed to.
    */
   climb?: { x: number; z: number; facing: number; upTo: number };
+  /**
+   * Photograph where the walk stopped, without the teleport.
+   *
+   * `__teleport` re-grounds with `standingOn`, which answers from the area's
+   * street — so it can put her on a floor she has climbed to and can never put
+   * her on one she has walked *down* to. Central Towers' arms run six metres
+   * under the canyon's pavement, and every teleport into them landed her back
+   * up on the pavement.
+   */
+  stay?: boolean;
 }
 
 /** North-east is where +x meets −z: `facing` is a yaw, 0 down +z, a quarter turn to +x. */
@@ -69,7 +79,10 @@ const SHOTS: Shot[] = [
   { name: 'plaza, the north leg of the loop', area: 'station-plaza', x: -19, z: -40, facing: E },
   { name: 'plaza, the south leg of the loop', area: 'station-plaza', x: 10, z: 40, facing: W },
   { name: 'plaza, the taxi rank', area: 'station-plaza', x: 44, z: -10, facing: W },
-  { name: 'plaza, the way to Central Towers', area: 'station-plaza', x: -12, z: -46, facing: N },
+  /* At x 53, which is where `PZ_TOW` actually puts it. At −12 this vantage
+     photographed a stretch of the north range's shopfronts for as long as the
+     way to the towers has existed. */
+  { name: 'plaza, the way to Central Towers', area: 'station-plaza', x: 53, z: -46, facing: N },
   { name: 'plaza, the way to the City Library', area: 'station-plaza', x: 52, z: -24, facing: E },
   { name: 'plaza, the way to Civic Square', area: 'station-plaza', x: 16, z: 46, facing: S },
   /* The one you can walk through. Written last and left out of this list,
@@ -109,20 +122,44 @@ const SHOTS: Shot[] = [
   /* Central Towers: in at the gate, down the canyon, the hole, both lobbies,
      a gallery, the deck, the arms, and one standing at each way out. */
   { name: 'towers, in at the gate', area: 'central-towers', x: 0, z: 88, facing: N },
+  /* Standing in the cross street looking back at the only way out, which is
+     the one thing no check can have an opinion about. */
+  { name: 'towers, the way back to the plaza', area: 'central-towers', x: 0, z: 82, facing: S },
   { name: 'towers, up the canyon', area: 'central-towers', x: 0, z: 64, facing: N },
   { name: 'towers, down the canyon', area: 'central-towers', x: 0, z: -64, facing: S },
   { name: 'towers, over the forecourt', area: 'central-towers', x: 0, z: 30, facing: N },
   { name: 'towers, in the forecourt', area: 'central-towers', x: 4, z: 8, facing: N, floor: 0,
     climb: { x: 0, z: 30, facing: N, upTo: -1 } },
-  { name: 'towers, at the west doors', area: 'central-towers', x: -14, z: 16, facing: W },
-  { name: 'towers, at the east doors', area: 'central-towers', x: 14, z: -16, facing: E },
-  { name: 'towers, the west lobby', area: 'central-towers', x: -34, z: 16, facing: W, floor: 6.45 },
+  /* Out in the canyon, not on the well's own parapet: at 14 the duelist is
+     inside the rail round the hole and there is nowhere to stand. */
+  { name: 'towers, at the west doors', area: 'central-towers', x: -18, z: 16, facing: W },
+  { name: 'towers, at the east doors', area: 'central-towers', x: 18, z: -16, facing: E },
+  /* Clear of the open stair's own strings: at −34 she stands between them and
+     the camera cannot get past the near one — 1.09 m of distance and the frame
+     is the floorboards. */
+  /* Back from the open stair and looking at it, not into the side of it: at
+     −34 she stands between its strings and the camera cannot get out; at −28
+     she is close enough that the frame is nothing but its balusters. */
+  { name: 'towers, the west lobby', area: 'central-towers', x: -45, z: 16, facing: E, floor: 6.45 },
   { name: 'towers, the east lobby', area: 'central-towers', x: 34, z: -16, facing: E, floor: 6.45 },
+  /* The gallery, the stairwell and the underpass — three floors of this
+     building that no frame had ever been taken on. */
+  { name: 'towers, the west gallery', area: 'central-towers', x: -35, z: 24, facing: N,
+    climb: { x: -35, z: 2, facing: S, upTo: 12.3 }, floor: 12.4 },
+  { name: 'towers, down the stairwell', area: 'central-towers', x: -28, z: 0, facing: E },
+  /* Walked into, not teleported into: it is under the pavement, and a save
+     carries no floor. She stops on the flight's first tread. */
+  { name: 'towers, in the arm', area: 'central-towers', x: -20, z: 0, facing: W,
+    climb: { x: -14, z: 0, facing: W, upTo: 0.15 }, stay: true, floor: 0 },
+  { name: 'towers, on the deck', area: 'central-towers', x: 40, z: 40, facing: W,
+    climb: { x: 4, z: 29.8, facing: E, upTo: 13.5 }, floor: 13.6 },
   { name: 'towers, the colonnade', area: 'central-towers', x: 94, z: 0, facing: N },
   { name: 'towers, the alley', area: 'central-towers', x: -94, z: 0, facing: N },
   { name: 'towers, the north cross street', area: 'central-towers', x: 0, z: -86, facing: E },
-  { name: 'towers, the north-west corner', area: 'central-towers', x: -110, z: -90, facing: SE },
-  { name: 'towers, the south-east corner', area: 'central-towers', x: 110, z: 90, facing: NW },
+  /* In the cross street where the alley meets it. The site's actual corners are
+     inside the blocks that close the horizon, so nobody can stand in them. */
+  { name: 'towers, the north-west corner', area: 'central-towers', x: -94, z: -88, facing: SE },
+  { name: 'towers, the south-east corner', area: 'central-towers', x: 94, z: 88, facing: NW },
   { name: 'high, in at the gate', area: 'domino-high', x: 0, z: -76, facing: S },
   { name: 'high, up the drive', area: 'domino-high', x: 0, z: -62, facing: S },
   { name: 'high, the bike sheds', area: 'domino-high', x: 50, z: -66, facing: E },
@@ -348,10 +385,12 @@ async function main() {
       await walkUntil(page, 240_000, async () => (await page.evaluate(() =>
         (window as unknown as { __probe?: { y: number } }).__probe?.y ?? 0
       ).catch(() => 0)) >= upTo);
-      await page.evaluate(({ x, z, facing }) => {
-        (window as unknown as { __teleport?: (a: number, b: number, c: number) => void })
-          .__teleport?.(x, z, facing);
-      }, { x: s.x, z: s.z, facing: s.facing });
+      if (!s.stay) {
+        await page.evaluate(({ x, z, facing }) => {
+          (window as unknown as { __teleport?: (a: number, b: number, c: number) => void })
+            .__teleport?.(x, z, facing);
+        }, { x: s.x, z: s.z, facing: s.facing });
+      }
       await page.waitForTimeout(700);
     }
     await clear(page);

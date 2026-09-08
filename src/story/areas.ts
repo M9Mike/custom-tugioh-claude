@@ -1008,6 +1008,47 @@ export const STEP_LANE_CLIMB: Run[] = [
 ];
 
 /**
+ * The highest step you can be lifted onto in one frame.
+ *
+ * A stair riser is 18 cm and a kerb is 13, so 40 clears everything the world
+ * has and is far below a storey. It is what separates "walked up a step" from
+ * "is standing under a gallery four metres overhead".
+ */
+const CLIMB = 0.4;
+
+/**
+ * And the hair of tolerance that stops a tread landing exactly *on* the line.
+ *
+ * Domino High's stair towers rise two hundred millimetres a tread and `CLIMB`
+ * is four hundred, so every second tread is exactly one stride above the one
+ * you are standing on — and `0.3 + 0.2 * 3` is not `0.9`, it is
+ * `0.9000000000000001`. `0.9000000000000001 <= 0.9` is false, so the tread she
+ * was about to step on stopped being a floor and became "a step you cannot
+ * climb", which `settle` treats as a wall: it pushed her back down the stairs.
+ * Both towers were unclimbable and the upper floor of the school could not be
+ * reached at all.
+ *
+ * Every gate was green. `stairs` measured her feet against `groundAt` asked
+ * from the height the game itself reported, which agrees with the game by
+ * construction; `footing` only ever asks about places you can already stand;
+ * and `walls` compares collision with what is drawn, which here matched.
+ *
+ * `groundAt` and `settle` both read this, and they have to read the *same*
+ * number: a tread one will put her on and the other will not let her reach is
+ * a duelist stuck against thin air.
+ */
+const REACH = CLIMB + 1e-6;
+
+/**
+ * The shallowest tread `npm run footing` will take for the floor.
+ *
+ * Its own number, kept here because `flightPlatforms` refuses to build a
+ * flight the check could not see the floor of — a going under this is a stair
+ * a duelist stands on air all the way up.
+ */
+const FOOTHOLD = 0.3;
+
+/**
  * A run of ground as things to stand on, level or climbing, along either axis.
  *
  * Step Lane needed this along x and the shrine needs it along z, which is the
@@ -1044,6 +1085,35 @@ export function flightPlatforms(o: {
 
   const steps = Math.round(Math.abs(o.to - o.from) / rise);
   const tread = span / steps;
+  /*
+   * A flight you cannot climb is not a flight, and it does not get built.
+   *
+   * `settle` makes a platform more than a stride over your head the face of a
+   * step — that is what stops you walking through the side of a staircase.
+   * Standing on one tread, the first tread that is over `REACH` is therefore a
+   * wall standing across the flight, and it is `k` goings ahead of you where
+   * `k` is how many treads fit inside a stride. At a rise of 0.205 that is one
+   * going ahead, and a going is about as wide as a duelist, so she could not
+   * get past it: two of Central Towers' flights had no way up them at all and
+   * every gate was green. Under 0.2 the wall is two goings away and no going
+   * in this city is 190 mm.
+   *
+   * Thrown rather than reported, because this is not a thing to notice later:
+   * it fails the build, every check and the game itself, at import.
+   */
+  const actual = Math.abs(o.to - o.from) / steps;
+  if (2 * actual > REACH) {
+    throw new Error(
+      `flightPlatforms: a rise of ${actual.toFixed(3)} m is a flight with no way up it `
+      + `— ${Math.abs(o.to - o.from).toFixed(2)} m in ${steps} steps along ${o.along} `
+      + `from ${o.start} to ${o.end}. Keep it under ${(REACH / 2).toFixed(3)}.`);
+  }
+  if (Math.abs(tread) < FOOTHOLD) {
+    throw new Error(
+      `flightPlatforms: a going of ${Math.abs(tread).toFixed(3)} m is under FOOTHOLD `
+      + `— ${steps} steps in ${Math.abs(span).toFixed(2)} m along ${o.along}. `
+      + `A tread that shallow is not the floor.`);
+  }
   const out: Platform[] = [];
   for (let i = 0; i < steps; i++) {
     out.push(put(
@@ -3964,11 +4034,33 @@ export const CT_DOOR_HALF = 4;
  */
 export const CT_WELL = { x0: -16, x1: 16, z0: -16, z1: 16 };
 export const CT_ARM = { z0: -5, z1: 5 };
-export const CT_ARM_W = { x0: -28, x1: -16 };
-export const CT_ARM_E = { x0: 16, x1: 28 };
+export const CT_ARM_W = { x0: -32, x1: -16 };
+export const CT_ARM_E = { x0: 16, x1: 32 };
+/** How far along the arm you walk on the flat before the flight starts. */
+export const CT_ARM_FLAT = 4;
 
+/**
+ * **A rise of two hundred millimetres, and not one more.**
+ *
+ * `settle` treats a platform more than a stride above you as the face of a
+ * step — that is what makes the side of a staircase a wall you cannot walk
+ * through. Stand on tread n: tread n+1 is a floor if it is within `CLIMB`,
+ * and the first tread that is *not* is a wall standing across the flight. At a
+ * rise of 0.205 that wall is tread n+2, which is one going ahead — and one
+ * going was 0.38, which is exactly `PLAYER_RADIUS`. So she could not reach the
+ * next tread, and the two grand flights out of the forecourt were six metres
+ * of stone with no way up them. The arm's, at 0.215, stopped her on the second
+ * step.
+ *
+ * Under 0.2 the first wall is tread n+3, two goings ahead, and two goings are
+ * three quarters of a metre against a body's 0.38. Everything else in the city
+ * climbs at 0.18 and none of this was ever visible.
+ *
+ * `npm run stairs` said `+0.43 m` and passed it, which is what `GAINED` being
+ * five centimetres buys you.
+ */
 /** The two grand flights down into the forecourt, north and south of it. */
-export const CT_DROP = { half: 13, run: 11.4, rise: 0.205 };
+export const CT_DROP = { half: 13, run: 11.4, rise: 0.19 };
 export const CT_DROP_N = { start: -27.4, end: -16 };
 export const CT_DROP_S = { start: 27.4, end: 16 };
 /**
@@ -3977,9 +4069,102 @@ export const CT_DROP_S = { start: 27.4, end: 16 };
  * Landing *beside* the lobby floor, never underneath it: `settle` treats a
  * platform more than a stride above you as the face of a step, so a flight
  * that runs under the floor it is climbing to is a flight that pushes you
- * sideways off itself. The lobby's floor plate is cut round this slot.
+ * sideways off itself. The lobby's floor is cut round the head of it.
+ *
+ * Twelve metres and not eleven and a half, so that the top tread lands *on*
+ * the lobby floor's edge: at 11.5 it stopped half a metre short and the strip
+ * between was a hole with a pavement six metres wide showing through it.
  */
-export const CT_RISE = { half: 3, run: 11.5, rise: 0.215 };
+/*
+ * As wide as the arm it is in, and not six metres in a corridor of ten.
+ *
+ * The two metres either side of it were basement floor — `groundAt` cannot
+ * answer below nought and the site's bottom is nought, so they were floor
+ * whether anything was drawn there or not — and from them the fill walked
+ * straight in under the staircase and along the whole twelve metres of it,
+ * inside the drawn stone. Three hundred and thirty cells. Filling the corridor,
+ * every column in it has a tread over it and there is nowhere beside the
+ * flight to be.
+ */
+export const CT_RISE = { half: (CT_ARM.z1 - CT_ARM.z0) / 2, run: 12, rise: 0.19 };
+/**
+ * How much of the lobby floor is left open at the head of that flight.
+ *
+ * Enough that the floor is never between a stride and a stride-and-a-half over
+ * the treads, which is the band `settle` calls a wall: at six metres the floor
+ * is three and a quarter metres over the tread at the opening's edge. The rest
+ * of the flight runs under a floor too high to be in the way, which is what a
+ * stair in a basement does.
+ */
+export const CT_SLOT = 6;
+
+/**
+ * The two lobbies, described once.
+ *
+ * `side` is which way the tower faces the canyon — −1 for the west one, whose
+ * doors face east. `head` is where its arm's flight tops out, `face` the line
+ * of its glass. Written twice, the east lobby got the west one's mirror
+ * wherever the mirror was forgotten: a floor nought metres wide, a gallery
+ * down the inside of its own curtain wall. Both the collision below and
+ * `world/towers.ts` read this list now.
+ */
+export const CT_LOBBIES = [
+  { l: CT_WLOBBY, side: -1 as const, head: CT_ARM_W.x0, face: CT_WLOBBY.x1,
+    back: CT_WLOBBY.x0, door: CT_WDOOR },
+  { l: CT_ELOBBY, side: 1 as const, head: CT_ARM_E.x1, face: CT_ELOBBY.x0,
+    back: CT_ELOBBY.x1, door: CT_EDOOR },
+];
+
+/** Two numbers as a low-to-high pair, so a mirrored pair can share its code. */
+const span = (a: number, b: number): [number, number] =>
+  a < b ? [a, b] : [b, a];
+
+interface Box { x0: number; x1: number; z0: number; z1: number }
+
+/** A rectangle with rectangles cut out of it, as the pieces that are left. */
+function carve(r: Box, holes: Box[]): Box[] {
+  let out: Box[] = [r];
+  for (const h of holes) {
+    const next: Box[] = [];
+    for (const b of out) {
+      const x0 = Math.max(b.x0, h.x0), x1 = Math.min(b.x1, h.x1);
+      const z0 = Math.max(b.z0, h.z0), z1 = Math.min(b.z1, h.z1);
+      if (x0 >= x1 || z0 >= z1) { next.push(b); continue; }
+      if (b.x0 < x0) next.push({ ...b, x1: x0 });
+      if (x1 < b.x1) next.push({ ...b, x0: x1 });
+      if (b.z0 < z0) next.push({ x0, x1, z0: b.z0, z1: z0 });
+      if (z1 < b.z1) next.push({ x0, x1, z0: z1, z1: b.z1 });
+    }
+    out = next;
+  }
+  return out.filter((b) => b.x1 - b.x0 > 0.02 && b.z1 - b.z0 > 0.02);
+}
+
+/**
+ * A rectangle of pavement, with the two lobbies cut out of it.
+ *
+ * The pavement runs from the well to the site's edge, which puts it *under*
+ * both podiums — harmless where the podium is solid, because you can never be
+ * there, and a trap where it is hollow. Inside a lobby it is a second floor
+ * thirty centimetres below the real one, drawn nowhere, and `settle` calls a
+ * platform between a stride and a stride and a half over your head the face of
+ * a step: so it was also a wall standing across the arm's flight at the point
+ * where the treads came up past four metres. You climbed nine steps out of the
+ * basement and stopped. Nothing sees this — `footing` is satisfied by any
+ * floor, and this is a floor.
+ *
+ * `world/towers.ts` draws the same rectangles through the same cut.
+ */
+export function pavingPieces(r: { x: number; z: number; hw: number; hd: number }): Box[] {
+  return carve({ x0: r.x - r.hw, x1: r.x + r.hw, z0: r.z - r.hd, z1: r.z + r.hd },
+               [CT_WLOBBY, CT_ELOBBY]);
+}
+
+const pavement = (r: { x: number; z: number; hw: number; hd: number }): Platform[] =>
+  pavingPieces(r).map((b) => ({
+    x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2,
+    hw: (b.x1 - b.x0) / 2, hd: (b.z1 - b.z0) / 2, y: CT_WALK,
+  }));
 /** The open stair in each lobby, up to the gallery round two of its sides. */
 export const CT_STAIR = { half: 2.4, run: 15.6, rise: 0.18 };
 export const CT_GALLERY = 8;
@@ -3991,7 +4176,13 @@ export const CT_GALLERY = 8;
  */
 export const CT_DECK_AT = { x0: 22, x1: 60, z0: 20, z1: 60 };
 export const CT_UP = { half: 2.4, run: 14, rise: 0.18 };
-export const CT_UP_AT = 30;
+/*
+ * Set so the deck flight's near cheek lands exactly on the head of the canyon
+ * flight: a hundredth either way leaves a strip of pavement two hundred
+ * millimetres deep between them, and a strip that thin is a floor the checks
+ * cannot see under two hundred cells of duelist.
+ */
+export const CT_UP_AT = CT_DROP_S.start + CT_UP.half;
 
 /**
  * Central Towers.
@@ -4025,33 +4216,56 @@ const CENTRAL_TOWERS: Area = {
      * centimetres lower, and it would roof the flights down into the forecourt
      * — you would walk out over the top of them on a floor that is not there.
      */
-    { x: 0, z: -95, hw: CT_IN.x, hd: 3, y: CT_WALK },
-    { x: 0, z: 95, hw: CT_IN.x, hd: 3, y: CT_WALK },
+    ...pavement({ x: 0, z: -95, hw: CT_IN.x, hd: 3 }),
+    ...pavement({ x: 0, z: 95, hw: CT_IN.x, hd: 3 }),
     /* The two cross streets. Their carriageway is a floor in its own right
        here: with the whole site standing six metres up, the road is no longer
        the base plate and a street with no platform on it is the bottom of the
        world. */
     ...[-1, 1].map((s) => ({ x: 0, z: s * 86, hw: CT_IN.x, hd: 6, y: CT_ROAD })),
     /* The block, north of the north flight and south of the south one. */
-    { x: 0, z: (-80 + CT_DROP_N.start) / 2, hw: CT_IN.x, hd: (CT_DROP_N.start + 80) / 2, y: CT_WALK },
-    { x: 0, z: (80 + CT_DROP_S.start) / 2, hw: CT_IN.x, hd: (80 - CT_DROP_S.start) / 2, y: CT_WALK },
+    ...pavement({ x: 0, z: (-80 + CT_DROP_N.start) / 2, hw: CT_IN.x,
+      hd: (CT_DROP_N.start + 80) / 2 }),
+    /* Cut round the deck's flight, which climbs out of this band: pavement
+       over the top of a stair is a floor you walk out along inside it. */
+    ...pavement({ x: 0, z: (80 + CT_UP_AT + CT_UP.half) / 2, hw: CT_IN.x,
+      hd: (80 - CT_UP_AT - CT_UP.half) / 2 }),
+    ...[-1, 1].flatMap((s) => pavement({
+      x: s < 0 ? (-CT_IN.x + CT_DECK_AT.x0 - CT_UP.run) / 2 : (CT_DECK_AT.x0 + CT_IN.x) / 2,
+      z: CT_UP_AT, hd: CT_UP.half,
+      hw: s < 0 ? (CT_IN.x + CT_DECK_AT.x0 - CT_UP.run) / 2 : (CT_IN.x - CT_DECK_AT.x0) / 2,
+    })),
+    /* Abutting the flight exactly, not two hundred millimetres clear of it:
+       the margin is a strip with no floor in it, and the fill drops through it
+       on to the base plate and calls the whole site walkable six metres down.
+       Four hundred thousand cells of that. */
+    ...pavement({ x: 0, z: (CT_DROP_S.start + CT_UP_AT - CT_UP.half) / 2, hw: CT_IN.x,
+      hd: (CT_UP_AT - CT_UP.half - CT_DROP_S.start) / 2 }),
     /* Beside each flight, and beside the well. */
-    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => [-1, 1].map((s) => ({
+    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => [-1, 1].flatMap((s) => pavement({
       x: s * (CT_IN.x + CT_DROP.half) / 2, z: (f.start + f.end) / 2,
-      hw: (CT_IN.x - CT_DROP.half) / 2, hd: Math.abs(f.end - f.start) / 2, y: CT_WALK,
+      hw: (CT_IN.x - CT_DROP.half) / 2, hd: Math.abs(f.end - f.start) / 2,
     }))),
-    ...[-1, 1].map((s) => ({
+    ...[-1, 1].flatMap((s) => pavement({
       x: s * (CT_IN.x + CT_WELL.x1) / 2, z: 0,
-      hw: (CT_IN.x - CT_WELL.x1) / 2, hd: CT_WELL.z1, y: CT_WALK,
+      hw: (CT_IN.x - CT_WELL.x1) / 2, hd: CT_WELL.z1,
     })),
     /* The sunken forecourt, and the two arms out of it. Its floor is the base
        plate, so nothing here needs a platform — but declaring it says what it
        is, and `hasStoreys` reads this list. */
     { x: 0, z: 0, hw: CT_WELL.x1, hd: CT_WELL.z1, y: CT_LOW },
-    ...[CT_ARM_W, CT_ARM_E].map((a) => ({
-      x: (a.x0 + a.x1) / 2, z: (CT_ARM.z0 + CT_ARM.z1) / 2,
-      hw: (a.x1 - a.x0) / 2, hd: (CT_ARM.z1 - CT_ARM.z0) / 2, y: CT_LOW,
-    })),
+    /*
+     * The flat part of each arm — and only the flat part.
+     *
+     * Run under the flight as well and you can walk beneath your own stairs on
+     * the basement floor, six thousand cells of it, inside the drawn mass of
+     * every tread. Domino High's tower learnt the same thing.
+     */
+    ...[CT_ARM_W, CT_ARM_E].map((a) => (a.x0 < 0
+      ? { x: a.x1 - CT_ARM_FLAT / 2, z: 0, hw: CT_ARM_FLAT / 2,
+          hd: (CT_ARM.z1 - CT_ARM.z0) / 2, y: CT_LOW }
+      : { x: a.x0 + CT_ARM_FLAT / 2, z: 0, hw: CT_ARM_FLAT / 2,
+          hd: (CT_ARM.z1 - CT_ARM.z0) / 2, y: CT_LOW })),
     /* The two grand flights down into the forecourt. */
     ...[CT_DROP_N, CT_DROP_S].flatMap((f) => flightPlatforms({
       along: 'z', start: f.start, end: f.end, from: CT_WALK, to: CT_LOW,
@@ -4064,29 +4278,40 @@ const CENTRAL_TOWERS: Area = {
      * it climbs to is one `settle` pushes you sideways off, because until you
      * are within a stride of it that floor is the face of a step.
      */
-    ...[
-      /* The slot is always the strip on the canyon side, because that is the
-         side the arm's flight comes up through — so the plate is west of it in
-         the west lobby and *east* of it in the east one. Written as one clever
-         mirror it gave the east lobby a floor nought metres wide. */
-      { l: CT_WLOBBY, slot0: CT_WLOBBY.x1 - 6, slot1: CT_WLOBBY.x1, plate: CT_WLOBBY.x0 },
-      { l: CT_ELOBBY, slot0: CT_ELOBBY.x0, slot1: CT_ELOBBY.x0 + 6, plate: CT_ELOBBY.x1 },
-    ].flatMap(({ l, slot0, slot1, plate }) => [
-      { x: (plate + (plate < 0 ? slot0 : slot1)) / 2, z: (l.z0 + l.z1) / 2,
-        hw: Math.abs((plate < 0 ? slot0 : slot1) - plate) / 2,
-        hd: (l.z1 - l.z0) / 2, y: CT_LOBBY },
-      { x: (slot0 + slot1) / 2, z: (CT_ARM.z1 + l.z1) / 2, hw: (slot1 - slot0) / 2,
-        hd: (l.z1 - CT_ARM.z1) / 2, y: CT_LOBBY },
-      { x: (slot0 + slot1) / 2, z: (l.z0 + CT_ARM.z0) / 2, hw: (slot1 - slot0) / 2,
-        hd: (CT_ARM.z0 - l.z0) / 2, y: CT_LOBBY },
-    ]),
+    /*
+     * The opening is the head of the flight and nothing else — six metres by
+     * six, not the arm's whole ten-metre band.
+     *
+     * Cut to the arm's width it left two metres of nothing either side of the
+     * stair, and "nothing" in a lobby is not nothing: the canyon's pavement
+     * platform runs on under the podium, so what you stood on there was a
+     * street thirty centimetres below the floor, drawn nowhere, hanging over
+     * an open stairwell. `footing` is satisfied by any floor and that is a
+     * floor. It is why the checks were all green over a hole.
+     */
+    ...CT_LOBBIES.flatMap(({ l, head, face, side }) => {
+      const [open0, open1] = span(head, head - side * CT_SLOT);
+      const [back0, back1] = span(head, side < 0 ? l.x0 : l.x1);
+      const [strip0, strip1] = span(face, side < 0 ? open1 : open0);
+      const rect = (x0: number, x1: number, z0: number, z1: number): Platform[] =>
+        (x1 - x0 < 0.02 || z1 - z0 < 0.02) ? []
+          : [{ x: (x0 + x1) / 2, z: (z0 + z1) / 2, hw: (x1 - x0) / 2, hd: (z1 - z0) / 2, y: CT_LOBBY }];
+      return [
+        /* The floor behind the stair, the strip between the opening and the
+           glass, and the two pieces either side of the opening. */
+        ...rect(back0, back1, l.z0, l.z1),
+        ...rect(strip0, strip1, l.z0, l.z1),
+        ...rect(open0, open1, CT_RISE.half, l.z1),
+        ...rect(open0, open1, l.z0, -CT_RISE.half),
+      ];
+    }),
     /* And the flights up out of each arm, landing beside those plates. */
     ...flightPlatforms({
-      along: 'x', start: CT_ARM_W.x1, end: CT_ARM_W.x1 - CT_RISE.run,
+      along: 'x', start: CT_ARM_W.x1 - CT_ARM_FLAT, end: CT_ARM_W.x1 - CT_ARM_FLAT - CT_RISE.run,
       from: CT_LOW, to: CT_LOBBY, half: CT_RISE.half, cross: 0, rise: CT_RISE.rise,
     }),
     ...flightPlatforms({
-      along: 'x', start: CT_ARM_E.x0, end: CT_ARM_E.x0 + CT_RISE.run,
+      along: 'x', start: CT_ARM_E.x0 + CT_ARM_FLAT, end: CT_ARM_E.x0 + CT_ARM_FLAT + CT_RISE.run,
       from: CT_LOW, to: CT_LOBBY, half: CT_RISE.half, cross: 0, rise: CT_RISE.rise,
     }),
     /*
@@ -4094,12 +4319,16 @@ const CENTRAL_TOWERS: Area = {
      * up to it — which rises through the void, not under the gallery, for the
      * same reason the arm's flight does not run under the lobby.
      */
-    ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => [
-      { x: (l.x0 + l.x1) / 2, z: l.z1 - CT_GALLERY / 2, hw: (l.x1 - l.x0) / 2,
-        hd: CT_GALLERY / 2, y: CT_MEZZ },
-      { x: l.x0 + CT_GALLERY / 2, z: (l.z0 + l.z1 - CT_GALLERY) / 2, hw: CT_GALLERY / 2,
-        hd: (l.z1 - l.z0 - CT_GALLERY) / 2, y: CT_MEZZ },
-    ]),
+    /* Along the back wall, not the glass: the second arm of the L belongs on
+       masonry, and written `l.x0` for both lobbies the east one ran its
+       gallery down the inside of its own curtain wall. */
+    ...[{ l: CT_WLOBBY, back: CT_WLOBBY.x0 }, { l: CT_ELOBBY, back: CT_ELOBBY.x1 }]
+      .flatMap(({ l, back }) => [
+        { x: (l.x0 + l.x1) / 2, z: l.z1 - CT_GALLERY / 2, hw: (l.x1 - l.x0) / 2,
+          hd: CT_GALLERY / 2, y: CT_MEZZ },
+        { x: back + (back < 0 ? 1 : -1) * CT_GALLERY / 2, z: (l.z0 + l.z1 - CT_GALLERY) / 2,
+          hw: CT_GALLERY / 2, hd: (l.z1 - l.z0 - CT_GALLERY) / 2, y: CT_MEZZ },
+      ]),
     ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => flightPlatforms({
       along: 'z', start: l.z1 - CT_GALLERY - CT_STAIR.run, end: l.z1 - CT_GALLERY,
       from: CT_LOBBY, to: CT_MEZZ, half: CT_STAIR.half,
@@ -4143,8 +4372,12 @@ const CENTRAL_TOWERS: Area = {
       hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WLOBBY.z0 - CT_WEST.z0) / 2, tall: true },
     { x: (CT_WLOBBY.x0 + CT_WEST.x1) / 2, z: (CT_WLOBBY.z1 + CT_WEST.z1) / 2,
       hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WEST.z1 - CT_WLOBBY.z1) / 2, tall: true },
+    /* From the lobby floor up, and not from the bottom of the world: the arm
+       runs in under this wall six metres below it, and a wall with no `from`
+       is a wall at every height. It stood across the tunnel and the flight out
+       of the forecourt ended in it. */
     ...wallZ(CT_WLOBBY.x1 + 0.5, 0.5, CT_WLOBBY.z0 - 1, CT_WLOBBY.z1 + 1,
-      [[CT_WDOOR - CT_DOOR_HALF, CT_WDOOR + CT_DOOR_HALF]]),
+      [[CT_WDOOR - CT_DOOR_HALF, CT_WDOOR + CT_DOOR_HALF]], { from: CT_LOBBY }),
     /* And the east tower's, the same the other way about — but its southern
        third is the deck's mass, which is `to`-limited so its roof can be
        stood on. A tall solid is one you can never be on top of. */
@@ -4158,15 +4391,19 @@ const CENTRAL_TOWERS: Area = {
       hw: (CT_EAST.x1 - CT_DECK_AT.x0) / 2, hd: (CT_DECK_AT.z1 - CT_DECK_AT.z0) / 2,
       to: CT_DECK - 1 },
     ...wallZ(CT_ELOBBY.x0 - 0.5, 0.5, CT_ELOBBY.z0 - 1, CT_ELOBBY.z1 + 1,
-      [[CT_EDOOR - CT_DOOR_HALF, CT_EDOOR + CT_DOOR_HALF]]),
+      [[CT_EDOOR - CT_DOOR_HALF, CT_EDOOR + CT_DOOR_HALF]], { from: CT_LOBBY }),
     /*
      * The well's parapet — a rail round a six-metre hole in the pavement, and
      * nothing at all down in the forecourt: `from` is what says "this is only
      * in the way when you are up on the street".
      */
+    /* Its opening a little wider than the arm that comes through it, so the
+       arm's own walls close the difference and no two faces coincide. */
     ...[-1, 1].flatMap((s) => wallZ(s * (CT_WELL.x1 + 0.4), 0.4,
-      CT_WELL.z0 - 0.8, CT_WELL.z1 + 0.8, [[CT_ARM.z0, CT_ARM.z1]])),
-    ...[CT_WELL.z0, CT_WELL.z1].flatMap((z) => wallX(z + Math.sign(z) * 0.4, 0.4,
+      CT_WELL.z0 - 0.6, CT_WELL.z1 + 0.6, [[CT_ARM.z0 - 0.2, CT_ARM.z1 + 0.2]])),
+    /* Reaching a hair further into the well than the flight cheeks that meet
+       them, so no two of this hole's faces are in one plane. */
+    ...[CT_WELL.z0, CT_WELL.z1].flatMap((z) => wallX(z + Math.sign(z) * 0.35, 0.45,
       CT_WELL.x0 - 0.8, CT_WELL.x1 + 0.8, [[-CT_DROP.half, CT_DROP.half]])),
     /* The still water table the forecourt is built round — half a metre of
        granite kerb, which is over the climb and so is something you walk
@@ -4178,15 +4415,43 @@ const CENTRAL_TOWERS: Area = {
       x: s * (CT_DROP.half + 0.5), z: (f.start + f.end) / 2,
       hw: 0.5, hd: Math.abs(f.end - f.start) / 2, tall: true,
     }))),
+    /* And the two balustrades down the middle of each, which split twenty-six
+       metres of stair into three flights you can light. */
+    ...[CT_DROP_N, CT_DROP_S].flatMap((f) => [-4.5, 4.5].map((x) => ({
+      x, z: (f.start + f.end) / 2,
+      hw: 0.18, hd: Math.abs(f.end - f.start) / 2, tall: true,
+    }))),
     /*
      * The arms, which are corridors in a basement: their walls apply below the
      * street only, or they would be a wall down the middle of the canyon.
      */
     ...[CT_ARM_W, CT_ARM_E].flatMap((a) => [
-      ...[CT_ARM.z0, CT_ARM.z1].map((z) => ({
-        x: (a.x0 + a.x1) / 2, z: z + Math.sign(z) * 0.5, hw: (a.x1 - a.x0) / 2, hd: 0.5,
-        tall: true, to: CT_ROAD - 1,
-      })),
+      /*
+       * In three runs, because one wall is three different things along its
+       * length: under the canyon it must stop below the pavement or it is a
+       * wall down the middle of the street; under the lobby floor it must stop
+       * below that or it is a wall across the lobby; and beside the stairwell
+       * it goes all the way up, because there it *is* the parapet round a hole
+       * in the floor.
+       */
+      ...[CT_ARM.z0, CT_ARM.z1].flatMap((z) => {
+        const side = a.x0 < 0 ? -1 : 1;
+        const face = a.x0 < 0 ? CT_WLOBBY.x1 : CT_ELOBBY.x0;
+        const head = a.x0 < 0 ? a.x0 : a.x1;
+        const [open0, open1] = span(head, head - side * CT_SLOT);
+        const [t0, t1] = span(face, side < 0 ? a.x1 : a.x0);
+        const [s0, s1] = span(face, side < 0 ? open1 : open0);
+        /* Exactly the wall that is drawn — half a metre, not one. It used to
+           be twice as thick and it did not matter while it was underground;
+           beside the stairwell it stands a metre over the lobby floor, and
+           half of it would be a wall of air. */
+        const at = { z: z + Math.sign(z) * 0.25, hd: 0.25, tall: true as const };
+        return [
+          { x: (t0 + t1) / 2, hw: (t1 - t0) / 2, ...at, to: CT_ROAD - 1 },
+          { x: (s0 + s1) / 2, hw: Math.max(0.01, (s1 - s0) / 2), ...at, to: CT_LOBBY - 0.3 },
+          { x: (open0 + open1) / 2, hw: (open1 - open0) / 2, ...at },
+        ];
+      }),
       /* And the far end, past the top of its flight. Without it the basement
          has no wall at that end and you walk out under the whole site on the
          base plate — six metres beneath the pavement, on a floor that is only
@@ -4194,17 +4459,132 @@ const CENTRAL_TOWERS: Area = {
       { x: a.x0 < 0 ? a.x0 - 0.5 : a.x1 + 0.5, z: 0, hw: 0.5, hd: CT_ARM.z1 + 1,
         tall: true, to: CT_ROAD - 1 },
     ]),
+    /*
+     * The balustrade round the stairwell in each lobby floor, which is a hole
+     * six metres square with a flight coming up out of it.
+     *
+     * Three sides: the two long ones and the end. The fourth is the head of
+     * the stair, which is the way in. Standing on the floor beside the
+     * opening without one, a step sideways is a fall of three metres on to
+     * whichever tread is underneath.
+     */
+    ...CT_LOBBIES.flatMap(({ head, side }) => {
+      const [open0, open1] = span(head, head - side * CT_SLOT);
+      return [{
+        x: side < 0 ? open1 + 0.15 : open0 - 0.15, z: 0,
+        hw: 0.1, hd: CT_ARM.z1 + 0.5, from: CT_LOBBY, tall: true,
+      }];
+    }),
+    /* The lift core in each lobby: five metres by fourteen of stone against
+       the back wall, which was drawn and not collided — six thousand cells of
+       duelist walking through it. */
+    ...[{ l: CT_WLOBBY, back: CT_WLOBBY.x0, s: 1 }, { l: CT_ELOBBY, back: CT_ELOBBY.x1, s: -1 }]
+      .map(({ l, back, s: dir }) => ({
+        x: back + dir * 3.2, z: (l.z0 + l.z1) / 2, hw: 2.5, hd: 7, tall: true,
+      })),
+    /*
+     * The courses round each podium, which stand half a metre proud of it.
+     *
+     * A plinth, a string and a cornice all project past the face of the mass
+     * they run round, and the mass's own solid stops at that face — so the
+     * projection is a foot of stone you walk into. A ring of four, cut round
+     * the lobby on the canyon side the way the courses themselves are.
+     */
+    ...[{ b: CT_WEST, l: CT_WLOBBY, face: CT_WEST.x1, back: CT_WEST.x0,
+          end: CT_WEST.z1, from: CT_WEST.x0 },
+        { b: CT_EAST, l: CT_ELOBBY, face: CT_EAST.x0, back: CT_EAST.x1,
+          /* The deck takes over the southern third of the east podium, so its
+             courses stop there: carried on, the face course stood 300 mm proud
+             of the wall right across the head of the deck's own flight and
+             stopped the duelist two treads below the top. The terrace could not
+             be reached at all and every gate was green. */
+          end: CT_DECK_AT.z0, from: CT_ELOBBY.x1 }]
+      .flatMap(({ b, l, face, back, end, from }) => [
+        ...[b.z0, b.z1].map((z) => {
+          const [a0, a1] = end !== b.z1 && z === b.z1 ? [from, b.x1] : [b.x0, b.x1];
+          return {
+            x: (a0 + a1) / 2, z: z + (z === b.z0 ? -0.3 : 0.3),
+            hw: (a1 - a0) / 2 + 0.6, hd: 0.3, tall: true,
+          };
+        }),
+        { x: back + (back === b.x0 ? -0.3 : 0.3), z: (b.z0 + b.z1) / 2,
+          hw: 0.3, hd: (b.z1 - b.z0) / 2, tall: true },
+        ...[[b.z0, l.z0], [l.z1, end]].map(([z0, z1]) => ({
+          x: face + (face === b.x0 ? -0.3 : 0.3), z: (z0 + z1) / 2,
+          hw: 0.3, hd: Math.max(0.01, (z1 - z0) / 2), tall: true,
+        })),
+      ]),
+    /* The colonnade's piers, which is a row of things you walk between. */
+    ...Array.from({ length: Math.ceil((CT_EAST.z1 - CT_EAST.z0 - 4) / 6) }, (_, i) => ({
+      x: CT_ARCADE.x1 - 1.4, z: CT_EAST.z0 + 4 + i * 6, hw: 0.55, hd: 0.55,
+    })),
+    /* Every lamp standard in the open, which is a pole you walk round: four
+       down the canyon, two in the forecourt, two on the deck. */
+    ...[-64, -44, 44, 64].flatMap((z) => [-1, 1].map((s) => ({ x: s * 19, z, hw: 0.3, hd: 0.3 }))),
+    ...[-1, 1].map((s) => ({ x: 12, z: s * 11, hw: 0.3, hd: 0.3 })),
+    /* And eight down the two cross streets. */
+    ...[-1, 1].flatMap((s) => [-80, -30, 30, 80].map((x) => ({ x, z: s * 79, hw: 0.3, hd: 0.3 }))),
+    ...[CT_DECK_AT.z0 + 10, CT_DECK_AT.z1 - 10].map((z) => ({
+      x: CT_DECK_AT.x0 + 5, z, hw: 0.3, hd: 0.3, from: CT_DECK,
+    })),
+    /* The reception counter in each lobby — nine metres of it, drawn and not
+       collided until three thousand cells walked through it. */
+    ...[CT_WLOBBY, CT_ELOBBY].map((l) => ({
+      x: (l.x0 + l.x1) / 2 + (l.x0 < 0 ? -5 : 5),
+      z: (l.z0 + l.z1) / 2 - (l.z1 - l.z0) / 4, hw: 4.7, hd: 1.2,
+    })),
+    /*
+     * The revolving door in each lobby: a centre post and two screens.
+     *
+     * Drawn in bronze and collided with nothing, so the one thing standing in
+     * an eight metre opening was a picture of itself. You go between a screen
+     * and the post — two and a half metres of clear either side, which is how
+     * a revolving door is walked through anyway. Only on the ground floor:
+     * three and a half metres of it, with a gallery six metres over its head.
+     */
+    ...[{ face: CT_WLOBBY.x1, side: -1, at: CT_WDOOR },
+        { face: CT_ELOBBY.x0, side: 1, at: CT_EDOOR }]
+      .flatMap(({ face, side, at }) => [
+        { x: face - side * 0.5, z: at, hw: 0.2, hd: 0.2, to: CT_LOBBY + 3.6 },
+        ...[-1, 1].map((q) => ({
+          x: face - side * 0.5, z: at + q * (CT_DOOR_HALF - 0.6),
+          hw: 0.12, hd: 0.8, to: CT_LOBBY + 3.6,
+        })),
+      ]),
+    /* The two strings of each lobby's open stair: a hundred millimetres either
+       side of the treads, which is what stops you walking through the flight
+       and what holds it up. */
+    ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => [-1, 1].map((s) => ({
+      x: (l.x0 + l.x1) / 2 + 6 + s * (CT_STAIR.half + 0.1),
+      z: l.z1 - CT_GALLERY - CT_STAIR.run / 2,
+      hw: 0.1, hd: CT_STAIR.run / 2, tall: true,
+    }))),
     /* The gallery's edge, in the way only when you are on it. */
     ...[CT_WLOBBY, CT_ELOBBY].flatMap((l) => [
       /* From the inner corner, not from the wall: run it the gallery's whole
          width and it walls the two arms of the L off from each other, and half
          the gallery is somewhere you can see and not reach. */
-      ...wallX(l.z1 - CT_GALLERY - 0.2, 0.2, l.x0 + CT_GALLERY, l.x1,
+      ...wallX(l.z1 - CT_GALLERY - 0.2, 0.2,
+        l.x0 < 0 ? l.x0 + CT_GALLERY : l.x0, l.x0 < 0 ? l.x1 : l.x1 - CT_GALLERY,
         [[(l.x0 + l.x1) / 2 + 6 - CT_STAIR.half, (l.x0 + l.x1) / 2 + 6 + CT_STAIR.half]],
         { from: CT_MEZZ }),
-      { x: l.x0 + CT_GALLERY + 0.2, z: (l.z0 + l.z1 - CT_GALLERY) / 2, hw: 0.2,
+      { x: (l.x0 < 0 ? l.x0 + CT_GALLERY : l.x1 - CT_GALLERY) + (l.x0 < 0 ? 0.2 : -0.2),
+        z: (l.z0 + l.z1 - CT_GALLERY) / 2, hw: 0.2,
         hd: (l.z1 - l.z0 - CT_GALLERY) / 2, tall: true, from: CT_MEZZ },
     ]),
+    /*
+     * The deck flight's cheeks, which are drawn and were not collided.
+     *
+     * Without them the fill steps sideways off the pavement into the middle of
+     * the staircase, finds the tread there two and a half metres over its head
+     * and out of reach, and takes the base plate instead — then walks the whole
+     * site six metres underground. Four hundred thousand cells of it. Every
+     * flight in the open needs a side you cannot step through.
+     */
+    ...[-1, 1].map((s) => ({
+      x: CT_DECK_AT.x0 - CT_UP.run / 2, z: CT_UP_AT + s * (CT_UP.half + 0.15),
+      hw: CT_UP.run / 2, hd: 0.15, tall: true,
+    })),
     /* And the deck's, cut where the flight lands. */
     ...wallZ(CT_DECK_AT.x0 + 0.2, 0.2, CT_DECK_AT.z0, CT_DECK_AT.z1,
       [[CT_UP_AT - CT_UP.half, CT_UP_AT + CT_UP.half]], { from: CT_DECK }),
@@ -4527,37 +4907,6 @@ export function cameraReach(
  * that overlapping rectangles — a step onto a terrace, say — behave the way a
  * player expects rather than the way the list happens to be ordered.
  */
-/**
- * The highest step you can be lifted onto in one frame.
- *
- * A stair riser is 18 cm and a kerb is 13, so 40 clears everything the world
- * has and is far below a storey. It is what separates "walked up a step" from
- * "is standing under a gallery four metres overhead".
- */
-const CLIMB = 0.4;
-
-/**
- * And the hair of tolerance that stops a tread landing exactly *on* the line.
- *
- * Domino High's stair towers rise two hundred millimetres a tread and `CLIMB`
- * is four hundred, so every second tread is exactly one stride above the one
- * you are standing on — and `0.3 + 0.2 * 3` is not `0.9`, it is
- * `0.9000000000000001`. `0.9000000000000001 <= 0.9` is false, so the tread she
- * was about to step on stopped being a floor and became "a step you cannot
- * climb", which `settle` treats as a wall: it pushed her back down the stairs.
- * Both towers were unclimbable and the upper floor of the school could not be
- * reached at all.
- *
- * Every gate was green. `stairs` measured her feet against `groundAt` asked
- * from the height the game itself reported, which agrees with the game by
- * construction; `footing` only ever asks about places you can already stand;
- * and `walls` compares collision with what is drawn, which here matched.
- *
- * `groundAt` and `settle` both read this, and they have to read the *same*
- * number: a tread one will put her on and the other will not let her reach is
- * a duelist stuck against thin air.
- */
-const REACH = CLIMB + 1e-6;
 
 /**
  * How high the ground is at a point — and, in a building with floors, *which*

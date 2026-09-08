@@ -99,15 +99,6 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
   });
-  const context = await browser.newContext({
-    viewport: { width: 440, height: 956 },
-    deviceScaleFactor: 2,
-    hasTouch: true,
-    isMobile: true,
-  });
-  const page = await context.newPage();
-  page.on('pageerror', (err) => check(false, 'the world threw', err.message));
-
   /*
    * `npm run doors -- shrine` for one area's doors, or one door's name.
    *
@@ -121,68 +112,91 @@ async function main() {
     (id) => !only.length || only.some((o) => id.includes(o) || AREAS[id].doors.some((d) => d.id.includes(o)))
   );
   if (only.length) console.log(`  (only ${ids.join(', ')})\n`);
+  /*
+   * A context of its own for each door.
+   *
+   * Twenty-four worlds built on one page is twenty-four WebGL contexts on a
+   * browser that keeps a handful alive, and a dev server that has been
+   * hot-reloading for an hour wedges a long-lived page outright: this check
+   * failed twice in ten runs, always deep inside a long batch, always on a
+   * different door, and never once on its own. That is the shape of the
+   * harness wearing out, not of a door. `stairs` and `walk` were both given
+   * their own page per item for the same reason.
+   */
   for (const id of ids) {
     for (const door of AREAS[id].doors) {
       const from = approach(door);
       const want = arrivalThrough(door, id);
       const partner = partnerOf(door, id);
 
-      await post('/api/story/save', { username: NAME, world: { area: id, ...from } });
-      await enterStory(page, id);
+      const context = await browser.newContext({
+        viewport: { width: 440, height: 956 },
+        deviceScaleFactor: 2,
+        hasTouch: true,
+        isMobile: true,
+      });
+      const page = await context.newPage();
+      page.on('pageerror', (err) => check(false, 'the world threw', err.message));
+      try {
+        await post('/api/story/save', { username: NAME, world: { area: id, ...from } });
+        await enterStory(page, id);
 
-      const start = await waitForArea(page, id, 25000);
-      if (!start || start.area !== id) {
-        check(false, `${id}/${door.id}: the run-up starts in ${id}`, start?.area ?? 'nothing built');
-        continue;
+        const start = await waitForArea(page, id, 25000);
+        if (!start || start.area !== id) {
+          check(false, `${id}/${door.id}: the run-up starts in ${id}`, start?.area ?? 'nothing built');
+          continue;
+        }
+
+        /* Long enough to cover the run-up at walking pace, plus the fade. */
+        /* Until she is through it, or six seconds — see `walkUntil`. */
+        await walkUntil(page, 6000, async () =>
+          (await page.evaluate(() => (window as unknown as { __probe?: { area: string } }).__probe?.area)
+            .catch(() => null)) !== id);
+        const landed = await waitForArea(page, door.to, 12000);
+
+        check(
+          landed?.area === door.to,
+          `${id}/${door.id}: walking into it reaches ${door.to}`,
+          landed ? `stopped in ${landed.area} at ${JSON.stringify(landed.player)}` : 'no probe'
+        );
+        if (landed?.area !== door.to) continue;
+
+        const settled = (await settleCamera(page)) ?? landed;
+        const [px, pz] = settled.player;
+        const off = Math.hypot(px - want.x, pz - want.z);
+        check(off < 1.2, `${id}/${door.id}: and lands where ${partner?.id ?? '?'} says`,
+              `${off.toFixed(2)} m from (${want.x}, ${want.z})`);
+
+        /*
+         * And the camera has somewhere to stand when it gets there.
+         *
+         * `camLift` is what the camera does when it cannot get its distance: it
+         * trades the metres it lost for height and looks down over the shoulder.
+         * Arriving with it already on means the landing was put too close to a
+         * wall, and the player walks through a door into a shot of the top of
+         * their own head — which is what both sides of the Market Row arch did
+         * before they were moved back, and which nothing but this would have
+         * caught.
+         *
+         * ## Rooms are allowed some, streets are not
+         *
+         * A shop eleven metres deep cannot give a camera four and a half metres
+         * from anywhere near its middle, and it is not supposed to: riding a
+         * little higher indoors is the whole reason the lift exists, and the Kame
+         * Game Shop's own landing sits at about 0.18 and frames Grandpa and his
+         * counter exactly as intended.
+         *
+         * Outdoors there is no such excuse. An exterior arrival that cannot get
+         * its distance is an arrival stood against a building, so that side of it
+         * is held to nearly nothing.
+         */
+        const allowed = AREAS[door.to].kind === 'interior' ? 0.32 : 0.06;
+        check(settled.camLift < allowed,
+              `${id}/${door.id}: and the camera is not squeezed once it settles`,
+              `camLift ${settled.camLift} (${AREAS[door.to].kind} allows ${allowed}), camDist ${settled.camDist}`);
+      } finally {
+        await context.close();
       }
-
-      /* Long enough to cover the run-up at walking pace, plus the fade. */
-      /* Until she is through it, or six seconds — see `walkUntil`. */
-      await walkUntil(page, 6000, async () =>
-        (await page.evaluate(() => (window as unknown as { __probe?: { area: string } }).__probe?.area)
-          .catch(() => null)) !== id);
-      const landed = await waitForArea(page, door.to, 12000);
-
-      check(
-        landed?.area === door.to,
-        `${id}/${door.id}: walking into it reaches ${door.to}`,
-        landed ? `stopped in ${landed.area} at ${JSON.stringify(landed.player)}` : 'no probe'
-      );
-      if (landed?.area !== door.to) continue;
-
-      const settled = (await settleCamera(page)) ?? landed;
-      const [px, pz] = settled.player;
-      const off = Math.hypot(px - want.x, pz - want.z);
-      check(off < 1.2, `${id}/${door.id}: and lands where ${partner?.id ?? '?'} says`,
-            `${off.toFixed(2)} m from (${want.x}, ${want.z})`);
-
-      /*
-       * And the camera has somewhere to stand when it gets there.
-       *
-       * `camLift` is what the camera does when it cannot get its distance: it
-       * trades the metres it lost for height and looks down over the shoulder.
-       * Arriving with it already on means the landing was put too close to a
-       * wall, and the player walks through a door into a shot of the top of
-       * their own head — which is what both sides of the Market Row arch did
-       * before they were moved back, and which nothing but this would have
-       * caught.
-       *
-       * ## Rooms are allowed some, streets are not
-       *
-       * A shop eleven metres deep cannot give a camera four and a half metres
-       * from anywhere near its middle, and it is not supposed to: riding a
-       * little higher indoors is the whole reason the lift exists, and the Kame
-       * Game Shop's own landing sits at about 0.18 and frames Grandpa and his
-       * counter exactly as intended.
-       *
-       * Outdoors there is no such excuse. An exterior arrival that cannot get
-       * its distance is an arrival stood against a building, so that side of it
-       * is held to nearly nothing.
-       */
-      const allowed = AREAS[door.to].kind === 'interior' ? 0.32 : 0.06;
-      check(settled.camLift < allowed,
-            `${id}/${door.id}: and the camera is not squeezed once it settles`,
-            `camLift ${settled.camLift} (${AREAS[door.to].kind} allows ${allowed}), camDist ${settled.camDist}`);
     }
   }
 
