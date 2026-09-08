@@ -353,7 +353,10 @@ export type Op =
   | {
       op: 'damage';
       amount?: number;
-      scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk';
+      /** `dicePips` reads the roll back after it, the way `gainAtk` does: a
+       *  burn written inside `perPip` runs once a pip and announces itself
+       *  every time, so a six was six banners for one die. */
+      scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk' | 'dicePips';
       plusPerCounter?: number;
       to: Side;
     }

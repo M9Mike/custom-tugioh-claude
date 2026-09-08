@@ -11751,5 +11751,124 @@ console.log('\nRa pours everything it has into the sun');
   ok(dead.winner === FOE, 'a player at one Life Point loses to the next thing that connects', String(dead.winner));
 }
 
+/* ------------------------------------------------------------------ */
+/* An attack is the attack that was declared                            */
+/* ------------------------------------------------------------------ */
+console.log('\nA window is long enough for an attack to stop being itself');
+{
+  /** Say yes to whatever the duel is offering in a trap window. */
+  const respond = (s: DuelState, uid: string) => {
+    const p = s.pending;
+    if (!p || p.kind !== 'trap') {
+      ok(false, 'a trap window should be open here', `pending: ${p?.kind ?? 'none'}`);
+      return s;
+    }
+    return act(s, p.player, { type: 'respondTrap', uid });
+  };
+
+  /* Reported: a direct attack at an empty board, Scapegoat in the window,
+     three Sheep Tokens on the table — and the swing walked through them for
+     2300 as though the board were still empty. */
+  {
+    const s = fresh('battle');
+    s.active = FOE;
+    const beast = card(FOE, 'summoned-skull');
+    beast.summonedOnTurn = 0;
+    s.players[FOE].monsters = [beast, null, null];
+    const goat = { ...card(ME, 'scapegoat'), face: 'down' as const };
+    goat.summonedOnTurn = 0;
+    s.players[ME].spellTrap = goat;
+    const lp = s.players[ME].lp;
+    const declared = act(s, FOE, { type: 'attack', uid: beast.uid, targetUid: null });
+    const walled = respond(declared, goat.uid);
+    ok(walled.players[ME].monsters.filter(Boolean).length === 3, 'the goats arrive inside the window',
+      String(walled.players[ME].monsters.filter(Boolean).length));
+    ok(walled.players[ME].lp === lp, 'and the direct attack does not walk through them', `LP ${walled.players[ME].lp} of ${lp}`);
+    ok(!walled.pending, 'the window closes cleanly', walled.pending?.kind ?? '');
+
+    /* CONTROL: a monster that may fly over a guard still flies. Sky Scout
+       pays half for the privilege and must keep it — the rule above asks
+       the card, not the board. */
+    const air = fresh('battle');
+    const scout = card(ME, 'sky-scout');
+    air.players[ME].monsters = [scout, null, null];
+    air.players[FOE].monsters = [card(FOE, 'mystical-elf'), null, null];
+    const flown = act(air, ME, { type: 'attack', uid: scout.uid, targetUid: null });
+    ok(flown.players[FOE].lp === 4000 - 900, 'CONTROL: a flyover still goes over a standing guard', `LP ${flown.players[FOE].lp}`);
+  }
+
+  /* Reported: Enemy Controller takes the attacking monster, and with nothing
+     on the thief's board the swing turned around and hit the thief. */
+  {
+    const s = fresh('battle');
+    s.active = FOE;
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const grip = { ...card(ME, 'enemy-controller'), face: 'down' as const };
+    grip.summonedOnTurn = 0;
+    s.players[ME].spellTrap = grip;
+    const mine = s.players[ME].lp;
+    const theirs = s.players[FOE].lp;
+    let seized = respond(act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: null }), grip.uid);
+    while (seized.pending?.kind === 'choose') seized = answer(seized, findCard(seized, seized.pending.options[0])?.slug ?? '');
+    ok(seized.players[ME].monsters.some((m) => m?.uid === ox.uid), 'the attacker changes hands', 'it stayed put');
+    ok(seized.players[ME].lp === mine, 'and does not turn around on the player who took it', `LP ${seized.players[ME].lp} of ${mine}`);
+    ok(seized.players[FOE].lp === theirs, 'nor carry on against the player who lost it', `LP ${seized.players[FOE].lp} of ${theirs}`);
+  }
+
+  /* "At any point in your opponent's turn" includes the moment they aim. */
+  {
+    const s = fresh('battle');
+    s.active = FOE;
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const dice = { ...card(ME, 'skull-dice'), face: 'down' as const };
+    dice.summonedOnTurn = 0;
+    s.players[ME].spellTrap = dice;
+    s.players[ME].monsters = [card(ME, 'mystical-elf'), null, null];
+    const declared = act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: s.players[ME].monsters[0]!.uid });
+    ok(declared.pending?.kind === 'trap' && declared.pending.options.includes(dice.uid),
+      'Skull Dice is offered when the attack is declared, not only on the way in',
+      declared.pending?.kind ?? 'nothing offered');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Two numbers that had stopped agreeing with themselves                */
+/* ------------------------------------------------------------------ */
+console.log('\nA door judges the number it just made, and a die speaks once');
+{
+  /* Lord of D. is 1200 and keeps 400 a Dragon: two Blue-Eyes stand him at
+     exactly 2000, the door drains him to 1700 — and the same door was still
+     holding him at the gate for being 2000. */
+  const s = fresh('battle');
+  const lord = card(ME, 'lord-of-d');
+  s.players[ME].monsters = [lord, card(ME, 'blue-eyes-white-dragon'), card(ME, 'blue-eyes-white-dragon')];
+  s.players[FOE].spellTrap = card(FOE, 'the-dark-door');
+  ok(effAtk(s, lord, ME) === 1700, 'the door drains Lord of D. to 1700', String(effAtk(s, lord, ME)));
+  ok(canAttackWith(s, ME, lord), 'and 1700 walks through a gate that holds 2000', 'he was held');
+
+  const big = fresh('battle');
+  const bews = card(ME, 'blue-eyes-white-dragon');
+  big.players[ME].monsters = [bews, null, null];
+  big.players[FOE].spellTrap = card(FOE, 'the-dark-door');
+  ok(effAtk(big, bews, ME) === 2700, 'CONTROL: a Blue-Eyes is drained to 2700', String(effAtk(big, bews, ME)));
+  ok(!canAttackWith(big, ME, bews), 'CONTROL: and 2700 is still too big for the door', 'it walked');
+
+  /* Garoozis rolls once and the table should hear one number, not six. */
+  const g = fresh('battle');
+  const zis = card(ME, 'garoozis');
+  zis.summonedOnTurn = 0;
+  g.players[ME].monsters = [zis, null, null];
+  g.players[FOE].monsters = [card(FOE, 'kuriboh'), null, null];
+  const struck = act(g, ME, { type: 'attack', uid: zis.uid, targetUid: g.players[FOE].monsters[0]!.uid });
+  const burns = struck.log.filter((l) => typeof l !== 'string' && /takes \d+ damage/.test((l as { text?: string }).text ?? ''));
+  const effectBurn = burns.filter((l) => !/battle/i.test((l as { text?: string }).text ?? ''));
+  ok(effectBurn.length <= 2, 'the die burns in one beat, not one a pip',
+    effectBurn.map((l) => (l as { text?: string }).text).join(' | '));
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

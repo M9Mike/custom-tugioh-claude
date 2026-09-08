@@ -425,15 +425,21 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'kunai-with-chain': {
+    /* The chain is thrown by the player holding it, so the player says which
+       of their monsters catches it. `strongest` chose for them — usually the
+       body that needed it least, and never the one being lined up for next
+       turn. Reported by the owner. `targets: 1` puts the board in front of
+       them, the way Graverobber puts the pile there. */
     text: 'When your opponent declares an attack: negate it, then 1 monster you control gains 500 ATK permanently.',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Kunai with Chain',
+        targets: 1,
         ops: [
           { op: 'negateAttack' },
-          { op: 'gainAtk', amount: 500, target: sel('own', 'strongest'), duration: 'permanent' },
+          { op: 'gainAtk', amount: 500, target: sel('own', 'chosen'), duration: 'permanent' },
         ],
       },
     ],

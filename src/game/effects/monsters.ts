@@ -859,17 +859,20 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        kill that rolls between 200 and 1200 (average 700) is both stronger
        and more him than a fixed ping. The same roll now feeds him too.
 
-       The ATK gain sits *after* the roll rather than inside `perPip`, reading
-       it back through `scale: 'dicePips'`: `perPip` runs its ops once per pip,
-       and `gainAtk` logs every time it moves a number, so a 100-per-pip gain
-       written there would be six beats saying "gains 100 ATK" for one die. */
+       Both payouts sit *after* the roll rather than inside `perPip`, reading
+       it back through `scale: 'dicePips'`: `perPip` runs its ops once per pip
+       and each one announces itself, so a six was one banner per pip for a
+       single die — six lines of "takes 200 damage" where the card means one
+       of 1200. The owner reported the burn; the ATK gain had already been
+       moved out for exactly the same reason. */
     text: 'When this monster destroys a monster in battle: roll a die, inflict 200 damage to your opponent for each pip, gain 100 ATK for each pip, then draw 1 card.',
     cry: 'Lady luck, smile on me!',
     effects: [
       {
         trigger: 'onBattleDestroy',
         ops: [
-          { op: 'diceRoll', perPip: [{ op: 'damage', amount: 200, to: 'opp' }] },
+          { op: 'diceRoll', perPip: [] },
+          { op: 'damage', amount: 200, scale: 'dicePips', to: 'opp' },
           { op: 'gainAtk', amount: 100, scale: 'dicePips', target: SELF, duration: 'permanent' },
           { op: 'draw', count: 1, who: 'own' },
         ],

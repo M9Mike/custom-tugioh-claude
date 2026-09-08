@@ -220,7 +220,9 @@ function scanOps(ops: Op[], owner: string): TargetSpec | null {
               ? 'Choose a monster to absorb'
               : op.op === 'bounce'
                 ? 'Choose a card to return'
-                : 'Choose a target';
+                : op.op === 'gainAtk'
+                  ? 'Choose a monster to strengthen'
+                  : 'Choose a target';
       /* Which op is asking, so the picker can drop the monsters it would
          leave exactly as it found them. Stop Defense beside one kneeling
          monster and one already attacking is a legal card with one real

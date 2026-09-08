@@ -1740,7 +1740,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
     switch (op.op) {
       case 'damage': {
         let amount = op.amount ?? 0;
-        if (op.scale === 'perDestroyed') amount = (op.amount ?? 0) * (ctx.destroyedCount ?? 0);
+        if (op.scale === 'dicePips') amount = (op.amount ?? 0) * (ctx.lastRoll ?? 0);
+        else if (op.scale === 'perDestroyed') amount = (op.amount ?? 0) * (ctx.destroyedCount ?? 0);
         else if (op.scale === 'targetAtk' || op.scale === 'halfTargetAtk') {
           const peek = ctx.targets[ctx.cursor];
           const t =
@@ -3450,7 +3451,16 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
  */
 function windowMatches(wants: TrapWindow | undefined, opened: TrapWindow): boolean {
   if (wants === opened) return true;
-  return wants === 'opponentSummon' && opened === 'opponentNormalSummon';
+  if (wants === 'opponentSummon' && opened === 'opponentNormalSummon') return true;
+  /* "At any point in your opponent's turn" includes the moment they declare
+     an attack, and it was only ever being offered as they entered the Battle
+     Phase — one beat too early to matter. Skull Dice thrown across an
+     incoming swing shrinks the monster that is already committed to it, so
+     the blow it walked into can kill it; offered a beat earlier, the same
+     card is a guess about an attack that has not been aimed yet. Reported by
+     the owner. The Battle Phase window stays open too: a die read before any
+     target is chosen is still a legal, and sometimes better, moment. */
+  return wants === 'anyOpponentTurn' && opened === 'opponentDeclareAttack';
 }
 
 
@@ -3643,14 +3653,19 @@ function resolveBattle(state: DuelState) {
     return;
   }
 
-  /* A wall that arrives during the window is a wall. A direct attack is only
-     ever declared at an empty board, so bodies standing there now — Scapegoat
+  /* A wall that arrives during the window is a wall. A direct attack at an
+     empty board stops being legal the moment bodies stand in it — Scapegoat
      answering in the window, which is the whole reason that card is a
-     Quick-Play — mean the attack as declared cannot happen: it is called off
+     Quick-Play — so the attack as declared cannot happen: it is called off
      and the attacker keeps its swing for a target it may legally take. The
-     owner watched three Sheep Tokens arrive and the direct attack walk
-     straight past them for 2300. */
-  if (!susp.targetUid && state.players[defender].monsters.some(Boolean)) {
+     owner watched three Sheep Tokens arrive and the swing walk straight past
+     them for 2300.
+
+     Asked of `legalAttackTargets` rather than of the board, because "may I
+     go around what is standing there" is a question that card already
+     answers — Sky Scout flies over a guard and pays half for it, and a rule
+     re-derived here would have grounded her. */
+  if (!susp.targetUid && !legalAttackTargets(state, controller, attacker).direct) {
     log(state, `${displayName(state, attacker)} finds its path blocked, and the attack is called off.`, 'attack', controller, logSlug(attacker));
     return;
   }
