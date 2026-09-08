@@ -11911,6 +11911,15 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     const shine = after.players[ME].monsters.find((m) => m?.slug === 'blue-eyes-shining-dragon');
     ok(!!shine, 'a broken Ultimate Dragon leaves the Shining Dragon standing',
       after.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* And it carries the dodge off its own card rather than off a flag a test
+       set for it: sweep the board a second time and the dragon that arrived
+       by the proper road steps out of the world instead of dying. */
+    if (shine) {
+      const second = sweep(cloneState(after), FOE);
+      ok(second.players[ME].banished.some((c) => c.uid === shine.uid),
+        'and the dragon that arrived that way dodges removal off its own card',
+        second.players[ME].grave.some((c) => c.uid === shine.uid) ? 'it died' : 'it is still standing');
+    }
     /* Worth the Deck behind it, read live rather than banked: spend a card and
        the dragon is 500 lighter for it. */
     if (shine) {
