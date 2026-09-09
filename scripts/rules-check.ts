@@ -13045,6 +13045,35 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(out.players[FOE].monsters.every((m) => !m || m.uid === mine.uid),
       'GATE: and it goes back through everything they had left, kneeling or not',
       out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* The other half of the trade, which nothing here was asking: they take
+       mine. A one-way steal passes every line above it. It does not survive
+       the swing — once it is theirs it is one of the monsters the borrowed
+       Blue-Eyes goes through, which is the card working, not failing — so
+       what is checked is that it left my side and is not standing anywhere. */
+    ok(!out.players[ME].monsters.some((m) => m?.uid === mine.uid),
+      'GATE: and my own body goes the other way across the table',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok([...out.players[ME].grave, ...out.players[FOE].grave].some((c) => c.uid === mine.uid),
+      'GATE: and the onslaught goes through it too, because it is theirs now',
+      out.players[FOE].grave.map((c) => c.slug).join(',') || '(empty)');
+
+    /* "At the end of the turn it does not change back" — a borrowed monster in
+       this game usually goes home, so the one that stays has to be proved to
+       stay. Two whole turns later it is still mine. */
+    let later = out;
+    for (let t = 0; t < 4 && !later.winner; t++) {
+      let guard = 0;
+      while (later.pending && guard++ < 6) {
+        const p = later.pending;
+        later = act(later, p.player, p.kind === 'choose'
+          ? { type: 'chooseCard', uids: p.options.length ? [p.options[0]] : [] }
+          : { type: 'respondTrap', uid: null });
+      }
+      later = act(later, later.active, { type: 'endTurn' });
+    }
+    ok(later.players[ME].monsters.some((m) => m?.uid === bews.uid),
+      'GATE: and it is still mine two turns later',
+      later.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
   {
