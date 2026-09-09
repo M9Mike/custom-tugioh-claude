@@ -4569,6 +4569,55 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     ],
   },
 
+  wroughtweiler: {
+    /* The dog, and the engine of a singleton deck. One of every HERO is only a
+       deck at all if the pieces come back — so the little machine dies and
+       hands you a HERO *and* the Polymerization to fuse it with, which is two
+       cards for a body worth 800.
+       Sent to the Graveyard however it gets there, not destroyed by battle
+       alone: chumped, tributed, wiped by a Dark Hole, fed to a Fusion. In a
+       deck built on spending its own monsters, "destroyed by battle" would
+       have missed most of the ways this one actually dies. */
+    text: 'When this monster is sent to the Graveyard: add 1 "Elemental HERO" card and 1 "Polymerization" from your Graveyard to your hand.',
+    cry: 'Good dog.',
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        ops: [
+          { op: 'stealFromGrave', from: 'own', filter: { nameIncludes: 'Elemental HERO' } },
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } },
+        ],
+      },
+    ],
+  },
+
+  'winged-kuriboh-lv10': {
+    /* The one card in the deck that is not a HERO and not a fusion piece, and
+       the biggest thing in it: 300 ATK that answers a board.
+       Written on `onAttacked` rather than as a button, because that is the beat
+       — something swings at the little ball of fur and the whole attacking side
+       of the field goes up, billed to the player who declared it. `destroyedAtk`
+       adds up what this effect's own destructions were worth, so the number is
+       exactly the board that was standing there.
+       And the blow never lands: an `onAttacked` that removes the attacker calls
+       the battle off, which is the engine's own rule. */
+    text:
+      'Cannot be Normal Summoned or Set. Can only be Special Summoned by "Transcendent Wings". ' +
+      'When this monster is attacked: destroy every Attack Position monster your opponent controls, ' +
+      'then inflict damage to your opponent equal to their total ATK.',
+    cry: 'Kuri-kuri!',
+    summonOnlyBy: ['transcendent-wings'],
+    effects: [
+      {
+        trigger: 'onAttacked',
+        ops: [
+          { op: 'destroy', target: sel('opp', 'all', { filter: { position: 'atk' } }) },
+          { op: 'damage', scale: 'destroyedAtk', to: 'opp' },
+        ],
+      },
+    ],
+  },
+
   'winged-kuriboh': {
     /* Jaden's, and it does what Yugi's does one step further along: Kuriboh is
        thrown in front of a blow, Winged Kuriboh dies to one and closes the

@@ -1787,6 +1787,67 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     ],
   },
 
+  'e-emergency-call': {
+    /* The card Jaden reaches for when he needs a particular HERO, and in a deck
+       holding one of each that is every turn. Printed, it adds one to the hand.
+       Here it reads the board first: with a monster already standing you get
+       the card, and with an empty field you get the *body* — which is the
+       comeback, and the turn a Polymerization in hand turns into a Fusion. */
+    text:
+      'Add 1 "Elemental HERO" monster from your Deck to your hand — or, if you control no monsters, ' +
+      'Special Summon it from your Deck instead.',
+    cry: 'This is an emergency!',
+    effects: [
+      {
+        trigger: 'activate',
+        ops: [
+          {
+            op: 'cascade',
+            branches: [
+              {
+                condition: { controlsMonster: true },
+                ops: [{ op: 'search', filter: { nameIncludes: 'Elemental HERO', kind: 'monster' } }],
+              },
+              {
+                ops: [
+                  {
+                    op: 'specialSummon',
+                    from: 'deck',
+                    filter: { nameIncludes: 'Elemental HERO', kind: 'monster' },
+                    position: 'atk',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  'transcendent-wings': {
+    /* Two cards out of hand is the printed price and it is not the anime's:
+       Jaden plays this with nothing left, which is the whole picture. The
+       Winged Kuriboh itself is the cost, and what comes back is the card that
+       answers a board. */
+    text: 'Tribute 1 "Winged Kuriboh" you control: Special Summon 1 "Winged Kuriboh LV10" from your hand or Deck.',
+    cry: 'Spread your wings!',
+    effects: [
+      {
+        trigger: 'activate',
+        cost: { tribute: 1, tributeFilter: { slugs: ['winged-kuriboh'] } },
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['hand', 'deck'],
+            filter: { slugs: ['winged-kuriboh-lv10'] },
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
   'fusion-recovery': {
     /* Both halves of a fusion that already happened, back in the hand. The
        deck's second wind: the Polymerization is the card it runs out of, and

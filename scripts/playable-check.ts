@@ -72,8 +72,23 @@ function hostFor(slug: string): string | null {
 function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave'; slug: string }[] {
   const out: { zone: 'hand' | 'deck' | 'grave'; slug: string }[] = [];
   const PILES = ['hand', 'deck', 'grave'] as const;
+  /* Down through the branches, not only across the top — the same descent
+     `summonRoute` below already makes. A summon can sit inside a `cascade`
+     fork: E - Emergency Call adds a HERO to the hand, or calls one out of the
+     Deck when you control nothing, and reading only the top level found no
+     summon, stocked nothing, and reported a working card as unplayable. */
+  const flat = (ops: readonly Op[]): Op[] =>
+    ops.flatMap((o) =>
+      o.op === 'cascade'
+        ? [o, ...flat(o.branches.flatMap((b) => b.ops))]
+        : o.op === 'coinFlip'
+          ? [o, ...flat(o.heads), ...flat(o.tails)]
+          : o.op === 'diceRoll'
+            ? [o, ...flat(o.perPip)]
+            : [o]
+    );
   for (const eff of CARDS[slug]?.effects ?? []) {
-    for (const op of eff.ops) {
+    for (const op of flat(eff.ops)) {
       if (op.op !== 'specialSummon') continue;
       const from = Array.isArray(op.from) ? op.from : [op.from];
       const zones = PILES.filter((z) => from.includes(z));
@@ -83,7 +98,13 @@ function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave'; slug: strin
           d.kind === 'monster' &&
           !isExtraDeckCard(d.slug) &&
           !d.summonRequires &&
-          !d.summonOnlyBy?.length &&
+          /* A monster that answers only to its own ladder is skipped, because
+             the engine refuses it to every summon but that one — *unless the
+             card being probed is that ladder*. Winged Kuriboh LV10 may only be
+             Special Summoned by Transcendent Wings, which is precisely the card
+             asking here, and striking it off left the Wings with nothing to
+             call and reading as unplayable. */
+          (!d.summonOnlyBy?.length || d.summonOnlyBy.includes(slug)) &&
           matchesFilter({ slug: d.slug } as CardInstance, op.filter)
       );
       if (match) out.push({ zone: zones[0], slug: match.slug });
@@ -154,6 +175,18 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   if (needsType) {
     const body = Object.values(CARDS).find((c) => c.kind === 'monster' && c.type === needsType);
     if (body) p.monsters[2] = spare(9, body.slug);
+  }
+  /* And the body a cost names by hand. Transcendent Wings tributes a Winged
+     Kuriboh and nothing else will do — the two spares standing here are a Fiend
+     and a Winged Beast, so the engine correctly refused the cost and the card
+     read as one nobody could ever play. The same shape as the equip host and
+     the summon fodder: put down the thing the card is written to spend. */
+  const paidWith = (CARDS[slug]?.effects ?? []).find((e) => e.cost?.tributeFilter)?.cost?.tributeFilter;
+  if (paidWith) {
+    const body = Object.values(CARDS).find(
+      (d) => d.kind === 'monster' && !isExtraDeckCard(d.slug) && matchesFilter({ slug: d.slug } as CardInstance, paidWith)
+    );
+    if (body) p.monsters[0] = spare(10, body.slug);
   }
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];

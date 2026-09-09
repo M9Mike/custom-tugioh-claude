@@ -217,9 +217,30 @@ function checkScalingBonus(def: CardDef): string[] {
 /** Does any effect on the card carry one of these triggers? */
 const hasTrigger = (def: CardDef, needs: Trigger[]) => def.effects.some((e) => needs.includes(e.trigger));
 
+/**
+ * A branch is a condition too.
+ *
+ * `cascade` is the DSL's "if this, otherwise that", and its conditions live on
+ * the branches rather than on the effect — so a card whose whole sentence is a
+ * fork read as unconditional here. E - Emergency Call adds a HERO to the hand,
+ * or Special Summons it when you control nothing, and the check said its text
+ * promised a condition the card did not have. It had two.
+ */
+const branchConditions = (ops: readonly Op[]): boolean =>
+  ops.some((o) =>
+    o.op === 'cascade'
+      ? o.branches.some((b) => !!b.condition || branchConditions(b.ops))
+      : o.op === 'coinFlip'
+        ? branchConditions(o.heads) || branchConditions(o.tails)
+        : o.op === 'diceRoll'
+          ? branchConditions(o.perPip)
+          : false
+  );
+
 /** A continuous aura counts as conditional if the aura itself is conditional. */
 const hasCondition = (def: CardDef) =>
   def.effects.some((e: CardEffect) => !!e.condition) ||
+  def.effects.some((e: CardEffect) => branchConditions(e.ops)) ||
   // "While this card is face-up" is what a continuous aura *is*, so one of
   // those satisfies the phrase on its own.
   def.effects.some((e) => e.trigger === 'continuous');

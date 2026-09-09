@@ -1611,19 +1611,19 @@
       "deck": [
         [
           "Elemental HERO Avian",
-          2
+          1
         ],
         [
           "Elemental HERO Burstinatrix",
-          2
+          1
         ],
         [
           "Elemental HERO Clayman",
-          2
+          1
         ],
         [
           "Elemental HERO Sparkman",
-          2
+          1
         ],
         [
           "Elemental HERO Bubbleman",
@@ -1642,12 +1642,36 @@
           1
         ],
         [
+          "Wroughtweiler",
+          1
+        ],
+        [
           "Winged Kuriboh",
           1
         ],
         [
+          "Winged Kuriboh LV10",
+          1
+        ],
+        [
           "Polymerization",
-          3
+          2
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "E - Emergency Call",
+          1
+        ],
+        [
+          "Transcendent Wings",
+          1
         ],
         [
           "Skyscraper",
@@ -1658,15 +1682,15 @@
           1
         ],
         [
+          "The Warrior Returning Alive",
+          1
+        ],
+        [
           "H - Heated Heart",
           1
         ],
         [
           "R - Righteous Justice",
-          1
-        ],
-        [
-          "The Warrior Returning Alive",
           1
         ],
         [
@@ -1679,10 +1703,6 @@
         ],
         [
           "Hero Barrier",
-          1
-        ],
-        [
-          "Negate Attack",
           1
         ]
       ],

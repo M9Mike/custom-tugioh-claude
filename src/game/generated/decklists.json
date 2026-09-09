@@ -1611,19 +1611,19 @@
    "deck": [
     [
      "elemental-hero-avian",
-     2
+     1
     ],
     [
      "elemental-hero-burstinatrix",
-     2
+     1
     ],
     [
      "elemental-hero-clayman",
-     2
+     1
     ],
     [
      "elemental-hero-sparkman",
-     2
+     1
     ],
     [
      "elemental-hero-bubbleman",
@@ -1642,12 +1642,36 @@
      1
     ],
     [
+     "wroughtweiler",
+     1
+    ],
+    [
      "winged-kuriboh",
      1
     ],
     [
+     "winged-kuriboh-lv10",
+     1
+    ],
+    [
      "polymerization",
-     3
+     2
+    ],
+    [
+     "pot-of-greed",
+     1
+    ],
+    [
+     "monster-reborn",
+     1
+    ],
+    [
+     "e-emergency-call",
+     1
+    ],
+    [
+     "transcendent-wings",
+     1
     ],
     [
      "skyscraper",
@@ -1658,15 +1682,15 @@
      1
     ],
     [
+     "the-warrior-returning-alive",
+     1
+    ],
+    [
      "h-heated-heart",
      1
     ],
     [
      "r-righteous-justice",
-     1
-    ],
-    [
-     "the-warrior-returning-alive",
      1
     ],
     [
@@ -1679,10 +1703,6 @@
     ],
     [
      "hero-barrier",
-     1
-    ],
-    [
-     "negate-attack",
      1
     ]
    ],

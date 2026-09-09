@@ -489,7 +489,12 @@ function summonRoute(slug: string): { slug: string; counters: number } | null {
 }
 
 function stockDeckFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
-  for (const op of eff.ops) {
+  /* Down through the branches. A card whose Deck reach sits inside a `cascade`
+     fork was stocked for nothing at all — E - Emergency Call calls a HERO out
+     of the Deck when you control no monsters, which is exactly the branch this
+     harness drives, and the engine then refused it for want of anything to
+     find. `FLATTEN` is the same descent every other reader here makes. */
+  for (const op of FLATTEN(eff.ops as Op[])) {
     const filter = 'filter' in op ? op.filter : undefined;
     if (op.op !== 'search' && !(op.op === 'specialSummon' && summonsFrom(op, 'deck'))) continue;
     // Searches are not always for monsters — Toon Alligator fetches a Spell —

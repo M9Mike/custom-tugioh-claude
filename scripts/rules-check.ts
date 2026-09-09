@@ -12433,6 +12433,132 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok((d!.extra ?? []).length === 14, 'with fourteen HEROes waiting behind them', String((d!.extra ?? []).length));
     ok((d!.extra ?? []).every((s) => CARDS[s]?.isFusion), 'and every one of them a Fusion',
       (d!.extra ?? []).filter((s) => !CARDS[s]?.isFusion).join(',') || '(all)');
+    /* One of each. The owner's call, and the reason the deck carries so many
+       ways to fetch a card back: a singleton HERO you spend is gone unless
+       something goes and gets it. */
+    const doubled = d!.deck.filter(([, n]) => n > 1).map(([s]) => s);
+    ok(doubled.length === 1 && doubled[0] === 'polymerization',
+      'one copy of everything, and only the Polymerization doubled', doubled.join(',') || '(none)');
+  }
+
+  /* --- The recycle engine: one of each only works if they come back --- */
+  {
+    /* Wroughtweiler dies and hands back a HERO and the Polymerization to fuse
+       it with. Sent to the Graveyard however it gets there, which in this deck
+       is usually as Fusion Material or a chump block. */
+    const s = jaden();
+    const dog = card(ME, 'wroughtweiler');
+    dog.summonedOnTurn = 0;
+    s.players[ME].monsters = [dog, null, null];
+    s.players[ME].grave = [
+      card(ME, 'elemental-hero-sparkman'),
+      card(ME, 'polymerization'),
+      card(ME, 'kuriboh'),
+    ];
+    const hole = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [hole];
+    s.active = FOE;
+    let out = act(s, FOE, { type: 'activateSpell', uid: hole.uid });
+    let guard = 0;
+    while (out.pending?.kind === 'choose' && guard++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    const hand = out.players[ME].hand.map((c) => c.slug);
+    ok(hand.includes('elemental-hero-sparkman'), 'DOG: Wroughtweiler brings a HERO back up', hand.join(',') || '(empty)');
+    ok(hand.includes('polymerization'), 'DOG: and the Polymerization with it', hand.join(',') || '(empty)');
+    ok(!hand.includes('kuriboh'), 'DOG: and nothing that is neither', hand.join(','));
+  }
+
+  /* --- E - Emergency Call reads the board before it answers --- */
+  {
+    // An empty field: the HERO arrives standing.
+    const empty = jaden();
+    const call1 = card(ME, 'e-emergency-call');
+    empty.players[ME].hand = [call1];
+    empty.players[ME].deck = [card(ME, 'elemental-hero-sparkman'), card(ME, 'kuriboh')];
+    let out = act(empty, ME, { type: 'activateSpell', uid: call1.uid });
+    let guard = 0;
+    while (out.pending?.kind === 'choose' && guard++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.slug === 'elemental-hero-sparkman'),
+      'CALL: with nothing on the field the HERO arrives standing',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    // A body already out: it goes to the hand instead.
+    const held = jaden();
+    const call2 = card(ME, 'e-emergency-call');
+    held.players[ME].hand = [call2];
+    held.players[ME].monsters = [card(ME, 'elemental-hero-clayman'), null, null];
+    held.players[ME].deck = [card(ME, 'elemental-hero-sparkman'), card(ME, 'kuriboh')];
+    let out2 = act(held, ME, { type: 'activateSpell', uid: call2.uid });
+    guard = 0;
+    while (out2.pending?.kind === 'choose' && guard++ < 4) {
+      out2 = act(out2, out2.pending.player, { type: 'chooseCard', uids: [out2.pending.options[0]] });
+    }
+    ok(out2.players[ME].hand.some((c) => c.slug === 'elemental-hero-sparkman'),
+      'CALL: CONTROL: with a body already out it goes to the hand',
+      out2.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(!out2.players[ME].monsters.some((m) => m?.slug === 'elemental-hero-sparkman'),
+      'CALL: CONTROL: and not onto the field',
+      out2.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Transcendent Wings, and what the little one becomes --- */
+  {
+    const s = jaden();
+    const kuri = card(ME, 'winged-kuriboh');
+    kuri.summonedOnTurn = 0;
+    s.players[ME].monsters = [kuri, null, null];
+    const wings = card(ME, 'transcendent-wings');
+    s.players[ME].hand = [wings];
+    s.players[ME].deck = [card(ME, 'winged-kuriboh-lv10'), card(ME, 'kuriboh')];
+    let out = act(s, ME, { type: 'activateSpell', uid: wings.uid, targets: [kuri.uid] });
+    let guard = 0;
+    while (out.pending?.kind === 'choose' && guard++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.slug === 'winged-kuriboh-lv10'),
+      'WINGS: the Kuriboh spreads its wings', out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[ME].monsters.some((m) => m?.uid === kuri.uid), 'WINGS: and the little one paid for it');
+
+    /* And what it does when something swings at it: the attacking side of the
+       board goes up, billed to the player who declared it — and the blow that
+       started it never lands. */
+    const lv10 = out.players[ME].monsters.find((m) => m?.slug === 'winged-kuriboh-lv10')!;
+    lv10.summonedOnTurn = 0;
+    out.active = FOE;
+    out.phase = 'battle';
+    const big = card(FOE, 'blue-eyes-white-dragon'); // 3000, standing
+    big.summonedOnTurn = 0;
+    const ox = card(FOE, 'battle-ox'); // 1700, standing
+    ox.summonedOnTurn = 0;
+    const wall = card(FOE, 'mystical-elf'); // kneeling — not an attacker
+    wall.summonedOnTurn = 0;
+    wall.position = 'def';
+    out.players[FOE].monsters = [big, ox, wall];
+    /* Lifted well clear of the number, because at 4000 this card simply wins:
+       3000 and 1700 standing is 4700 of damage off one attack declaration, and
+       the pin would read a clamped zero instead of the sum. That it can end a
+       duel outright is the card; what is being measured here is that the total
+       is exactly the board that was standing. */
+    out.players[FOE].lp = 9000;
+    const before = out.players[FOE].lp;
+    let hit = act(out, FOE, { type: 'attack', uid: big.uid, targetUid: lv10.uid });
+    guard = 0;
+    while (hit.pending && guard++ < 4) {
+      const p = hit.pending;
+      hit = act(hit, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+    }
+    ok(!hit.players[FOE].monsters.some((m) => m?.uid === big.uid || m?.uid === ox.uid),
+      'WINGS: every standing monster they had is gone',
+      hit.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(hit.players[FOE].monsters.some((m) => m?.uid === wall.uid),
+      'WINGS: and the one that was kneeling is not');
+    ok(hit.players[FOE].lp === before - (3000 + 1700),
+      'WINGS: billed for exactly what was standing there', `LP ${hit.players[FOE].lp}`);
+    ok(hit.players[ME].monsters.some((m) => m?.uid === lv10.uid),
+      'WINGS: and the blow never lands', hit.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
   /* --- Avian goes and finds the card the whole deck is built on --- */
