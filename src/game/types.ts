@@ -289,6 +289,9 @@ export interface CardFilter {
   maxAtk?: number;
   nameIncludes?: string;
   slugs?: string[];
+  /** An Extra Deck Fusion. Sparkman is worth 1000 for each one in the pile, and
+   *  "Fusion" is a thing about the card rather than about its type or name. */
+  isFusion?: boolean;
   /** Pegasus's cartoon monsters — see `isToon`, which knows the ones the name
       does not give away. */
   toon?: boolean;
@@ -369,7 +372,7 @@ export type Op =
       /** `dicePips` reads the roll back after it, the way `gainAtk` does: a
        *  burn written inside `perPip` runs once a pip and announces itself
        *  every time, so a six was six banners for one die. */
-      scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk' | 'dicePips';
+      scale?: 'targetAtk' | 'selfAtk' | 'halfTargetAtk' | 'perOppMonster' | 'perOppHandCard' | 'tributedAtk' | 'perDestroyed' | 'destroyedAtk' | 'dicePips';
       plusPerCounter?: number;
       to: Side;
     }
@@ -388,6 +391,15 @@ export type Op =
         | 'perCardInGrave'
         | 'perCardInEitherGrave'
         | 'perMonsterOnField'
+        /**
+         * `amount` for each of the controller's own monsters matching `filter`.
+         *
+         * `perMonsterOnField` above carries a hardcoded 300 and counts every
+         * body — Hero Barrier takes a thousand out of the attacker for each
+         * HERO standing behind it, which is that shape with the card's own
+         * number and the card's own idea of who counts.
+         */
+        | 'perOwnMonster'
         | 'perCardInEitherHand'
         | 'dicePips';
       /**
@@ -396,6 +408,15 @@ export type Op =
        * without this the scale could only ever say "every card down there".
        */
       filter?: CardFilter;
+      /**
+       * A flat bonus on top of whatever the scale came to.
+       *
+       * "1000 ATK, and 500 more for each HERO in your Graveyard" is one
+       * sentence about one monster, and without this it took two ops — which
+       * meant two `chosen` selectors and the player being asked twice which
+       * monster they meant.
+       */
+      plus?: number;
       target: Selector;
       duration: Duration;
     }
@@ -464,6 +485,15 @@ export type Op =
        * removal that happens to land somewhere private.
        */
       filter?: CardFilter;
+      /**
+       * Take `count` *minus what this same effect already destroyed*.
+       *
+       * R - Righteous Justice is one number spent across two places: it breaks
+       * what is on the table first and reaches into the hand for whatever is
+       * left over. Written as one op rather than four branches, because the
+       * arithmetic is the card.
+       */
+      minusDestroyed?: boolean;
     }
   /**
    * Roll `count` dice and ask whether any of them can be made to total seven —
@@ -637,7 +667,33 @@ export type Op =
    * the picture the card is famous for — their best monster standing on your
    * side of the field, looking back at them.
    */
-  | { op: 'swapControl' }
+  | { op: 'swapControl'; target?: Selector }
+  /**
+   * Fusion Material goes home rather than staying dead.
+   *
+   * A Fusion monster in a Graveyard is a card nothing can reach — it cannot be
+   * searched, and reviving it is a different sentence. Fusion Recovery and
+   * Wroughtweiler both put one back where it can be summoned again, which is
+   * what makes a deck of fourteen fusions and one of each material playable.
+   */
+  | { op: 'returnToExtra'; target: Selector }
+  /**
+   * The card whose effect this is goes back to its owner's hand from wherever
+   * it is. Winged Kuriboh is thrown away as a cost and comes straight back,
+   * which is a thing no `bounce` can say: `bounce` reaches for a card on the
+   * field, and this one is in the Graveyard by the time it speaks.
+   */
+  | { op: 'returnSelfToHand' }
+  /**
+   * This monster attacks every monster the opponent controls, once each, right
+   * now — whichever way they are standing.
+   *
+   * Mirror Gate: the body you just took turns round and goes through the board
+   * it was standing in. Resolved through the ordinary battle machinery, one
+   * battle at a time, so piercing, protection, flip effects and everything a
+   * kill pays out all behave exactly as they do on a declared attack.
+   */
+  | { op: 'onslaught'; target: Selector }
   | { op: 'transformInto'; slug: string }
   | {
       op: 'addCounter';
@@ -871,25 +927,39 @@ export type EquipGrant =
    */
   | 'reflectBattleDamage'
   /**
-   * Swings 1000 heavier at a monster with more ATK than its own — Skyscraper,
-   * which is the whole of Jaden's field: a HERO that could not win the fight
-   * wins it, and one that was already winning gains nothing at all.
+   * Swings 1000 heavier whenever it attacks — Skyscraper, which is the whole
+   * of Jaden's field.
    *
-   * A flag rather than a number, the way `sapsAttacker` is: the amount is the
-   * card's, the rule is the battle's, and the two cards that could ever want a
-   * different number do not exist yet.
+   * It began as "only against a bigger monster", which is the printed card and
+   * which the owner took the restriction off: the city rises behind a HERO
+   * going forward, full stop. A flag rather than a number, the way
+   * `sapsAttacker` is — the amount is the card's, the rule is the battle's.
    */
-  | 'surgesVsStronger'
+  | 'surgesOnAttack'
   /**
-   * No Trap can touch it. Elemental HERO Wildheart walks through Mirror Force,
-   * through Trap Hole, through a Spellbinding Circle — a Trap that would take
-   * him as a target finds nothing there.
+   * No Spell and no Trap can touch it. Elemental HERO Wildheart walks through
+   * Mirror Force, through Trap Hole, through a Spellbinding Circle and through
+   * a Dark Hole alike — an effect on either kind of card that would take him as
+   * a target finds nothing there.
    *
-   * Narrower than `untargetable`, deliberately: everything else in the game
-   * still reaches him, which is what makes him a body you play *around* Traps
-   * rather than a body nothing answers.
+   * Narrower than `untargetable` still: another monster's effect reaches him,
+   * and so does a bigger body.
    */
-  | 'unaffectedByTraps';
+  | 'unaffectedBySpellsAndTraps'
+  /**
+   * Nothing may declare an attack on it. Winged Kuriboh LV10 is not a wall you
+   * break, it is a thing that is not there when the blow arrives.
+   */
+  | 'cannotBeAttacked'
+  /**
+   * Standing here does not stop a direct attack.
+   *
+   * The other half of the same card: the little one flies over the fight rather
+   * than joining it, so with LV10 alone on your side the opponent may swing
+   * straight past it at you. Separate from `cannotBeAttacked` because a card
+   * could want either without the other.
+   */
+  | 'doesNotBlock';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -942,6 +1012,16 @@ export interface CardEffect {
       atk?: number;
       def?: number;
     };
+    /**
+     * This aura holds while its own card is face-down.
+     *
+     * Every other aura in the game is weather cast by a card that is showing —
+     * a card back promises nothing, and that is the right default. Elemental
+     * HERO Clayman is the exception the owner asked for: he is a wall whether
+     * or not you have turned him over, so what he does he does from under the
+     * card back too.
+     */
+    evenFaceDown?: boolean;
   };
   /** Effect only usable once per turn (ignition effects default to true). */
   oncePerTurn?: boolean;
@@ -1130,6 +1210,14 @@ export interface EffectCondition {
   typeOnField?: string;
   /** This card is the only monster you control. */
   controlsNoOtherMonster?: boolean;
+  /**
+   * This card is the only monster in its controller's hand.
+   *
+   * Bladedge comes down free when there is nothing else to play — the price is
+   * an empty grip rather than two Tributes, which is what makes a 2600 the top
+   * of a deck whose next-biggest body is 1600.
+   */
+  onlyMonsterInHand?: boolean;
   /** Turn number must be at least this. */
   turnAtLeast?: number;
 }
@@ -1179,10 +1267,26 @@ export interface CardFlags {
   shedsAbsorbedInstead?: boolean;
   /** See the `sapsAttacker` grant. */
   sapsAttacker?: boolean;
-  /** See the `surgesVsStronger` grant — Skyscraper's 1000. */
-  surgesVsStronger?: boolean;
-  /** See the `unaffectedByTraps` grant — Wildheart walks through them. */
-  unaffectedByTraps?: boolean;
+  /** See the `surgesOnAttack` grant — Skyscraper's 1000. */
+  surgesOnAttack?: boolean;
+  /** See the `unaffectedBySpellsAndTraps` grant — Wildheart reads neither. */
+  unaffectedBySpellsAndTraps?: boolean;
+  /** See the `cannotBeAttacked` grant. */
+  cannotBeAttacked?: boolean;
+  /**
+   * True for exactly the length of this card's own arrival in the Graveyard,
+   * and only when it got there off the field.
+   *
+   * `onAnyToGrave` fires for every road down — discarded out of a hand, milled
+   * off a Deck, destroyed on the board — and one card needs to tell those
+   * apart: Winged Kuriboh comes back when it is *discarded* and stays down when
+   * it dies in battle, because dying is what its other half is for. Set and
+   * cleared around the trigger rather than kept, so nothing can read it later
+   * and think the card is still falling.
+   */
+  justLeftTheField?: boolean;
+  /** See the `doesNotBlock` grant. */
+  doesNotBlock?: boolean;
   /** See the `paysWithGraveInstead` op. */
   paysWithGraveInstead?: boolean;
   /** Every swing costs a card out of hand — see the `attackCostDiscard` op. */

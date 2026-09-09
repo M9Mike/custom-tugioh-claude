@@ -4473,40 +4473,102 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   'elemental-hero-avian': {
     /* The engine of the deck, on the smallest body in it. Fourteen fusions and
        one Spell that assembles any of them: without a way to find the
-       Polymerization, the Extra Deck is a picture of a deck. */
-    text: 'When this monster is Summoned: add 1 "Polymerization" from your Deck to your hand.',
+       Polymerization, the Extra Deck is a picture of a deck.
+       And a feather through their backrow on the way in — or, with nothing on
+       the table to break, through the hand they were holding it in. */
+    text:
+      'When this monster is Summoned: add 1 "Polymerization" from your Deck to your hand, ' +
+      'then destroy 1 Spell or Trap your opponent controls — or, if they control none, ' +
+      'they discard 1 random Spell or Trap card. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Burstinatrix" from your Deck or Graveyard to your hand.',
     cry: 'Feather Break!',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'search', filter: { slugs: ['polymerization'] } }],
+        targets: 1,
+        ops: [
+          { op: 'search', filter: { slugs: ['polymerization'] } },
+          {
+            op: 'cascade',
+            branches: [
+              {
+                condition: { opponentHasBackrow: true },
+                ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
+              },
+              { ops: [{ op: 'discard', count: 1, who: 'opp', filter: { kind: 'spell' } }] },
+              { ops: [{ op: 'discard', count: 1, who: 'opp', filter: { kind: 'trap' } }] },
+            ],
+          },
+        ],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-burstinatrix'] }, orGrave: true }],
       },
     ],
   },
 
   'elemental-hero-burstinatrix': {
-    text: 'When this monster is Summoned: inflict 500 damage to your opponent.',
+    /* Priced off what they are holding: cheap against a player in topdeck mode
+       and frightening against a full grip, which is the same shape Tribute to
+       the Doomed already charges in. */
+    text:
+      'When this monster is Summoned: inflict 500 damage to your opponent for each card in their hand. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Avian" from your Deck or Graveyard to your hand.',
     cry: 'Burst Fire!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'damage', amount: 500, to: 'opp' }] }],
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'damage', amount: 500, scale: 'perOppHandCard', to: 'opp' }] },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-avian'] }, orGrave: true }],
+      },
+    ],
   },
 
   'elemental-hero-clayman': {
     /* 800 ATK behind 2000 DEF, and the point of him is the turn he buys. Written
        as the same 1000 the Insect Barrier takes, because a wall's number should
        be one number in this game and not two. */
-    text: 'Anything that attacks this monster does so 1000 ATK lighter.',
+    text:
+      'Anything that attacks this monster does so 1000 ATK lighter, even while this monster is face-down. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bubbleman" from your Deck or Graveyard to your hand.',
     cry: 'Clay Guard!',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'] } },
+      /* `evenFaceDown` because a wall is a wall whether or not you have turned
+         it over — the owner's call, and the one aura in the game that holds
+         from under a card back. */
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'], evenFaceDown: true } },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bubbleman'] }, orGrave: true }],
+      },
     ],
   },
 
   'elemental-hero-sparkman': {
-    text: 'This monster inflicts piercing battle damage. When this monster destroys a monster in battle: inflict 500 damage to your opponent.',
+    /* The one that grows with the Extra Deck: every Fusion spent over a duel is
+       another thousand on a Level 4 body, which is what makes a deck that keeps
+       fusing worth fusing twice. */
+    text:
+      'This monster inflicts piercing battle damage and gains 1000 ATK and DEF for each Fusion monster in your Graveyard. ' +
+      'When this monster destroys a monster in battle: inflict 1000 damage to your opponent. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bladedge" from your Deck or Graveyard to your hand.',
     cry: 'Static Shockwave!',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 500, to: 'opp' }] },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          grants: ['pierce'],
+          per: { zone: 'ownGrave', filter: { isFusion: true }, atk: 1000, def: 1000 },
+        },
+      },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bladedge'] }, orGrave: true }],
+      },
     ],
   },
 
@@ -4515,13 +4577,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        and the reason it is worth playing a 800 ATK body on an empty field at
        all. `controlsNoOtherMonster` is asked of the board he lands on, so
        summoning him beside anything at all is simply a 800 ATK body. */
-    text: 'When this monster is Summoned, if it is the only monster you control: draw 2 cards.',
+    text:
+      'If you control no monsters, this monster can be Special Summoned from your hand in Attack Position. ' +
+      'When this monster is Summoned: draw 2 cards. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Clayman" from your Deck or Graveyard to your hand.',
     cry: 'Bubble Shuffle!',
     effects: [
+      /* The restriction came off the draw and moved onto the summon, which is
+         where the owner wanted it: two cards for showing up, and the price is
+         that he only shows up for free onto an empty field. */
+      { trigger: 'onSummon', ops: [{ op: 'draw', count: 2, who: 'own' }] },
       {
-        trigger: 'onSummon',
+        trigger: 'handSummon',
         condition: { controlsNoOtherMonster: true },
-        ops: [{ op: 'draw', count: 2, who: 'own' }],
+        label: 'Bubble Shuffle — arrive alone',
+        ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-clayman'] }, orGrave: true }],
       },
     ],
   },
@@ -4531,10 +4605,28 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        "cannot be targeted" on purpose — a Spell still answers him, a bigger
        body still answers him, and what he is for is walking into a board with
        two cards face-down. */
-    text: 'This monster is unaffected by Trap effects.',
+    text:
+      'This monster is unaffected by Spell and Trap effects. ' +
+      'When this monster is Summoned, and again when it declares an attack: destroy 1 Spell or Trap your opponent controls. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Necroshade" from your Deck or Graveyard to your hand.',
     cry: 'Wildheart never backs down!',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedByTraps'] } },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedBySpellsAndTraps'] } },
+      /* Before it can answer him, both times. He walks in through the backrow
+         and he walks through it again on the way to their Life Points. */
+      {
+        trigger: 'onSummon',
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
+      },
+      {
+        trigger: 'onDeclareAttack',
+        ops: [{ op: 'destroy', target: sel('opp', 'strongest', { zone: 'backrow' }) }],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-necroshade'] }, orGrave: true }],
+      },
     ],
   },
 
@@ -4543,29 +4635,59 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        about paying for a summon. This says the same thing as an event: he goes
        down, and the big one comes up in his place — the anime beat, and the
        reason Bladedge is in a deck whose next-biggest monster is 1600. */
-    text: 'When this monster is sent to the Graveyard: Special Summon 1 Level 5 or higher "Elemental HERO" monster from your hand.',
+    text:
+      'When this monster is sent to the Graveyard: Special Summon 1 "Elemental HERO" monster from your hand or Deck, ' +
+      'and add 1 "Elemental HERO Wildheart" from your Deck or Graveyard to your hand.',
     cry: 'Rise, in my place!',
     effects: [
       {
         trigger: 'onSentToGrave',
         targets: 1,
         ops: [
+          /* No ceiling and no zone left out: the ladder the owner asked for is
+             "the next HERO, wherever it is". Bladedge out of the Deck over a
+             fallen Necroshade is the anime beat and now the printed one. */
           {
             op: 'specialSummon',
-            from: 'hand',
-            filter: { nameIncludes: 'Elemental HERO', minLevel: 5 },
+            from: ['hand', 'deck'],
+            filter: { nameIncludes: 'Elemental HERO' },
             position: 'atk',
           },
+          { op: 'search', filter: { slugs: ['elemental-hero-wildheart'] }, orGrave: true },
         ],
       },
     ],
   },
 
   'elemental-hero-bladedge': {
-    text: 'This monster inflicts piercing battle damage.',
+    /* The top of the deck, and it comes down for an empty grip rather than two
+       Tributes — which is the same bargain Bubbleman makes one rung lower, and
+       the reason a hand of one card is a hand worth having. */
+    text:
+      'If this is the only monster in your hand, it can be Special Summoned from your hand. ' +
+      'This monster inflicts piercing battle damage and gains 1000 ATK for each "Elemental HERO" card in your hand. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Sparkman" from your Deck or Graveyard to your hand.',
     cry: 'Slice and dice!',
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          grants: ['pierce'],
+          per: { zone: 'ownHand', filter: { nameIncludes: 'Elemental HERO' }, atk: 1000 },
+        },
+      },
+      {
+        trigger: 'handSummon',
+        condition: { onlyMonsterInHand: true },
+        label: 'Slice and dice — come down alone',
+        ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }],
+      },
+      {
+        trigger: 'onSentToGrave',
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-sparkman'] }, orGrave: true }],
+      },
     ],
   },
 
@@ -4578,14 +4700,35 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        alone: chumped, tributed, wiped by a Dark Hole, fed to a Fusion. In a
        deck built on spending its own monsters, "destroyed by battle" would
        have missed most of the ways this one actually dies. */
-    text: 'When this monster is sent to the Graveyard: add 1 "Elemental HERO" card and 1 "Polymerization" from your Graveyard to your hand.',
+    /* Four cards for a body worth 800, and it is the whole reason one of each
+       is a deck: a Polymerization, a HERO out of the pile, a HERO out of the
+       Deck, and a spent Fusion put back where it can be summoned again.
+       The Polymerization is taken from the Graveyard first and the Deck only
+       if there is none down there — the owner's order, and the right one, since
+       a Deck copy is a card you could still draw. */
+    text:
+      'When this monster is sent to the Graveyard: add 1 "Polymerization" from your Graveyard, or from your Deck if there is none, ' +
+      'add 1 "Elemental HERO" card from your Graveyard and 1 "Elemental HERO" monster from your Deck to your hand, ' +
+      'and return 1 Fusion monster from your Graveyard to your Extra Deck.',
     cry: 'Good dog.',
     effects: [
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
+        targets: 3,
         ops: [
+          {
+            op: 'cascade',
+            branches: [
+              {
+                condition: { graveHasSlug: 'polymerization' },
+                ops: [{ op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } }],
+              },
+              { ops: [{ op: 'search', filter: { slugs: ['polymerization'] } }] },
+            ],
+          },
           { op: 'stealFromGrave', from: 'own', filter: { nameIncludes: 'Elemental HERO' } },
-          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } },
+          { op: 'search', filter: { nameIncludes: 'Elemental HERO', kind: 'monster' } },
+          { op: 'returnToExtra', target: sel('own', 'chosen', { zone: 'grave', filter: { isFusion: true }, count: 1 }) },
         ],
       },
     ],
@@ -4601,19 +4744,38 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        exactly the board that was standing there.
        And the blow never lands: an `onAttacked` that removes the attacker calls
        the battle off, which is the engine's own rule. */
+    /* Rewritten end to end by the owner, and it reads as one picture: the ball
+       of fur is *above* the fight. It cannot be attacked, it does not stand in
+       anybody's way — with LV10 alone on your side the opponent swings straight
+       past it at you — and it goes over the top for the Life Points itself.
+       The moment it lands a hit, the board it flew over is gone and the total
+       is billed to the player who owned it. And when it finally leaves, it
+       leaves you the card you needed. */
     text:
       'Cannot be Normal Summoned or Set. Can only be Special Summoned by "Transcendent Wings". ' +
-      'When this monster is attacked: destroy every Attack Position monster your opponent controls, ' +
-      'then inflict damage to your opponent equal to their total ATK.',
+      'This monster can attack your opponent directly. When it inflicts battle damage: destroy every monster your opponent controls ' +
+      'and inflict damage to your opponent equal to their combined ATK. ' +
+      'This monster cannot be attacked, and while it is the only monster you control your opponent may attack you directly. ' +
+      'When this monster is sent to the Graveyard: add 1 card from your Deck to your hand.',
     cry: 'Kuri-kuri!',
     summonOnlyBy: ['transcendent-wings'],
     effects: [
       {
-        trigger: 'onAttacked',
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['directAttack', 'cannotBeAttacked', 'doesNotBlock'] },
+      },
+      {
+        trigger: 'onDealBattleDamage',
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { filter: { position: 'atk' } }) },
+          { op: 'destroy', target: OPP_ALL },
           { op: 'damage', scale: 'destroyedAtk', to: 'opp' },
         ],
+      },
+      {
+        trigger: 'onSentToGrave',
+        targets: 1,
+        ops: [{ op: 'search', filter: {} }],
       },
     ],
   },
@@ -4623,13 +4785,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        thrown in front of a blow, Winged Kuriboh dies to one and closes the
        rest of the turn. So it answers the swing that killed it *and* the two
        behind it, which is exactly the card in the anime. */
-    text: 'When this monster is destroyed by battle: you take no battle damage for the rest of this turn.',
+    text:
+      'When this monster is destroyed by battle: you take no battle damage for the rest of this turn. ' +
+      'If this monster is discarded from your hand: return it to your hand.',
     cry: 'Kuri!',
     effects: [
       {
         trigger: 'onDestroyedByBattle',
         ops: [{ op: 'preventBattleDamage', who: 'own', duration: 'turn' }],
       },
+      /* Thrown away as a cost and straight back. Every card in this deck that
+         asks for a discard is really asking for the little one, and it never
+         actually goes anywhere. */
+      { trigger: 'onAnyToGrave', ops: [{ op: 'returnSelfToHand' }] },
     ],
   },
 
@@ -4740,13 +4908,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'elemental-hero-wild-wingman': {
-    /* Wildheart's half of the fusion carries: the body that does not read
-       Traps, now with a way to break them from across the table. */
-    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Avian. This monster is unaffected by Trap effects. Once per turn: discard 1 card to destroy 1 Spell or Trap on the field.',
+    /* Wildheart's half of the fusion carries: the body that reads neither a
+       Spell nor a Trap, now with a way to break them from across the table. */
+    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Avian. This monster is unaffected by Spell and Trap effects. Once per turn: discard 1 card to destroy 1 Spell or Trap on the field.',
     cry: 'Wild Rush!',
     fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-avian'],
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedByTraps'] } },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedBySpellsAndTraps'] } },
       {
         trigger: 'ignition',
         label: 'Discard 1, shatter a Spell/Trap',
@@ -4762,14 +4930,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Both halves inherited and both of them mattering at once: it swings at
        everything they have, it goes through the ones that are lying down, and
        the Trap they set to answer a board-clearing attacker does not read. */
-    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Bladedge. This monster attacks every monster your opponent controls once each Battle Phase, inflicts piercing battle damage, and is unaffected by Trap effects.',
+    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Bladedge. This monster attacks every monster your opponent controls once each Battle Phase, inflicts piercing battle damage, and is unaffected by Spell and Trap effects.',
     cry: 'Wild Slash!',
     fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-bladedge'],
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, grants: ['attackAll', 'pierce', 'unaffectedByTraps'] },
+        aura: { target: SELF, grants: ['attackAll', 'pierce', 'unaffectedBySpellsAndTraps'] },
       },
     ],
   },

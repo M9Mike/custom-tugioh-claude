@@ -1768,12 +1768,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   /* ---------------------------------------------------------------- */
 
   skyscraper: {
-    /* The city, and the only card in the deck that says out loud what the deck
-       is: a HERO is worth more when it is losing. 1000 is enough to turn every
-       original — 1000, 1200, 800, 1600 — into something that beats a Summoned
-       Skull, and worth nothing at all in a fight the HERO was already winning,
-       which is what keeps it from being a flat buff with extra words. */
-    text: 'Field Spell: when an "Elemental HERO" monster you control attacks a monster with more ATK, it gains 1000 ATK for that battle.',
+    /* The city. It began as the printed card — worth something only against a
+       bigger monster — and the owner took the restriction off: it rises behind
+       a HERO going forward, full stop. 1000 is enough to turn every original,
+       1000, 1200, 800 and 1600, into a body that trades with anything Kaiba
+       opens on. */
+    text: 'Field Spell: when an "Elemental HERO" monster you control attacks, it gains 1000 ATK for that battle.',
     cry: 'The city rises behind them!',
     effects: [
       {
@@ -1781,7 +1781,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [],
         aura: {
           target: sel('own', 'all', { filter: { nameIncludes: 'Elemental HERO' } }),
-          grants: ['surgesVsStronger'],
+          grants: ['surgesOnAttack'],
         },
       },
     ],
@@ -1830,7 +1830,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        Jaden plays this with nothing left, which is the whole picture. The
        Winged Kuriboh itself is the cost, and what comes back is the card that
        answers a board. */
-    text: 'Tribute 1 "Winged Kuriboh" you control: Special Summon 1 "Winged Kuriboh LV10" from your hand or Deck.',
+    text: 'Tribute 1 "Winged Kuriboh" you control: Special Summon 1 "Winged Kuriboh LV10" from your hand, Deck or Graveyard.',
     cry: 'Spread your wings!',
     effects: [
       {
@@ -1839,7 +1839,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [
           {
             op: 'specialSummon',
-            from: ['hand', 'deck'],
+            from: ['hand', 'deck', 'grave'],
             filter: { slugs: ['winged-kuriboh-lv10'] },
             position: 'atk',
           },
@@ -1849,31 +1849,53 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
   },
 
   'fusion-recovery': {
-    /* Both halves of a fusion that already happened, back in the hand. The
-       deck's second wind: the Polymerization is the card it runs out of, and
-       the material beside it is whichever HERO is worth having twice. */
-    text: 'Add 1 "Polymerization" and 1 Warrior monster from your Graveyard to your hand.',
+    /* The deck's second wind, and the reason fourteen fusions on one of each
+       material is a deck rather than a wish: the bodies come back to the hand
+       and every Fusion that has already been spent goes back where it can be
+       summoned again.
+       Every part of it is "up to", so the card is never dead — an empty
+       Graveyard still puts the Fusions home, and a Graveyard with no Fusions in
+       it still returns the monsters. */
+    text: 'Add up to 2 monsters from your Graveyard to your hand, then return every Fusion monster in your Graveyard to your Extra Deck.',
     cry: 'One more time!',
     effects: [
       {
         trigger: 'activate',
-        targets: 1,
+        targets: 2,
         ops: [
-          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } },
-          { op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } },
+          {
+            op: 'stealFromGrave',
+            from: 'own',
+            filter: { kind: 'monster', isFusion: false },
+          },
+          { op: 'returnToExtra', target: sel('own', 'all', { zone: 'grave', filter: { isFusion: true } }) },
         ],
       },
     ],
   },
 
   'h-heated-heart': {
-    text: 'Target 1 monster you control: it gains 500 ATK until the end of this turn.',
+    /* A thousand, and five hundred more for everyone who has already fallen.
+       Written as one op with a flat `plus` on top of the scale, because two ops
+       would be two `chosen` selectors and the player would be asked twice which
+       monster they meant. */
+    text: 'Target 1 "Elemental HERO" monster you control: it gains 1000 ATK, and 500 more for each "Elemental HERO" card in your Graveyard, until the end of this turn.',
     cry: 'Heat it up!',
     effects: [
       {
         trigger: 'activate',
         targets: 1,
-        ops: [{ op: 'gainAtk', amount: 500, target: OWN_PICK, duration: 'turn' }],
+        ops: [
+          {
+            op: 'gainAtk',
+            amount: 500,
+            scale: 'perCardInGrave',
+            filter: { nameIncludes: 'Elemental HERO' },
+            plus: 1000,
+            target: sel('own', 'chosen', { filter: { nameIncludes: 'Elemental HERO' } }),
+            duration: 'turn',
+          },
+        ],
       },
     ],
   },
@@ -1885,26 +1907,41 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        a side. Gated on controlling a Warrior, which is what every monster in
        this deck is — and the gate is the honest half of the printed card,
        because Righteous Justice with no HERO out destroys nothing. */
-    text: 'If you control a Warrior monster: destroy up to 2 Spell or Trap cards on the field.',
+    /* Four, spent across two places. It breaks what is on the table first and
+       then reaches into the hand for however much of the four is left over —
+       so one Set card on the field means three cards out of the grip, and a
+       backrow of four means the hand is untouched.
+       No longer gated on a backrow: with their field empty the whole number is
+       spent in the hand, which is precisely when the card is worth holding. */
+    text:
+      'If you control an "Elemental HERO" monster: destroy up to 4 Spell or Trap cards your opponent controls, ' +
+      'then they discard 1 random Spell or Trap card for each of the 4 you did not destroy.',
     cry: 'Justice comes down!',
     effects: [
       {
         trigger: 'activate',
-        condition: { controlsOtherOfType: 'Warrior', anyBackrow: true },
-        targets: 2,
-        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 2, optional: true }) }],
+        condition: { controlsOtherOfType: 'Warrior' },
+        targets: 4,
+        ops: [
+          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { kind: 'spell' } },
+          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { kind: 'trap' } },
+        ],
       },
     ],
   },
 
   'the-warrior-returning-alive': {
-    text: 'Add 1 Warrior monster from your Graveyard to your hand.',
+    text: 'Add up to 2 Warrior monsters from your Graveyard to your hand.',
     cry: 'Back on your feet.',
     effects: [
       {
         trigger: 'activate',
-        targets: 1,
-        ops: [{ op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } }],
+        targets: 2,
+        ops: [
+          { op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } },
+          { op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } },
+        ],
       },
     ],
   },
@@ -1913,19 +1950,28 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     /* The answer to losing a body: the next one is already coming. From the
        Deck as well as the hand, because a HERO deck that has drawn its
        fusions and none of its materials is the hand this card is held in. */
-    text: 'Trap: when a monster is destroyed by battle, Special Summon 1 Level 4 or lower "Elemental HERO" monster from your hand or Deck.',
+    /* However the HERO died — a bigger body, a Dark Hole, a Trap Hole — the
+       next one is already coming, and there is no ceiling on which one: the
+       owner took the Level 4 restriction off, so the signal can call Bladedge
+       out of the Deck over a fallen Avian. */
+    text:
+      'Trap: when a monster you control is destroyed, if you have an "Elemental HERO" in your Graveyard: ' +
+      'Special Summon 1 "Elemental HERO" monster from your hand or Deck.',
     cry: 'The signal is lit!',
     effects: [
       {
         trigger: 'trap',
         window: 'monsterDestroyed',
         label: 'Hero Signal — call the next one',
+        /* The window says a monster of yours fell and does not say which, so
+           the HERO is asked for where it certainly is by then: the pile. */
+        condition: { graveHas: { nameIncludes: 'Elemental HERO' } },
         targets: 1,
         ops: [
           {
             op: 'specialSummon',
             from: ['hand', 'deck'],
-            filter: { nameIncludes: 'Elemental HERO', maxLevel: 4 },
+            filter: { nameIncludes: 'Elemental HERO' },
             position: 'atk',
           },
         ],
@@ -1940,28 +1986,51 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        which is the engine's own rule and needs nothing said here.
        Permanent, deliberately. A swap that reverts at the End Phase leaves
        nothing behind, and what this card is *for* is the board afterwards. */
-    text: 'Trap: when your opponent\'s monster declares an attack on a monster you control, the two monsters change places. The attack is called off.',
+    text:
+      'Trap: when your opponent declares an attack, take control of 1 monster they control — they take the monster it was aimed at — ' +
+      'then the monster you took attacks every monster your opponent controls, in either position. You keep it until it leaves the field.',
     cry: 'Mirror Gate — open!',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Mirror Gate — turn it around',
-        ops: [{ op: 'swapControl' }],
+        targets: 1,
+        ops: [
+          { op: 'swapControl', target: sel('opp', 'chosen', { filter: { kind: 'monster' } }) },
+          { op: 'onslaught', target: sel('own', 'summoned') },
+        ],
       },
     ],
   },
 
   'hero-barrier': {
-    text: 'Trap: if you control a Warrior monster, negate 1 attack.',
+    /* Not a wall any more: a toll. The blow still lands — it just lands a
+       thousand lighter for every HERO standing behind the barrier, so three of
+       them turn a Blue-Eyes into something Clayman can look at.
+       `reusable` because the owner asked for it on *each* attack: a Continuous
+       Trap that answers every swing rather than one, which is what makes a
+       single card worth the one Spell/Trap Zone this game gives you. */
+    text:
+      'Continuous Trap: each time your opponent declares an attack, the attacking monster loses 1000 ATK ' +
+      'for each "Elemental HERO" monster you control. The attack still happens.',
     cry: 'Not this one.',
     effects: [
       {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
-        label: 'Hero Barrier — turn the blow aside',
-        condition: { controlsOtherOfType: 'Warrior' },
-        ops: [{ op: 'negateAttack' }],
+        label: 'Hero Barrier — take the weight out of it',
+        reusable: true,
+        ops: [
+          {
+            op: 'gainAtk',
+            amount: -1000,
+            scale: 'perOwnMonster',
+            filter: { nameIncludes: 'Elemental HERO' },
+            target: sel('opp', 'attacker'),
+            duration: 'turn',
+          },
+        ],
       },
     ],
   },

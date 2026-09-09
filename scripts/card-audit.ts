@@ -260,7 +260,14 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
       // Not "the hand grew": the card doing the searching usually left the hand
       // in the same breath, so the net size is unchanged. The Deck shrinking is
       // the honest signal.
-      return { what: 'adds a card from the Deck to the hand', ok: fell(a.me.deck, b.me.deck) };
+      /* `orGrave` is "the Deck, or the Graveyard if the Deck has none" — so the
+         card can legitimately arrive from either pile, and insisting on a Deck
+         that shrank reported every such search as broken. Every HERO in Jaden's
+         deck fetches the next one that way. */
+      return {
+        what: 'adds a card from the Deck to the hand',
+        ok: fell(a.me.deck, b.me.deck) || ('orGrave' in op && op.orGrave ? leftGrave(a.me, b.me) : false),
+      };
     case 'mill':
       return { what: 'sends cards from a Deck to the Graveyard', ok: fell(a.me.deck, b.me.deck) || fell(a.foe.deck, b.foe.deck) };
     case 'discard':
@@ -517,6 +524,30 @@ function stockDeckFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
  * position it was tested in. Same shape as `stockDeckFor`: give the effect the
  * thing it is written to read.
  */
+/**
+ * A monster on the controller's own side that this effect's own selector will
+ * accept.
+ *
+ * The equip host below learned this one card at a time; the condition's type
+ * learned it in `playable-check`. This is the same lesson asked of the thing
+ * that actually decides: an effect aimed at "1 Elemental HERO monster you
+ * control" is refused outright on a board of Baby Dragons, and the refusal
+ * reads as a broken card rather than as a position that was never built.
+ */
+function stockOwnTargetFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
+  for (const op of FLATTEN(eff.ops as Op[])) {
+    if (!('target' in op) || !op.target) continue;
+    const t = op.target;
+    if (t.side === 'opp' || t.pick !== 'chosen' || (t.zone ?? 'monster') !== 'monster' || !t.filter) continue;
+    if (s.players[owner].monsters.some((m) => m && matchesFilter(m, t.filter))) continue;
+    const body = matchCard(t.filter, 'monster');
+    if (!body) continue;
+    const z = s.players[owner].monsters.findIndex((m) => !m);
+    if (z >= 0) place(s, owner, z, body.slug);
+    else s.players[owner].monsters[0] = mint(s, owner, body.slug);
+  }
+}
+
 function stockHostFor(s: DuelState, eff: CardEffect) {
   for (const op of eff.ops) {
     if (op.op !== 'equipTo' || !op.filter) continue;
@@ -584,6 +615,7 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
   stockDeckFor(s, eff, owner);
   stockGraveFor(s, eff, owner);
   stockHandFor(s, eff, owner);
+  stockOwnTargetFor(s, eff, owner);
   // Effects that reach across the field need a legal victim over there, and a
   // free zone over here to put it in.
   for (const op of eff.ops) {
@@ -642,6 +674,13 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
      build the position the card actually needs. */
   if (cond.graveHasSlug && !s.players[ME].grave.some((g) => g.slug === cond.graveHasSlug)) {
     s.players[ME].grave.push(mint(s, ME, cond.graveHasSlug));
+  }
+  /* The same gate by kind rather than by name. Hero Signal fires over a fallen
+     HERO and asks the pile whether there is one, and a harness that only knew
+     how to bury a *named* card left the gate shut and the trap unoffered. */
+  if (cond.graveHas && !s.players[ME].grave.some((g) => matchesFilter(g, cond.graveHas))) {
+    const buried = matchCard(cond.graveHas, 'any');
+    if (buried) s.players[ME].grave.push(mint(s, ME, buried.slug));
   }
   if (cond.countersAtLeast != null && self) self.counters = cond.countersAtLeast;
   if (cond.turnAtLeast != null) s.turn = Math.max(s.turn, cond.turnAtLeast);
@@ -1470,6 +1509,29 @@ for (const def of Object.values(CARDS)) {
       const c = place(s, ME, zone < 0 ? 2 : zone, def.slug);
       c.summonedOnTurn = 0;
       satisfy(s, eff, c);
+      /* A Dark Hole is the usual way to send it away, and it is a *Spell* — so
+         a monster written to be unaffected by those is not sent anywhere by it,
+         and the effect reads as broken when the card is working perfectly.
+         Elemental HERO Wildheart is the first such monster. Kill it in battle
+         instead, which is a road nothing in this game is immune to and which
+         fires the same trigger. */
+      const shrugsOffSpells = def.effects.some(
+        (e) => e.trigger === 'continuous' && e.aura?.grants?.includes('unaffectedBySpellsAndTraps')
+      );
+      if (shrugsOffSpells) {
+        /* Their turn, because they are the ones swinging — `stocked()` hands
+           the board to ME and an attack declared out of turn is refused before
+           it reaches any card. */
+        s.active = FOE;
+        s.phase = 'battle';
+        const killerZone = s.players[FOE].monsters.findIndex((m) => !m);
+        const killer = place(s, FOE, killerZone < 0 ? 0 : killerZone, 'blue-eyes-white-dragon');
+        killer.summonedOnTurn = 0;
+        killer.attacksUsed = 0;
+        killer.atkMod += 5000;
+        audit(def, eff, s, (st) => run(st, FOE, { type: 'attack', uid: killer.uid, targetUid: c.uid }));
+        continue;
+      }
       // Blow up the whole board to send it away.
       const dh = mint(s, ME, 'dark-hole');
       s.players[ME].hand.push(dh);

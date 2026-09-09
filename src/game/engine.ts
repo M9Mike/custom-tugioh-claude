@@ -489,10 +489,24 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
      attack while still in hand". The Graveyard and the Deck read printed too,
      for the same reason. */
   if (!findOnField(state, target.uid)) return bonus;
-  for (const { c: source, controller } of fieldCards(state)) {
+  /* Face-up cards cast auras, and one card does it face-down as well — see
+     `evenFaceDown`. Scanned separately rather than by loosening `fieldCards`,
+     which every other reader in the engine depends on meaning "showing". */
+  const casters = [
+    ...fieldCards(state),
+    ...(['p1', 'p2'] as PlayerId[]).flatMap((pid) =>
+      state.players[pid].monsters
+        .filter((m): m is CardInstance => !!m && m.face === 'down')
+        .filter((m) => CARDS[m.slug]?.effects.some((e) => e.trigger === 'continuous' && e.aura?.evenFaceDown))
+        .map((c) => ({ c, controller: pid }))
+    ),
+  ];
+  for (const { c: source, controller } of casters) {
     if (source.isToken || source.flags.negated) continue;
     const def = CARDS[source.slug];
     if (!def) continue;
+    // A card back only casts the auras that said they hold from under one.
+    const hidden = source.face === 'down';
 
     // An Equip Spell buffs exactly the monster it is attached to. Reading it
     // live from the card on the field is what makes destroying the equip remove
@@ -509,6 +523,7 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
 
     for (const eff of def.effects) {
       if (eff.trigger !== 'continuous' || !eff.aura) continue;
+      if (hidden && !eff.aura.evenFaceDown) continue;
       /* An aura can be conditional — "while you control another Warrior" — and
          the condition was simply not read here, so every such card granted its
          bonus unconditionally. Masaki was indestructible alone on the field.
@@ -634,8 +649,10 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
   if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
-  if (grants.has('surgesVsStronger')) merged.surgesVsStronger = true;
-  if (grants.has('unaffectedByTraps')) merged.unaffectedByTraps = true;
+  if (grants.has('surgesOnAttack')) merged.surgesOnAttack = true;
+  if (grants.has('cannotBeAttacked')) merged.cannotBeAttacked = true;
+  if (grants.has('doesNotBlock')) merged.doesNotBlock = true;
+  if (grants.has('unaffectedBySpellsAndTraps')) merged.unaffectedBySpellsAndTraps = true;
   /* A side-wide shield reads as a flag on every monster standing behind it, so
      the battle code, the board and the AI all see it without any of them
      needing to know an ongoing effect exists. Tornado Wall raises it. */
@@ -1120,8 +1137,13 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
     else fireDepartures(state, [{ c, controller, destroyed, counters, face }]);
   }
   /* And the arrival, which is a different sentence from the departure: this one
-     is true of a card that was never on the board. */
+     is true of a card that was never on the board.
+     Marked with which road it took, for the length of the trigger and no
+     longer: Winged Kuriboh comes back when it is discarded and stays down when
+     it is destroyed, and `onAnyToGrave` alone cannot tell those apart. */
+  if (wasOnField) c.flags.justLeftTheField = true;
   fireTriggers(state, c, c.owner, 'onAnyToGrave', {});
+  delete c.flags.justLeftTheField;
 }
 
 /**
@@ -1530,7 +1552,13 @@ function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, c
      walks through Mirror Force and through his own controller's Trap Hole
      alike, which is what the words say and the only reading that does not need
      an exception written for it. */
-  if (ctx && CARDS[ctx.source.slug]?.kind === 'trap' && effFlags(state, c).unaffectedByTraps) return true;
+  if (
+    ctx &&
+    (CARDS[ctx.source.slug]?.kind === 'trap' || CARDS[ctx.source.slug]?.kind === 'spell') &&
+    effFlags(state, c).unaffectedBySpellsAndTraps
+  ) {
+    return true;
+  }
   const ctrl = controllerOf(state, c.uid);
   if (ctrl === actor) return false;
   /* The God check above is deliberately not reachable from here: piercing is a
@@ -1811,6 +1839,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           amount = effAtk(state, ctx.source, ctx.controller);
         } else if (op.scale === 'tributedAtk') {
           amount = (ctx.tributedAtk ?? []).reduce((a, b) => a + b, 0);
+        } else if (op.scale === 'perOppHandCard') {
+          /* What they are holding, which is the number Burstinatrix burns for:
+             cheap against a player in topdeck mode and frightening against a
+             full grip, the same shape as `lpScale: 'perOppHandCard'`. */
+          amount = (op.amount ?? 0) * state.players[other(ctx.controller)].hand.length;
         } else if (op.scale === 'destroyedAtk') {
           /* What this same effect actually killed, read off the board while it
              was still standing. Cannon Soldier fires the monster it destroyed
@@ -1842,6 +1875,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       }
       case 'gainAtk': {
         let amount = op.amount ?? 0;
+        /* Added at the very end, after whatever the scale came to — see
+           `plus`. "1000 ATK, and 500 more for each HERO in your Graveyard" is
+           one sentence about one monster. */
+        const flat = op.plus ?? 0;
         /* A filter narrows what the pile counts. Sword Arm of Dragon is worth
            150 for each of two named cards down there, not for the pile. */
         const pile = (cards: CardInstance[]) => (op.filter ? cards.filter((c) => matchesFilter(c, op.filter)) : cards).length;
@@ -1850,6 +1887,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           amount = (op.amount ?? 0) * (pile(state.players.p1.grave) + pile(state.players.p2.grave));
         }
         else if (op.scale === 'perMonsterOnField') amount = 300 * state.players[ctx.controller].monsters.filter(Boolean).length;
+        /* The card's own number, and the card's own idea of who counts — the
+           scale above carries a hardcoded 300 and counts every body. */
+        else if (op.scale === 'perOwnMonster') {
+          amount =
+            (op.amount ?? 0) *
+            state.players[ctx.controller].monsters.filter((m) => !!m && matchesFilter(m, op.filter)).length;
+        }
         else if (op.scale === 'perCardInEitherHand') {
           amount = (op.amount ?? 0) * (state.players.p1.hand.length + state.players.p2.hand.length);
         }
@@ -1861,6 +1905,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const t = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid)?.c : null;
           amount = t ? effAtk(state, t) : 0;
         }
+        amount += flat;
         for (const t of resolveTargets(ctx, op.target)) {
           if (op.duration === 'permanent') t.atkMod += amount;
           else t.turnAtkMod += amount;
@@ -2105,8 +2150,30 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            is exactly the board this card is played on. Permanent, by the
            owner's own standard for an anime card: the swap is the whole of it,
            and giving it back at the End Phase would leave nothing behind. */
-        const mine = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid) : null;
-        const theirs = ctx.trig.attackerUid ? findOnField(state, ctx.trig.attackerUid) : null;
+        /* Whichever of theirs the player names, not only the one swinging.
+           Mirror Gate used to be an answer to an attack; the owner made it an
+           exchange you choose — so the card reaches the monster that is
+           actually worth taking, and the attacker is merely the usual answer.
+           With no target named it still falls back to the attacker, which is
+           what the trigger context has and what the card was. */
+        const chosen = op.target ? resolveTargets(ctx, op.target)[0] : null;
+        const theirs = chosen
+          ? findOnField(state, chosen.uid)
+          : ctx.trig.attackerUid
+            ? findOnField(state, ctx.trig.attackerUid)
+            : null;
+        /* And whichever of yours goes the other way: the monster they attacked
+           if there was one, otherwise the best body you have to give — an
+           exchange needs two sides, and a Mirror Gate played with an empty
+           board of your own has nothing to send back. */
+        const mineFrom =
+          (ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid) : null) ??
+          (() => {
+            const own = state.players[ctx.controller].monsters.filter((m): m is CardInstance => !!m);
+            const best = own.length ? own.reduce((a, b) => (effAtk(state, a, ctx.controller) >= effAtk(state, b, ctx.controller) ? a : b)) : null;
+            return best ? findOnField(state, best.uid) : null;
+          })();
+        const mine = mineFrom;
         if (!mine || !theirs || mine.zone !== 'monster' || theirs.zone !== 'monster' || mine.controller === theirs.controller) {
           emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to exchange.`);
           break;
@@ -2127,6 +2194,16 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         );
         anim(state, { kind: 'summon', uid: theirs.c.uid, slug: theirs.c.slug, player: mine.controller });
         anim(state, { kind: 'summon', uid: mine.c.uid, slug: mine.c.slug, player: theirs.controller });
+        /* Recorded so the op after this one can find it — Mirror Gate sends the
+           body it just took straight back through the board it came out of, and
+           `pick: 'summoned'` is how an op names what the effect before it put
+           on the field. */
+        ctx.summoned = [...(ctx.summoned ?? []), theirs.c.uid];
+        /* It arrived this instant and it is about to swing, which is a thing no
+           ordinary summon may do — so the swing it is owed is given here rather
+           than left to a rule that would refuse it. */
+        theirs.c.attacksUsed = 0;
+        theirs.c.attacked = [];
         break;
       }
       case 'possess': {
@@ -2204,8 +2281,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const p = state.players[pid];
           /* A wide board pays for its own width — Tribute to the Doomed takes a
              card for each monster the discarding player is standing behind. */
-          const want =
+          let want =
             op.scale === 'perTheirMonster' ? op.count * p.monsters.filter((m) => !!m).length : op.count;
+          /* One number spent across two places. R - Righteous Justice breaks
+             what is on the table first and reaches into the hand for whatever
+             is left of its four, so a board that ate three of them leaves one
+             card to be taken out of the grip. */
+          if (op.minusDestroyed) want = Math.max(0, want - (ctx.destroyedCount ?? 0));
           /* A filter narrows what may be taken. Blast Sphere reaches into the
              hand for Spells and Traps alone — removal that happens to land
              somewhere private, rather than a random discard. */
@@ -2891,6 +2973,67 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'revealHand':
         break;
+      case 'returnToExtra':
+        /* Fusion Material goes home rather than staying dead. A Fusion in a
+           Graveyard is a card nothing can reach — it cannot be searched, and
+           reviving it is a different sentence — so in a deck of fourteen
+           fusions and one of each material this is what keeps the Extra Deck
+           from emptying out over a duel. */
+        for (const t of resolveTargets(ctx, op.target)) {
+          if (!CARDS[t.slug]?.isFusion) continue;
+          const owner = t.owner;
+          releaseEquips(state, t);
+          const removed = removeFromAnywhere(state, t.uid);
+          if (removed && !removed.isToken) {
+            resetInstance(removed);
+            state.players[owner].extra.push(removed);
+            log(state, `${displayName(state, removed)} returns to the Extra Deck.`, 'effect', ctx.controller, logSlug(removed));
+          }
+        }
+        break;
+      case 'returnSelfToHand': {
+        /* Thrown away and straight back. `bounce` reaches for a card standing
+           on the field; Winged Kuriboh is in the Graveyard by the time it gets
+           to speak, so this is the one road it can take.
+           And only for a card that never reached the board: a monster that just
+           died is not a monster that was discarded, and coming back from that
+           would be a promise its other half already covers. */
+        if (ctx.source.flags.justLeftTheField) break;
+        const me = ctx.source;
+        const owner = me.owner;
+        const removed = removeFromAnywhere(state, me.uid);
+        if (removed) {
+          resetInstance(removed);
+          state.players[owner].hand.push(removed);
+          log(state, `${displayName(state, removed)} flutters back into ${state.players[owner].name}'s hand.`,
+            'effect', owner, logSlug(removed));
+        }
+        break;
+      }
+      case 'onslaught': {
+        /* The body you just took turns round and goes through the board it was
+           standing in. Resolved one battle at a time through the ordinary
+           machinery — `suspendedAttack` and `resolveBattle`, the same pair a
+           declared attack uses — so piercing, protection, flip effects and
+           everything a kill pays out behave exactly as they always do. The
+           board is read fresh each time, because the last battle may have
+           changed it. */
+        const [runner] = resolveTargets(ctx, op.target);
+        if (!runner) break;
+        const struck = new Set<string>();
+        for (let round = 0; round < MONSTER_ZONES; round++) {
+          if (state.winner || state.pending) break;
+          const here = findOnField(state, runner.uid);
+          if (!here || here.zone !== 'monster') break;
+          const foe = other(here.controller);
+          const next = state.players[foe].monsters.find((m): m is CardInstance => !!m && !struck.has(m.uid));
+          if (!next) break;
+          struck.add(next.uid);
+          state.suspendedAttack = { attackerUid: runner.uid, targetUid: next.uid, controller: here.controller };
+          resolveBattle(state);
+        }
+        break;
+      }
       case 'shuffleIntoDeck':
         for (const t of resolveTargets(ctx, op.target)) {
           const owner = t.owner;
@@ -3154,6 +3297,13 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   }
   if (cond.controlsNoOtherMonster) {
     if (p.monsters.some((m) => m && m.uid !== c.uid)) return false;
+  }
+  /* Bladedge's own price: an empty grip rather than two Tributes. Counted over
+     the hand the card is sitting in, itself excluded — "the only monster in
+     your hand" is a sentence about the company it keeps. */
+  if (cond.onlyMonsterInHand) {
+    const others = p.hand.filter((h) => h.uid !== c.uid && CARDS[h.slug]?.kind === 'monster');
+    if (others.length) return false;
   }
   if (cond.requiresField) {
     const has = state.players.p1.field?.slug === cond.requiresField || state.players.p2.field?.slug === cond.requiresField;
@@ -3900,13 +4050,10 @@ function resolveBattle(state: DuelState) {
     swing += flags.bonusVsDefense;
     log(state, `${displayName(state, attacker)} bears down on a defending monster.`, 'effect', controller, logSlug(attacker));
   }
-  /* Skyscraper. The city rises behind a HERO who is outgunned, and only then:
-     measured against the defender's ATK whichever way it is standing, because
-     "attacks a monster that has a higher ATK" is a sentence about the monster
-     and not about its posture. Read off the numbers the battle is using — the
-     toll and the doubling have already been taken — so a HERO that was made
-     big enough by something else does not also get the surge. */
-  if (flags.surgesVsStronger && effAtk(state, target, defender) > swing) {
+  /* Skyscraper. The city rises behind a HERO going forward — every swing, not
+     only the ones it was going to lose. It began as "against a bigger monster"
+     and the owner took the restriction off. */
+  if (flags.surgesOnAttack) {
     swing += 1000;
     log(state, `${displayName(state, attacker)} leaps from the skyline — 1000 ATK, for this battle.`,
       'effect', controller, logSlug(attacker));
@@ -4526,15 +4673,24 @@ export function legalAttackTargets(state: DuelState, pid: PlayerId, c: CardInsta
   if (stare.length) return { uids: stare.map((m) => m.uid), direct: false };
   if (flags.directAttack) return { uids: monsters.map((m) => m.uid), direct: true };
   if (monsters.length === 0) return { uids: [], direct: true };
+  /* Two separate promises, and Winged Kuriboh LV10 makes both. Nothing may
+     declare an attack on it — it is not a wall you break, it is a thing that is
+     not there when the blow arrives — and standing there does not stop a direct
+     attack either, because the little one flies over the fight rather than
+     joining it. So a board of nothing but LV10 is an open board. */
+  const attackable = monsters.filter((m) => !effFlags(state, m, other(pid)).cannotBeAttacked);
+  const blockers = monsters.filter((m) => !effFlags(state, m, other(pid)).doesNotBlock);
+  if (!blockers.length) return { uids: attackable.map((m) => m.uid), direct: true };
+  if (!attackable.length) return { uids: [], direct: false };
   if (flags.attackAll) {
     // Once each: a monster already visited this turn is off the menu while an
     // unvisited one remains. If every one has been visited, only the base
     // allowance can justify another swing, and then the field reopens.
     const visited = c.attacked ?? [];
-    const freshOnes = monsters.filter((m) => !visited.includes(m.uid));
-    return { uids: (freshOnes.length ? freshOnes : monsters).map((m) => m.uid), direct: false };
+    const freshOnes = attackable.filter((m) => !visited.includes(m.uid));
+    return { uids: (freshOnes.length ? freshOnes : attackable).map((m) => m.uid), direct: false };
   }
-  return { uids: monsters.map((m) => m.uid), direct: false };
+  return { uids: attackable.map((m) => m.uid), direct: false };
 }
 
 /**

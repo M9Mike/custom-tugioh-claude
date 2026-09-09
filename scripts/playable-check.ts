@@ -181,6 +181,24 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
      and a Winged Beast, so the engine correctly refused the cost and the card
      read as one nobody could ever play. The same shape as the equip host and
      the summon fodder: put down the thing the card is written to spend. */
+  /* And a body the card's own selector will accept. H - Heated Heart is aimed
+     at "1 Elemental HERO monster you control", and the two spares standing here
+     are a Fiend and a Winged Beast — so the engine refused the activation and
+     the card read as one nobody could ever play. Same lesson as the equip host
+     above and the condition's type beside it, now asked of the thing that
+     actually decides. */
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) {
+      if (!('target' in op) || !op.target) continue;
+      const t = op.target;
+      if (t.side === 'opp' || t.pick !== 'chosen' || (t.zone ?? 'monster') !== 'monster' || !t.filter) continue;
+      if (p.monsters.some((m) => m && matchesFilter(m, t.filter))) continue;
+      const body = Object.values(CARDS).find(
+        (d) => d.kind === 'monster' && !isExtraDeckCard(d.slug) && matchesFilter({ slug: d.slug } as CardInstance, t.filter)
+      );
+      if (body) p.monsters[1] = spare(11, body.slug);
+    }
+  }
   const paidWith = (CARDS[slug]?.effects ?? []).find((e) => e.cost?.tributeFilter)?.cost?.tributeFilter;
   if (paidWith) {
     const body = Object.values(CARDS).find(
