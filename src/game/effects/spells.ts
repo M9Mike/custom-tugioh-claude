@@ -1974,8 +1974,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        next one is already coming, and there is no ceiling on which one: the
        owner took the Level 4 restriction off, so the signal can call Bladedge
        out of the Deck over a fallen Avian. */
+    /* No Graveyard clause: the owner's card is "a monster you control is
+       destroyed", full stop. It was gated on a HERO already lying in the pile
+       — a tidy reading of the printed card and one sentence longer than what
+       he asked for, which made the signal dead on the first body you lost.
+       Reported. */
     text:
-      'Trap: when a monster you control is destroyed, if you have an "Elemental HERO" in your Graveyard: ' +
+      'Trap: when a monster you control is destroyed: ' +
       'Special Summon 1 "Elemental HERO" monster from your hand or Deck.',
     cry: 'The signal is lit!',
     effects: [
@@ -1983,9 +1988,6 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'monsterDestroyed',
         label: 'Hero Signal — call the next one',
-        /* The window says a monster of yours fell and does not say which, so
-           the HERO is asked for where it certainly is by then: the pile. */
-        condition: { graveHas: { nameIncludes: 'Elemental HERO' } },
         targets: 1,
         ops: [
           {
@@ -2015,6 +2017,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Mirror Gate — turn it around',
+        /* A monster of mine has to be the one being attacked. The window opens
+           on a *direct* swing too, and with nothing of mine in the way there is
+           no monster to send back across the table — the op fell back on
+           whatever else I happened to control, which is a card the player never
+           asked to give away. Reported. */
+        condition: { attackTargetsOwnMonster: true },
         targets: 1,
         ops: [
           { op: 'swapControl', target: sel('opp', 'chosen', { filter: { kind: 'monster' } }) },

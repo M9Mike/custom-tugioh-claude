@@ -13,7 +13,7 @@ import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
+import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
@@ -13844,6 +13844,121 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(!!risen, 'DARK: and it stands back up before the turn is out',
       ended.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
     ok(risen?.position === 'def', 'DARK: kneeling, not swinging', risen?.position ?? '(nowhere)');
+  }
+
+  {
+    /* Hero Signal answers the *first* body you lose. It was gated on a HERO
+       already lying in the pile, which is one sentence longer than the card
+       the owner asked for and made it dead exactly when it matters most. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    /* The body that falls is deliberately *not* a HERO. With a HERO dying, the
+       old Graveyard clause was satisfied by the very card that just fell, so a
+       pin built on one could not tell the two versions apart — it passed with
+       the condition still there. The Kuriboh is the case the clause actually
+       killed: a monster of mine is destroyed, there is no HERO anywhere, and
+       the owner's card says light the signal. */
+    const kuri = card(ME, 'winged-kuriboh');
+    kuri.summonedOnTurn = 0;
+    s.players[ME].monsters = [kuri, null, null];
+    const sig = { ...card(ME, 'hero-signal'), face: 'down' as const };
+    sig.summonedOnTurn = 0;
+    s.players[ME].spellTrap = sig;
+    s.players[ME].grave = []; // nothing down there at all
+    s.players[ME].deck = [card(ME, 'elemental-hero-bladedge')];
+    const bews = card(FOE, 'blue-eyes-white-dragon');
+    bews.summonedOnTurn = 0;
+    s.players[FOE].monsters = [bews, null, null];
+    let out = act(s, FOE, { type: 'attack', uid: bews.uid, targetUid: kuri.uid });
+    let g = 0;
+    while (out.pending && g++ < 6) {
+      const p = out.pending;
+      out = act(out, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: sig.uid });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.slug === 'elemental-hero-bladedge'),
+      'SIGNAL: no HERO anywhere is no reason not to light it',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  {
+    /* Mirror Gate needs something of mine to be attacked. On a direct swing
+       there is no monster to send back across the table, and the op used to
+       fall back on whatever else I happened to control — a card the player
+       never offered to give away. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const spare = card(ME, 'elemental-hero-clayman'); // standing, but not attacked
+    spare.summonedOnTurn = 0;
+    s.players[ME].monsters = [null, spare, null];
+    const gate = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+    gate.summonedOnTurn = 0;
+    s.players[ME].spellTrap = gate;
+    const bews = card(FOE, 'blue-eyes-white-dragon');
+    bews.summonedOnTurn = 0;
+    bews.flags = { ...bews.flags, directAttack: true };
+    s.players[FOE].monsters = [bews, null, null];
+    const direct = act(s, FOE, { type: 'attack', uid: bews.uid, targetUid: null });
+    ok(!(direct.pending?.kind === 'trap' && direct.pending.options.includes(gate.uid)),
+      'GATE: a direct swing does not open it — there is nothing of mine to send back',
+      direct.pending?.kind === 'trap' ? direct.pending.options.join(',') : '(no trap window)');
+    ok(direct.players[ME].monsters.some((m) => m?.uid === spare.uid),
+      'GATE: and the body I was not offering stays where it is',
+      direct.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* CONTROL: aimed at a monster of mine, it opens as it always did. */
+    const aimed = jaden();
+    aimed.phase = 'battle';
+    aimed.active = FOE;
+    const mine2 = card(ME, 'elemental-hero-clayman');
+    mine2.summonedOnTurn = 0;
+    aimed.players[ME].monsters = [mine2, null, null];
+    const gate2 = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+    gate2.summonedOnTurn = 0;
+    aimed.players[ME].spellTrap = gate2;
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    aimed.players[FOE].monsters = [ox, null, null];
+    const open = act(aimed, FOE, { type: 'attack', uid: ox.uid, targetUid: mine2.uid });
+    ok(open.pending?.kind === 'trap' && open.pending.options.includes(gate2.uid),
+      'GATE: CONTROL: and a swing at a monster of mine opens it as it always did',
+      open.pending?.kind === 'trap' ? open.pending.options.join(',') : '(no trap window)');
+  }
+
+  {
+    /* Every card that names a monster out of a Deck has to let me name it.
+       E - Emergency Call's whole effect lives inside a cascade and the picker
+       had never learned to look inside one, so the engine chose the HERO. */
+    const spec = specChainForEffect('e-emergency-call', 0)[0];
+    ok(!!spec, 'CALL: the card asks which HERO', spec ? spec.prompt : '(asks nothing)');
+    ok(spec?.zone === 'deck', 'CALL: out of the Deck', spec?.zone ?? '-');
+
+    /* And Necroshade, which reaches two zones at once — "from your hand or
+       Deck (you pick)" was one pool the picker could not describe. */
+    const shade = specChainFor('elemental-hero-necroshade', 'onSentToGrave')[0];
+    ok(!!shade, 'CALL: Necroshade asks too', shade ? shade.prompt : '(asks nothing)');
+    ok(shade?.zone === 'handOrDeck', 'CALL: across the hand and the Deck together', shade?.zone ?? '-');
+
+    /* Hero Signal reaches the same two. */
+    const signal = specChainFor('hero-signal', 'trap')[0];
+    ok(signal?.zone === 'handOrDeck', 'CALL: and so does the signal', signal?.zone ?? '-');
+
+    /* And the pick is honoured: the named body is the one that arrives, not
+       whichever the engine would have reached for. */
+    const s = jaden();
+    const ec = card(ME, 'e-emergency-call');
+    s.players[ME].hand = [ec];
+    const wanted = card(ME, 'elemental-hero-bubbleman');
+    s.players[ME].deck = [card(ME, 'elemental-hero-bladedge'), wanted, card(ME, 'elemental-hero-avian')];
+    let out = act(s, ME, { type: 'activateSpell', uid: ec.uid, targets: [wanted.uid] });
+    let g = 0;
+    while (out.pending?.kind === 'choose' && g++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.uid === wanted.uid),
+      'CALL: and the one I named is the one that arrives',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
   {

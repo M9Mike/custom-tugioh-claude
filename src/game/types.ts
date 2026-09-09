@@ -1334,6 +1334,17 @@ export interface EffectCondition {
    * telling you what it is.
    */
   typeOnField?: string;
+  /**
+   * The attack this window opened on is aimed at a monster you control.
+   *
+   * "When your opponent declares an attack" opens on a *direct* swing as
+   * readily as on one against a body, and a card whose whole effect is about
+   * the monster being attacked has nothing to work with in the first case.
+   * Mirror Gate sends your monster back the other way; with none of yours
+   * being attacked there is nothing to send, and it should not be offered at
+   * all rather than falling back on whatever else you happen to control.
+   */
+  attackTargetsOwnMonster?: boolean;
   /** This card is the only monster you control. */
   controlsNoOtherMonster?: boolean;
   /**

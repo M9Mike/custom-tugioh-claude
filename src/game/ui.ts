@@ -179,10 +179,48 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
   if (op.op === 'diceRoll') {
     return scanOps(op.perPip, owner);
   }
-  if (op.op === 'specialSummon' && (op.from === 'grave' || op.from === 'hand')) {
+  /* A cascade is a card with branches, and every branch is still the card. The
+     two ops above have descended into their sub-lists since they were written
+     and this one never did — so E - Emergency Call, whose whole effect lives
+     inside a cascade, asked the player nothing and the engine picked the HERO
+     for them. Reported. Which branch will run is a question about the board at
+     resolution and cannot be known here, so the first branch that wants an
+     answer is the one asked for: a branch that does not run simply leaves the
+     answer unconsumed, which the ops already tolerate. */
+  if (op.op === 'cascade') {
+    for (const branch of op.branches) {
+      const spec = scanOps(branch.ops, owner);
+      if (spec) return spec;
+    }
+    return null;
+  }
+  /* Every zone the op actually reaches, not the two that happened to be
+     written first. `from: 'deck'` and `from: ['hand', 'deck']` both fell
+     through here and the engine picked for you — which is E - Emergency Call
+     handing you a HERO you did not choose, and Necroshade calling one out of
+     the Deck the same way. Reported. The engine has always honoured a named
+     uid across whatever `from` lists; only the picker was narrower than it. */
+  if (op.op === 'specialSummon') {
+    const zones = Array.isArray(op.from) ? op.from : [op.from];
+    const wants = (z: string) => zones.includes(z as never);
+    const pool: TargetSpec['zone'] | null =
+      wants('hand') && wants('deck') && wants('grave')
+        ? 'handOrDeckOrGrave'
+        : wants('hand') && wants('deck')
+          ? 'handOrDeck'
+          : wants('deck') && wants('grave')
+            ? 'deckOrGrave'
+            : wants('grave')
+              ? 'grave'
+              : wants('hand')
+                ? 'hand'
+                : wants('deck')
+                  ? 'deck'
+                  : null;
+    if (!pool) return null;
     return {
       side: op.side === 'both' ? 'both' : 'own',
-      zone: op.from === 'grave' ? 'grave' : 'hand',
+      zone: pool,
       /* The op's own count, not a hardcoded 1. The Flute of Summoning Dragon
          brings out *two* Dragons and only ever asked for one, so it resolved
          the moment the first was picked and chose the second itself. */

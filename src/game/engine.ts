@@ -3408,6 +3408,14 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     );
     if (!has) return false;
   }
+  if (cond.attackTargetsOwnMonster) {
+    /* A direct swing names no monster at all, and a swing at theirs is not
+       yours — both are "nothing of mine is being attacked". Asked of the
+       controller of the card, which for a Trap answering a window is the
+       player being attacked. */
+    const aimed = trig?.targetUid ? findOnField(state, trig.targetUid) : null;
+    if (!aimed || aimed.controller !== controller) return false;
+  }
   if (cond.controlsNoOtherMonster) {
     if (p.monsters.some((m) => m && m.uid !== c.uid)) return false;
   }
@@ -3777,7 +3785,7 @@ function resumeChoice(state: DuelState, choice: PendingChoice, picked: string[])
 /* Trap windows                                                        */
 /* ------------------------------------------------------------------ */
 
-function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): CardInstance[] {
+function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow, trig?: TriggerContext): CardInstance[] {
   const p = state.players[pid];
   const out: CardInstance[] = [];
   /* A condition is exactly the same shape as a cost, and was missed where the
@@ -3786,7 +3794,12 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
      announced it, skipped the condition-gated effect and spent the card for
      nothing. Reported from a real duel. Asked here so the card is never
      offered, rather than refused after the window has already been fired. */
-  const live = (c: CardInstance) => (e: CardEffect) => !e.condition || conditionMet(state, e, c, pid);
+  /* The context the window opened with, so a condition can ask about the beat
+     rather than only about the board. Mirror Gate is the card that needs it:
+     "when your opponent declares an attack" opens on a *direct* swing too, and
+     a Mirror Gate with nothing of yours being attacked has no monster to send
+     back across the table. Reported. */
+  const live = (c: CardInstance) => (e: CardEffect) => !e.condition || conditionMet(state, e, c, pid, trig);
   const st = p.spellTrap;
   /* Not only Traps: a Quick-Play Spell carries a `trap`-trigger twin exactly
      so its Set copy can answer a window — Graceful Dice thrown across an
@@ -3936,7 +3949,7 @@ function openTrapWindow(state: DuelState, responder: PlayerId, window: TrapWindo
   /* Shining Flare Wingman's clause reaches the window itself, which is where a
      hand trap lives as well: no window, no Kuriboh. */
   if (isSilenced(state, responder)) return false;
-  const opts = activatableTraps(state, responder, window);
+  const opts = activatableTraps(state, responder, window, context);
   if (!opts.length) return false;
   state.pending = { kind: 'trap', player: responder, options: opts.map((c) => c.uid), reason, context };
   return true;
@@ -3956,7 +3969,11 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
 
   const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig, destroyedAtk: trig.destroyedAtk };
   for (const eff of effs) {
-    if (!conditionMet(state, eff, c, pid)) continue;
+    /* With the same context the window was offered under. Asked without it, a
+       condition about the beat rather than the board passes the offer and then
+       fails here — the card is announced, spent, and does nothing, which is
+       the exact shape of the Tornado Wall report this gate was added for. */
+    if (!conditionMet(state, eff, c, pid, trig)) continue;
     /* Traps pay their costs too. `activateSpell` has always paid `cost.lp`;
        this path silently ignored it, so a trap priced in Life Points was a
        trap priced in nothing. Announced like any other payment — the total
