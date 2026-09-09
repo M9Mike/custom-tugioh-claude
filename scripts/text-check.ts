@@ -34,10 +34,28 @@ import type { CardDef, CardEffect, CardFilter, Op, Trigger } from '../src/game/t
  * rule below accepts either route rather than reporting three correct cards as
  * promising something they never do.
  */
-const ATTACK_TIME = new Set(['doublesWhenAttacking', 'bonusVsDefense']);
+/* `surgesOnAttack`, `surgesVsStronger` and `halvesDefender` join the list for
+   the same reason the first two are on it: all three are read inside the damage
+   calculation off a flag, because a trigger that fired and moved the number
+   would leave the bonus on the monster afterwards. Skyscraper's thousand, the
+   Flame Wingman's nerve and Wildedge's halving are all "when it attacks"
+   sentences with no `onDeclareAttack` behind them, correctly. */
+const ATTACK_TIME = new Set([
+  'doublesWhenAttacking',
+  'bonusVsDefense',
+  'surgesOnAttack',
+  'surgesVsStronger',
+  'halvesDefender',
+]);
+/* And the trigger that *is* about a swing but is not the declaration: the
+   Phoenix Enforcer's clause fires after the damage step, on an attack that
+   failed to break what it hit. A card carrying it is a card that does
+   something when it attacks. */
+const ATTACK_TRIGGERS = new Set<Trigger>(['onAttackNoKill']);
 function swingsDifferently(def: CardDef): boolean {
   return def.effects.some(
     (e) =>
+      ATTACK_TRIGGERS.has(e.trigger) ||
       e.ops.some((o) => ATTACK_TIME.has(o.op) || (o.op === 'equipTo' && o.bonusVsDefense != null)) ||
       (e.aura?.grants ?? []).some((g) => ATTACK_TIME.has(g)) ||
       e.ops.some((o) => o.op === 'equipTo' && (o.grants ?? []).some((g) => ATTACK_TIME.has(g)))

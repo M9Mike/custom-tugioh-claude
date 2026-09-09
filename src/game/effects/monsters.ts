@@ -4812,10 +4812,25 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        is not the body, it is that everything it kills is billed to the player
        who played it. Two 1000-ATK monsters and a Polymerization for a card
        that turns their Summoned Skull into 2500 damage. */
-    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. When this monster destroys a monster in battle: inflict damage to your opponent equal to that monster\'s ATK.',
+    /* And two more things, both of them about walking into something bigger:
+       it brings the city with it, and it rises to meet whatever it cannot
+       already beat. `surgesVsStronger` is its own nerve and stacks with
+       Skyscraper's `surgesOnAttack` — a HERO under the city going into a
+       Blue-Eyes gets both thousands, which is the owner's "obviously
+       independent". */
+    text:
+      'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. ' +
+      'When this monster is Summoned: add 1 "Skyscraper" from your Graveyard or Deck to your hand. ' +
+      'When this monster attacks a monster with more ATK than it: it gains 1000 ATK for that battle. ' +
+      'When this monster destroys a monster in battle: inflict damage to your opponent equal to that monster\'s ATK.',
     cry: 'Infernal Rage!',
     fusionMaterials: ['elemental-hero-avian', 'elemental-hero-burstinatrix'],
     effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['surgesVsStronger'] } },
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'search', filter: { slugs: ['skyscraper'] }, orGrave: true }],
+      },
       { trigger: 'onBattleDestroy', ops: [{ op: 'damage', scale: 'destroyedAtk', to: 'opp' }] },
     ],
   },
@@ -4824,11 +4839,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The same two materials as the Wingman, which is the printed card and is
        also the choice the Extra Deck exists to offer: the same pair of bodies
        buys either the burn or the body that will not die. */
-    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. This monster cannot be destroyed by battle.',
+    /* The body that will not die, and now the body that gets bigger for not
+       dying: every wall it fails to break and every blow it takes is another
+       500, kept for good. A board that holds it off is a board losing slowly,
+       which is the whole idea of a phoenix. */
+    text:
+      'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. This monster cannot be destroyed by battle. ' +
+      'Each time it attacks a monster and fails to destroy it, and each time it is attacked: it gains 500 ATK permanently.',
     cry: 'Rise from the ashes!',
     fusionMaterials: ['elemental-hero-avian', 'elemental-hero-burstinatrix'],
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } },
+      { trigger: 'onAttackNoKill', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }] },
+      { trigger: 'onAttacked', ops: [{ op: 'gainAtk', amount: 500, target: SELF, duration: 'permanent' }] },
     ],
   },
 
@@ -4837,37 +4860,47 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        giant has no way to grow — so the ceiling is written as the number
        rather than as a comparison the filter cannot make. If a card ever moves
        his ATK, this line is the one that has to move with it. */
-    text: 'Fusion: Elemental HERO Sparkman + Elemental HERO Clayman. Once per turn: discard 1 card to destroy 1 monster on the field with less than 2400 ATK.',
+    /* Turned all the way around by the owner: it was a once-a-turn button that
+       took the small things, and it is now an arrival that takes the big ones.
+       2400 is its own ATK and the number is read from the board live, so a
+       monster pumped over the line by its own controller's Spell is swept by
+       the same clause that spares a 2300. */
+    text:
+      'Fusion: Elemental HERO Sparkman + Elemental HERO Clayman. ' +
+      'When this monster is Summoned: destroy every monster your opponent controls with 2400 or more ATK.',
     cry: 'Voltic Thunder!',
     fusionMaterials: ['elemental-hero-sparkman', 'elemental-hero-clayman'],
     effects: [
       {
-        trigger: 'ignition',
-        label: 'Discard 1, strike a monster down',
-        cost: { discard: 1 },
-        targets: 1,
-        ops: [{ op: 'destroy', target: sel('both', 'chosen', { filter: { maxAtk: 2399 } }) }],
+        trigger: 'onSummon',
+        ops: [{ op: 'destroy', target: sel('opp', 'all', { filter: { minAtk: 2400 } }) }],
       },
     ],
   },
 
   'elemental-hero-rampart-blaster': {
-    /* The wording matters: the halving belongs to the *direct* swing and to
-       nothing else — see `halvedDirectDamage`, which is the toll for going
-       around a guard rather than a discount on every blow the blaster lands.
-       "When it does so using this effect" is the clause that says so, and
-       `npm run text` reads it. */
-    text: 'Fusion: Elemental HERO Clayman + Elemental HERO Burstinatrix. This monster can attack your opponent directly. When it does so using this effect, the battle damage it inflicts to your opponent is halved.',
+    /* Rebuilt from nothing on the owner's word: the halved direct swing is
+       gone and what is left is an emplacement. It never has to stand up to
+       fight — the wall and the gun are the same card at the same time — and
+       what reaches the player is 2500 out of a 2000 body, because the gun is
+       the number and not the monster.
+       The toll is written `sapsAttackerInDefense` rather than `sapsAttacker`:
+       the thousand is the shield it holds while lying down, and a Blaster that
+       has stood up has put the shield down. */
+    text:
+      'Fusion: Elemental HERO Clayman + Elemental HERO Burstinatrix. ' +
+      'This monster can attack while in face-up Defence Position, and can attack your opponent directly. ' +
+      'A direct attack by this monster inflicts exactly 2500 damage. ' +
+      'While it is in Defence Position, anything that attacks it does so 1000 ATK lighter.',
     cry: 'Rampart Barrage!',
     fusionMaterials: ['elemental-hero-clayman', 'elemental-hero-burstinatrix'],
     effects: [
       {
-        trigger: 'onSummon',
-        ops: [
-          { op: 'directAttack', duration: 'permanent' },
-          { op: 'halvedDirectDamage', duration: 'permanent' },
-        ],
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['attacksInDefense', 'directAttack', 'sapsAttackerInDefense'] },
       },
+      { trigger: 'onSummon', ops: [{ op: 'directDamageFixed', amount: 2500, duration: 'permanent' }] },
     ],
   },
 
@@ -4875,57 +4908,110 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* The Wingman's number, pointed the other way: what it kills is what its
        controller is paid. 1800 ATK means it is usually paid a little, and once
        a duel it eats something big and the race resets. */
-    text: 'Fusion: Elemental HERO Burstinatrix + Elemental HERO Bubbleman. When this monster destroys a monster in battle: gain Life Points equal to that monster\'s ATK.',
+    /* And it pays out again on the way down — 3800 is very nearly a whole
+       duel's Life Points, so a Steam Healer spent as Fusion Material or chumped
+       into a Blue-Eyes is most of a second life. */
+    text:
+      'Fusion: Elemental HERO Burstinatrix + Elemental HERO Bubbleman. ' +
+      'When this monster destroys a monster in battle: gain Life Points equal to that monster\'s ATK. ' +
+      'When this monster is sent to the Graveyard: gain 3800 Life Points.',
     cry: 'Steam heals all wounds.',
     fusionMaterials: ['elemental-hero-burstinatrix', 'elemental-hero-bubbleman'],
     effects: [
       { trigger: 'onBattleDestroy', ops: [{ op: 'heal', scale: 'destroyedAtk', to: 'own' }] },
+      { trigger: 'onSentToGrave', ops: [{ op: 'heal', amount: 3800, to: 'own' }] },
     ],
   },
 
   'elemental-hero-mudballman': {
-    text: 'Fusion: Elemental HERO Bubbleman + Elemental HERO Clayman. Anything that attacks this monster does so 1000 ATK lighter.',
+    /* 3000 DEF that also mills them out from behind it: the wall does not just
+       hold, it works. A card off your own Deck for a card out of their hand is
+       an even trade on paper and a very good one from behind a body nothing
+       gets past. */
+    text:
+      'Fusion: Elemental HERO Bubbleman + Elemental HERO Clayman. Anything that attacks this monster does so 1000 ATK lighter. ' +
+      'Once per turn: send the top card of your Deck to the Graveyard to send 1 random card from your opponent\'s hand to the Graveyard.',
     cry: 'Nothing gets through.',
     fusionMaterials: ['elemental-hero-bubbleman', 'elemental-hero-clayman'],
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'] } },
+      {
+        trigger: 'ignition',
+        label: 'Bury one of mine, bury one of theirs',
+        cost: { mill: 1 },
+        condition: { opponentHasHand: true },
+        ops: [{ op: 'discard', count: 1, who: 'opp' }],
+      },
     ],
   },
 
   'elemental-hero-mariner': {
-    text: 'Fusion: Elemental HERO Bubbleman + Elemental HERO Avian. When Fusion Summoned: return 1 monster your opponent controls to their hand.',
+    /* Once a turn rather than once on arrival, which is a different card: a
+       1400 body that takes a monster off the table every turn it survives, so
+       the question stops being "what did it do when it landed" and becomes
+       "how long can they leave it standing".*/
+    text:
+      'Fusion: Elemental HERO Bubbleman + Elemental HERO Avian. ' +
+      'Once per turn: return 1 monster your opponent controls to their hand.',
     cry: 'Back to the tide!',
     fusionMaterials: ['elemental-hero-bubbleman', 'elemental-hero-avian'],
     effects: [
-      { trigger: 'onSummon', targets: 1, ops: [{ op: 'bounce', target: OPP_PICK }] },
+      {
+        trigger: 'ignition',
+        label: 'Back to the tide',
+        targets: 1,
+        ops: [{ op: 'bounce', target: OPP_PICK }],
+      },
     ],
   },
 
   'elemental-hero-darkbright': {
-    text: 'Fusion: Elemental HERO Sparkman + Elemental HERO Necroshade. This monster inflicts piercing battle damage. When this monster destroys a monster in battle: inflict 600 damage to your opponent.',
+    /* The 600-on-a-kill is gone; what is left bills them for the battle itself,
+       won or lost, swung or received. Written as two triggers because the
+       engine has no single "was in a battle" beat and inventing one to say what
+       two existing ones already say is a rule with two readings.
+       And it gets up: broken in battle it lies in the Graveyard for the rest of
+       the turn and stands back up before the turn closes, kneeling — a monster
+       that has just been killed does not come back swinging. */
+    text:
+      'Fusion: Elemental HERO Sparkman + Elemental HERO Necroshade. This monster inflicts piercing battle damage. ' +
+      'Each time this monster attacks or is attacked: inflict 1000 damage to your opponent. ' +
+      'If this monster is destroyed by battle: at the end of that turn, Special Summon it in Defence Position.',
     cry: 'Spark of the dark!',
     fusionMaterials: ['elemental-hero-sparkman', 'elemental-hero-necroshade'],
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
-      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 600, to: 'opp' }] },
+      { trigger: 'onDeclareAttack', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
+      { trigger: 'onAttacked', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
+      { trigger: 'onDestroyedByBattle', ops: [{ op: 'reviveSelfAtEndPhase' }] },
     ],
   },
 
   'elemental-hero-wild-wingman': {
     /* Wildheart's half of the fusion carries: the body that reads neither a
        Spell nor a Trap, now with a way to break them from across the table. */
-    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Avian. This monster is unaffected by Spell and Trap effects. Once per turn: discard 1 card to destroy 1 Spell or Trap on the field.',
+    /* `unaffectedByOpponentSpellsAndTraps`, not the blanket one, and the
+       difference is the whole point: he still stands on his own Skyscraper and
+       still takes a Heated Heart, and Mirror Force and a Dark Hole from across
+       the table find nothing there. A card that shrugs off its own support is
+       a card its own deck cannot play.
+       The button no longer waits for a backrow to exist. Three magic cards,
+       taken wherever they are keeping them — the table first, then the grip,
+       then the Deck — which is one count spent across three places and is why
+       `stripMagic` is one op rather than three. */
+    text:
+      'Fusion: Elemental HERO Wildheart + Elemental HERO Avian. This monster is unaffected by your opponent\'s Spell and Trap effects. ' +
+      'Once per turn: discard 1 card to take up to 3 Spell or Trap cards from your opponent — ' +
+      'destroying what they control first, then discarding at random from their hand, then from their Deck.',
     cry: 'Wild Rush!',
     fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-avian'],
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedBySpellsAndTraps'] } },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedByOpponentSpellsAndTraps'] } },
       {
         trigger: 'ignition',
-        label: 'Discard 1, shatter a Spell/Trap',
+        label: 'Discard 1, tear three out of them',
         cost: { discard: 1 },
-        condition: { anyBackrow: true },
-        targets: 1,
-        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 1 }) }],
+        ops: [{ op: 'stripMagic', count: 3, zones: ['field', 'hand', 'deck'], who: 'opp' }],
       },
     ],
   },
@@ -4934,14 +5020,26 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Both halves inherited and both of them mattering at once: it swings at
        everything they have, it goes through the ones that are lying down, and
        the Trap they set to answer a board-clearing attacker does not read. */
-    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Bladedge. This monster attacks every monster your opponent controls once each Battle Phase, inflicts piercing battle damage, and is unaffected by Spell and Trap effects.',
+    /* The narrowest of the three immunities and the one that costs the least to
+       answer: he reads no Spell and no Trap while he is the one swinging, so a
+       Mirror Force or a Negate Attack opened against his attack finds nothing
+       there — and a Trap Hole on the way in or a Dark Hole in the Main Phase
+       kills him like anything else. You just have to answer him at the right
+       moment, which is the owner's own example word for word.
+       And what he swings at defends at half of both numbers, which is the
+       mirror of `halvesAttacker` worn by the one doing the swinging. */
+    text:
+      'Fusion: Elemental HERO Wildheart + Elemental HERO Bladedge. ' +
+      'This monster attacks every monster your opponent controls once each Battle Phase and inflicts piercing battle damage. ' +
+      'While it is attacking, it is unaffected by Spell and Trap effects. ' +
+      'A monster it attacks has its ATK and DEF halved for that battle.',
     cry: 'Wild Slash!',
     fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-bladedge'],
     effects: [
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, grants: ['attackAll', 'pierce', 'unaffectedBySpellsAndTraps'] },
+        aura: { target: SELF, grants: ['attackAll', 'pierce', 'unaffectedWhileAttacking', 'halvesDefender'] },
       },
     ],
   },
@@ -4951,7 +5049,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        else standing beside it stops dying in battle. `excludeSelf` because a
        2800 that also cannot be killed by battle is the card answering the
        whole game on its own, and the storm is meant to protect the team. */
-    text: 'Fusion: Elemental HERO Avian + Elemental HERO Sparkman + Elemental HERO Bubbleman. While this monster is face-up, your other monsters cannot be destroyed by battle.',
+    /* Three bodies, and now a storm that takes the weather with it: everything
+       they were holding and everything they had set goes at once, and it keeps
+       going every time the Tempest swings — a card torn out of their Deck each
+       time, which is where the rest of their answers live.
+       And it eats what it has taken: 100 for every magic card lying in their
+       Graveyard, read live, so the pile it made is the pile it grows on. */
+    text:
+      'Fusion: Elemental HERO Avian + Elemental HERO Sparkman + Elemental HERO Bubbleman. ' +
+      'While this monster is face-up, your other monsters cannot be destroyed by battle. ' +
+      'When this monster is Summoned: destroy every Spell and Trap your opponent controls and discard every one in their hand. ' +
+      'It gains 100 ATK for each Spell or Trap card in your opponent\'s Graveyard. ' +
+      'Each time this monster attacks: send 1 random Spell or Trap from your opponent\'s Deck to their Graveyard.',
     cry: 'Ride the storm!',
     fusionMaterials: ['elemental-hero-avian', 'elemental-hero-sparkman', 'elemental-hero-bubbleman'],
     effects: [
@@ -4963,6 +5072,22 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           grants: ['indestructibleByBattle'],
         },
       },
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          per: { zone: 'oppGrave', filter: { notKind: 'monster' }, atk: 100 },
+        },
+      },
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'stripMagic', count: 0, all: true, zones: ['field', 'hand'], who: 'opp' }],
+      },
+      {
+        trigger: 'onDeclareAttack',
+        ops: [{ op: 'stripMagic', count: 1, zones: ['deck'], who: 'opp' }],
+      },
     ],
   },
 
@@ -4970,7 +5095,19 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     /* Four named bodies and a Polymerization — five cards, and there is no
        route to it that is not the whole deck working. So it is paid like one:
        the board is cleared and a 2900 is standing on the empty side of it. */
-    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix + Elemental HERO Clayman + Elemental HERO Bubbleman. When Fusion Summoned: destroy every monster your opponent controls.',
+    /* Not destroyed — *gone*. In this game a banished card is nowhere: it is
+       not in the Graveyard, nothing reaches it, and no card returns it unless
+       that card says so. Five cards to assemble, and what it buys is a player
+       with an empty board, an empty backrow and an empty hand who has to draw
+       their way back one card at a time.
+       Their whole side of the table and their whole grip. Mine is untouched —
+       Electrum is standing on it. Landed on `onSummon`, which fires before the
+       summon window opens, so the Trap they were holding for this never gets
+       to be a Trap they were holding. */
+    text:
+      'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix + Elemental HERO Clayman + Elemental HERO Bubbleman. ' +
+      'When Fusion Summoned: banish every monster and every Spell and Trap your opponent controls, and every card in their hand. ' +
+      'Banished cards do not go to the Graveyard and do not come back.',
     cry: 'Four elements, one HERO!',
     fusionMaterials: [
       'elemental-hero-avian',
@@ -4978,7 +5115,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'elemental-hero-clayman',
       'elemental-hero-bubbleman',
     ],
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: OPP_ALL }] }],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'banish', target: OPP_ALL },
+          { op: 'banish', target: sel('opp', 'all', { zone: 'backrow' }) },
+          { op: 'banish', target: sel('opp', 'all', { zone: 'hand' }) },
+        ],
+      },
+    ],
   },
 
   'elemental-hero-shining-flare-wingman': {
@@ -4986,9 +5132,17 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        counts is a Graveyard the deck has been filling all game — every spent
        Avian, every Burstinatrix, every HERO that died holding the line is
        300 ATK now. Read live, so it grows for the rest of the duel. */
+    /* A thousand a head now, on both numbers, and it inherits both of the
+       Wingman's clauses — the city in its hand and the nerve to walk into
+       something bigger. And the turn it lands, they cannot answer: no Spell, no
+       Trap, no Kuriboh out of the hand. The answer to this card had to have
+       been played already. */
     text:
       'Fusion: Elemental HERO Flame Wingman + Elemental HERO Sparkman. ' +
-      'Gains 300 ATK for each "Elemental HERO" card in your Graveyard. ' +
+      'Gains 1000 ATK and DEF for each "Elemental HERO" card in your Graveyard. ' +
+      'When this monster is Summoned: add 1 "Skyscraper" from your Graveyard or Deck to your hand, ' +
+      'and for the rest of that turn your opponent cannot activate Spells, Traps or hand traps. ' +
+      'When this monster attacks a monster with more ATK than it: it gains 1000 ATK for that battle. ' +
       'When this monster destroys a monster in battle: inflict damage to your opponent equal to that monster\'s ATK.',
     cry: 'Shining Shoot!',
     fusionMaterials: ['elemental-hero-flame-wingman', 'elemental-hero-sparkman'],
@@ -4996,16 +5150,33 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       {
         trigger: 'continuous',
         ops: [],
-        aura: { target: SELF, per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 300 } },
+        aura: {
+          target: SELF,
+          grants: ['surgesVsStronger'],
+          per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 1000, def: 1000 },
+        },
+      },
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'silenceOpponent' },
+          { op: 'search', filter: { slugs: ['skyscraper'] }, orGrave: true },
+        ],
       },
       { trigger: 'onBattleDestroy', ops: [{ op: 'damage', scale: 'destroyedAtk', to: 'opp' }] },
     ],
   },
 
   'elemental-hero-shining-phoenix-enforcer': {
+    /* The Phoenix's clause doubled, on a body that already cannot be killed in
+       battle: a thousand for every wall it fails to break and a thousand for
+       every blow it takes, kept for good, on top of a thousand a head out of
+       the pile. Left alone it does nothing; engaged, it wins the game by
+       arithmetic. */
     text:
       'Fusion: Elemental HERO Phoenix Enforcer + Elemental HERO Sparkman. ' +
-      'Gains 300 ATK for each "Elemental HERO" card in your Graveyard. This monster cannot be destroyed by battle.',
+      'Gains 1000 ATK and DEF for each "Elemental HERO" card in your Graveyard. This monster cannot be destroyed by battle. ' +
+      'Each time it attacks a monster and fails to destroy it, and each time it is attacked: it gains 1000 ATK permanently.',
     cry: 'The flame never goes out!',
     fusionMaterials: ['elemental-hero-phoenix-enforcer', 'elemental-hero-sparkman'],
     effects: [
@@ -5015,9 +5186,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         aura: {
           target: SELF,
           grants: ['indestructibleByBattle'],
-          per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 300 },
+          per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 1000, def: 1000 },
         },
       },
+      { trigger: 'onAttackNoKill', ops: [{ op: 'gainAtk', amount: 1000, target: SELF, duration: 'permanent' }] },
+      { trigger: 'onAttacked', ops: [{ op: 'gainAtk', amount: 1000, target: SELF, duration: 'permanent' }] },
     ],
   },
 };

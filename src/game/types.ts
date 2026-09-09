@@ -180,6 +180,16 @@ export type Trigger =
   | 'onDeclareAttack'
   /** This monster was chosen as an attack target (resolves before damage). */
   | 'onAttacked'
+  /**
+   * This monster attacked a monster and did not destroy it — it bounced, it
+   * traded nothing, or the thing it hit refused to die.
+   *
+   * The Phoenix Enforcer's clause: every wall it fails to break makes it
+   * bigger, so a board that holds it off is a board that is losing slowly.
+   * Fires after the damage step, on the attacker, and never on a direct swing
+   * — there is no monster there to fail against.
+   */
+  | 'onAttackNoKill'
   /** This monster inflicted battle damage to the opponent. */
   | 'onDealBattleDamage'
   /** This monster destroyed another monster in battle. */
@@ -459,6 +469,51 @@ export type Op =
    */
   | { op: 'sendToGrave'; target: Selector }
   | { op: 'banish'; target: Selector }
+  /**
+   * Take Spell and Trap cards away from a player, wherever they are keeping
+   * them — the table first, then the grip, then the Deck — until the count is
+   * met or there are none left.
+   *
+   * One op for a sentence three cards say slightly differently. Righteous
+   * Justice spends four across the field and the hand; Wild Wingman spends
+   * three and reaches the Deck as well; Tempest takes the lot off the field and
+   * out of the hand at once. Written as one destroy op and one discard op per
+   * card it was two separate counts, and a card allowed four took four of each
+   * — which is exactly the fault the Justice pin caught.
+   *
+   * The order is the order the zones are listed in, and it matters: what is on
+   * the table is destroyed (and can answer, and can trigger), what is in a hand
+   * or a Deck is taken at random and simply goes.
+   */
+  | {
+      op: 'stripMagic';
+      /** How many to take, across every listed zone together. */
+      count: number;
+      /** Every one there is, whatever `count` says. */
+      all?: boolean;
+      /** Where to take them from, emptied in this order. */
+      zones: ('field' | 'hand' | 'deck')[];
+      who: Side;
+    }
+  /**
+   * Put this monster back on the field, in Defence Position, at the end of the
+   * turn it fell in.
+   *
+   * Darkbright gets up again. Written as a mark read by the End Phase rather
+   * than as a summon here, because the card is in the Graveyard at the moment
+   * the trigger fires and the zone it wants may be full of the very board that
+   * killed it.
+   */
+  | { op: 'reviveSelfAtEndPhase' }
+  /**
+   * The opponent may not activate a Spell, a Trap or a hand trap for the rest
+   * of this turn.
+   *
+   * Shining Flare Wingman arrives and the answer to it has to have been played
+   * already. Held on the player rather than on the card, so it survives the
+   * Wingman being removed in response — there is nothing to remove it with.
+   */
+  | { op: 'silenceOpponent' }
   | { op: 'bounce'; target: Selector }
   /** `turns` is how many turns a non-permanent borrowing lasts; 1 by default,
    *  which is the end of the turn it was taken on. */
@@ -721,6 +776,8 @@ export type Op =
   | { op: 'directAttack'; duration: Duration }
   | { op: 'halvedBattleDamage'; duration: Duration }
   | { op: 'halvedDirectDamage'; duration: Duration }
+  /** A direct swing deals exactly this — see `CardFlags.directDamageFixed`. */
+  | { op: 'directDamageFixed'; amount: number; duration: Duration }
   | { op: 'reflectBattleDamage'; duration: Duration }
   /** Swings at twice its ATK — Metalzoa going out, Metalmorph's host with it. */
   | { op: 'doublesWhenAttacking'; duration: Duration }
@@ -966,7 +1023,59 @@ export type EquipGrant =
    * straight past it at you. Separate from `cannotBeAttacked` because a card
    * could want either without the other.
    */
-  | 'doesNotBlock';
+  | 'doesNotBlock'
+  /**
+   * Swings 1000 heavier, but only into something bigger than itself.
+   *
+   * The Flame Wingman's own nerve, and deliberately *not* `surgesOnAttack`:
+   * that one is Skyscraper's, it applies to every swing, and the two stack —
+   * a HERO under the city going into a Blue-Eyes gets both thousands. Read
+   * against the number the defender is actually standing at, so a monster
+   * pumped this turn is bigger and a monster halved is not.
+   */
+  | 'surgesVsStronger'
+  /**
+   * No Spell and no Trap *of the opponent's* can touch it.
+   *
+   * Half a step narrower than `unaffectedBySpellsAndTraps`, and the difference
+   * is the whole point: Wild Wingman still stands on Skyscraper and still takes
+   * Heated Heart, but Mirror Force, Trap Hole and a Dark Hole from across the
+   * table all find nothing there. A card that shrugs off its own support is
+   * a card its own deck cannot play.
+   */
+  | 'unaffectedByOpponentSpellsAndTraps'
+  /**
+   * Untouchable by Spells and Traps, but only during its own attack.
+   *
+   * Wildedge: a Mirror Force or a Negate Attack opened against its swing does
+   * not read it, and a Trap Hole on the way in or a Dark Hole in the Main
+   * Phase kills it like anything else. The narrowest of the three immunities,
+   * and the one that costs the least to answer — you just have to answer it
+   * at the right moment.
+   */
+  | 'unaffectedWhileAttacking'
+  /**
+   * Whatever it attacks defends at half its ATK and half its DEF.
+   *
+   * The mirror of `halvesAttacker`, which belongs to the monster being swung
+   * at. This one belongs to the one swinging, and it is worked out before the
+   * damage step, so the halved number is what the battle is measured with.
+   */
+  | 'halvesDefender'
+  /**
+   * May declare an attack while face-up in Defence Position, and swings with
+   * its ATK when it does.
+   *
+   * Rampart Blaster's whole shape: a 2000/2500 body that never has to stand up
+   * to fight, so the wall and the gun are the same card at the same time.
+   */
+  | 'attacksInDefense'
+  /**
+   * Anything attacking it swings 1000 lighter — but only while it is lying
+   * down. `sapsAttacker` with a posture on it: the toll is the shield, and a
+   * monster that has stood up to fight has put the shield down.
+   */
+  | 'sapsAttackerInDefense';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -1304,6 +1413,26 @@ export interface CardFlags {
   justLeftTheField?: boolean;
   /** See the `doesNotBlock` grant. */
   doesNotBlock?: boolean;
+  /** See the `surgesVsStronger` grant. Stacks with `surgesOnAttack`. */
+  surgesVsStronger?: boolean;
+  /** See the `unaffectedByOpponentSpellsAndTraps` grant. */
+  unaffectedByOpponentSpellsAndTraps?: boolean;
+  /** See the `unaffectedWhileAttacking` grant. */
+  unaffectedWhileAttacking?: boolean;
+  /** See the `halvesDefender` grant. */
+  halvesDefender?: boolean;
+  /** See the `attacksInDefense` grant. */
+  attacksInDefense?: boolean;
+  /** See the `sapsAttackerInDefense` grant. */
+  sapsAttackerInDefense?: boolean;
+  /**
+   * A direct swing deals exactly this, whatever the monster's ATK.
+   *
+   * Rampart Blaster's 2500 out of a 2000 body: the gun is the number, not the
+   * monster. Read only on a swing that reaches the player, so running into a
+   * monster is still an ordinary battle at 2000.
+   */
+  directDamageFixed?: number;
   /** See the `paysWithGraveInstead` op. */
   paysWithGraveInstead?: boolean;
   /** Every swing costs a card out of hand — see the `attackCostDiscard` op. */
@@ -1448,6 +1577,13 @@ export interface CardInstance {
    * `possess` op.
    */
   possessedEndPhases?: number;
+  /**
+   * The turn on which this card was broken in battle and asked to get up again
+   * — see the `reviveSelfAtEndPhase` op. Read and cleared by the End Phase of
+   * that same turn, so a mark that somehow outlives its turn is inert rather
+   * than a monster that rises on a later one.
+   */
+  revivesAtEndPhase?: number;
   /** A Token whose stats are counted off the board — see `summonToken.scale`. */
   tokenScale?: { zone: 'ownGrave' | 'eitherGrave'; filter?: CardFilter; atk: number; def: number };
   attacksUsed: number;
@@ -1767,6 +1903,15 @@ export interface DuelState {
    *  window is long enough for the attack to stop being the attack that was
    *  declared. See `resolveBattle`. */
   suspendedAttack?: { attackerUid: string; targetUid: string | null; controller: PlayerId } | null;
+  /**
+   * A player who may not activate a Spell, a Trap or a hand trap for the rest
+   * of the named turn — see the `silenceOpponent` op.
+   *
+   * Kept on the state rather than as a flag on the card that imposed it, so
+   * removing that card is not the answer to it: Shining Flare Wingman lands and
+   * the answer had to have been played already.
+   */
+  silencedUntilTurn?: { player: PlayerId; turn: number } | null;
   /**
    * Choices raised while another was already open. One Dark Hole can destroy
    * two Sangans; there is one `pending` slot and two questions, and the second

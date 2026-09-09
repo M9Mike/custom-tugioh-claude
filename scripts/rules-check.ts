@@ -12744,8 +12744,10 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       card(ME, 'elemental-hero-burstinatrix'),
       card(ME, 'kuriboh'),
     ];
-    ok(effAtk(s, sfw, ME) === 2500 + 600,
-      'HERO: two fallen HEROes are worth 600, and the Kuriboh beside them nothing', String(effAtk(s, sfw, ME)));
+    ok(effAtk(s, sfw, ME) === 2500 + 2000,
+      'HERO: two fallen HEROes are worth 2000, and the Kuriboh beside them nothing', String(effAtk(s, sfw, ME)));
+    ok(effDef(s, sfw, ME) === 2100 + 2000,
+      'HERO: and the same again on the number it defends with', String(effDef(s, sfw, ME)));
   }
 
   /* --- The rewording, card by card --- */
@@ -12957,14 +12959,17 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     /* Winged Kuriboh comes back from a discard and stays down from a death. */
     const s = jaden();
     const kuri = card(ME, 'winged-kuriboh');
-    const giant = card(ME, 'elemental-hero-thunder-giant');
-    giant.summonedOnTurn = 0;
-    giant.effectUsedOnTurn = -1;
-    s.players[ME].monsters = [giant, null, null];
+    /* Wild Wingman is the deck's discard engine now — Thunder Giant's button
+       became an arrival when the owner reworded it, and this pin only ever
+       wanted something that costs a card out of hand. */
+    const engine = card(ME, 'elemental-hero-wild-wingman');
+    engine.summonedOnTurn = 0;
+    engine.effectUsedOnTurn = -1;
+    s.players[ME].monsters = [engine, null, null];
     s.players[ME].hand = [kuri];
     s.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
-    const idx = ignitionOptions(s, ME, giant)[0]?.index;
-    let out = act(s, ME, { type: 'ignition', uid: giant.uid, effectIndex: idx });
+    const idx = ignitionOptions(s, ME, engine)[0]?.index;
+    let out = act(s, ME, { type: 'ignition', uid: engine.uid, effectIndex: idx });
     let g = 0;
     while (out.pending?.kind === 'choose' && g++ < 4) {
       out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });

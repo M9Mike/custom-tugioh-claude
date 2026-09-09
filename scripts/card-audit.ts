@@ -1435,6 +1435,34 @@ for (const def of Object.values(CARDS)) {
     }
 
     /* ---- Battle-time and phase triggers ---- */
+    /* `onAttackNoKill` is the one battle trigger that wants the swing to
+        *fail*, so it is set up the other way round: the card under test does
+        the attacking and the thing it hits is made unbreakable. Without this it
+        was reported as an effect nobody had ever driven, which is a check that
+        cannot fail — the worst thing in this toolchain. */
+    if (eff.trigger === 'onAttackNoKill') {
+      const s = stocked();
+      s.phase = 'battle';
+      const zone = s.players[ME].monsters.findIndex((m) => !m);
+      const c = place(s, ME, zone < 0 ? 2 : zone, def.slug);
+      c.summonedOnTurn = 0;
+      c.attacksUsed = 0;
+      satisfy(s, eff, c);
+      const wall = s.players[FOE].monsters.find((m) => !!m);
+      if (wall) {
+        /* Bigger than anything the card can swing with, and standing, so the
+           attack bounces rather than trading — the attacker has to survive to
+           hear the trigger. */
+        wall.atkMod += 90000;
+        wall.position = 'atk';
+        wall.face = 'up';
+      }
+      /* And it must not lose the duel doing so: the bounce costs its
+         controller the difference, which at 90000 is every Life Point. */
+      s.players[ME].lp = 999999;
+      audit(def, eff, s, (st) => run(st, ME, { type: 'attack', uid: c.uid, targetUid: wall?.uid ?? null }));
+      continue;
+    }
     if (
       eff.trigger === 'onDestroyedByBattle' ||
       eff.trigger === 'onBattleDestroy' ||

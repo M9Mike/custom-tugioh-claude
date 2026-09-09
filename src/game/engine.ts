@@ -653,6 +653,12 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('cannotBeAttacked')) merged.cannotBeAttacked = true;
   if (grants.has('doesNotBlock')) merged.doesNotBlock = true;
   if (grants.has('unaffectedBySpellsAndTraps')) merged.unaffectedBySpellsAndTraps = true;
+  if (grants.has('surgesVsStronger')) merged.surgesVsStronger = true;
+  if (grants.has('unaffectedByOpponentSpellsAndTraps')) merged.unaffectedByOpponentSpellsAndTraps = true;
+  if (grants.has('unaffectedWhileAttacking')) merged.unaffectedWhileAttacking = true;
+  if (grants.has('halvesDefender')) merged.halvesDefender = true;
+  if (grants.has('attacksInDefense')) merged.attacksInDefense = true;
+  if (grants.has('sapsAttackerInDefense')) merged.sapsAttackerInDefense = true;
   /* A side-wide shield reads as a flag on every monster standing behind it, so
      the battle code, the board and the AI all see it without any of them
      needing to know an ongoing effect exists. Tornado Wall raises it. */
@@ -696,6 +702,10 @@ function battleDamageFrom(
   direct = false
 ): number {
   const f = effFlags(state, attacker, controller);
+  /* Rampart Blaster's gun is the number, not the monster: a 2000 body that
+     bills 2500 when it reaches the player. Above the halvings on purpose — a
+     fixed number is the whole sentence, not a raw one to then discount. */
+  if (direct && f.directDamageFixed != null) return f.directDamageFixed;
   if (f.halvedBattleDamage) return Math.floor(raw / 2);
   if (direct && f.halvedDirectDamage) {
     const guarded = state.players[other(controller)].monsters.some((m) => !!m);
@@ -1552,14 +1562,21 @@ function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, c
      walks through Mirror Force and through his own controller's Trap Hole
      alike, which is what the words say and the only reading that does not need
      an exception written for it. */
-  if (
-    ctx &&
-    (CARDS[ctx.source.slug]?.kind === 'trap' || CARDS[ctx.source.slug]?.kind === 'spell') &&
-    effFlags(state, c).unaffectedBySpellsAndTraps
-  ) {
-    return true;
-  }
+  const fromMagic =
+    !!ctx && (CARDS[ctx.source.slug]?.kind === 'trap' || CARDS[ctx.source.slug]?.kind === 'spell');
+  if (fromMagic && effFlags(state, c).unaffectedBySpellsAndTraps) return true;
   const ctrl = controllerOf(state, c.uid);
+  /* The two narrower immunities, both of which have to know *whose* card is
+     reaching and therefore sit below the God decree and above nothing else.
+     Wild Wingman reads no Spell or Trap of the opponent's and still stands on
+     his own Skyscraper; Wildedge reads none at all, but only while he is the
+     one swinging — so a Mirror Force opened against his attack finds nothing
+     and a Trap Hole on the way in kills him like anything else. */
+  if (fromMagic && ctrl && ctrl !== actor) {
+    const f = effFlags(state, c);
+    if (f.unaffectedByOpponentSpellsAndTraps) return true;
+    if (f.unaffectedWhileAttacking && state.suspendedAttack?.attackerUid === c.uid) return true;
+  }
   if (ctrl === actor) return false;
   /* The God check above is deliberately not reachable from here: piercing is a
      mortal affair, and `isDivine` has already returned. */
@@ -2309,6 +2326,71 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           }
         }
         break;
+      case 'stripMagic': {
+        /* One number spent across up to three places, in the order the card
+           lists them. Written as a destroy op and a discard op per zone it was
+           one count *per op* rather than one between them, and a card allowed
+           four took four of each — the fault the Righteous Justice pin caught,
+           and the reason this is one op that three cards share.
+           What is on the table is destroyed, so it goes through `destroyCard`
+           and can answer; what is in a hand or a Deck is taken at random and
+           simply goes. */
+        for (const pid of sideToPlayers(ctx, op.who)) {
+          const p = state.players[pid];
+          let left = op.all ? Number.POSITIVE_INFINITY : op.count;
+          for (const zone of op.zones) {
+            if (left <= 0) break;
+            if (zone === 'field') {
+              const onTable = [p.spellTrap, p.field].filter((c): c is CardInstance => !!c);
+              for (const c of onTable) {
+                if (left <= 0) break;
+                if (isProtectedTarget(state, c, ctx.controller, ctx)) continue;
+                if (destroyCard(state, c, false, ctx)) left -= 1;
+              }
+              continue;
+            }
+            const from = zone === 'hand' ? p.hand : p.deck;
+            const eligible = () =>
+              from.map((c, i) => [c, i] as const).filter(([c]) => CARDS[c.slug] && CARDS[c.slug].kind !== 'monster');
+            while (left > 0) {
+              const live = eligible();
+              if (!live.length) break;
+              const at = live[randInt(state, live.length)][1];
+              const taken = from.splice(at, 1)[0];
+              landInGrave(state, taken, pid);
+              log(
+                state,
+                zone === 'hand'
+                  ? `${p.name} discards ${displayName(state, taken)}.`
+                  : `${displayName(state, taken)} is torn out of ${p.name}'s Deck.`,
+                'effect',
+                pid,
+                logSlug(taken)
+              );
+              anim(state, { kind: 'discard', uid: taken.uid, slug: taken.slug, player: pid });
+              left -= 1;
+            }
+          }
+        }
+        break;
+      }
+      case 'reviveSelfAtEndPhase':
+        /* Marked rather than summoned: the card is in the Graveyard at the
+           moment this fires and the zone it wants may still hold the board that
+           killed it. The End Phase reads the mark. */
+        ctx.source.revivesAtEndPhase = state.turn;
+        log(state, `${displayName(state, ctx.source)} will rise again before the turn is out.`,
+          'effect', ctx.controller, logSlug(ctx.source));
+        break;
+      case 'silenceOpponent': {
+        /* Held on the player, not on the card: the answer to Shining Flare
+           Wingman has to have been played already, and removing the Wingman in
+           response is exactly the thing this forbids. */
+        const hushed = other(ctx.controller);
+        state.silencedUntilTurn = { player: hushed, turn: state.turn };
+        log(state, `${state.players[hushed].name} cannot answer this turn.`, 'effect', hushed);
+        break;
+      }
       case 'mill': {
         /* Read once, from the board as it stands when the op resolves — not
            per player, because "the number of monsters your opponent controls"
@@ -2858,6 +2940,9 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'bonusVsDefense':
         applyFlag(ctx.source, 'bonusVsDefense', op.amount, op.duration);
+        break;
+      case 'directDamageFixed':
+        applyFlag(ctx.source, 'directDamageFixed', op.amount, op.duration);
         break;
       case 'halvesAttacker':
         applyFlag(ctx.source, 'halvesAttacker', true, op.duration);
@@ -3814,8 +3899,23 @@ function fireAllySummon(state: DuelState, summoner: PlayerId, summonedUid: strin
   }
 }
 
+/**
+ * Whether this player has been told they may not answer.
+ *
+ * One question asked in all four places a player can reach for a card —
+ * a Spell out of hand, a Set card turned over, a Trap window, a hand trap —
+ * because a lock honoured in three of them is a lock that does nothing.
+ */
+function isSilenced(state: DuelState, pid: PlayerId): boolean {
+  const s = state.silencedUntilTurn;
+  return !!s && s.player === pid && s.turn === state.turn;
+}
+
 function openTrapWindow(state: DuelState, responder: PlayerId, window: TrapWindow, reason: string, context: TriggerContext): boolean {
   if (state.winner || state.pending) return false;
+  /* Shining Flare Wingman's clause reaches the window itself, which is where a
+     hand trap lives as well: no window, no Kuriboh. */
+  if (isSilenced(state, responder)) return false;
   const opts = activatableTraps(state, responder, window);
   if (!opts.length) return false;
   state.pending = { kind: 'trap', player: responder, options: opts.map((c) => c.uid), reason, context };
@@ -4037,7 +4137,12 @@ function resolveBattle(state: DuelState) {
   /* Insect Barrier stretches over the hive: anything swinging at a monster it
      shields arrives 1000 lighter, and only for this battle — the toll is taken
      off the number the battle is measured with, never off the card. */
-  const toll = effFlags(state, target, defender).sapsAttacker ? 1000 : 0;
+  /* `sapsAttackerInDefense` is the same thousand with a posture on it: Rampart
+     Blaster's toll is the shield it holds while lying down, and a Blaster that
+     has stood up to fight has put the shield down. */
+  const guardFlags = effFlags(state, target, defender);
+  const toll =
+    guardFlags.sapsAttacker || (guardFlags.sapsAttackerInDefense && target.position === 'def') ? 1000 : 0;
   if (toll) {
     log(state, `${displayName(state, target)}'s barrier saps ${displayName(state, attacker)} of ${toll} ATK.`,
       'effect', defender, logSlug(target));
@@ -4066,11 +4171,39 @@ function resolveBattle(state: DuelState) {
     log(state, `${displayName(state, attacker)} leaps from the skyline — 1000 ATK, for this battle.`,
       'effect', controller, logSlug(attacker));
   }
+  /* Only into something bigger, which is a question about the number the
+     defender is standing at *now* — after whatever Skyscraper and Heated Heart
+     and a halving have already done to both sides. Asked here, at the end,
+     rather than off the printed stats. */
+  if (flags.surgesVsStronger) {
+    const standing = target.position === 'atk' ? effAtk(state, target, defender) : effDef(state, target, defender);
+    if (standing > swing) {
+      swing += 1000;
+      log(state, `${displayName(state, attacker)} rises to meet something bigger — 1000 ATK, for this battle.`,
+        'effect', controller, logSlug(attacker));
+    }
+  }
   if (guard.halvesAttacker) {
     swing = Math.floor(swing / 2);
     log(state, `${displayName(state, target)} turns half of that blow aside.`, 'effect', defender, logSlug(target));
   }
   const atk = swing;
+  /* Wildedge cuts what it swings at in half before the numbers are compared —
+     both halves of it, so a wall is no better off lying down than standing up.
+     Worked out once, here, and read by every branch below. */
+  const halveTarget = flags.halvesDefender;
+  if (halveTarget) {
+    log(state, `${displayName(state, attacker)} cuts ${displayName(state, target)} clean in half.`,
+      'effect', controller, logSlug(attacker));
+  }
+  const guardAtk = () => {
+    const n = effAtk(state, target, defender);
+    return halveTarget ? Math.floor(n / 2) : n;
+  };
+  const guardDef = () => {
+    const n = effDef(state, target, defender);
+    return halveTarget ? Math.floor(n / 2) : n;
+  };
 
   /**
    * Battle damage, mirrored back if the hurt player's own monster in this
@@ -4115,13 +4248,18 @@ function resolveBattle(state: DuelState) {
       state, controller: side, source: killer, targets: [], cursor: 0, trig: { attackerUid: killer.uid },
     });
 
+  /* Whether the swing broke what it was aimed at. The Phoenix Enforcer grows
+     off every wall it fails to break, so "did not kill" has to be one answer
+     for all four branches rather than an absence in three of them. */
+  let broke = false;
   if (target.position === 'atk') {
-    const tAtk = effAtk(state, target, defender);
+    const tAtk = guardAtk();
     if (atk > tAtk) {
       // Same rule as the direct swing: the trigger is about damage that landed.
       const before = state.players[defender].lp;
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
       const killed = strikeDown(target, attacker, controller);
+      broke = killed;
       if (killed) devour(attacker, target, controller);
       if (!state.winner) {
         if (killed) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
@@ -4140,10 +4278,11 @@ function resolveBattle(state: DuelState) {
          falling — and each `destroyCard` says its own piece, so nothing is lost
          by waiting to find out. */
       const bothFell = [strikeDown(target, attacker, controller), strikeDown(attacker, target, defender)];
+      broke = bothFell[0];
       if (bothFell.every(Boolean)) log(state, 'Both monsters are destroyed!', 'attack');
     }
   } else {
-    const tDef = effDef(state, target, defender);
+    const tDef = guardDef();
     if (atk > tDef) {
       /* Read while it is still standing. A monster killed in Defence Position
          is still worth its ATK to a Flame Wingman — the card says "the ATK of
@@ -4151,6 +4290,7 @@ function resolveBattle(state: DuelState) {
       const tAtk = effAtk(state, target, defender);
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
       const killed = strikeDown(target, attacker, controller);
+      broke = killed;
       if (killed) devour(attacker, target, controller);
       if (killed && !state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
     } else if (atk < tDef) {
@@ -4159,6 +4299,11 @@ function resolveBattle(state: DuelState) {
     } else {
       log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));
     }
+  }
+  /* Fired on the attacker, only if it is still standing to hear it — a monster
+     that traded itself away has not failed to break a wall, it has died. */
+  if (!broke && !state.winner && findOnField(state, attacker.uid)) {
+    fireTriggers(state, attacker, controller, 'onAttackNoKill', { attackerUid: attacker.uid, targetUid: target.uid });
   }
 
   resolveFlip();
@@ -4221,6 +4366,35 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       home.monsters[zone] = c;
       log(state, `${displayName(state, c)} steps back into the world.`, 'effect', mark.to, logSlug(c));
       anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: mark.to });
+    }
+  }
+  /* And the ones that get up again. Darkbright is broken in battle, lies in
+     the Graveyard for the rest of the turn, and stands back up before it
+     closes — kneeling, because a monster that has just been killed does not
+     come back swinging. A full board means it stays down, which is the one way
+     the promise can still be lost.
+     The mark is cleared whether or not there was room, so a body that could
+     not rise on its own turn does not sit in the pile waiting for a later
+     one. */
+  for (const who of ['p1', 'p2'] as PlayerId[]) {
+    const p = state.players[who];
+    for (const c of [...p.grave]) {
+      if (c.revivesAtEndPhase !== state.turn) continue;
+      c.revivesAtEndPhase = undefined;
+      const home = state.players[c.owner];
+      const zone = home.monsters.findIndex((m) => !m);
+      if (zone < 0) {
+        log(state, `${displayName(state, c)} finds no room to rise.`, 'effect', c.owner, logSlug(c));
+        continue;
+      }
+      p.grave.splice(p.grave.indexOf(c), 1);
+      resetInstance(c);
+      c.face = 'up';
+      c.position = 'def';
+      c.summonedOnTurn = state.turn;
+      home.monsters[zone] = c;
+      log(state, `${displayName(state, c)} rises again before the turn is out.`, 'summon', c.owner, logSlug(c));
+      anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: c.owner });
     }
   }
   /* Bodies bought for one turn go back to dust. The Millennium Ankh's three
@@ -4656,7 +4830,12 @@ export function canAttackWith(state: DuelState, pid: PlayerId, c: CardInstance):
   // lifts the instant that card is gone.
   const flags = effFlags(state, c, pid);
   if (flags.cannotAttack && !divine) return false;
-  if (c.face === 'down' || c.position !== 'atk') return false;
+  /* Face-down is never a swing, whatever the card says. Defence Position
+     usually is not either — Rampart Blaster is the exception, a body that
+     never has to stand up to fight, so the wall and the gun are the same card
+     at the same time. It swings with its ATK either way. */
+  if (c.face === 'down') return false;
+  if (c.position !== 'atk' && !flags.attacksInDefense) return false;
   // Tokens have always waited a turn; `summonSick` is the same rule worn as
   // an aura — a Toon summoned for free under Toon World waits out the turn
   // it arrived, which is the window the opponent is given to answer it.
@@ -5197,6 +5376,7 @@ export function canDiscardForEffect(state: DuelState, pid: PlayerId, c: CardInst
 
 export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
+  if (isSilenced(state, pid)) return false;
   const def = CARDS[c.slug];
   if (!def || def.kind === 'monster') return false;
   if (def.kind === 'trap') return false; // traps must be set first
@@ -5222,6 +5402,7 @@ export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInst
 /** True when this face-down Spell/Trap can be flipped up by its controller now. */
 export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInstance): boolean {
   if (state.phase !== 'main' || state.active !== pid || state.winner || state.pending) return false;
+  if (isSilenced(state, pid)) return false;
   if (c.face !== 'down') return false;
   const def = CARDS[c.slug];
   if (!def) return false;
@@ -5706,6 +5887,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
 
     case 'activateSpell': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
+      if (isSilenced(state, pid)) return { state: prev, error: 'You cannot activate anything this turn.' };
       const hi = p.hand.findIndex((h) => h.uid === action.uid);
       if (hi < 0) return { state: prev, error: 'Card is not in your hand.' };
       const c = p.hand[hi];
@@ -5778,6 +5960,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
 
     case 'activateSetCard': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
+      if (isSilenced(state, pid)) return { state: prev, error: 'You cannot activate anything this turn.' };
       const c = p.spellTrap;
       if (!c || c.uid !== action.uid || c.face !== 'down') return { state: prev, error: 'No set card there.' };
       const def = CARDS[c.slug];
