@@ -3695,7 +3695,7 @@ function activatableTraps(state: DuelState, pid: PlayerId, window: TrapWindow): 
        does not go to the Graveyard — so it sat in the one Spell/Trap Zone
        attached to nothing, for the rest of the duel. Reported. */
     const usable = effs.some(
-      (e) => canPayCost(state, pid, e) && !activationIsDead(state, pid, st, CARDS[st.slug], e)
+      (e) => canPayCost(state, pid, e, st.uid) && !activationIsDead(state, pid, st, CARDS[st.slug], e)
     );
     if (ready && usable && effs.length) out.push(st);
   }
@@ -4825,7 +4825,14 @@ function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: 
   } else if (eff.cost?.tribute != null) {
     if (tributeFodder(state, pid, eff, exclude).length < eff.cost.tribute) return false;
   }
-  if (eff.cost?.discard != null && p.hand.length - 1 < eff.cost.discard) return false;
+  /* The card asking cannot pay with itself — but only if it is *in* the hand.
+     A flat `- 1` charged a monster on the field for a hand it is not part of,
+     so Thunder Giant holding a single Winged Kuriboh could not discard it: his
+     once-a-turn removal wanted two cards to spend one, and the same toll was on
+     every Set Spell and Trap with a discard price. The payment path
+     (`spendExtraCosts` and the hand-summon route) has always asked it this way;
+     only the gate had the shortcut. */
+  if (eff.cost?.discard != null && p.hand.filter((h) => h.uid !== exclude).length < eff.cost.discard) return false;
   /* "at least 1 card" is the whole of Cannon Soldier's new price: an empty hand
      cannot load the cannon, so the button must be dark rather than firing for
      free. The hand this asks about excludes the card asking, for the same
@@ -5193,7 +5200,7 @@ export function canActivateFromHand(state: DuelState, pid: PlayerId, c: CardInst
      Spells and so could never be played at all: The Dark Door, Dark Sanctuary
      and Umi sat dead in their owners' hands. */
   if (!eff && !isPassiveSpell(def)) return false;
-  if (eff && !canPayCost(state, pid, eff)) return false;
+  if (eff && !canPayCost(state, pid, eff, c.uid)) return false;
   /* Spells can carry a condition too. Traps and triggers already went through
      `conditionMet`; a Spell's condition was silently ignored here, so a card
      saying "if you control a Winged Beast" would have activated bare. */
@@ -5223,14 +5230,14 @@ export function canActivateSetCard(state: DuelState, pid: PlayerId, c: CardInsta
         e.trigger === 'trap' &&
         e.window === 'anyOpponentTurn' &&
         conditionMet(state, e, c, pid) &&
-        canPayCost(state, pid, e) &&
+        canPayCost(state, pid, e, c.uid) &&
         !activationIsDead(state, pid, c, def, e)
     );
   }
   const eff = def.effects.find((e) => e.trigger === 'activate');
   if (!eff) return false;
   if (eff.condition && !conditionMet(state, eff, c, pid)) return false;
-  return canPayCost(state, pid, eff) && !activationIsDead(state, pid, c, def, eff);
+  return canPayCost(state, pid, eff, c.uid) && !activationIsDead(state, pid, c, def, eff);
 }
 
 export function canChangePosition(state: DuelState, pid: PlayerId, c: CardInstance): boolean {

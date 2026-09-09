@@ -4726,8 +4726,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
               { ops: [{ op: 'search', filter: { slugs: ['polymerization'] } }] },
             ],
           },
-          { op: 'stealFromGrave', from: 'own', filter: { nameIncludes: 'Elemental HERO' } },
-          { op: 'search', filter: { nameIncludes: 'Elemental HERO', kind: 'monster' } },
+          /* `isFusion: false`, or the pile's own spent Fusions are on the list —
+             and a Fusion in the hand is a picture of a card, since nothing can
+             summon it from there. The fourth op is what a Fusion down there is
+             for. */
+          { op: 'stealFromGrave', from: 'own', filter: { nameIncludes: 'Elemental HERO', isFusion: false } },
+          { op: 'search', filter: { nameIncludes: 'Elemental HERO', kind: 'monster', isFusion: false } },
           { op: 'returnToExtra', target: sel('own', 'chosen', { zone: 'grave', filter: { isFusion: true }, count: 1 }) },
         ],
       },

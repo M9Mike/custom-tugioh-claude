@@ -277,6 +277,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      so a new window always opens empty — and anything stale that did survive is
      dropped by the engine, which only accepts uids it offered. */
   const [choicePicks, setChoicePicks] = useState<string[]>([]);
+  /* The Fusion button used to summon `fusions[0]` — whichever route happened to
+     lie first in the Extra Deck. A deck of one of each material has several
+     open at once (Sparkman and Clayman make the Thunder Giant, Sparkman and
+     Avian make something else), so the button asks. */
+  const [fusionPick, setFusionPick] = useState(false);
   const [inspectAt, setInspectAt] = useState<{ version: number; card: CardInstance | null }>({ version: state.version, card: null });
   const inspect = inspectAt.version === state.version ? inspectAt.card : null;
   const setInspect = useCallback((card: CardInstance | null) => setInspectAt({ version, card }), [version]);
@@ -899,6 +904,17 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   );
 
   const fusions = useMemo(() => (myTurn && state.phase === 'main' ? fusionOptions(state, me) : []), [state, me, myTurn]);
+
+  /* A Fusion's materials come from the hand and from the field both, and the
+     picker names them, so the lookup has to cover both places. */
+  const cardAnywhere = (uid: string): CardInstance | null =>
+    mine.hand.find((c) => c.uid === uid) ?? mine.monsters.find((m) => m?.uid === uid) ?? null;
+
+  const summonFusion = (f: { extraUid: string; materials: string[] }) => {
+    const zone = mine.monsters.findIndex((m) => !m);
+    setFusionPick(false);
+    return run({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone: zone < 0 ? 0 : zone, position: 'atk' });
+  };
 
   const startSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down') => {
     const slug = mine.hand.find((h) => h.uid === uid)?.slug ?? '';
@@ -1908,10 +1924,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                    prompt still open. */
                 disabled={busy}
                 onClick={() => {
-                  const f = fusions[0];
-                  const zone = mine.monsters.findIndex((m) => !m);
                   sfx.click();
-                  void run({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone: zone < 0 ? 0 : zone, position: 'atk' });
+                  if (fusions.length > 1) {
+                    setFusionPick(true);
+                    return;
+                  }
+                  void summonFusion(fusions[0]);
                 }}
               >
                 ✦ Fusion
@@ -2434,6 +2452,56 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <button className="btn mt-3 rounded px-3 py-1.5 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Which Fusion, when more than one is open. Named with the bodies it
+          would spend, because two routes out of the same board differ by what
+          they cost as much as by what they leave standing. */}
+      {fusionPick && fusions.length > 0 && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+             style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
+          <div className="panel grain thin-scroll max-h-[80dvh] w-full max-w-2xl overflow-y-auto rounded p-4">
+            <h3 className="font-display text-lg text-brassbright">Which Fusion?</h3>
+            <p className="mt-1 text-xs text-ptext/85">Your board can make more than one.</p>
+            <div className="brass-rule my-3" />
+            <div className="flex flex-wrap justify-center gap-3">
+              {fusions.map((f) => {
+                const ex = mine.extra.find((e) => e.uid === f.extraUid);
+                if (!ex) return null;
+                const spent = f.materials
+                  .map((uid) => cardAnywhere(uid))
+                  .filter((c): c is CardInstance => !!c)
+                  .map((c) => shownName(c) ?? CARDS[c.slug]?.name ?? c.slug);
+                return (
+                  <button
+                    key={f.extraUid}
+                    className="w-24 selectable rounded"
+                    disabled={busy}
+                    onClick={() => {
+                      sfx.click();
+                      void summonFusion(f);
+                    }}
+                  >
+                    <GameCard card={ex} displayName={shownName(ex)} />
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(ex) ?? CARDS[ex.slug]?.name}</p>
+                    <p className="text-center text-[8px] uppercase tracking-wide text-brass">{spent.join(' + ')}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex justify-center">
+              <button
+                className="btn rounded px-4 py-1.5 text-[11px]"
+                onClick={() => {
+                  sfx.click();
+                  setFusionPick(false);
+                }}
+              >
+                Not yet
+              </button>
+            </div>
           </div>
         </div>
       )}

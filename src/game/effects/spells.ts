@@ -1863,11 +1863,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'activate',
         targets: 2,
         ops: [
-          {
-            op: 'stealFromGrave',
-            from: 'own',
-            filter: { kind: 'monster', isFusion: false },
-          },
+          /* Two ops, not one op asked for two cards: `stealFromGrave` lifts a
+             single card, so "up to 2" is written the way The Warrior Returning
+             Alive writes it. One op with `targets: 2` returns one body and
+             quietly eats the second question. */
+          { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', isFusion: false } },
+          { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', isFusion: false } },
           { op: 'returnToExtra', target: sel('own', 'all', { zone: 'grave', filter: { isFusion: true } }) },
         ],
       },
