@@ -26,6 +26,21 @@ import { CARDS, DUELISTS } from '../src/game/cards';
 import { MONSTER_ZONES } from '../src/game/types';
 import type { CardInstance, DuelState, Op, PlayerId } from '../src/game/types';
 
+/**
+ * The monster type this card insists on having beside it, if it names one.
+ *
+ * "While you control a Warrior", "while a bug is on the field" — a gate a real
+ * duel satisfies without thinking about it, and a probe board of one Fiend and
+ * one Winged Beast never satisfies at all.
+ */
+function typeBeside(slug: string): string | null {
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    const want = eff.condition?.controlsOtherOfType ?? eff.condition?.typeOnField;
+    if (want) return want;
+  }
+  return null;
+}
+
 /** A monster slug this card's equip would accept, if it insists on a kind. */
 function hostFor(slug: string): string | null {
   for (const eff of CARDS[slug]?.effects ?? []) {
@@ -128,6 +143,18 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
      audit, which learned this one card earlier. */
   const fitted = hostFor(slug);
   if (fitted) p.monsters[2] = spare(7, fitted);
+  /* And the type a card insists on standing beside. The Winged Beast above was
+     put there for Phoenix Formation, one card, by hand — so the next card to
+     name a different type read as unplayable for a reason that was entirely
+     about this board. R - Righteous Justice wants a Warrior and Jaden's deck
+     is nothing but Warriors. Read off the card, like the Field Spell above it
+     and the equip host beside it; the third time this file has learned the
+     same lesson, and the first time it has learned it in general. */
+  const needsType = typeBeside(slug);
+  if (needsType) {
+    const body = Object.values(CARDS).find((c) => c.kind === 'monster' && c.type === needsType);
+    if (body) p.monsters[2] = spare(9, body.slug);
+  }
   const card: CardInstance = { ...p.deck[0], uid: `probe_${slug}`, slug, face: 'up' };
   p.hand = [card, spare(3), spare(4)];
   /* And something already buried. A card conditioned on the Graveyard —
@@ -299,73 +326,95 @@ for (const du of DUELISTS) {
   for (const [slug, n] of du.deck) owned[slug] = (owned[slug] ?? 0) + n;
 
   const summonable: string[] = [];
-  for (const slug of du.extra ?? []) {
-    const def = CARDS[slug];
-    if (!def) {
-      dead.push(`${slug} is in ${du.name}'s Extra Deck but is not a card`);
-      continue;
-    }
-    /* A Fusion recipe is not the only way out of the Extra Deck. Thousand
-       Dragon has none on purpose — Time Wizard's heads Special Summons it from
-       there, which is the whole reward for taking the coin flip. So before
-       calling an Extra Deck card unreachable, ask whether anything in the same
-       main deck names it in a `specialSummon ... from: 'extra'`. */
-    /* And the summoner is not always in the main deck. Blue-Eyes Shining
-       Dragon is called out of the Extra Deck by Blue-Eyes Ultimate Dragon,
-       which lives in the Extra Deck itself — so the search reads the main
-       deck plus every Extra Deck card that can get onto the field under its
-       own steam. A recipe-less card cannot vouch for another, which is what
-       stops two unreachable monsters swearing each other in. */
-    const vouchers = [
-      ...du.deck.map(([mainSlug]) => mainSlug),
-      ...(du.extra ?? []).filter((e) => e !== slug && (CARDS[e]?.fusionMaterials?.length ?? 0) > 0),
-    ];
-    const calledOut = vouchers.some((mainSlug) =>
-      (CARDS[mainSlug]?.effects ?? []).some(function reaches(eff): boolean {
-        const scan = (ops: readonly Op[]): boolean =>
-          ops.some((o) => {
-            if (o.op === 'coinFlip') return scan(o.heads) || scan(o.tails);
-            if (o.op === 'diceRoll') return scan(o.perPip);
-            if (o.op !== 'specialSummon') return false;
-            const from = Array.isArray(o.from) ? o.from : [o.from];
-            return from.includes('extra') && !!o.filter?.slugs?.includes(slug);
-          });
-        return scan(eff.ops);
-      })
-    );
-
-    const recipe = def.fusionMaterials ?? [];
-    if (!recipe.length) {
-      if (calledOut) {
-        summonable.push(slug);
+  /* Run until it settles. A Fusion whose material is another Fusion in the same
+     Extra Deck is reachable by fusing twice, and one pass judges it before its
+     material has been proved — so the whole pass repeats while `summonable`
+     keeps growing, and only the last round's verdicts are reported. Bounded by
+     the size of the Extra Deck, because each round must prove at least one new
+     card or it is the last. */
+  let roundDead: string[] = [];
+  for (let pass = 0; pass <= (du.extra?.length ?? 0); pass++) {
+    roundDead = [];
+    const proved = summonable.length;
+    for (const slug of du.extra ?? []) {
+      if (summonable.includes(slug)) continue;
+      const def = CARDS[slug];
+      if (!def) {
+        roundDead.push(`${slug} is in ${du.name}'s Extra Deck but is not a card`);
         continue;
       }
-      dead.push(
-        `${def.name} (${slug}) sits in ${du.name}'s Extra Deck with no Fusion recipe and nothing in the deck ` +
-          'Special Summons it from there, so it can never be summoned'
+      /* A Fusion recipe is not the only way out of the Extra Deck. Thousand
+         Dragon has none on purpose — Time Wizard's heads Special Summons it from
+         there, which is the whole reward for taking the coin flip. So before
+         calling an Extra Deck card unreachable, ask whether anything in the same
+         main deck names it in a `specialSummon ... from: 'extra'`. */
+      /* And the summoner is not always in the main deck. Blue-Eyes Shining
+         Dragon is called out of the Extra Deck by Blue-Eyes Ultimate Dragon,
+         which lives in the Extra Deck itself — so the search reads the main
+         deck plus every Extra Deck card that can get onto the field under its
+         own steam. A recipe-less card cannot vouch for another, which is what
+         stops two unreachable monsters swearing each other in. */
+      const vouchers = [
+        ...du.deck.map(([mainSlug]) => mainSlug),
+        ...(du.extra ?? []).filter((e) => e !== slug && (CARDS[e]?.fusionMaterials?.length ?? 0) > 0),
+      ];
+      const calledOut = vouchers.some((mainSlug) =>
+        (CARDS[mainSlug]?.effects ?? []).some(function reaches(eff): boolean {
+          const scan = (ops: readonly Op[]): boolean =>
+            ops.some((o) => {
+              if (o.op === 'coinFlip') return scan(o.heads) || scan(o.tails);
+              if (o.op === 'diceRoll') return scan(o.perPip);
+              if (o.op !== 'specialSummon') return false;
+              const from = Array.isArray(o.from) ? o.from : [o.from];
+              return from.includes('extra') && !!o.filter?.slugs?.includes(slug);
+            });
+          return scan(eff.ops);
+        })
       );
-      continue;
+
+      const recipe = def.fusionMaterials ?? [];
+      if (!recipe.length) {
+        if (calledOut) {
+          summonable.push(slug);
+          continue;
+        }
+        roundDead.push(
+          `${def.name} (${slug}) sits in ${du.name}'s Extra Deck with no Fusion recipe and nothing in the deck ` +
+            'Special Summons it from there, so it can never be summoned'
+        );
+        continue;
+      }
+      const need: Record<string, number> = {};
+      for (const m of recipe) need[m] = (need[m] ?? 0) + 1;
+      /* A material can be a Fusion itself. Elemental HERO Shining Flare Wingman
+         is Flame Wingman + Sparkman, and the Wingman is in the same Extra Deck —
+         so it is reached by fusing twice, which is exactly the play the card is
+         for. `summonable` is the list of Extra Deck cards this loop has already
+         proved reachable, and the fixed-point pass below runs the whole loop
+         again while that list keeps growing, so a chain of any depth resolves
+         and an unreachable pair still cannot swear each other in. */
+      const held = (m: string) => (owned[m] ?? 0) + (summonable.includes(m) ? 1 : 0);
+      const missing = Object.entries(need).filter(([m, n]) => held(m) < n);
+      if (missing.length) {
+        roundDead.push(
+          `${def.name} (${slug}) needs ${recipe.join(' + ')}, but ${du.name}'s deck is missing ` +
+            missing.map(([m, n]) => `${m} ×${n - (owned[m] ?? 0)}`).join(', ')
+        );
+        continue;
+      }
+      /* A free Fusion is its own enabler — the three Magnet Warriors combine
+         with no card spent, so Valkyrion is reachable in a deck holding no
+         Polymerization at all. Asking for one anyway would refuse a deck that
+         works, which is the same fault as the tribute ceiling below. */
+      if (!owned['polymerization'] && !def.fusionFree) {
+        roundDead.push(`${def.name} (${slug}) is in ${du.name}'s Extra Deck but the deck has no Polymerization`);
+        continue;
+      }
+      summonable.push(slug);
     }
-    const need: Record<string, number> = {};
-    for (const m of recipe) need[m] = (need[m] ?? 0) + 1;
-    const missing = Object.entries(need).filter(([m, n]) => (owned[m] ?? 0) < n);
-    if (missing.length) {
-      dead.push(
-        `${def.name} (${slug}) needs ${recipe.join(' + ')}, but ${du.name}'s deck is missing ` +
-          missing.map(([m, n]) => `${m} ×${n - (owned[m] ?? 0)}`).join(', ')
-      );
-      continue;
-    }
-    /* A free Fusion is its own enabler — the three Magnet Warriors combine
-       with no card spent, so Valkyrion is reachable in a deck holding no
-       Polymerization at all. Asking for one anyway would refuse a deck that
-       works, which is the same fault as the tribute ceiling below. */
-    if (!owned['polymerization'] && !def.fusionFree) {
-      dead.push(`${def.name} (${slug}) is in ${du.name}'s Extra Deck but the deck has no Polymerization`);
-      continue;
-    }
-    summonable.push(slug);
+    if (!roundDead.length || summonable.length === proved) break;
   }
+  dead.push(...roundDead);
 
   /* A Polymerization is only earning its slot if some Fusion in the same Extra
      Deck *needs* it — one that assembles for free does not, so it cannot be
