@@ -12570,6 +12570,29 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     }
     ok(out.players[ME].monsters.some((m) => m?.slug === 'winged-kuriboh-lv10'),
       'WINGS: the Kuriboh spreads its wings', out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Hand, Deck or Graveyard — the owner named all three, and one zone in a
+       pin is one zone proved. Each of the other two from a board that holds
+       the big one nowhere else. */
+    for (const zone of ['hand', 'grave'] as const) {
+      const z = jaden();
+      const k2 = card(ME, 'winged-kuriboh');
+      k2.summonedOnTurn = 0;
+      z.players[ME].monsters = [k2, null, null];
+      const w2 = card(ME, 'transcendent-wings');
+      const big = card(ME, 'winged-kuriboh-lv10');
+      z.players[ME].hand = zone === 'hand' ? [w2, big] : [w2];
+      z.players[ME].grave = zone === 'grave' ? [big] : [];
+      z.players[ME].deck = [card(ME, 'kuriboh')]; // never from the Deck here
+      let o = act(z, ME, { type: 'activateSpell', uid: w2.uid, targets: [k2.uid] });
+      let gz = 0;
+      while (o.pending?.kind === 'choose' && gz++ < 4) {
+        o = act(o, o.pending.player, { type: 'chooseCard', uids: [o.pending.options[0]] });
+      }
+      ok(o.players[ME].monsters.some((m) => m?.uid === big.uid),
+        `WINGS: and out of the ${zone === 'hand' ? 'hand' : 'Graveyard'} just as readily`,
+        o.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    }
     ok(!out.players[ME].monsters.some((m) => m?.uid === kuri.uid), 'WINGS: and the little one paid for it');
 
     /* And what it does now, which the owner rewrote end to end: it is *above*
