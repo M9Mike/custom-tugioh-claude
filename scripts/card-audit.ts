@@ -435,7 +435,14 @@ function matchCard(filter: CardFilter | undefined, kind: 'monster' | 'any' = 'mo
     (x) =>
       (kind === 'any' || x.kind === 'monster') &&
       x.slug !== 'facedown' &&
-      x.slug !== 'polymerization' &&
+      /* Polymerization is barred from a *generic* match, because a filter that
+         says "any card" would otherwise stock a Fusion enabler into positions
+         that have nothing to do with fusing. It must not be barred from a
+         filter that asks for it by name: Elemental HERO Avian's whole effect is
+         "add 1 Polymerization from your Deck", and with the card struck off the
+         list the harness stocked nothing, the search found nothing, and a card
+         that works perfectly was reported as doing nothing. */
+      (x.slug !== 'polymerization' || !!filter?.slugs?.includes('polymerization')) &&
       !exclude.includes(x.slug) &&
       matchesFilter({ slug: x.slug, isToken: false, position: 'atk', face: 'up' } as CardInstance, filter)
   );
@@ -636,6 +643,16 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
   if (cond.opponentHasMonster && s.players[FOE].monsters.every((m) => !m)) place(s, FOE, 0, 'harpie-lady');
   if (cond.controlsMonster && s.players[ME].monsters.every((m) => !m)) place(s, ME, 0, 'baby-dragon');
   if (cond.opponentHasBackrow && !s.players[FOE].spellTrap && !s.players[FOE].field) {
+    s.players[FOE].spellTrap = mint(s, FOE, 'mirror-force');
+  }
+  /* "A Spell or Trap stands somewhere" — either side of the table, which is the
+     whole difference from the gate above. Put it on THEIRS: a card that clears
+     a backrow is played to clear theirs, and a harness that only ever stocked
+     the near side would let an effect written for one side pass on the other.
+     Added the day R - Righteous Justice arrived and found an empty board on
+     both sides — the condition has existed since Luster Dragon and no card had
+     yet needed the harness to build the position for it. */
+  if (cond.anyBackrow && !s.players[FOE].spellTrap && !s.players[FOE].field && !s.players[ME].spellTrap && !s.players[ME].field) {
     s.players[FOE].spellTrap = mint(s, FOE, 'mirror-force');
   }
   /* A face-up monster of this type somewhere on the field. Weevil's aerosol
@@ -845,9 +862,18 @@ function targetsFor(s: DuelState, def: CardDef): string[] {
     } else if ('target' in op && op.target?.pick === 'chosen') {
       const side = op.target.side === 'own' ? myMons : foeMons;
       const zone = op.target.zone;
-      if (zone === 'spellTrap') {
-        const st = op.target.side === 'own' ? s.players[ME].spellTrap : s.players[FOE].spellTrap;
-        if (st) out.push(st.uid);
+      if (zone === 'spellTrap' || zone === 'backrow' || zone === 'field') {
+        /* `backrow` is the Spell/Trap Zone *and* the Field Zone, and `side:
+           'both'` reaches across the table — neither of which this copy had
+           ever heard of, so a card aimed at a backrow was handed a monster's
+           uid, the engine correctly threw it away, and an "up to" selector then
+           destroyed nothing at all. Reported by R - Righteous Justice, which is
+           the first card to want both words at once. */
+        const sides: PlayerId[] = op.target.side === 'own' ? [ME] : op.target.side === 'opp' ? [FOE] : [FOE, ME];
+        for (const pid of sides) {
+          if (zone !== 'field' && s.players[pid].spellTrap) out.push(s.players[pid].spellTrap!.uid);
+          if (zone !== 'spellTrap' && s.players[pid].field) out.push(s.players[pid].field!.uid);
+        }
       } else if (zone === 'grave') {
         if (graveMons[0]) out.push(graveMons[0].uid);
       } else if (side[0]) out.push(side[0].uid);

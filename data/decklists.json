@@ -1598,6 +1598,110 @@
           1
         ]
       ]
+    },
+    {
+      "id": "jaden",
+      "name": "Jaden Yuki",
+      "epithet": "Slifer Red",
+      "quote": "Get your game on!",
+      "accent": "#c8402f",
+      "accent2": "#f2c14a",
+      "emblem": "Elemental HERO Flame Wingman",
+      "strategy": "Elemental HEROes, and a Polymerization for every one of them.",
+      "deck": [
+        [
+          "Elemental HERO Avian",
+          2
+        ],
+        [
+          "Elemental HERO Burstinatrix",
+          2
+        ],
+        [
+          "Elemental HERO Clayman",
+          2
+        ],
+        [
+          "Elemental HERO Sparkman",
+          2
+        ],
+        [
+          "Elemental HERO Bubbleman",
+          1
+        ],
+        [
+          "Elemental HERO Wildheart",
+          1
+        ],
+        [
+          "Elemental HERO Necroshade",
+          1
+        ],
+        [
+          "Elemental HERO Bladedge",
+          1
+        ],
+        [
+          "Winged Kuriboh",
+          1
+        ],
+        [
+          "Polymerization",
+          3
+        ],
+        [
+          "Skyscraper",
+          1
+        ],
+        [
+          "Fusion Recovery",
+          1
+        ],
+        [
+          "H - Heated Heart",
+          1
+        ],
+        [
+          "R - Righteous Justice",
+          1
+        ],
+        [
+          "The Warrior Returning Alive",
+          1
+        ],
+        [
+          "Hero Signal",
+          1
+        ],
+        [
+          "Mirror Gate",
+          1
+        ],
+        [
+          "Hero Barrier",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ]
+      ],
+      "extra": [
+        "Elemental HERO Flame Wingman",
+        "Elemental HERO Phoenix Enforcer",
+        "Elemental HERO Thunder Giant",
+        "Elemental HERO Rampart Blaster",
+        "Elemental HERO Steam Healer",
+        "Elemental HERO Mudballman",
+        "Elemental HERO Mariner",
+        "Elemental HERO Darkbright",
+        "Elemental HERO Wild Wingman",
+        "Elemental HERO Wildedge",
+        "Elemental HERO Tempest",
+        "Elemental HERO Electrum",
+        "Elemental HERO Shining Flare Wingman",
+        "Elemental HERO Shining Phoenix Enforcer"
+      ]
     }
   ]
 }

@@ -373,7 +373,10 @@ export type Op =
       plusPerCounter?: number;
       to: Side;
     }
-  | { op: 'heal'; amount: number; to: Side }
+  /** `scale` reads the same number `damage`'s does: what this effect's own
+   *  destructions were worth, taken while they were still standing. Elemental
+   *  HERO Steam Healer is paid exactly what it kills. */
+  | { op: 'heal'; amount?: number; scale?: 'destroyedAtk'; to: Side }
   /** `perCardInGrave` and `dicePips` both multiply `amount`, so the rate is
    *  written on the card: Headless Knight counts 100 a corpse, the Magician of
    *  Black Chaos counts 200. `perMonsterOnField` still carries its own 300. */
@@ -621,6 +624,20 @@ export type Op =
    * it* it is destroyed.
    */
   | { op: 'possess'; target: Selector; endPhases: number }
+  /**
+   * The attacker and the monster it is attacking change sides with each other.
+   *
+   * Mirror Gate, and only Mirror Gate: no selectors, because the two monsters
+   * are the two the battle already names. A swap rather than a theft — nobody
+   * ends up with a spare zone or a body short, so it works on a full board,
+   * which a `takeControl` never could at the moment it matters most.
+   *
+   * The blow does not land: taking the attacker calls the attack off, which is
+   * the engine's own rule and needs nothing said on the card. What is left is
+   * the picture the card is famous for — their best monster standing on your
+   * side of the field, looking back at them.
+   */
+  | { op: 'swapControl' }
   | { op: 'transformInto'; slug: string }
   | {
       op: 'addCounter';
@@ -852,7 +869,27 @@ export type EquipGrant =
    * *adds* damage — it never spares its own controller — so it is a deterrent
    * against engaging, not another form of immunity.
    */
-  | 'reflectBattleDamage';
+  | 'reflectBattleDamage'
+  /**
+   * Swings 1000 heavier at a monster with more ATK than its own — Skyscraper,
+   * which is the whole of Jaden's field: a HERO that could not win the fight
+   * wins it, and one that was already winning gains nothing at all.
+   *
+   * A flag rather than a number, the way `sapsAttacker` is: the amount is the
+   * card's, the rule is the battle's, and the two cards that could ever want a
+   * different number do not exist yet.
+   */
+  | 'surgesVsStronger'
+  /**
+   * No Trap can touch it. Elemental HERO Wildheart walks through Mirror Force,
+   * through Trap Hole, through a Spellbinding Circle — a Trap that would take
+   * him as a target finds nothing there.
+   *
+   * Narrower than `untargetable`, deliberately: everything else in the game
+   * still reaches him, which is what makes him a body you play *around* Traps
+   * rather than a body nothing answers.
+   */
+  | 'unaffectedByTraps';
 
 export interface CardEffect {
   trigger: Trigger;
@@ -1142,6 +1179,10 @@ export interface CardFlags {
   shedsAbsorbedInstead?: boolean;
   /** See the `sapsAttacker` grant. */
   sapsAttacker?: boolean;
+  /** See the `surgesVsStronger` grant — Skyscraper's 1000. */
+  surgesVsStronger?: boolean;
+  /** See the `unaffectedByTraps` grant — Wildheart walks through them. */
+  unaffectedByTraps?: boolean;
   /** See the `paysWithGraveInstead` op. */
   paysWithGraveInstead?: boolean;
   /** Every swing costs a card out of hand — see the `attackCostDiscard` op. */
@@ -1452,6 +1493,18 @@ export interface TriggerContext {
   targetUid?: string;
   sourceUid?: string;
   damage?: number;
+  /**
+   * What the monster this battle just killed was standing at.
+   *
+   * `destroyedAtk` on a `damage` or `heal` op has always read the kills that
+   * effect made *itself* — Cannon Soldier fires the monster it destroyed. A
+   * battle kill is nobody's op, so an `onBattleDestroy` effect scaled that way
+   * read zero: Elemental HERO Flame Wingman, whose entire card is "inflict
+   * damage equal to the ATK of the monster it just destroyed", would have
+   * inflicted nothing at all. Carried on the trigger because by the time the
+   * effect runs the body is in the Graveyard and there is no stat left to read.
+   */
+  destroyedAtk?: number;
 }
 
 export type AnimKind =

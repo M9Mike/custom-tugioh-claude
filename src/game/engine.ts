@@ -634,6 +634,8 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (grants.has('halvedDirectDamage')) merged.halvedDirectDamage = true;
   if (grants.has('summonSick')) merged.summonSick = true;
   if (grants.has('reflectBattleDamage')) merged.reflectBattleDamage = true;
+  if (grants.has('surgesVsStronger')) merged.surgesVsStronger = true;
+  if (grants.has('unaffectedByTraps')) merged.unaffectedByTraps = true;
   /* A side-wide shield reads as a flag on every monster standing behind it, so
      the battle code, the board and the AI all see it without any of them
      needing to know an ongoing effect exists. Tornado Wall raises it. */
@@ -1522,6 +1524,13 @@ function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, c
      through `toGrave` directly, which is the rental clause and is deliberately
      not a destruction. */
   if (isDivine(c.slug)) return true;
+  /* "Unaffected by Trap effects" is a sentence about the card doing the
+     reaching, not about who owns it — so it sits above the line below that lets
+     a player's own cards touch their own monsters. Elemental HERO Wildheart
+     walks through Mirror Force and through his own controller's Trap Hole
+     alike, which is what the words say and the only reading that does not need
+     an exception written for it. */
+  if (ctx && CARDS[ctx.source.slug]?.kind === 'trap' && effFlags(state, c).unaffectedByTraps) return true;
   const ctrl = controllerOf(state, c.uid);
   if (ctrl === actor) return false;
   /* The God check above is deliberately not reachable from here: piercing is a
@@ -1822,9 +1831,15 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         for (const pid of sideToPlayers(ctx, op.to)) dealDamage(state, pid, amount);
         break;
       }
-      case 'heal':
-        for (const pid of sideToPlayers(ctx, op.to)) healPlayer(state, pid, op.amount);
+      case 'heal': {
+        /* The same number `damage`'s `destroyedAtk` reads — what this effect's
+           own kills were worth, taken while they were still standing. Steam
+           Healer is paid exactly what it destroys, so a monster that shrugged
+           the attempt off pays nothing. */
+        const gain = op.scale === 'destroyedAtk' ? (ctx.destroyedAtk ?? 0) : (op.amount ?? 0);
+        for (const pid of sideToPlayers(ctx, op.to)) healPlayer(state, pid, gain);
         break;
+      }
       case 'gainAtk': {
         let amount = op.amount ?? 0;
         /* A filter narrows what the pile counts. Sword Arm of Dragon is worth
@@ -2079,6 +2094,39 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             'effect', ctx.controller, logSlug(m));
         }
         if (!lent.length) emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to borrow.`);
+        break;
+      }
+      case 'swapControl': {
+        /* Mirror Gate. The two monsters are the two the battle already names,
+           so nothing is chosen and nothing can be aimed wrong.
+           Written as an exchange of zones rather than as two thefts: each body
+           lands in the slot the other just left, so a full board is no obstacle
+           — which matters, because a board full enough that a theft would fizzle
+           is exactly the board this card is played on. Permanent, by the
+           owner's own standard for an anime card: the swap is the whole of it,
+           and giving it back at the End Phase would leave nothing behind. */
+        const mine = ctx.trig.targetUid ? findOnField(state, ctx.trig.targetUid) : null;
+        const theirs = ctx.trig.attackerUid ? findOnField(state, ctx.trig.attackerUid) : null;
+        if (!mine || !theirs || mine.zone !== 'monster' || theirs.zone !== 'monster' || mine.controller === theirs.controller) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to exchange.`);
+          break;
+        }
+        state.players[mine.controller].monsters[mine.index] = theirs.c;
+        state.players[theirs.controller].monsters[theirs.index] = mine.c;
+        /* Whatever either of them was borrowed under is over: they belong to
+           their new side outright, and a revert clock left on one would hand it
+           back to the player who just lost it. */
+        mine.c.controlRevertsOnTurn = undefined;
+        theirs.c.controlRevertsOnTurn = undefined;
+        log(
+          state,
+          `${displayName(state, theirs.c)} and ${displayName(state, mine.c)} change places!`,
+          'effect',
+          ctx.controller,
+          logSlug(theirs.c)
+        );
+        anim(state, { kind: 'summon', uid: theirs.c.uid, slug: theirs.c.slug, player: mine.controller });
+        anim(state, { kind: 'summon', uid: mine.c.uid, slug: mine.c.slug, player: theirs.controller });
         break;
       }
       case 'possess': {
@@ -3208,7 +3256,11 @@ function fireTriggersInner(
        reach here with nothing, and those are the ones that used to have the
        engine choose on their controller's behalf. */
     if (!resumed && raiseChoice(state, c, controller, trigger, eff, targets)) continue;
-    const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig };
+    /* What the battle just killed, if this fired because of one. `destroyedAtk`
+       is otherwise the running total of an effect's OWN destructions, and a
+       battle kill belongs to nobody's op — so it is seeded from the trigger
+       and then adds to itself exactly as it always did. */
+    const ctx: EffectCtx = { state, controller, source: c, targets, cursor: 0, trig, destroyedAtk: trig.destroyedAtk };
     if (def.cry && (trigger === 'onSummon' || trigger === 'onNormalSummon' || trigger === 'activate')) {
       /* `arrival` when the effect fired because the card turned up. The beat is
          worth keeping — it is what gives a signature monster its flourish — but
@@ -3624,7 +3676,7 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
   log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
   anim(state, { kind: 'trap', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
 
-  const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig };
+  const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig, destroyedAtk: trig.destroyedAtk };
   for (const eff of effs) {
     if (!conditionMet(state, eff, c, pid)) continue;
     /* Traps pay their costs too. `activateSpell` has always paid `cost.lp`;
@@ -3848,6 +3900,17 @@ function resolveBattle(state: DuelState) {
     swing += flags.bonusVsDefense;
     log(state, `${displayName(state, attacker)} bears down on a defending monster.`, 'effect', controller, logSlug(attacker));
   }
+  /* Skyscraper. The city rises behind a HERO who is outgunned, and only then:
+     measured against the defender's ATK whichever way it is standing, because
+     "attacks a monster that has a higher ATK" is a sentence about the monster
+     and not about its posture. Read off the numbers the battle is using — the
+     toll and the doubling have already been taken — so a HERO that was made
+     big enough by something else does not also get the surge. */
+  if (flags.surgesVsStronger && effAtk(state, target, defender) > swing) {
+    swing += 1000;
+    log(state, `${displayName(state, attacker)} leaps from the skyline — 1000 ATK, for this battle.`,
+      'effect', controller, logSlug(attacker));
+  }
   if (guard.halvesAttacker) {
     swing = Math.floor(swing / 2);
     log(state, `${displayName(state, target)} turns half of that blow aside.`, 'effect', defender, logSlug(target));
@@ -3906,7 +3969,7 @@ function resolveBattle(state: DuelState) {
       const killed = strikeDown(target, attacker, controller);
       if (killed) devour(attacker, target, controller);
       if (!state.winner) {
-        if (killed) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
+        if (killed) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
         /* Damage is its own question. The blow landed on the Life Points
            whatever the monster did about dying, so this one is not gated. */
         if (state.players[defender].lp < before) {
@@ -3927,10 +3990,14 @@ function resolveBattle(state: DuelState) {
   } else {
     const tDef = effDef(state, target, defender);
     if (atk > tDef) {
+      /* Read while it is still standing. A monster killed in Defence Position
+         is still worth its ATK to a Flame Wingman — the card says "the ATK of
+         the destroyed monster", not "the number it was defending with". */
+      const tAtk = effAtk(state, target, defender);
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
       const killed = strikeDown(target, attacker, controller);
       if (killed) devour(attacker, target, controller);
-      if (killed && !state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid });
+      if (killed && !state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
     } else if (atk < tDef) {
       battleHit(controller, tDef - atk, attacker);
       log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));

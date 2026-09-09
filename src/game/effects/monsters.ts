@@ -4451,4 +4451,352 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
     ],
   },
+
+  /* ================================================================ */
+  /* Jaden Yuki — the Elemental HEROes                                 */
+  /* ================================================================ */
+  /*
+   * A deck that does not want to be strong on the field. It wants two small
+   * bodies and a Polymerization, and everything it is worth is in the Extra
+   * Deck — fourteen of them, because the owner asked for no limit and because
+   * a HERO deck with three fusions is a HERO deck that draws the wrong two
+   * halves all game. The four originals are Level 3 and 4 and there are two of
+   * each, so almost every recipe in the pile is one card away at any moment.
+   *
+   * The small ones each do one thing, and it is the thing that makes the
+   * *next* card work: Avian fetches the Polymerization, Burstinatrix burns for
+   * having shown up, Clayman is a wall to hide behind while the pieces
+   * gather, Sparkman is the one that actually hits. None of them is a card you
+   * are happy to draw twice, which is correct — they are meant to be spent.
+   */
+
+  'elemental-hero-avian': {
+    /* The engine of the deck, on the smallest body in it. Fourteen fusions and
+       one Spell that assembles any of them: without a way to find the
+       Polymerization, the Extra Deck is a picture of a deck. */
+    text: 'When this monster is Summoned: add 1 "Polymerization" from your Deck to your hand.',
+    cry: 'Feather Break!',
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [{ op: 'search', filter: { slugs: ['polymerization'] } }],
+      },
+    ],
+  },
+
+  'elemental-hero-burstinatrix': {
+    text: 'When this monster is Summoned: inflict 500 damage to your opponent.',
+    cry: 'Burst Fire!',
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'damage', amount: 500, to: 'opp' }] }],
+  },
+
+  'elemental-hero-clayman': {
+    /* 800 ATK behind 2000 DEF, and the point of him is the turn he buys. Written
+       as the same 1000 the Insect Barrier takes, because a wall's number should
+       be one number in this game and not two. */
+    text: 'Anything that attacks this monster does so 1000 ATK lighter.',
+    cry: 'Clay Guard!',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'] } },
+    ],
+  },
+
+  'elemental-hero-sparkman': {
+    text: 'This monster inflicts piercing battle damage. When this monster destroys a monster in battle: inflict 500 damage to your opponent.',
+    cry: 'Static Shockwave!',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 500, to: 'opp' }] },
+    ],
+  },
+
+  'elemental-hero-bubbleman': {
+    /* Two cards for arriving alone, which is the printed card's whole shape —
+       and the reason it is worth playing a 800 ATK body on an empty field at
+       all. `controlsNoOtherMonster` is asked of the board he lands on, so
+       summoning him beside anything at all is simply a 800 ATK body. */
+    text: 'When this monster is Summoned, if it is the only monster you control: draw 2 cards.',
+    cry: 'Bubble Shuffle!',
+    effects: [
+      {
+        trigger: 'onSummon',
+        condition: { controlsNoOtherMonster: true },
+        ops: [{ op: 'draw', count: 2, who: 'own' }],
+      },
+    ],
+  },
+
+  'elemental-hero-wildheart': {
+    /* The card the printed one is: he does not read Traps. Narrower than
+       "cannot be targeted" on purpose — a Spell still answers him, a bigger
+       body still answers him, and what he is for is walking into a board with
+       two cards face-down. */
+    text: 'This monster is unaffected by Trap effects.',
+    cry: 'Wildheart never backs down!',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedByTraps'] } },
+    ],
+  },
+
+  'elemental-hero-necroshade': {
+    /* The printed card waives a Tribute out of the Graveyard, which is a rule
+       about paying for a summon. This says the same thing as an event: he goes
+       down, and the big one comes up in his place — the anime beat, and the
+       reason Bladedge is in a deck whose next-biggest monster is 1600. */
+    text: 'When this monster is sent to the Graveyard: Special Summon 1 Level 5 or higher "Elemental HERO" monster from your hand.',
+    cry: 'Rise, in my place!',
+    effects: [
+      {
+        trigger: 'onSentToGrave',
+        targets: 1,
+        ops: [
+          {
+            op: 'specialSummon',
+            from: 'hand',
+            filter: { nameIncludes: 'Elemental HERO', minLevel: 5 },
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'elemental-hero-bladedge': {
+    text: 'This monster inflicts piercing battle damage.',
+    cry: 'Slice and dice!',
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
+    ],
+  },
+
+  'winged-kuriboh': {
+    /* Jaden's, and it does what Yugi's does one step further along: Kuriboh is
+       thrown in front of a blow, Winged Kuriboh dies to one and closes the
+       rest of the turn. So it answers the swing that killed it *and* the two
+       behind it, which is exactly the card in the anime. */
+    text: 'When this monster is destroyed by battle: you take no battle damage for the rest of this turn.',
+    cry: 'Kuri!',
+    effects: [
+      {
+        trigger: 'onDestroyedByBattle',
+        ops: [{ op: 'preventBattleDamage', who: 'own', duration: 'turn' }],
+      },
+    ],
+  },
+
+  /* ---------------- The Extra Deck ---------------- */
+
+  'elemental-hero-flame-wingman': {
+    /* The signature, and the reason a HERO deck is frightening at 2100 ATK: it
+       is not the body, it is that everything it kills is billed to the player
+       who played it. Two 1000-ATK monsters and a Polymerization for a card
+       that turns their Summoned Skull into 2500 damage. */
+    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. When this monster destroys a monster in battle: inflict damage to your opponent equal to that monster\'s ATK.',
+    cry: 'Infernal Rage!',
+    fusionMaterials: ['elemental-hero-avian', 'elemental-hero-burstinatrix'],
+    effects: [
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', scale: 'destroyedAtk', to: 'opp' }] },
+    ],
+  },
+
+  'elemental-hero-phoenix-enforcer': {
+    /* The same two materials as the Wingman, which is the printed card and is
+       also the choice the Extra Deck exists to offer: the same pair of bodies
+       buys either the burn or the body that will not die. */
+    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix. This monster cannot be destroyed by battle.',
+    cry: 'Rise from the ashes!',
+    fusionMaterials: ['elemental-hero-avian', 'elemental-hero-burstinatrix'],
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle'] } },
+    ],
+  },
+
+  'elemental-hero-thunder-giant': {
+    /* "Less than the ATK of this monster" is 2400 and always will be — the
+       giant has no way to grow — so the ceiling is written as the number
+       rather than as a comparison the filter cannot make. If a card ever moves
+       his ATK, this line is the one that has to move with it. */
+    text: 'Fusion: Elemental HERO Sparkman + Elemental HERO Clayman. Once per turn: discard 1 card to destroy 1 monster on the field with less than 2400 ATK.',
+    cry: 'Voltic Thunder!',
+    fusionMaterials: ['elemental-hero-sparkman', 'elemental-hero-clayman'],
+    effects: [
+      {
+        trigger: 'ignition',
+        label: 'Discard 1, strike a monster down',
+        cost: { discard: 1 },
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('both', 'chosen', { filter: { maxAtk: 2399 } }) }],
+      },
+    ],
+  },
+
+  'elemental-hero-rampart-blaster': {
+    /* The wording matters: the halving belongs to the *direct* swing and to
+       nothing else — see `halvedDirectDamage`, which is the toll for going
+       around a guard rather than a discount on every blow the blaster lands.
+       "When it does so using this effect" is the clause that says so, and
+       `npm run text` reads it. */
+    text: 'Fusion: Elemental HERO Clayman + Elemental HERO Burstinatrix. This monster can attack your opponent directly. When it does so using this effect, the battle damage it inflicts to your opponent is halved.',
+    cry: 'Rampart Barrage!',
+    fusionMaterials: ['elemental-hero-clayman', 'elemental-hero-burstinatrix'],
+    effects: [
+      {
+        trigger: 'onSummon',
+        ops: [
+          { op: 'directAttack', duration: 'permanent' },
+          { op: 'halvedDirectDamage', duration: 'permanent' },
+        ],
+      },
+    ],
+  },
+
+  'elemental-hero-steam-healer': {
+    /* The Wingman's number, pointed the other way: what it kills is what its
+       controller is paid. 1800 ATK means it is usually paid a little, and once
+       a duel it eats something big and the race resets. */
+    text: 'Fusion: Elemental HERO Burstinatrix + Elemental HERO Bubbleman. When this monster destroys a monster in battle: gain Life Points equal to that monster\'s ATK.',
+    cry: 'Steam heals all wounds.',
+    fusionMaterials: ['elemental-hero-burstinatrix', 'elemental-hero-bubbleman'],
+    effects: [
+      { trigger: 'onBattleDestroy', ops: [{ op: 'heal', scale: 'destroyedAtk', to: 'own' }] },
+    ],
+  },
+
+  'elemental-hero-mudballman': {
+    text: 'Fusion: Elemental HERO Bubbleman + Elemental HERO Clayman. Anything that attacks this monster does so 1000 ATK lighter.',
+    cry: 'Nothing gets through.',
+    fusionMaterials: ['elemental-hero-bubbleman', 'elemental-hero-clayman'],
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'] } },
+    ],
+  },
+
+  'elemental-hero-mariner': {
+    text: 'Fusion: Elemental HERO Bubbleman + Elemental HERO Avian. When Fusion Summoned: return 1 monster your opponent controls to their hand.',
+    cry: 'Back to the tide!',
+    fusionMaterials: ['elemental-hero-bubbleman', 'elemental-hero-avian'],
+    effects: [
+      { trigger: 'onSummon', targets: 1, ops: [{ op: 'bounce', target: OPP_PICK }] },
+    ],
+  },
+
+  'elemental-hero-darkbright': {
+    text: 'Fusion: Elemental HERO Sparkman + Elemental HERO Necroshade. This monster inflicts piercing battle damage. When this monster destroys a monster in battle: inflict 600 damage to your opponent.',
+    cry: 'Spark of the dark!',
+    fusionMaterials: ['elemental-hero-sparkman', 'elemental-hero-necroshade'],
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 600, to: 'opp' }] },
+    ],
+  },
+
+  'elemental-hero-wild-wingman': {
+    /* Wildheart's half of the fusion carries: the body that does not read
+       Traps, now with a way to break them from across the table. */
+    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Avian. This monster is unaffected by Trap effects. Once per turn: discard 1 card to destroy 1 Spell or Trap on the field.',
+    cry: 'Wild Rush!',
+    fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-avian'],
+    effects: [
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedByTraps'] } },
+      {
+        trigger: 'ignition',
+        label: 'Discard 1, shatter a Spell/Trap',
+        cost: { discard: 1 },
+        condition: { anyBackrow: true },
+        targets: 1,
+        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 1 }) }],
+      },
+    ],
+  },
+
+  'elemental-hero-wildedge': {
+    /* Both halves inherited and both of them mattering at once: it swings at
+       everything they have, it goes through the ones that are lying down, and
+       the Trap they set to answer a board-clearing attacker does not read. */
+    text: 'Fusion: Elemental HERO Wildheart + Elemental HERO Bladedge. This monster attacks every monster your opponent controls once each Battle Phase, inflicts piercing battle damage, and is unaffected by Trap effects.',
+    cry: 'Wild Slash!',
+    fusionMaterials: ['elemental-hero-wildheart', 'elemental-hero-bladedge'],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, grants: ['attackAll', 'pierce', 'unaffectedByTraps'] },
+      },
+    ],
+  },
+
+  'elemental-hero-tempest': {
+    /* Three bodies, so the payoff is a board rather than a monster: everything
+       else standing beside it stops dying in battle. `excludeSelf` because a
+       2800 that also cannot be killed by battle is the card answering the
+       whole game on its own, and the storm is meant to protect the team. */
+    text: 'Fusion: Elemental HERO Avian + Elemental HERO Sparkman + Elemental HERO Bubbleman. While this monster is face-up, your other monsters cannot be destroyed by battle.',
+    cry: 'Ride the storm!',
+    fusionMaterials: ['elemental-hero-avian', 'elemental-hero-sparkman', 'elemental-hero-bubbleman'],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: sel('own', 'all', { filter: { kind: 'monster' }, excludeSelf: true }),
+          grants: ['indestructibleByBattle'],
+        },
+      },
+    ],
+  },
+
+  'elemental-hero-electrum': {
+    /* Four named bodies and a Polymerization — five cards, and there is no
+       route to it that is not the whole deck working. So it is paid like one:
+       the board is cleared and a 2900 is standing on the empty side of it. */
+    text: 'Fusion: Elemental HERO Avian + Elemental HERO Burstinatrix + Elemental HERO Clayman + Elemental HERO Bubbleman. When Fusion Summoned: destroy every monster your opponent controls.',
+    cry: 'Four elements, one HERO!',
+    fusionMaterials: [
+      'elemental-hero-avian',
+      'elemental-hero-burstinatrix',
+      'elemental-hero-clayman',
+      'elemental-hero-bubbleman',
+    ],
+    effects: [{ trigger: 'onSummon', ops: [{ op: 'destroy', target: OPP_ALL }] }],
+  },
+
+  'elemental-hero-shining-flare-wingman': {
+    /* The end of the road: a fusion made of a fusion, so the Graveyard it
+       counts is a Graveyard the deck has been filling all game — every spent
+       Avian, every Burstinatrix, every HERO that died holding the line is
+       300 ATK now. Read live, so it grows for the rest of the duel. */
+    text:
+      'Fusion: Elemental HERO Flame Wingman + Elemental HERO Sparkman. ' +
+      'Gains 300 ATK for each "Elemental HERO" card in your Graveyard. ' +
+      'When this monster destroys a monster in battle: inflict damage to your opponent equal to that monster\'s ATK.',
+    cry: 'Shining Shoot!',
+    fusionMaterials: ['elemental-hero-flame-wingman', 'elemental-hero-sparkman'],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: { target: SELF, per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 300 } },
+      },
+      { trigger: 'onBattleDestroy', ops: [{ op: 'damage', scale: 'destroyedAtk', to: 'opp' }] },
+    ],
+  },
+
+  'elemental-hero-shining-phoenix-enforcer': {
+    text:
+      'Fusion: Elemental HERO Phoenix Enforcer + Elemental HERO Sparkman. ' +
+      'Gains 300 ATK for each "Elemental HERO" card in your Graveyard. This monster cannot be destroyed by battle.',
+    cry: 'The flame never goes out!',
+    fusionMaterials: ['elemental-hero-phoenix-enforcer', 'elemental-hero-sparkman'],
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: SELF,
+          grants: ['indestructibleByBattle'],
+          per: { zone: 'ownGrave', filter: { nameIncludes: 'Elemental HERO' }, atk: 300 },
+        },
+      },
+    ],
+  },
 };

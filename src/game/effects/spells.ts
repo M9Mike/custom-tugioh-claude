@@ -1762,6 +1762,148 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
       },
     ],
   },
+
+  /* ---------------------------------------------------------------- */
+  /* Jaden Yuki — what the HEROes are carried by                       */
+  /* ---------------------------------------------------------------- */
+
+  skyscraper: {
+    /* The city, and the only card in the deck that says out loud what the deck
+       is: a HERO is worth more when it is losing. 1000 is enough to turn every
+       original — 1000, 1200, 800, 1600 — into something that beats a Summoned
+       Skull, and worth nothing at all in a fight the HERO was already winning,
+       which is what keeps it from being a flat buff with extra words. */
+    text: 'Field Spell: when an "Elemental HERO" monster you control attacks a monster with more ATK, it gains 1000 ATK for that battle.',
+    cry: 'The city rises behind them!',
+    effects: [
+      {
+        trigger: 'continuous',
+        ops: [],
+        aura: {
+          target: sel('own', 'all', { filter: { nameIncludes: 'Elemental HERO' } }),
+          grants: ['surgesVsStronger'],
+        },
+      },
+    ],
+  },
+
+  'fusion-recovery': {
+    /* Both halves of a fusion that already happened, back in the hand. The
+       deck's second wind: the Polymerization is the card it runs out of, and
+       the material beside it is whichever HERO is worth having twice. */
+    text: 'Add 1 "Polymerization" and 1 Warrior monster from your Graveyard to your hand.',
+    cry: 'One more time!',
+    effects: [
+      {
+        trigger: 'activate',
+        targets: 1,
+        ops: [
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } },
+          { op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } },
+        ],
+      },
+    ],
+  },
+
+  'h-heated-heart': {
+    text: 'Target 1 monster you control: it gains 500 ATK until the end of this turn.',
+    cry: 'Heat it up!',
+    effects: [
+      {
+        trigger: 'activate',
+        targets: 1,
+        ops: [{ op: 'gainAtk', amount: 500, target: OWN_PICK, duration: 'turn' }],
+      },
+    ],
+  },
+
+  'r-righteous-justice': {
+    /* "One for each HERO you control" is a count the destroy op cannot take, so
+       the card is written as the number it comes to in the game it is actually
+       played in: a HERO board is two or three bodies and a backrow is one card
+       a side. Gated on controlling a Warrior, which is what every monster in
+       this deck is — and the gate is the honest half of the printed card,
+       because Righteous Justice with no HERO out destroys nothing. */
+    text: 'If you control a Warrior monster: destroy up to 2 Spell or Trap cards on the field.',
+    cry: 'Justice comes down!',
+    effects: [
+      {
+        trigger: 'activate',
+        condition: { controlsOtherOfType: 'Warrior', anyBackrow: true },
+        targets: 2,
+        ops: [{ op: 'destroy', target: sel('both', 'chosen', { zone: 'backrow', count: 2, optional: true }) }],
+      },
+    ],
+  },
+
+  'the-warrior-returning-alive': {
+    text: 'Add 1 Warrior monster from your Graveyard to your hand.',
+    cry: 'Back on your feet.',
+    effects: [
+      {
+        trigger: 'activate',
+        targets: 1,
+        ops: [{ op: 'stealFromGrave', from: 'own', filter: { type: 'Warrior' } }],
+      },
+    ],
+  },
+
+  'hero-signal': {
+    /* The answer to losing a body: the next one is already coming. From the
+       Deck as well as the hand, because a HERO deck that has drawn its
+       fusions and none of its materials is the hand this card is held in. */
+    text: 'Trap: when a monster is destroyed by battle, Special Summon 1 Level 4 or lower "Elemental HERO" monster from your hand or Deck.',
+    cry: 'The signal is lit!',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'monsterDestroyed',
+        label: 'Hero Signal — call the next one',
+        targets: 1,
+        ops: [
+          {
+            op: 'specialSummon',
+            from: ['hand', 'deck'],
+            filter: { nameIncludes: 'Elemental HERO', maxLevel: 4 },
+            position: 'atk',
+          },
+        ],
+      },
+    ],
+  },
+
+  'mirror-gate': {
+    /* Jaden's best card and one of the best pictures in the show: their monster
+       comes across the table and yours goes back the other way, and the swing
+       that started it never lands — taking the attacker calls the attack off,
+       which is the engine's own rule and needs nothing said here.
+       Permanent, deliberately. A swap that reverts at the End Phase leaves
+       nothing behind, and what this card is *for* is the board afterwards. */
+    text: 'Trap: when your opponent\'s monster declares an attack on a monster you control, the two monsters change places. The attack is called off.',
+    cry: 'Mirror Gate — open!',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Mirror Gate — turn it around',
+        ops: [{ op: 'swapControl' }],
+      },
+    ],
+  },
+
+  'hero-barrier': {
+    text: 'Trap: if you control a Warrior monster, negate 1 attack.',
+    cry: 'Not this one.',
+    effects: [
+      {
+        trigger: 'trap',
+        window: 'opponentDeclareAttack',
+        label: 'Hero Barrier — turn the blow aside',
+        condition: { controlsOtherOfType: 'Warrior' },
+        ops: [{ op: 'negateAttack' }],
+      },
+    ],
+  },
 };
 
 /** Cards whose "chosen" target is on the controller's own side of the field. */
