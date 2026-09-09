@@ -13462,6 +13462,9 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     const route = fusionOptions(s, ME).find(
       (o) => s.players[ME].extra.find((e) => e.uid === o.extraUid)?.slug === 'elemental-hero-electrum'
     );
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[FOE].field = card(FOE, 'umi');
+    s.players[FOE].hand = [card(FOE, 'pot-of-greed'), card(FOE, 'blue-eyes-white-dragon')];
     ok(!!route, 'HERO: two HEROes standing and two in hand assemble Electrum');
     if (route) {
       const out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
@@ -13469,7 +13472,572 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
         out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
       ok(out.players[ME].monsters.some((m) => m?.slug === 'elemental-hero-electrum'),
         'HERO: with the 2900 standing on it', out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+      /* Not destroyed — gone. Nothing they had is in the Graveyard, which is
+         the difference the owner asked for and the difference a Monster Reborn
+         would otherwise undo. */
+      ok(!out.players[FOE].spellTrap && !out.players[FOE].field,
+        'HERO: their backrow and their Field Spell go with it',
+        `${out.players[FOE].spellTrap?.slug ?? '-'} / ${out.players[FOE].field?.slug ?? '-'}`);
+      ok(out.players[FOE].hand.length === 0, 'HERO: and their whole hand',
+        out.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)');
+      ok(out.players[FOE].grave.length === 0,
+        'HERO: banished, not buried — nothing of theirs reaches the Graveyard',
+        out.players[FOE].grave.map((c) => c.slug).join(',') || '(empty)');
+      ok(out.players[FOE].banished.length >= 6, 'HERO: it is all out of play instead',
+        `${out.players[FOE].banished.length} banished`);
+      ok(out.players[ME].monsters.filter(Boolean).length === 1,
+        'HERO: CONTROL: and my own side is untouched — Electrum is standing on it',
+        out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
     }
+  }
+
+  /* --- The fourteen fusions, one at a time --- */
+  {
+    /* Flame Wingman: the city in its hand, and the nerve to walk into something
+       bigger. Both thousands land at once, which is the owner's "obviously
+       independent". */
+    const s = jaden();
+    s.phase = 'battle';
+    const fw = card(ME, 'elemental-hero-flame-wingman'); // 2100
+    fw.summonedOnTurn = 0;
+    s.players[ME].monsters = [fw, null, null];
+    s.players[ME].field = card(ME, 'skyscraper');
+    const bews = card(FOE, 'blue-eyes-white-dragon'); // 3000 — bigger
+    bews.summonedOnTurn = 0;
+    s.players[FOE].monsters = [bews, null, null];
+    /* Headroom, because 1100 through plus a 3000 bill is more than a duel's
+       worth of Life Points and a dead player's total reads 0 either way. */
+    s.players[FOE].lp = 9000;
+    const hit = act(s, ME, { type: 'attack', uid: fw.uid, targetUid: bews.uid });
+    ok(!hit.players[FOE].monsters.some((m) => m?.uid === bews.uid),
+      'WING: 2100 plus the city plus its own nerve beats a Blue-Eyes',
+      hit.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* 2100 + 1000 + 1000 = 4100 against 3000 is 1100 through, and then the
+       Wingman bills them the dragon's whole 3000 on top. */
+    ok(hit.players[FOE].lp === 9000 - 1100 - 3000,
+      'WING: and bills them the dragon it just broke', `LP ${hit.players[FOE].lp}`);
+
+    /* CONTROL: against something smaller only Skyscraper's thousand lands. */
+    const smaller = jaden();
+    smaller.phase = 'battle';
+    const fw2 = card(ME, 'elemental-hero-flame-wingman');
+    fw2.summonedOnTurn = 0;
+    smaller.players[ME].monsters = [fw2, null, null];
+    smaller.players[ME].field = card(ME, 'skyscraper');
+    const ox = card(FOE, 'battle-ox'); // 1700 — smaller
+    ox.summonedOnTurn = 0;
+    smaller.players[FOE].monsters = [ox, null, null];
+    const soft = act(smaller, ME, { type: 'attack', uid: fw2.uid, targetUid: ox.uid });
+    ok(soft.players[FOE].lp === 4000 - (2100 + 1000 - 1700) - 1700,
+      'WING: CONTROL: and only the city\'s thousand against something smaller',
+      `LP ${soft.players[FOE].lp}`);
+
+    /* And it fetches the city it stands on — through the only door a Fusion
+       has, which is the Fusion button. */
+    const call = jaden();
+    const fw3 = card(ME, 'elemental-hero-flame-wingman');
+    call.players[ME].extra = [fw3, ...call.players[ME].extra];
+    call.players[ME].monsters = [card(ME, 'elemental-hero-avian'), card(ME, 'elemental-hero-burstinatrix'), null];
+    call.players[ME].hand = [card(ME, 'polymerization')];
+    call.players[ME].deck = [card(ME, 'skyscraper')];
+    const road = fusionOptions(call, ME).find((o) => o.extraUid === fw3.uid);
+    ok(!!road, 'WING: Avian and Burstinatrix assemble it');
+    if (road) {
+      let got = act(call, ME, { type: 'fusionSummon', extraUid: road.extraUid, materials: road.materials, zone: 2, position: 'atk' });
+      let cg = 0;
+      while (got.pending?.kind === 'choose' && cg++ < 4) {
+        got = act(got, got.pending.player, { type: 'chooseCard', uids: [got.pending.options[0]] });
+      }
+      ok(got.players[ME].hand.some((c) => c.slug === 'skyscraper'),
+        'WING: and the city comes up out of the Deck with it',
+        got.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    }
+  }
+
+  {
+    /* Phoenix Enforcer: every wall it fails to break, and every blow it takes,
+       is another 500 it keeps. */
+    const s = jaden();
+    s.phase = 'battle';
+    const pe = card(ME, 'elemental-hero-phoenix-enforcer'); // 2100, cannot die in battle
+    pe.summonedOnTurn = 0;
+    s.players[ME].monsters = [pe, null, null];
+    const wall = card(FOE, 'blue-eyes-ultimate-dragon'); // 4500
+    wall.summonedOnTurn = 0;
+    s.players[FOE].monsters = [wall, null, null];
+    const bounced = act(s, ME, { type: 'attack', uid: pe.uid, targetUid: wall.uid });
+    const after = bounced.players[ME].monsters.find((m) => m?.uid === pe.uid);
+    ok(!!after, 'PHOENIX: it walks into a 4500 and does not die', after?.slug ?? '(gone)');
+    ok(after?.atkMod === 500, 'PHOENIX: and keeps 500 for the wall it could not break',
+      String(after?.atkMod));
+
+    /* And again on the receiving end. */
+    const hit = jaden();
+    hit.phase = 'battle';
+    hit.active = FOE;
+    const pe2 = card(ME, 'elemental-hero-phoenix-enforcer');
+    pe2.summonedOnTurn = 0;
+    hit.players[ME].monsters = [pe2, null, null];
+    const swinger = card(FOE, 'battle-ox');
+    swinger.summonedOnTurn = 0;
+    hit.players[FOE].monsters = [swinger, null, null];
+    const took = act(hit, FOE, { type: 'attack', uid: swinger.uid, targetUid: pe2.uid });
+    ok(took.players[ME].monsters.find((m) => m?.uid === pe2.uid)?.atkMod === 500,
+      'PHOENIX: and 500 more for every blow it takes',
+      String(took.players[ME].monsters.find((m) => m?.uid === pe2.uid)?.atkMod));
+  }
+
+  {
+    /* Tempest: the whole weather. Their backrow and their grip go at once, it
+       eats what it buried, and every swing tears another out of their Deck. */
+    const s = jaden();
+    const tempest = card(ME, 'elemental-hero-tempest');
+    s.players[ME].extra = [tempest, ...s.players[ME].extra];
+    s.players[ME].monsters = [card(ME, 'elemental-hero-avian'), card(ME, 'elemental-hero-sparkman'), null];
+    s.players[ME].hand = [card(ME, 'elemental-hero-bubbleman'), card(ME, 'polymerization')];
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    s.players[FOE].field = card(FOE, 'umi');
+    s.players[FOE].hand = [
+      card(FOE, 'pot-of-greed'),
+      card(FOE, 'monster-reborn'),
+      card(FOE, 'blue-eyes-white-dragon'), // a monster: not weather
+    ];
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === tempest.uid);
+    ok(!!route, 'STORM: the three materials assemble it');
+    if (route) {
+      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 6) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      ok(!out.players[FOE].spellTrap && !out.players[FOE].field,
+        'STORM: their table is swept of Spells and Traps',
+        `${out.players[FOE].spellTrap?.slug ?? '-'} / ${out.players[FOE].field?.slug ?? '-'}`);
+      ok(out.players[FOE].hand.length === 1 && out.players[FOE].hand[0].slug === 'blue-eyes-white-dragon',
+        'STORM: and their grip of it too — the monster stays',
+        out.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)');
+      /* Four magic cards down there now: the Mirror Force, the Yami, and the
+         two out of their hand. 2800 + 400. */
+      const body = out.players[ME].monsters.find((m) => m?.uid === tempest.uid)!;
+      const magic = out.players[FOE].grave.filter((c) => CARDS[c.slug]?.kind !== 'monster').length;
+      ok(effAtk(out, body, ME) === 2800 + magic * 100,
+        'STORM: and it eats what it buried — 100 a card',
+        `${magic} magic cards, ${effAtk(out, body, ME)} ATK`);
+
+      /* And it keeps digging on the swing. The fixture stocks both Decks with
+         nothing but Kuriboh, so a Deck with no magic in it proves nothing —
+         two go in by hand. */
+      out.phase = 'battle';
+      out.players[FOE].monsters = [null, null, null];
+      out.players[FOE].deck = [card(FOE, 'pot-of-greed'), card(FOE, 'dark-hole'), ...out.players[FOE].deck];
+      const deckBefore = out.players[FOE].deck.length;
+      const graveBefore = out.players[FOE].grave.length;
+      const swung = act(out, ME, { type: 'attack', uid: tempest.uid, targetUid: null });
+      ok(swung.players[FOE].deck.length === deckBefore - 1 && swung.players[FOE].grave.length > graveBefore,
+        'STORM: and every swing tears another out of their Deck',
+        `deck ${deckBefore}→${swung.players[FOE].deck.length}`);
+    }
+  }
+
+  {
+    /* Wild Wingman: he reads nothing of theirs, and still stands on his own
+       city — which is the whole reason the narrower flag exists. */
+    const s = jaden();
+    const ww = card(ME, 'elemental-hero-wild-wingman'); // 1900
+    ww.summonedOnTurn = 0;
+    s.players[ME].monsters = [ww, null, null];
+    s.players[ME].field = card(ME, 'skyscraper');
+    s.phase = 'battle';
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const hit = act(s, ME, { type: 'attack', uid: ww.uid, targetUid: ox.uid });
+    ok(hit.players[FOE].lp === 4000 - (1900 + 1000 - 1700),
+      'RUSH: his own Skyscraper still lifts him', `LP ${hit.players[FOE].lp}`);
+
+    /* The line that actually tells the two immunities apart. Skyscraper cannot:
+       it is an aura, and an aura is not an effect *targeting* him, so it lands
+       through the blanket flag as readily as through the narrow one. A Spell of
+       mine aimed straight at him is the real question — under
+       `unaffectedBySpellsAndTraps` my own Heated Heart would find nothing
+       there, which is a card its own deck cannot play. */
+    const heat = jaden();
+    const wingman = card(ME, 'elemental-hero-wild-wingman');
+    wingman.summonedOnTurn = 0;
+    heat.players[ME].monsters = [wingman, null, null];
+    const hh = card(ME, 'h-heated-heart');
+    heat.players[ME].hand = [hh];
+    let warm = act(heat, ME, { type: 'activateSpell', uid: hh.uid, targets: [wingman.uid] });
+    let hg = 0;
+    while (warm.pending?.kind === 'choose' && hg++ < 4) {
+      warm = act(warm, warm.pending.player, { type: 'chooseCard', uids: [warm.pending.options[0]] });
+    }
+    ok(warm.players[ME].monsters.find((m) => m?.uid === wingman.uid)?.turnAtkMod === 1000,
+      'RUSH: and a Spell of my own still reaches him — it is theirs he does not read',
+      String(warm.players[ME].monsters.find((m) => m?.uid === wingman.uid)?.turnAtkMod));
+
+    /* And theirs does not touch him. */
+    const swept = jaden();
+    const ww2 = card(ME, 'elemental-hero-wild-wingman');
+    ww2.summonedOnTurn = 0;
+    const mate = card(ME, 'elemental-hero-sparkman');
+    mate.summonedOnTurn = 0;
+    swept.players[ME].monsters = [ww2, mate, null];
+    const hole = card(FOE, 'dark-hole');
+    swept.players[FOE].hand = [hole];
+    swept.active = FOE;
+    let out = act(swept, FOE, { type: 'activateSpell', uid: hole.uid });
+    let g = 0;
+    while (out.pending?.kind === 'choose' && g++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.uid === ww2.uid),
+      'RUSH: and their Dark Hole finds nothing there',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[ME].monsters.some((m) => m?.uid === mate.uid),
+      'RUSH: CONTROL: while the HERO beside him is swept as usual');
+
+    /* Three magic cards, across three places, spent as one count. */
+    const tear = jaden();
+    const ww3 = card(ME, 'elemental-hero-wild-wingman');
+    ww3.summonedOnTurn = 0;
+    ww3.effectUsedOnTurn = -1;
+    tear.players[ME].monsters = [ww3, null, null];
+    tear.players[ME].hand = [card(ME, 'kuriboh')]; // the discard the button costs
+    tear.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    tear.players[FOE].hand = [card(FOE, 'pot-of-greed')];
+    tear.players[FOE].deck = [card(FOE, 'monster-reborn'), card(FOE, 'dark-hole'), card(FOE, 'battle-ox')];
+    const idx = ignitionOptions(tear, ME, ww3)[0]?.index;
+    let t = act(tear, ME, { type: 'ignition', uid: ww3.uid, effectIndex: idx });
+    let tg = 0;
+    while (t.pending?.kind === 'choose' && tg++ < 6) {
+      t = act(t, t.pending.player, { type: 'chooseCard', uids: [t.pending.options[0]] });
+    }
+    ok(!t.players[FOE].spellTrap, 'RUSH: the card on their table goes first',
+      t.players[FOE].spellTrap?.slug ?? '(gone)');
+    ok(t.players[FOE].hand.length === 0, 'RUSH: then the one in their hand',
+      t.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(t.players[FOE].deck.length === 2 && t.players[FOE].deck.some((c) => c.slug === 'battle-ox'),
+      'RUSH: then one out of their Deck — three in all, and never a monster',
+      t.players[FOE].deck.map((c) => c.slug).join(','));
+  }
+
+  {
+    /* Wildedge: untouchable only while he is the one swinging, and what he
+       swings at defends at half. */
+    const s = jaden();
+    s.phase = 'battle';
+    const we = card(ME, 'elemental-hero-wildedge'); // 2600
+    we.summonedOnTurn = 0;
+    s.players[ME].monsters = [we, null, null];
+    const wall = card(FOE, 'elemental-hero-mudballman'); // 1900/3000, kneeling
+    wall.summonedOnTurn = 0;
+    wall.position = 'def';
+    s.players[FOE].monsters = [wall, null, null];
+    const mf = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    mf.summonedOnTurn = 0;
+    s.players[FOE].spellTrap = mf;
+    let out = act(s, ME, { type: 'attack', uid: we.uid, targetUid: wall.uid });
+    let g = 0;
+    while (out.pending && g++ < 4) {
+      const p = out.pending;
+      out = act(out, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: mf.uid });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.uid === we.uid),
+      'EDGE: a Mirror Force opened against his swing finds nothing there',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* 3000 DEF halved is 1500, and the toll takes 1000 off his 2600 — 1600
+       against 1500 breaks it, which a full-strength 3000 would not have. */
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === wall.uid),
+      'EDGE: and the 3000 wall defends at half, so it breaks',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* CONTROL: a Spell in the Main Phase kills him like anything else — the
+       immunity is about the swing, not about the card. */
+    const main = jaden();
+    const we2 = card(ME, 'elemental-hero-wildedge');
+    we2.summonedOnTurn = 0;
+    main.players[ME].monsters = [we2, null, null];
+    const hole = card(FOE, 'dark-hole');
+    main.players[FOE].hand = [hole];
+    main.active = FOE;
+    let m = act(main, FOE, { type: 'activateSpell', uid: hole.uid });
+    let mg = 0;
+    while (m.pending?.kind === 'choose' && mg++ < 4) {
+      m = act(m, m.pending.player, { type: 'chooseCard', uids: [m.pending.options[0]] });
+    }
+    ok(!m.players[ME].monsters.some((m2) => m2?.uid === we2.uid),
+      'EDGE: CONTROL: but a Dark Hole in the Main Phase takes him',
+      m.players[ME].monsters.map((m2) => m2?.slug ?? '-').join(','));
+  }
+
+  {
+    /* Thunder Giant: an arrival that takes the big ones. */
+    const s = jaden();
+    const tg = card(ME, 'elemental-hero-thunder-giant');
+    s.players[ME].extra = [tg, ...s.players[ME].extra];
+    s.players[ME].monsters = [card(ME, 'elemental-hero-sparkman'), card(ME, 'elemental-hero-clayman'), null];
+    s.players[ME].hand = [card(ME, 'polymerization')];
+    s.players[FOE].monsters = [
+      card(FOE, 'blue-eyes-white-dragon'), // 3000 — swept
+      card(FOE, 'summoned-skull'), // 2500 — swept
+      card(FOE, 'battle-ox'), // 1700 — spared
+    ];
+    for (const m of s.players[FOE].monsters) if (m) m.summonedOnTurn = 0;
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === tg.uid);
+    ok(!!route, 'GIANT: Sparkman and Clayman assemble it');
+    if (route) {
+      const out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
+      const left = out.players[FOE].monsters.filter(Boolean).map((m) => m!.slug);
+      ok(left.length === 1 && left[0] === 'battle-ox',
+        'GIANT: everything at 2400 or over goes, and the 1700 stays',
+        left.join(',') || '(empty)');
+    }
+  }
+
+  {
+    /* Darkbright: it bills them either way, and it gets up. */
+    const s = jaden();
+    s.phase = 'battle';
+    const db = card(ME, 'elemental-hero-darkbright'); // 2000
+    db.summonedOnTurn = 0;
+    s.players[ME].monsters = [db, null, null];
+    const ox = card(FOE, 'battle-ox'); // 1700
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const swung = act(s, ME, { type: 'attack', uid: db.uid, targetUid: ox.uid });
+    ok(swung.players[FOE].lp === 4000 - 1000 - 300,
+      'DARK: a thousand for the battle, and then the battle', `LP ${swung.players[FOE].lp}`);
+
+    /* Attacked, it bills them the same thousand — and dies, and gets up before
+       the turn closes, kneeling. */
+    const taken = jaden();
+    taken.phase = 'battle';
+    taken.active = FOE;
+    const db2 = card(ME, 'elemental-hero-darkbright');
+    db2.summonedOnTurn = 0;
+    taken.players[ME].monsters = [db2, null, null];
+    const bews = card(FOE, 'blue-eyes-white-dragon');
+    bews.summonedOnTurn = 0;
+    taken.players[FOE].monsters = [bews, null, null];
+    let out = act(taken, FOE, { type: 'attack', uid: bews.uid, targetUid: db2.uid });
+    let g = 0;
+    while (out.pending && g++ < 4) {
+      const p = out.pending;
+      out = act(out, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+    }
+    ok(out.players[FOE].lp === 4000 - 1000, 'DARK: and a thousand for a battle it did not start',
+      `LP ${out.players[FOE].lp}`);
+    ok(!out.players[ME].monsters.some((m) => m?.uid === db2.uid), 'DARK: the 3000 breaks it');
+    const ended = act(out, FOE, { type: 'endTurn' });
+    const risen = ended.players[ME].monsters.find((m) => m?.uid === db2.uid);
+    ok(!!risen, 'DARK: and it stands back up before the turn is out',
+      ended.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(risen?.position === 'def', 'DARK: kneeling, not swinging', risen?.position ?? '(nowhere)');
+  }
+
+  {
+    /* Rampart Blaster: it never has to stand up, and what reaches the player is
+       2500 out of a 2000 body. */
+    const s = jaden();
+    const rb = card(ME, 'elemental-hero-rampart-blaster');
+    s.players[ME].extra = [rb, ...s.players[ME].extra];
+    s.players[ME].monsters = [card(ME, 'elemental-hero-clayman'), card(ME, 'elemental-hero-burstinatrix'), null];
+    s.players[ME].hand = [card(ME, 'polymerization')];
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === rb.uid);
+    ok(!!route, 'BLAST: Clayman and Burstinatrix assemble it');
+    if (route) {
+      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 4) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      const body = out.players[ME].monsters.find((m) => m?.uid === rb.uid)!;
+      body.summonedOnTurn = 0;
+      body.position = 'def';
+      out.phase = 'battle';
+      /* A guard standing in the way, precisely because the old card halved a
+         swing that went over one — this one does not. */
+      const guard = card(FOE, 'battle-ox');
+      guard.summonedOnTurn = 0;
+      out.players[FOE].monsters = [guard, null, null];
+      ok(canAttackWith(out, ME, body), 'BLAST: it may swing while lying down',
+        String(canAttackWith(out, ME, body)));
+      const direct = act(out, ME, { type: 'attack', uid: rb.uid, targetUid: null });
+      ok(direct.players[FOE].lp === 4000 - 2500,
+        'BLAST: and a direct swing is exactly 2500, over a guard and out of a 2000 body',
+        `LP ${direct.players[FOE].lp}`);
+    }
+
+    /* The toll is the shield it holds while lying down. */
+    const wall = jaden();
+    wall.phase = 'battle';
+    wall.active = FOE;
+    const down = card(ME, 'elemental-hero-rampart-blaster'); // 2000/2500
+    down.summonedOnTurn = 0;
+    down.position = 'def';
+    wall.players[ME].monsters = [down, null, null];
+    const bews = card(FOE, 'blue-eyes-white-dragon'); // 3000, less 1000
+    bews.summonedOnTurn = 0;
+    wall.players[FOE].monsters = [bews, null, null];
+    const held = act(wall, FOE, { type: 'attack', uid: bews.uid, targetUid: down.uid });
+    ok(held.players[ME].monsters.some((m) => m?.uid === down.uid),
+      'BLAST: 2000 off a 3000 leaves it short of the 2500 it is holding',
+      held.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* CONTROL: stood up to fight, the shield is down. Measured with a 2500
+       rather than a 3000 on purpose — against a Blue-Eyes the Blaster dies
+       either way (3000 beats 2000, and 2000 against 2000 takes them both), so
+       a "did it die" assertion there passes with the posture clause switched
+       off entirely. At 2500 the toll is the whole difference: with it the
+       Skull is the one that falls, without it the Blaster is. */
+    const up = jaden();
+    up.phase = 'battle';
+    up.active = FOE;
+    const standing = card(ME, 'elemental-hero-rampart-blaster'); // 2000 ATK
+    standing.summonedOnTurn = 0;
+    up.players[ME].monsters = [standing, null, null];
+    const skull = card(FOE, 'summoned-skull'); // 2500, or 1500 behind the shield
+    skull.summonedOnTurn = 0;
+    up.players[FOE].monsters = [skull, null, null];
+    const broke = act(up, FOE, { type: 'attack', uid: skull.uid, targetUid: standing.uid });
+    ok(!broke.players[ME].monsters.some((m) => m?.uid === standing.uid),
+      'BLAST: CONTROL: standing to fight, it has put the shield down',
+      broke.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(broke.players[FOE].monsters.some((m) => m?.uid === skull.uid),
+      'BLAST: CONTROL: and the 2500 that would have broken on the shield walks away',
+      broke.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  {
+    /* Mudballman: a card off my Deck for a card out of their hand. */
+    const s = jaden();
+    const mb = card(ME, 'elemental-hero-mudballman');
+    mb.summonedOnTurn = 0;
+    mb.effectUsedOnTurn = -1;
+    s.players[ME].monsters = [mb, null, null];
+    s.players[ME].deck = [card(ME, 'kuriboh'), card(ME, 'polymerization')];
+    s.players[FOE].hand = [card(FOE, 'blue-eyes-white-dragon')];
+    const idx = ignitionOptions(s, ME, mb)[0]?.index;
+    const out = act(s, ME, { type: 'ignition', uid: mb.uid, effectIndex: idx });
+    ok(out.players[FOE].hand.length === 0, 'MUD: their card goes to the pile',
+      out.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(out.players[ME].deck.length === 1 && out.players[ME].grave.length === 1,
+      'MUD: and one of mine off the top with it',
+      `deck ${out.players[ME].deck.length}, grave ${out.players[ME].grave.length}`);
+  }
+
+  {
+    /* Steam Healer: most of a second life on the way down. */
+    const s = jaden();
+    const sh = card(ME, 'elemental-hero-steam-healer');
+    sh.summonedOnTurn = 0;
+    s.players[ME].monsters = [sh, null, null];
+    const hole = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [hole];
+    s.active = FOE;
+    const before = s.players[ME].lp;
+    let out = act(s, FOE, { type: 'activateSpell', uid: hole.uid });
+    let g = 0;
+    while (out.pending?.kind === 'choose' && g++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].lp === before + 3800, 'HEAL: 3800 on the way to the Graveyard',
+      `${before} → ${out.players[ME].lp}`);
+  }
+
+  {
+    /* Mariner: a monster off the table every turn it survives. */
+    const s = jaden();
+    const mr = card(ME, 'elemental-hero-mariner');
+    mr.summonedOnTurn = 0;
+    mr.effectUsedOnTurn = -1;
+    s.players[ME].monsters = [mr, null, null];
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const idx = ignitionOptions(s, ME, mr)[0]?.index;
+    ok(idx !== undefined, 'TIDE: the button is there every turn, not just on arrival');
+    let out = act(s, ME, { type: 'ignition', uid: mr.uid, effectIndex: idx, targets: [ox.uid] });
+    let g = 0;
+    while (out.pending?.kind === 'choose' && g++ < 4) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === ox.uid),
+      'TIDE: and the ox goes back to their hand',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(out.players[FOE].hand.some((c) => c.uid === ox.uid), 'TIDE: to their hand, not the pile');
+  }
+
+  {
+    /* Shining Flare Wingman: a thousand a head on both numbers, and the turn it
+       lands they cannot answer. */
+    const s = jaden();
+    const sfw = card(ME, 'elemental-hero-shining-flare-wingman');
+    s.players[ME].extra = [sfw, ...s.players[ME].extra];
+    const fw = card(ME, 'elemental-hero-flame-wingman');
+    fw.summonedOnTurn = 0;
+    const spark = card(ME, 'elemental-hero-sparkman');
+    spark.summonedOnTurn = 0;
+    s.players[ME].monsters = [fw, spark, null];
+    s.players[ME].hand = [card(ME, 'polymerization')];
+    s.players[ME].deck = [card(ME, 'skyscraper')];
+    s.players[FOE].hand = [card(FOE, 'dark-hole'), card(FOE, 'kuriboh')];
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === sfw.uid);
+    ok(!!route, 'SHINE: the Wingman and Sparkman assemble it');
+    if (route) {
+      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 6) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      ok(out.players[ME].hand.some((c) => c.slug === 'skyscraper'),
+        'SHINE: it brings the city with it',
+        out.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+      /* Two HEROes in the pile — the materials it was made of. */
+      const body = out.players[ME].monsters.find((m) => m?.uid === sfw.uid)!;
+      const heroes = out.players[ME].grave.filter((c) => CARDS[c.slug]?.name.includes('Elemental HERO')).length;
+      ok(effAtk(out, body, ME) === 2500 + heroes * 1000 && effDef(out, body, ME) === 2100 + heroes * 1000,
+        'SHINE: a thousand a head, on both numbers',
+        `${heroes} down there → ${effAtk(out, body, ME)}/${effDef(out, body, ME)}`);
+      /* And they cannot answer it this turn. */
+      out.active = FOE;
+      out.phase = 'main';
+      const theirHole = out.players[FOE].hand.find((c) => c.slug === 'dark-hole')!;
+      ok(!canActivateFromHand(out, FOE, theirHole),
+        'SHINE: and they cannot reach for anything this turn',
+        String(canActivateFromHand(out, FOE, theirHole)));
+      /* CONTROL: the lock is keyed to the turn it was laid on, so a turn later
+         it is simply gone. Read off the turn counter rather than by playing two
+         whole turns out — the fixture's Deck is twelve Kuriboh and a duel
+         played that far ends before the question is asked. */
+      const nextTurn = { ...out, turn: out.turn + 1 };
+      ok(canActivateFromHand(nextTurn, FOE, theirHole),
+        'SHINE: CONTROL: and the silence lifts when the turn does',
+        String(canActivateFromHand(nextTurn, FOE, theirHole)));
+    }
+  }
+
+  {
+    /* Shining Phoenix Enforcer: a thousand a head, and a thousand for every
+       blow it shrugs off. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const spe = card(ME, 'elemental-hero-shining-phoenix-enforcer');
+    spe.summonedOnTurn = 0;
+    s.players[ME].monsters = [spe, null, null];
+    s.players[ME].grave = [card(ME, 'elemental-hero-avian'), card(ME, 'elemental-hero-clayman')];
+    ok(effAtk(s, spe, ME) === 2500 + 2000 && effDef(s, spe, ME) === 2100 + 2000,
+      'FLAME: two in the pile are worth two thousand, on both numbers',
+      `${effAtk(s, spe, ME)}/${effDef(s, spe, ME)}`);
+    const ox = card(FOE, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [ox, null, null];
+    const took = act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: spe.uid });
+    ok(took.players[ME].monsters.find((m) => m?.uid === spe.uid)?.atkMod === 1000,
+      'FLAME: and a thousand more for the blow it took',
+      String(took.players[ME].monsters.find((m) => m?.uid === spe.uid)?.atkMod));
   }
 }
 

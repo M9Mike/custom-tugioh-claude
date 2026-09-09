@@ -2899,6 +2899,26 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           log(state, `Nothing turns a God aside — ${displayName(state, attacker.c)} attacks on.`, 'effect');
           break;
         }
+        /* And nothing turns Wildedge aside either, which is the owner's own
+           example word for word: "won't be affected by mirror force or negate
+           attack". Calling the swing off is a Spell or Trap reaching the
+           monster as much as destroying it is — it just reaches it through a
+           door `isProtectedTarget` never sees, because there is no target here
+           to protect. Asked directly, then, and only of a card of the other
+           player's: your own Waboku still ends your own battle. */
+        const fromMagic =
+          CARDS[ctx.source.slug]?.kind === 'trap' || CARDS[ctx.source.slug]?.kind === 'spell';
+        if (
+          attacker &&
+          fromMagic &&
+          attacker.controller !== ctx.controller &&
+          (effFlags(state, attacker.c, attacker.controller).unaffectedWhileAttacking ||
+            effFlags(state, attacker.c, attacker.controller).unaffectedBySpellsAndTraps ||
+            effFlags(state, attacker.c, attacker.controller).unaffectedByOpponentSpellsAndTraps)
+        ) {
+          log(state, `${displayName(state, attacker.c)} does not read that, and attacks on.`, 'effect');
+          break;
+        }
         ctx.attackNegated = true;
         log(state, 'The attack is negated!', 'effect');
         break;
@@ -4177,7 +4197,13 @@ function resolveBattle(state: DuelState) {
      rather than off the printed stats. */
   if (flags.surgesVsStronger) {
     const standing = target.position === 'atk' ? effAtk(state, target, defender) : effDef(state, target, defender);
-    if (standing > swing) {
+    /* Measured against the monster's own ATK, not against the swing — which is
+       the owner's "obviously independent from the Skyscraper's effect". Read off
+       `swing` it was not independent at all: the city's thousand made the
+       Wingman bigger than the Blue-Eyes it was walking into, so the clause about
+       walking into bigger things stopped firing exactly when the deck's own
+       Field Spell was on the table. */
+    if (standing > effAtk(state, attacker, controller)) {
       swing += 1000;
       log(state, `${displayName(state, attacker)} rises to meet something bigger — 1000 ATK, for this battle.`,
         'effect', controller, logSlug(attacker));
