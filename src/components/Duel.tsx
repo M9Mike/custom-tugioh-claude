@@ -2485,8 +2485,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                     }}
                   >
                     <GameCard card={ex} displayName={shownName(ex)} />
-                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(ex) ?? CARDS[ex.slug]?.name}</p>
-                    <p className="text-center text-[8px] uppercase tracking-wide text-brass">{spent.join(' + ')}</p>
+                    {/* Not truncated: three of these fit a phone only at 96px
+                        wide, and "Elemental HERO Th…" beside "Elemental HERO
+                        Ra…" is three names that all read the same. It wraps. */}
+                    <p className="mt-0.5 text-center text-[9px] leading-tight text-ptextdim">{shownName(ex) ?? CARDS[ex.slug]?.name}</p>
+                    <p className="mt-0.5 text-center text-[8px] uppercase leading-tight tracking-wide text-brass">{spent.join(' + ')}</p>
                   </button>
                 );
               })}
