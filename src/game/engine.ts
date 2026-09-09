@@ -3295,6 +3295,14 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     );
     if (!has) return false;
   }
+  if (cond.controlsNameIncludes) {
+    /* The printed name, not `displayName` — a drawing wearing a Toon's face is
+       still the card it is, and an archetype is what the card says it is. */
+    const has = p.monsters.some(
+      (m) => m && m.face === 'up' && (CARDS[m.slug]?.name ?? '').includes(cond.controlsNameIncludes!)
+    );
+    if (!has) return false;
+  }
   if (cond.controlsNoOtherMonster) {
     if (p.monsters.some((m) => m && m.uid !== c.uid)) return false;
   }

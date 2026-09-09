@@ -1921,7 +1921,11 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'activate',
-        condition: { controlsOtherOfType: 'Warrior' },
+        /* The sentence the card prints. It was gated on controlling a Warrior,
+           which is the same set only while this one deck is the only place the
+           card is played — and "if you control a HERO" is what the owner wrote
+           and what the text says. */
+        condition: { controlsNameIncludes: 'Elemental HERO' },
         targets: 4,
         ops: [
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
@@ -2016,6 +2020,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        `reusable` because the owner asked for it on *each* attack: a Continuous
        Trap that answers every swing rather than one, which is what makes a
        single card worth the one Spell/Trap Zone this game gives you. */
+    /* Continuous by override, because the printed card is a Normal Trap and the
+       owner asked for one that answers *each* attack. `reusable` alone is not
+       enough and reads like it should be: it only decides whether a face-up
+       Trap keeps being offered, and a Normal Trap is in the Graveyard before it
+       can be offered anything. Both halves, or the card fires once. */
+    subKindOverride: 'Continuous',
     text:
       'Continuous Trap: each time your opponent declares an attack, the attacking monster loses 1000 ATK ' +
       'for each "Elemental HERO" monster you control. The attack still happens.',

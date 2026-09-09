@@ -41,6 +41,20 @@ function typeBeside(slug: string): string | null {
   return null;
 }
 
+/**
+ * The archetype this card insists on having beside it, if it names one.
+ *
+ * The type-scoped twin above cannot see this: "while you control an 'Elemental
+ * HERO'" is a sentence about a name, and every monster type in the game
+ * satisfies it equally badly.
+ */
+function nameBeside(slug: string): string | null {
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.condition?.controlsNameIncludes) return eff.condition.controlsNameIncludes;
+  }
+  return null;
+}
+
 /** A monster slug this card's equip would accept, if it insists on a kind. */
 function hostFor(slug: string): string | null {
   for (const eff of CARDS[slug]?.effects ?? []) {
@@ -175,6 +189,16 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
   if (needsType) {
     const body = Object.values(CARDS).find((c) => c.kind === 'monster' && c.type === needsType);
     if (body) p.monsters[2] = spare(9, body.slug);
+  }
+  /* And the body a condition names by *name* rather than by type: an archetype
+     is what a card is called. Righteous Justice reads "if you control an
+     'Elemental HERO'", and no monster type satisfies that sentence. */
+  const needsName = nameBeside(slug);
+  if (needsName) {
+    const body = Object.values(CARDS).find(
+      (c) => c.kind === 'monster' && !isExtraDeckCard(c.slug) && c.name.includes(needsName)
+    );
+    if (body) p.monsters[2] = spare(10, body.slug);
   }
   /* And the body a cost names by hand. Transcendent Wings tributes a Winged
      Kuriboh and nothing else will do — the two spares standing here are a Fiend

@@ -12775,6 +12775,34 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(dragon?.turnAtkMod === -2000, 'BARRIER: two HEROes take 2000 off the attacker', String(dragon?.turnAtkMod));
     ok(!out.players[ME].monsters.some((m) => m?.uid === a.uid),
       'BARRIER: and the attack still happens — 2500 still beats a 1600 Sparkman');
+    /* "Can be activated on each enemy attack" — a Continuous Trap that answers
+       one swing and then sits there is a card, not the card the owner asked
+       for. It has to still be on the table. */
+    ok(out.players[ME].spellTrap?.uid === bar.uid,
+      'BARRIER: and the card is still standing, ready for the next one',
+      out.players[ME].spellTrap?.slug ?? '(gone)');
+
+    /* And it answers the second swing too, which is the whole of "each enemy
+       attack". A second attacker, a second toll — read off a monster that is
+       still alive to carry it. */
+    const twice = { ...out };
+    twice.players = { ...out.players, [FOE]: { ...out.players[FOE] } };
+    const second = card(FOE, 'blue-eyes-ultimate-dragon');
+    second.summonedOnTurn = 0;
+    twice.players[FOE].monsters = [...twice.players[FOE].monsters];
+    const free = twice.players[FOE].monsters.findIndex((m) => !m);
+    twice.players[FOE].monsters[free] = second;
+    let again = act(twice, FOE, { type: 'attack', uid: second.uid, targetUid: b.uid });
+    if (again.pending) again = act(again, again.pending.player, { type: 'respondTrap', uid: bar.uid });
+    let g2 = 0;
+    while (again.pending && g2++ < 4) {
+      const p = again.pending;
+      again = act(again, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+    }
+    const twoDeep = again.players[FOE].monsters.find((m) => m?.uid === second.uid);
+    ok(twoDeep?.turnAtkMod === -1000,
+      'BARRIER: the second attacker pays the toll as well — one HERO left, one thousand',
+      String(twoDeep?.turnAtkMod));
   }
 
   {
@@ -12828,6 +12856,28 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(m.players[FOE].hand.length === 1,
       'JUSTICE: four is four across both kinds, not four of each',
       `${m.players[FOE].hand.length} left: ${m.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)'}`);
+
+    /* The gate is the sentence the card prints — a HERO, not merely a Warrior.
+       Gaia is a Warrior and is not a HERO, so the card stays in the hand. */
+    const wrong = jaden();
+    const rj3 = card(ME, 'r-righteous-justice');
+    wrong.players[ME].hand = [rj3];
+    const gaia = card(ME, 'gaia-the-fierce-knight'); // Warrior, not a HERO
+    gaia.summonedOnTurn = 0;
+    wrong.players[ME].monsters = [gaia, null, null];
+    wrong.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    ok(!canActivateFromHand(wrong, ME, rj3),
+      'JUSTICE: a Warrior who is not a HERO does not open it',
+      String(canActivateFromHand(wrong, ME, rj3)));
+    const right = jaden();
+    const rj4 = card(ME, 'r-righteous-justice');
+    right.players[ME].hand = [rj4];
+    const hero = card(ME, 'elemental-hero-sparkman');
+    hero.summonedOnTurn = 0;
+    right.players[ME].monsters = [hero, null, null];
+    right.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    ok(canActivateFromHand(right, ME, rj4),
+      'JUSTICE: CONTROL: and a HERO does');
   }
 
   {

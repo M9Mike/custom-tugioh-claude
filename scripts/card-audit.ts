@@ -718,6 +718,19 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
     const z = s.players[ME].monsters.findIndex((m) => !m || m.uid !== self.uid);
     if (mate && z >= 0) place(s, ME, z, mate.slug);
   }
+  /* "While you control an 'Elemental HERO'" — an archetype is a name, not a
+     type, so the mate is found by what it is called. */
+  if (cond.controlsNameIncludes) {
+    const want = cond.controlsNameIncludes;
+    const already = s.players[ME].monsters.some((m) => m && (CARDS[m.slug]?.name ?? '').includes(want));
+    if (!already) {
+      const mate = Object.values(CARDS).find(
+        (c) => c.kind === 'monster' && !c.isFusion && c.name.includes(want) && c.slug !== self?.slug
+      );
+      const z = s.players[ME].monsters.findIndex((m) => !m || m.uid !== self?.uid);
+      if (mate && z >= 0) place(s, ME, z, mate.slug);
+    }
+  }
   // "The only monster you control" — clear the board of everything else.
   if (cond.controlsNoOtherMonster && self) {
     s.players[ME].monsters = s.players[ME].monsters.map((m) => (m && m.uid === self.uid ? m : null));

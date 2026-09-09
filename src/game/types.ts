@@ -1207,6 +1207,16 @@ export interface EffectCondition {
   /** You control at least one *other* face-up monster of this type. */
   controlsOtherOfType?: string;
   /**
+   * You control a face-up monster whose printed name contains this.
+   *
+   * An archetype is a name, not a type. Righteous Justice reads "if you control
+   * an 'Elemental HERO' monster" and was gated on controlling a Warrior, which
+   * is the same set only for as long as this one deck is the only place the
+   * card is played — a borrowed Gaia would have opened it. A card should be
+   * gated on the sentence it prints.
+   */
+  controlsNameIncludes?: string;
+  /**
    * A face-up monster of this type is on the field — *either* side of it.
    *
    * Eradicating Aerosol needs a bug to spray, and does not care whose bug it
