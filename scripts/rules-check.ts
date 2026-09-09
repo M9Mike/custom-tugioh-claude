@@ -12930,6 +12930,7 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     s.players[ME].grave = [
       card(ME, 'elemental-hero-avian'),
       card(ME, 'elemental-hero-sparkman'),
+      card(ME, 'polymerization'),
       card(ME, 'elemental-hero-flame-wingman'),
       card(ME, 'elemental-hero-thunder-giant'),
     ];
@@ -12939,8 +12940,17 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     while (out.pending?.kind === 'choose' && g++ < 6) {
       out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
     }
-    ok(out.players[ME].hand.length === 2, 'RECOVERY: two bodies back in the hand',
+    ok(out.players[ME].hand.filter((c) => CARDS[c.slug]?.kind === 'monster').length === 2,
+      'RECOVERY: two bodies back in the hand',
       out.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    /* And the card that fuses them, which is the half that was missing: bodies
+       with no Polymerization is half a second wind. */
+    ok(out.players[ME].hand.some((c) => c.slug === 'polymerization'),
+      'RECOVERY: and the Polymerization with them',
+      out.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(!out.players[ME].grave.some((c) => c.slug === 'polymerization'),
+      'RECOVERY: and it is no longer lying in the pile',
+      out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
     ok(out.players[ME].extra.length === extraBefore + 2, 'RECOVERY: and both spent Fusions back in the Extra Deck',
       `${extraBefore} → ${out.players[ME].extra.length}`);
     ok(!out.players[ME].grave.some((c) => CARDS[c.slug]?.isFusion), 'RECOVERY: with none left lying in the pile',

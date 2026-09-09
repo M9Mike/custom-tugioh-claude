@@ -1855,8 +1855,16 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        summoned again.
        Every part of it is "up to", so the card is never dead — an empty
        Graveyard still puts the Fusions home, and a Graveyard with no Fusions in
-       it still returns the monsters. */
-    text: 'Add up to 2 monsters from your Graveyard to your hand, then return every Fusion monster in your Graveyard to your Extra Deck.',
+       it still returns the monsters.
+       The Polymerization is the third of those parts and was missing: the owner
+       listed it among the things the card can be played *without* ("no
+       monsters or no polymerization or no fusion monsters"), which only means
+       anything if it is one of the things the card brings back — and it is the
+       printed card's whole first half. Reported. Bodies with nothing to fuse
+       them is half a second wind. */
+    text:
+      'Add up to 2 monsters and 1 "Polymerization" from your Graveyard to your hand, ' +
+      'then return every Fusion monster in your Graveyard to your Extra Deck.',
     cry: 'One more time!',
     effects: [
       {
@@ -1869,6 +1877,9 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              quietly eats the second question. */
           { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', isFusion: false } },
           { op: 'stealFromGrave', from: 'own', filter: { kind: 'monster', isFusion: false } },
+          /* Named by slug, so the two answers above are spent on the bodies and
+             this one needs no question of its own. */
+          { op: 'stealFromGrave', from: 'own', filter: { slugs: ['polymerization'] } },
           { op: 'returnToExtra', target: sel('own', 'all', { zone: 'grave', filter: { isFusion: true } }) },
         ],
       },
