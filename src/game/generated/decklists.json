@@ -1466,6 +1466,130 @@
    "extra": []
   },
   {
+   "id": "jaden",
+   "name": "Jaden Yuki",
+   "epithet": "Slifer Red",
+   "quote": "Get your game on!",
+   "accent": "#c8402f",
+   "accent2": "#f2c14a",
+   "emblem": "elemental-hero-flame-wingman",
+   "strategy": "Elemental HEROes, and a Polymerization for every one of them.",
+   "deck": [
+    [
+     "elemental-hero-avian",
+     1
+    ],
+    [
+     "elemental-hero-burstinatrix",
+     1
+    ],
+    [
+     "elemental-hero-clayman",
+     1
+    ],
+    [
+     "elemental-hero-sparkman",
+     1
+    ],
+    [
+     "elemental-hero-bubbleman",
+     1
+    ],
+    [
+     "elemental-hero-wildheart",
+     1
+    ],
+    [
+     "elemental-hero-necroshade",
+     1
+    ],
+    [
+     "elemental-hero-bladedge",
+     1
+    ],
+    [
+     "wroughtweiler",
+     1
+    ],
+    [
+     "winged-kuriboh",
+     1
+    ],
+    [
+     "winged-kuriboh-lv10",
+     1
+    ],
+    [
+     "polymerization",
+     2
+    ],
+    [
+     "pot-of-greed",
+     1
+    ],
+    [
+     "monster-reborn",
+     1
+    ],
+    [
+     "e-emergency-call",
+     1
+    ],
+    [
+     "transcendent-wings",
+     1
+    ],
+    [
+     "skyscraper",
+     1
+    ],
+    [
+     "fusion-recovery",
+     1
+    ],
+    [
+     "the-warrior-returning-alive",
+     1
+    ],
+    [
+     "h-heated-heart",
+     1
+    ],
+    [
+     "r-righteous-justice",
+     1
+    ],
+    [
+     "hero-signal",
+     1
+    ],
+    [
+     "mirror-gate",
+     1
+    ],
+    [
+     "hero-barrier",
+     1
+    ]
+   ],
+   "extra": [
+    "elemental-hero-flame-wingman",
+    "elemental-hero-phoenix-enforcer",
+    "elemental-hero-thunder-giant",
+    "elemental-hero-rampart-blaster",
+    "elemental-hero-steam-healer",
+    "elemental-hero-mudballman",
+    "elemental-hero-mariner",
+    "elemental-hero-darkbright",
+    "elemental-hero-wild-wingman",
+    "elemental-hero-wildedge",
+    "elemental-hero-tempest",
+    "elemental-hero-electrum",
+    "elemental-hero-shining-flare-wingman",
+    "elemental-hero-shining-phoenix-enforcer"
+   ]
+  },
+  {
    "id": "tony",
    "name": "Tony",
    "epithet": "Forest Ambush",
@@ -1597,130 +1721,6 @@
      "spellbinding-circle",
      1
     ]
-   ]
-  },
-  {
-   "id": "jaden",
-   "name": "Jaden Yuki",
-   "epithet": "Slifer Red",
-   "quote": "Get your game on!",
-   "accent": "#c8402f",
-   "accent2": "#f2c14a",
-   "emblem": "elemental-hero-flame-wingman",
-   "strategy": "Elemental HEROes, and a Polymerization for every one of them.",
-   "deck": [
-    [
-     "elemental-hero-avian",
-     1
-    ],
-    [
-     "elemental-hero-burstinatrix",
-     1
-    ],
-    [
-     "elemental-hero-clayman",
-     1
-    ],
-    [
-     "elemental-hero-sparkman",
-     1
-    ],
-    [
-     "elemental-hero-bubbleman",
-     1
-    ],
-    [
-     "elemental-hero-wildheart",
-     1
-    ],
-    [
-     "elemental-hero-necroshade",
-     1
-    ],
-    [
-     "elemental-hero-bladedge",
-     1
-    ],
-    [
-     "wroughtweiler",
-     1
-    ],
-    [
-     "winged-kuriboh",
-     1
-    ],
-    [
-     "winged-kuriboh-lv10",
-     1
-    ],
-    [
-     "polymerization",
-     2
-    ],
-    [
-     "pot-of-greed",
-     1
-    ],
-    [
-     "monster-reborn",
-     1
-    ],
-    [
-     "e-emergency-call",
-     1
-    ],
-    [
-     "transcendent-wings",
-     1
-    ],
-    [
-     "skyscraper",
-     1
-    ],
-    [
-     "fusion-recovery",
-     1
-    ],
-    [
-     "the-warrior-returning-alive",
-     1
-    ],
-    [
-     "h-heated-heart",
-     1
-    ],
-    [
-     "r-righteous-justice",
-     1
-    ],
-    [
-     "hero-signal",
-     1
-    ],
-    [
-     "mirror-gate",
-     1
-    ],
-    [
-     "hero-barrier",
-     1
-    ]
-   ],
-   "extra": [
-    "elemental-hero-flame-wingman",
-    "elemental-hero-phoenix-enforcer",
-    "elemental-hero-thunder-giant",
-    "elemental-hero-rampart-blaster",
-    "elemental-hero-steam-healer",
-    "elemental-hero-mudballman",
-    "elemental-hero-mariner",
-    "elemental-hero-darkbright",
-    "elemental-hero-wild-wingman",
-    "elemental-hero-wildedge",
-    "elemental-hero-tempest",
-    "elemental-hero-electrum",
-    "elemental-hero-shining-flare-wingman",
-    "elemental-hero-shining-phoenix-enforcer"
    ]
   }
  ]

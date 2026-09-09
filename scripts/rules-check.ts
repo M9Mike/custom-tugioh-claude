@@ -12441,6 +12441,25 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       'one copy of everything, and only the Polymerization doubled', doubled.join(',') || '(none)');
   }
 
+  /* --- Where the roster puts him ---
+     The order of `DUELISTS` is the order the Home Screen lays the decks out,
+     and the two written-for-this-game duelists go last: everyone above them
+     came out of the anime, and a new one appended to the file lands after them
+     unless somebody moves it. Jaden was appended and did exactly that.
+     Held here rather than left to the eye, because the next duelist added will
+     land in the same place for the same reason. */
+  {
+    const order = DUELISTS.map((x) => x.id);
+    const NPCS = ['tony', 'sarah'];
+    const npcAt = NPCS.map((id) => order.indexOf(id));
+    ok(npcAt.every((i) => i >= 0), 'ROSTER: the two original duelists are on it', npcAt.join(','));
+    const firstNpc = Math.min(...npcAt);
+    ok(npcAt.every((i) => i >= order.length - NPCS.length),
+      'ROSTER: and they sit at the very end of it', order.slice(-4).join(' → '));
+    ok(order.indexOf('jaden') >= 0 && order.indexOf('jaden') < firstNpc,
+      'ROSTER: so Jaden comes before Tony', order.slice(-4).join(' → '));
+  }
+
   /* --- The recycle engine: one of each only works if they come back --- */
   {
     /* Wroughtweiler dies and hands back a HERO and the Polymerization to fuse
