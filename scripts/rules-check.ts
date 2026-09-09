@@ -12803,6 +12803,31 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(out.players[FOE].hand.some((c) => c.slug === 'blue-eyes-white-dragon'),
       'JUSTICE: monsters are not Spells and stay where they are',
       out.players[FOE].hand.map((c) => c.slug).join(','));
+
+    /* A hand of both kinds, which the four-Spell hand above cannot see: written
+       as a Spell op and a Trap op the card carried a count of four *each*, so a
+       board with one Set card took three Spells and three Traps — six for a
+       card allowed three. Empty field here, so the whole four is spent in the
+       hand and the fifth card has to survive. */
+    const mixed = jaden();
+    const rj2 = card(ME, 'r-righteous-justice');
+    mixed.players[ME].hand = [rj2];
+    mixed.players[ME].monsters = [card(ME, 'elemental-hero-sparkman'), null, null];
+    mixed.players[FOE].hand = [
+      card(FOE, 'pot-of-greed'),
+      card(FOE, 'monster-reborn'),
+      card(FOE, 'mirror-force'),
+      card(FOE, 'trap-hole'),
+      card(FOE, 'dark-hole'),
+    ];
+    let m = act(mixed, ME, { type: 'activateSpell', uid: rj2.uid });
+    let mg = 0;
+    while (m.pending?.kind === 'choose' && mg++ < 8) {
+      m = act(m, m.pending.player, { type: 'chooseCard', uids: [m.pending.options[0]] });
+    }
+    ok(m.players[FOE].hand.length === 1,
+      'JUSTICE: four is four across both kinds, not four of each',
+      `${m.players[FOE].hand.length} left: ${m.players[FOE].hand.map((c) => c.slug).join(',') || '(empty)'}`);
   }
 
   {

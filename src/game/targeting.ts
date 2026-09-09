@@ -49,6 +49,7 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
     if (f.type || f.attribute || f.slugs || f.nameIncludes || f.minLevel || f.hasFlipEffect || f.isFusion) return false;
     // A Token has no printed type, so it is never the excluded one.
     if (f.kind && f.kind !== 'monster') return false;
+    if (f.notKind === 'monster') return false;
     if (f.position && c.position !== f.position) return false;
     if (f.face && c.face !== f.face) return false;
     return true;
@@ -56,6 +57,7 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   const def = CARDS[c.slug];
   if (!def) return false;
   if (f.kind && def.kind !== f.kind) return false;
+  if (f.notKind && def.kind === f.notKind) return false;
   if (f.type && def.type !== f.type) return false;
   if (f.excludeType && def.type === f.excludeType) return false;
   if (f.attribute && def.attribute !== f.attribute) return false;

@@ -283,6 +283,13 @@ export interface CardFilter {
   excludeType?: string;
   attribute?: string;
   kind?: CardKind;
+  /**
+   * Everything *except* this kind, which is how "a magic card" is written: a
+   * Spell or a Trap or a Field Spell, but not a monster. Two ops — one filtered
+   * to Spells, one to Traps — is not the same sentence, because each carries
+   * its own count and a card allowed four discards took four of each.
+   */
+  notKind?: CardKind;
   minLevel?: number;
   maxLevel?: number;
   minAtk?: number;

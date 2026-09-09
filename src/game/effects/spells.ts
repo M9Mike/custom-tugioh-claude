@@ -1925,8 +1925,12 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         targets: 4,
         ops: [
           { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
-          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { kind: 'spell' } },
-          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { kind: 'trap' } },
+          /* One op, not one per kind. Written as a Spell op and a Trap op it
+             was two counts of four rather than one: a hand of three Spells and
+             two Traps lost all five to a card that is allowed to take four.
+             `notKind: 'monster'` is the whole sentence — a magic card is a
+             Spell, a Trap or a Field Spell, and never a body. */
+          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { notKind: 'monster' } },
         ],
       },
     ],
