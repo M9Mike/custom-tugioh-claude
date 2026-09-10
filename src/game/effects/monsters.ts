@@ -5058,7 +5058,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'Fusion: Elemental HERO Avian + Elemental HERO Sparkman + Elemental HERO Bubbleman. ' +
       'While this monster is face-up, your other monsters cannot be destroyed by battle. ' +
-      'When this monster is Summoned: destroy every Spell and Trap your opponent controls and discard every one in their hand. ' +
+      'When this monster is Summoned: take every Spell and Trap card from your opponent — ' +
+      'destroying what they control first, then discarding their whole hand of them. ' +
       'It gains 100 ATK for each Spell or Trap card in your opponent\'s Graveyard. ' +
       'Each time this monster attacks: send 1 random Spell or Trap from your opponent\'s Deck to their Graveyard.',
     cry: 'Ride the storm!',

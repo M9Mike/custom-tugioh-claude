@@ -203,13 +203,19 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
   if (op.op === 'specialSummon') {
     const zones = Array.isArray(op.from) ? op.from : [op.from];
     const wants = (z: string) => zones.includes(z as never);
+    /* Every zone the op actually reaches. The Deck used to be handled a level
+       up instead, purely so a Tribute cost got asked before it — but skipping
+       it here does not delay the summon's question, it lets a *later* op jump
+       the queue: Necroshade summons and then searches, and with the summon
+       silent the search's prompt became the card's first question. The cost is
+       asked first by being asked first, which is where that rule now lives. */
     const pool: TargetSpec['zone'] | null =
-      wants('hand') && wants('deck') && wants('grave')
+      wants('grave') && wants('deck') && wants('hand')
         ? 'handOrDeckOrGrave'
-        : wants('hand') && wants('deck')
-          ? 'handOrDeck'
-          : wants('deck') && wants('grave')
-            ? 'deckOrGrave'
+        : wants('grave') && wants('deck')
+          ? 'deckOrGrave'
+          : wants('hand') && wants('deck')
+            ? 'handOrDeck'
             : wants('grave')
               ? 'grave'
               : wants('hand')
@@ -300,13 +306,20 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
 }
 
 function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
-  const spec = scanOps(eff.ops, owner);
-  if (spec) return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
-  /* A cost is a choice too. Catapult Turtle says "Tribute 1 monster you
-     control" and asked for nothing, so the engine paid with whatever happened
-     to be standing in the first zone — invisible while the damage was a flat
-     1000, and the whole card once it is worth what it throws. `tributeSelf`
-     pays with the card itself and has nothing to ask. */
+  /* A cost is a choice too, and it is the *first* one: a card that pays a price
+     before it does anything is asked about the price first. Catapult Turtle
+     says "Tribute 1 monster you control" and asked for nothing, so the engine
+     paid with whatever happened to be standing in the first zone — invisible
+     while the damage was a flat 1000, and the whole card once it is worth what
+     it throws. `tributeSelf` pays with the card itself and has nothing to ask.
+
+     Asked above `scanOps` rather than below it. Below, the ordering held only
+     by accident — because the one op that would have jumped it, a Special
+     Summon out of the Deck, was left out of `scanOps` for exactly that reason.
+     That silence then let a *later* op take the card's first question instead:
+     Necroshade summons and then searches, and with the summon unasked the
+     search's prompt came first. The rule is about the cost, so it lives on the
+     cost. */
   if (eff.cost?.tribute && !eff.cost.tributeSelf) {
     return {
       side: 'own',
@@ -316,6 +329,23 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
       filter: eff.cost.tributeFilter,
     };
   }
+  /* And so is a discard. Elemental HERO Wild Wingman throws a card away to fire
+     its button and the engine took whatever lay leftmost in the hand — the same
+     fault as the Tribute above, on the other kind of price. Reported. The
+     hand-summon route has always honoured a named card; this one did not. */
+  if (eff.cost?.discard) {
+    return {
+      side: 'own',
+      zone: 'hand',
+      count: eff.cost.discard,
+      /* The card doing the asking is struck off by `targetCandidates`'
+         `exclude`, which is the same rule that keeps Gamma out of its own
+         search — a Spell in hand cannot pay for itself. */
+      prompt: 'Choose a card to discard',
+    };
+  }
+  const spec = scanOps(eff.ops, owner);
+  if (spec) return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
   /* Calling a monster out of the Deck. `scanOps` handles a Special Summon from
      the hand or the Graveyard and stops short of the Deck, which is a
      deliberate split rather than an oversight: this branch sits *after* the

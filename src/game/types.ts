@@ -547,15 +547,6 @@ export type Op =
        * removal that happens to land somewhere private.
        */
       filter?: CardFilter;
-      /**
-       * Take `count` *minus what this same effect already destroyed*.
-       *
-       * R - Righteous Justice is one number spent across two places: it breaks
-       * what is on the table first and reaches into the hand for whatever is
-       * left over. Written as one op rather than four branches, because the
-       * arithmetic is the card.
-       */
-      minusDestroyed?: boolean;
     }
   /**
    * Roll `count` dice and ask whether any of them can be made to total seven —

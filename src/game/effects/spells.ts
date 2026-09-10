@@ -1925,9 +1925,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        backrow of four means the hand is untouched.
        No longer gated on a backrow: with their field empty the whole number is
        spent in the hand, which is precisely when the card is worth holding. */
+    /* Worded as Wild Wingman words it, because it is the same sentence: one
+       count spent across their table and then their hand, in that order. Two
+       cards describing one rule two ways is how the two drift apart, and this
+       one already had — "for each of the 4 you did not destroy" is the same
+       arithmetic said backwards. */
     text:
-      'If you control an "Elemental HERO" monster: destroy up to 4 Spell or Trap cards your opponent controls, ' +
-      'then they discard 1 random Spell or Trap card for each of the 4 you did not destroy.',
+      'If you control an "Elemental HERO" monster: take up to 4 Spell or Trap cards from your opponent — ' +
+      'destroying what they control first, then discarding at random from their hand.',
     cry: 'Justice comes down!',
     effects: [
       {
@@ -1937,15 +1942,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
            card is played — and "if you control a HERO" is what the owner wrote
            and what the text says. */
         condition: { controlsNameIncludes: 'Elemental HERO' },
-        targets: 4,
         ops: [
-          { op: 'destroy', target: sel('opp', 'all', { zone: 'backrow' }) },
-          /* One op, not one per kind. Written as a Spell op and a Trap op it
-             was two counts of four rather than one: a hand of three Spells and
-             two Traps lost all five to a card that is allowed to take four.
-             `notKind: 'monster'` is the whole sentence — a magic card is a
-             Spell, a Trap or a Field Spell, and never a body. */
-          { op: 'discard', count: 4, who: 'opp', minusDestroyed: true, filter: { notKind: 'monster' } },
+          /* The same op Wild Wingman and Tempest use, one zone shorter. Written
+             here as a destroy op plus a discard op it was one count *per op*
+             rather than one between them, which is how a card allowed four came
+             to take four of each — and keeping a second implementation of the
+             same sentence is how that fault would find its way back. One op,
+             three cards, one rule. */
+          { op: 'stripMagic', count: 4, zones: ['field', 'hand'], who: 'opp' },
         ],
       },
     ],

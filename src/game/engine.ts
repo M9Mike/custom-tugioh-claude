@@ -2298,13 +2298,8 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const p = state.players[pid];
           /* A wide board pays for its own width — Tribute to the Doomed takes a
              card for each monster the discarding player is standing behind. */
-          let want =
+          const want =
             op.scale === 'perTheirMonster' ? op.count * p.monsters.filter((m) => !!m).length : op.count;
-          /* One number spent across two places. R - Righteous Justice breaks
-             what is on the table first and reaches into the hand for whatever
-             is left of its four, so a board that ate three of them leaves one
-             card to be taken out of the grip. */
-          if (op.minusDestroyed) want = Math.max(0, want - (ctx.destroyedCount ?? 0));
           /* A filter narrows what may be taken. Blast Sphere reaches into the
              hand for Spells and Traps alone — removal that happens to land
              somewhere private, rather than a random discard. */
@@ -5088,9 +5083,29 @@ function spendExtraCosts(
   state: DuelState,
   pid: PlayerId,
   c: CardInstance,
-  eff: CardEffect | undefined
+  eff: CardEffect | undefined,
+  /** Whichever cards the player pointed at, for the costs that let them. */
+  targets: string[] = []
 ): string | null {
   const p = state.players[pid];
+  /* One card out of hand, and *which* card is the player's to say. The Tribute
+     cost has honoured their answer for months; this one took `hand[0]` — and
+     it was paid in one of the two places a cost gets paid, so a monster's
+     button never paid it at all. Elemental HERO Wild Wingman discarded nothing
+     and fired anyway. Reported. It lives here now, with the other three, so
+     every route that pays a price pays this one. */
+  if (eff?.cost?.discard) {
+    const payable = p.hand.filter((h) => h.uid !== c.uid);
+    if (payable.length < eff.cost.discard) return 'Not enough cards in hand to pay for it.';
+    const named = targets.map((uid) => payable.find((h) => h.uid === uid)).filter((h): h is CardInstance => !!h);
+    const paying = [...named, ...payable.filter((h) => !named.includes(h))].slice(0, eff.cost.discard);
+    for (const fed of paying) {
+      p.hand.splice(p.hand.indexOf(fed), 1);
+      landInGrave(state, fed, pid);
+      log(state, `${p.name} discards ${displayName(state, fed)}.`, 'effect', pid, logSlug(fed));
+      anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
+    }
+  }
   /* The whole grip, and there has to be one — Cannon Soldier's cannon is loaded
      with everything you were holding, so an empty hand cannot fire it. Refused
      before anything is spent: a cost that half-pays and then gives up is how a
@@ -6092,24 +6107,14 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          before the discard is taken rather than after — otherwise a Pendulum
          Machine with no Steel Ogre Grotto down there eats a card and stays in
          the hand. */
-      const banishCost = spendExtraCosts(state, pid, c, eff);
+      /* Every price this summon costs, paid in one place — the banish, the
+         mill and the discard alike. The discard used to be paid again just
+         below, by a second copy of the same eight lines that honoured
+         `discardUid` while the other copy honoured nothing; the two have been
+         one since the cost moved into `spendExtraCosts`, and this route hands
+         its own name for the card down as the answer. */
+      const banishCost = spendExtraCosts(state, pid, c, eff, action.discardUid ? [action.discardUid] : []);
       if (banishCost) return { state: prev, error: banishCost };
-      const need = eff.cost?.discard ?? 0;
-      if (need > 0) {
-        /* Paid out of the rest of the hand — never with the card that is
-           arriving, which would leave nothing to summon. */
-        const payable = p.hand.filter((h) => h.uid !== c.uid);
-        if (payable.length < need) return { state: prev, error: 'Not enough cards in hand to pay for it.' };
-        const named = (action.discardUid ? [payable.find((h) => h.uid === action.discardUid)] : [])
-          .filter((h): h is CardInstance => !!h);
-        const paying = [...named, ...payable.filter((h) => !named.includes(h))].slice(0, need);
-        for (const fed of paying) {
-          p.hand.splice(p.hand.indexOf(fed), 1);
-          landInGrave(state, fed, pid);
-          log(state, `${p.name} discards ${displayName(state, fed)}.`, 'effect', pid, logSlug(fed));
-          anim(state, { kind: 'discard', uid: fed.uid, slug: fed.slug, player: pid });
-        }
-      }
       runOps({ state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {} }, eff.ops);
       checkExodia(state);
       return { state };
@@ -6139,7 +6144,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
            that is exactly what made damage look like it landed early. */
         anim(state, { kind: 'damage', player: pid, amount: eff.cost.lp });
       }
-      const extraCost = spendExtraCosts(state, pid, c, eff);
+      const extraCost = spendExtraCosts(state, pid, c, eff, action.targets ?? []);
       if (extraCost) return { state: prev, error: extraCost };
       /* What the cost ate, kept so an op can be worth what it cost — Catapult
          Turtle throws a monster and it lands for that monster's ATK. Read
@@ -6389,15 +6394,7 @@ function payActivation(
        exactly what made damage look like it landed early. */
     anim(state, { kind: 'damage', player: pid, amount: due });
   }
-  if (eff?.cost?.discard) {
-    const n = Math.min(eff.cost.discard, p.hand.length - (p.hand.some((h) => h.uid === c.uid) ? 1 : 0));
-    for (let i = 0; i < n; i++) {
-      const idx = p.hand.findIndex((h) => h.uid !== c.uid);
-      if (idx < 0) break;
-      landInGrave(state, p.hand.splice(idx, 1)[0], pid);
-    }
-  }
-  const extra = spendExtraCosts(state, pid, c, eff);
+  const extra = spendExtraCosts(state, pid, c, eff, targets);
   if (extra) return { error: extra };
   /* Whichever ones the player pointed at, and only then whatever is left. This
      took the first monsters in the row regardless — the board asks "Choose a

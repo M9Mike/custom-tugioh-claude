@@ -12978,15 +12978,29 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     s.players[ME].monsters = [engine, null, null];
     s.players[ME].hand = [kuri];
     s.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+    /* Something for the button to actually break, so the pin can tell a cost
+       that was paid from a button that never fired. */
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
     const idx = ignitionOptions(s, ME, engine)[0]?.index;
     let out = act(s, ME, { type: 'ignition', uid: engine.uid, effectIndex: idx });
     let g = 0;
     while (out.pending?.kind === 'choose' && g++ < 4) {
       out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
     }
-    ok(out.players[ME].hand.some((c) => c.slug === 'winged-kuriboh'),
+    /* "Still in hand" on its own proves nothing: a cost that was never paid
+       leaves the card exactly where a cost that was paid and refunded does.
+       The ignition path did not pay `cost.discard` at all, and this line passed
+       throughout. So the Graveyard has to be empty of it *and* the button has
+       to have actually fired — the Mirror Force it was aimed at is gone. */
+    ok(out.players[ME].hand.some((c) => c.uid === kuri.uid),
       'KURI: thrown away as a cost and straight back into the hand',
       out.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(!out.players[ME].grave.some((c) => c.uid === kuri.uid),
+      'KURI: and not left lying in the pile',
+      out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
+    ok(!out.players[FOE].spellTrap,
+      'KURI: CONTROL: and the cost really was paid — the button fired',
+      out.players[FOE].spellTrap?.slug ?? '(gone)');
 
     /* CONTROL: killed on the field it stays where it fell — coming back from
        that is a promise its other half already covers. */
@@ -13959,6 +13973,55 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(out.players[ME].monsters.some((m) => m?.uid === wanted.uid),
       'CALL: and the one I named is the one that arrives',
       out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  {
+    /* A discard cost is a choice too, and it took whatever lay leftmost. The
+       Tribute cost beside it in the same function has honoured the player's
+       answer for months; this one never asked. */
+    const spec = specChainForEffect('elemental-hero-wild-wingman', 1)[0];
+    ok(spec?.zone === 'hand' && /discard/i.test(spec.prompt ?? ''),
+      'PAY: Wild Wingman asks which card it is throwing away',
+      spec ? `${spec.zone}: ${spec.prompt}` : '(asks nothing)');
+
+    const s = jaden();
+    const ww = card(ME, 'elemental-hero-wild-wingman');
+    ww.summonedOnTurn = 0;
+    ww.effectUsedOnTurn = -1;
+    s.players[ME].monsters = [ww, null, null];
+    /* The one I want kept is deliberately first in hand, which is exactly what
+       the old code would have thrown. */
+    const keep = card(ME, 'elemental-hero-bladedge');
+    const spend = card(ME, 'kuriboh');
+    s.players[ME].hand = [keep, spend];
+    s.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    const idx = ignitionOptions(s, ME, ww)[0]?.index;
+    let out = act(s, ME, { type: 'ignition', uid: ww.uid, effectIndex: idx, targets: [spend.uid] });
+    let g = 0;
+    while (out.pending?.kind === 'choose' && g++ < 6) {
+      out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+    }
+    ok(out.players[ME].hand.some((c) => c.uid === keep.uid),
+      'PAY: and the card I kept is still in my hand',
+      out.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(out.players[ME].grave.some((c) => c.uid === spend.uid),
+      'PAY: while the one I named is the one that went',
+      out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
+  }
+
+  {
+    /* One sentence, three cards. Righteous Justice, Wild Wingman and Tempest
+       all say "take N Spell or Trap cards from your opponent, table first" —
+       and a rule written three times is a rule that drifts, which is how
+       Justice came to hold two counts of four. They share the op now, and the
+       text says so the same way. */
+    const shape = /take (up to \d+|every) Spell (or|and) Trap card(s)? from your opponent — destroying what they control first/;
+    for (const slug of ['r-righteous-justice', 'elemental-hero-wild-wingman', 'elemental-hero-tempest']) {
+      ok(shape.test(CARDS[slug].text ?? ''), `SHAPE: ${CARDS[slug].name} says it the same way`,
+        (CARDS[slug].text ?? '').slice(0, 90));
+      const ops = CARDS[slug].effects.flatMap((e) => e.ops).filter((o) => o.op === 'stripMagic');
+      ok(ops.length >= 1, `SHAPE: and does it with the same op`, String(ops.length));
+    }
   }
 
   {
