@@ -2480,67 +2480,79 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           and the modal says so — a question with no way out is a trap when the
           player only wanted to see what the Extra Deck held. */}
       {posing && poseCard && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
              style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
-          <div className="panel grain w-full max-w-md rounded p-4">
-            <h3 className="font-display text-lg text-brassbright">How does it stand?</h3>
-            <p className="mt-1 text-xs text-ptext/85">{shownName(poseCard) ?? CARDS[poseCard.slug]?.name}</p>
-            <div className="brass-rule my-3" />
-            {/* The card itself, each way up, rather than two numbers to read.
-                The defending one is laid on its side exactly as the board draws
-                it, so what the player picks is what they are about to see.
-                Both cards sit in the same square box, and `card-shell` is an
-                `aspect-ratio` with no width of its own — dropped straight into
-                a centred column it collapses to nothing, which is what the
-                standing one did. At 68% of the box a card is 99% of it tall,
-                so the same number frames it upright and on its side, and the
-                two columns stay the same size at every width. */}
-            <div className="flex items-stretch justify-center gap-3">
+          <div className="panel grain w-full max-w-md rounded p-5">
+            <h3 className="font-display text-xl leading-none text-brassbright">How does it stand?</h3>
+            {/* The name alone. "… is about to take the field" wrapped to two
+                lines on a phone and said nothing the heading had not. */}
+            <p className="mt-1.5 font-display text-sm text-parchment">
+              {shownName(poseCard) ?? CARDS[poseCard.slug]?.name}
+            </p>
+            <div className="brass-rule my-4" />
+            {/* The card itself, each way up — the thing the player is choosing
+                between, not a description of it. Both sit in the same square
+                box: `card-shell` is an `aspect-ratio` with no width of its own,
+                so at 68% of the box a card is 99% of it tall and the one number
+                frames it upright and on its side alike.
+                No `selectable` here, deliberately. That class is a permanent
+                brass outline, which on the board means "you may click this" and
+                in a modal where both halves are clickable means nothing at all
+                — it just drew two boxes and made the cards look like exhibits.
+                The lift and the brass arrive on hover, where they say something. */}
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { pose: 'atk' as const, label: 'Attack', value: effAtk(state, poseCard, me) },
+                { pose: 'def' as const, label: 'Defence', value: effDef(state, poseCard, me) },
+                /* No glyph beside the label. A crossed-swords and a shield set
+                   in the display serif at 11px come out as a hairline ✕ and an
+                   outline that reads as neither — and the card lying on its
+                   side already says which is which, louder than any icon. */
+              ]).map(({ pose, label, value }) => (
+                <button
+                  key={pose}
+                  className="group flex flex-col items-center gap-2 rounded border border-stoneline bg-black/25 p-3
+                             transition-colors duration-150 hover:border-brass hover:bg-black/10
+                             focus-visible:border-brass focus-visible:outline-none disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => {
+                    sfx.click();
+                    void landFusion(posing, pose);
+                  }}
+                >
+                  <span className="flex aspect-square w-full items-center justify-center">
+                    <span className="block w-[68%] transition-transform duration-150 group-hover:scale-105">
+                      <GameCard card={poseCard} displayName={shownName(poseCard)} defending={pose === 'def'} />
+                    </span>
+                  </span>
+                  <span className="font-display text-[11px] uppercase tracking-[0.16em] text-brass transition-colors group-hover:text-brassbright">
+                    {label}
+                  </span>
+                  {/* The number it actually fights with, which is the whole
+                      decision — and the number the old modal had before the
+                      cards replaced it. It belongs with them, not instead. */}
+                  <span className="font-display text-xl leading-none text-parchment">{value}</span>
+                </button>
+              ))}
+            </div>
+            <div className="brass-rule my-4" />
+            <div className="flex items-center justify-between gap-3">
+              {/* True, and worth saying: the posture rides on the summon and
+                  costs nothing, so the once-a-turn change is still in hand. */}
+              <p className="text-[10px] leading-snug text-ptextdim">
+                Free — you can still turn it later this turn.
+              </p>
               <button
-                className="selectable flex min-w-0 flex-1 flex-col items-center gap-2 rounded p-1 sm:max-w-[11rem]"
+                className="btn shrink-0 rounded px-3 py-1.5 text-[10px]"
                 disabled={busy}
                 onClick={() => {
                   sfx.click();
-                  void landFusion(posing, 'atk');
+                  setPosing(null);
                 }}
               >
-                <span className="flex aspect-square w-full items-center justify-center">
-                  <span className="block w-[68%]">
-                    <GameCard card={poseCard} displayName={shownName(poseCard)} />
-                  </span>
-                </span>
-                <span className="font-display text-[11px] uppercase tracking-wide text-brassbright">
-                  ⚔ Attack
-                </span>
-              </button>
-              <button
-                className="selectable flex min-w-0 flex-1 flex-col items-center gap-2 rounded p-1 sm:max-w-[11rem]"
-                disabled={busy}
-                onClick={() => {
-                  sfx.click();
-                  void landFusion(posing, 'def');
-                }}
-              >
-                <span className="flex aspect-square w-full items-center justify-center">
-                  <span className="block w-[68%]">
-                    <GameCard card={poseCard} displayName={shownName(poseCard)} defending />
-                  </span>
-                </span>
-                <span className="font-display text-[11px] uppercase tracking-wide text-brass">
-                  🛡 Defence
-                </span>
+                Cancel
               </button>
             </div>
-            <button
-              className="btn mt-3 rounded px-3 py-1.5 text-[10px]"
-              disabled={busy}
-              onClick={() => {
-                sfx.click();
-                setPosing(null);
-              }}
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}

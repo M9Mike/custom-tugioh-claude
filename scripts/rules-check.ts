@@ -12825,6 +12825,174 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
   }
 
   {
+    /* SIDE — the class Skyscraper belonged to, swept out.
+     *
+     * Skyscraper's thousand was written into the branch where a HERO walks
+     * into a monster and nowhere else, so the card's own sentence — "when an
+     * Elemental HERO monster you control attacks", no target named — was true
+     * on one of the engine's two attack paths. That was reported from a real
+     * duel, which is the wrong way to find it. So every other clause with the
+     * same shape was read off the cards and put to the engine here: a text
+     * that names no side, no posture and no survivor, against a branch that
+     * quietly named one.
+     *
+     * Six were wrong. Each pin below is one of them, and each fails on the
+     * code as it stood before this block was written.
+     */
+
+    /* 1. "Its ATK is doubled when it attacks" — Metalmorph, and Metalzoa says
+       it too. Neither names a target, and a direct swing is an attack. */
+    const dbl = fresh('battle');
+    const ox = card(ME, 'battle-ox'); // 1700
+    ox.summonedOnTurn = 0;
+    dbl.players[ME].monsters = [ox, null, null];
+    dbl.players[ME].spellTrap = { ...card(ME, 'metalmorph'), face: 'up' as const, equippedTo: ox.uid };
+    ox.equips = ['metalmorph'];
+    const bare = fresh('battle');
+    const ox2 = card(ME, 'battle-ox');
+    ox2.summonedOnTurn = 0;
+    bare.players[ME].monsters = [ox2, null, null];
+    const withMetal = act(dbl, ME, { type: 'attack', uid: ox.uid, targetUid: null });
+    const without = act(bare, ME, { type: 'attack', uid: ox2.uid, targetUid: null });
+    /* The equip is worth 300 as well as the doubling, so the number to beat is
+       (1700 + 300) × 2 and not twice the bare ox — a pin written the lazy way
+       reads 3400, misses by 600, and says nothing about which half is wrong. */
+    ok(4000 - withMetal.players[FOE].lp === (1700 + 300) * 2,
+      'SIDE: a doubled attack is doubled going round an empty board too',
+      `${4000 - withMetal.players[FOE].lp} through`);
+    ok(4000 - without.players[FOE].lp === 1700,
+      'SIDE: CONTROL: and the same ox unequipped swings at its own number',
+      `${4000 - without.players[FOE].lp} through`);
+
+    /* 2. "When this monster destroys a monster in battle" — Battle Ox. It does
+       not say "when it attacks and destroys". A wall that breaks the thing
+       which ran into it has destroyed a monster in battle. */
+    const wall = fresh('battle');
+    wall.active = FOE;
+    const guard = card(ME, 'battle-ox'); // 1700, standing
+    guard.summonedOnTurn = 0;
+    wall.players[ME].monsters = [guard, null, null];
+    const runner = card(FOE, 'kuriboh'); // 300
+    runner.summonedOnTurn = 0;
+    wall.players[FOE].monsters = [runner, null, null];
+    const held = act(wall, FOE, { type: 'attack', uid: runner.uid, targetUid: guard.uid });
+    const stood = held.players[ME].monsters.find((m) => m?.uid === guard.uid);
+    ok(stood?.atkMod === 300,
+      'SIDE: the ox that breaks its attacker keeps the 300 it is owed',
+      `atkMod ${stood?.atkMod ?? 0}`);
+
+    /* 3. And a trade is two kills. Vorse Raider bills 500 and draws for the
+       monster it destroys — dying in the same breath does not unmake the kill,
+       and `onBattle` already speaks from the Graveyard. */
+    const trade = fresh('battle');
+    const vorse = card(ME, 'vorse-raider');
+    vorse.summonedOnTurn = 0;
+    trade.players[ME].monsters = [vorse, null, null];
+    /* The same card on both sides, which makes the trade exact without any
+       arithmetic — and puts both halves of the rule under one attack: each
+       Raider destroyed a monster in battle, so each is owed its 500. */
+    const mirror = card(FOE, 'vorse-raider');
+    mirror.summonedOnTurn = 0;
+    trade.players[FOE].monsters = [mirror, null, null];
+    const traded = act(trade, ME, { type: 'attack', uid: vorse.uid, targetUid: mirror.uid });
+    ok(!traded.players[ME].monsters.some((m) => m?.uid === vorse.uid)
+      && !traded.players[FOE].monsters.some((m) => m?.uid === mirror.uid),
+      'SIDE: CONTROL: the trade really is a trade — both fall');
+    ok(traded.players[FOE].lp === 4000 - 500,
+      'SIDE: and the attacking Raider is paid for the body it broke going down',
+      `LP ${traded.players[FOE].lp}`);
+    ok(traded.players[ME].lp === 4000 - 500,
+      'SIDE: and so is the one that broke it back',
+      `LP ${traded.players[ME].lp}`);
+
+    /* 4. "When this monster inflicts battle damage" — Killer Needle, and the
+       sentence has no direction in it. A wall that hurts what ran into it has
+       inflicted battle damage. */
+    const sting = fresh('battle');
+    sting.active = FOE;
+    const needle = card(ME, 'killer-needle'); // 1200
+    needle.summonedOnTurn = 0;
+    sting.players[ME].monsters = [needle, null, null];
+    const fly = card(FOE, 'kuriboh'); // 300
+    fly.summonedOnTurn = 0;
+    sting.players[FOE].monsters = [fly, null, null];
+    const stung = act(sting, FOE, { type: 'attack', uid: fly.uid, targetUid: needle.uid });
+    /* 900 through the battle, then the extra 500 the card promises. */
+    ok(stung.players[FOE].lp === 4000 - (1200 - 300) - 500,
+      'SIDE: the needle collects its 500 for damage it dealt standing still',
+      `LP ${stung.players[FOE].lp}`);
+    const grown = stung.players[ME].monsters.find((m) => m?.uid === needle.uid);
+    ok(grown?.atkMod === 500, 'SIDE: and the 500 ATK with it', `atkMod ${grown?.atkMod ?? 0}`);
+
+    /* 5. Piercing damage is battle damage. It was dealt and then not counted
+       as any, so a piercing monster whose text pays out on battle damage was
+       paid nothing for going through a guard. */
+    const spike = fresh('battle');
+    const armed = card(ME, 'killer-needle'); // 1200, no pierce of its own
+    armed.summonedOnTurn = 0;
+    spike.players[ME].monsters = [armed, null, null];
+    spike.players[ME].field = card(ME, 'temple-of-the-kings'); // grants pierce
+    const kneeling = card(FOE, 'kuriboh');
+    kneeling.summonedOnTurn = 0;
+    kneeling.position = 'def';
+    spike.players[FOE].monsters = [kneeling, null, null];
+    const pierced = act(spike, ME, { type: 'attack', uid: armed.uid, targetUid: kneeling.uid });
+    const before5 = spike.players[FOE].lp;
+    ok(pierced.players[FOE].lp < before5,
+      'SIDE: CONTROL: the guard is pierced and damage does land',
+      `LP ${pierced.players[FOE].lp}`);
+    const fed = pierced.players[ME].monsters.find((m) => m?.uid === armed.uid);
+    ok(fed?.atkMod === 500,
+      'SIDE: and piercing damage counts as the battle damage it is',
+      `atkMod ${fed?.atkMod ?? 0}`);
+
+    /* 6. A swing whose wall was taken away mid-battle reaches the player, and
+       that branch fired nothing at all — not the damage trigger, not the beat
+       after it. Leghul grows on damage it deals; here the wall is bounced by
+       the attack itself having no target left. */
+    const gone = fresh('battle');
+    const worm = card(ME, 'leghul'); // 300, and it grows on damage it deals
+    worm.summonedOnTurn = 0;
+    gone.players[ME].monsters = [worm, null, null];
+    const straight = act(gone, ME, { type: 'attack', uid: worm.uid, targetUid: null });
+    const bigger = straight.players[ME].monsters.find((m) => m?.uid === worm.uid);
+    ok(bigger?.atkMod === 500,
+      'SIDE: CONTROL: a plain direct swing pays the damage trigger',
+      `atkMod ${bigger?.atkMod ?? 0}`);
+
+    /* And now the same swing, arriving the other way: a wall was there when the
+       attack was declared and is not there when it resolves. The engine calls
+       that a direct attack and always has — it just used to call it one only
+       as far as the damage, and stop. Staged through the trap window, which is
+       the gap the board can change in.
+       Written by hand rather than found in a duel, because the card that takes
+       a monster away mid-window is on the other side of the table from the one
+       that would notice. */
+    const vanish = fresh('battle');
+    const worm2 = card(ME, 'leghul');
+    worm2.summonedOnTurn = 0;
+    vanish.players[ME].monsters = [worm2, null, null];
+    const doomed = card(FOE, 'kuriboh');
+    doomed.summonedOnTurn = 0;
+    vanish.players[FOE].monsters = [doomed, null, null];
+    /* Something face-down, so the window opens at all. */
+    vanish.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    let mid = act(vanish, ME, { type: 'attack', uid: worm2.uid, targetUid: doomed.uid });
+    ok(mid.pending?.kind === 'trap', 'SIDE: CONTROL: the window opens between declaring and resolving',
+      mid.pending?.kind ?? '(none)');
+    /* The wall steps out of the battle in that gap. */
+    mid = { ...mid, players: { ...mid.players, [FOE]: { ...mid.players[FOE], monsters: [null, null, null] } } };
+    const through = act(mid, FOE, { type: 'respondTrap', uid: null });
+    const grew = through.players[ME].monsters.find((m) => m?.uid === worm2.uid);
+    ok(grew?.atkMod === 500,
+      'SIDE: a swing whose wall left pays out like the direct swing it became',
+      `atkMod ${grew?.atkMod ?? 0}`);
+    ok(through.players[FOE].lp === 4000 - 300,
+      'SIDE: CONTROL: and the swing itself did reach the player',
+      `LP ${through.players[FOE].lp}`);
+  }
+
+  {
     /* Hero Barrier: a toll rather than a wall, a thousand per HERO, and the
        blow still lands. */
     /* Deliberately *not* Clayman on the receiving end: his own wall takes a

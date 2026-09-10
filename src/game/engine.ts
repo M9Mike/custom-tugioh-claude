@@ -679,17 +679,25 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
  * an Elemental HERO monster you control attacks", with no restriction, and that
  * includes attacking the player. Reported.
  *
- * `surgesVsStronger` is deliberately not here: it is a question about the thing
- * being attacked, and a direct swing has nothing to be bigger than.
+ * What belongs here is exactly what the card grants to *attacking*, with no
+ * second party in the sentence. `surgesVsStronger`, `bonusVsDefense`,
+ * `halvesAttacker` and the sapping tolls are all questions about the thing
+ * being attacked, and a direct swing has nothing on the other side of it.
+ *
+ * `doublesWhenAttacking` was held back here once, as "a balance change nobody
+ * asked for". That was wrong twice over: Metalmorph says "its ATK is doubled
+ * when it attacks" and Metalzoa "when this monster attacks, its ATK is
+ * doubled", neither of which names a target — and honouring a card's own text
+ * is not a change anybody has to ask for.
  */
 function swingOf(state: DuelState, attacker: CardInstance, controller: PlayerId): number {
   const f = effFlags(state, attacker, controller);
-  /* `doublesWhenAttacking` is its twin and is deliberately *not* here.
-     Metalmorph says "attacks at twice its ATK" and has the same argument for
-     applying to a direct swing — but it is a card in somebody else's deck and
-     doubling it is a balance change nobody asked for. Named here rather than
-     left as a silent inconsistency: the day that is wanted, this is the line. */
-  return effAtk(state, attacker, controller) + (f.surgesOnAttack ? 1000 : 0);
+  /* In the order the battle branch applies them: the doubling is on the body,
+     and the city's thousand goes on top of whatever the body came to. Written
+     the other way round the two paths disagree by a thousand for a monster
+     carrying both. */
+  const doubled = effAtk(state, attacker, controller) * (f.doublesWhenAttacking ? 2 : 1);
+  return doubled + (f.surgesOnAttack ? 1000 : 0);
 }
 
 /**
@@ -1224,7 +1232,17 @@ function landSpecialSummon(
 /* Life points                                                         */
 /* ------------------------------------------------------------------ */
 
-function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = false) {
+/**
+ * `by` is the card doing the billing, and only effect damage has one — battle
+ * damage is already announced by the attack line above it.
+ *
+ * Without it a burn read "Foe takes 1000 damage" with nothing attached, so the
+ * beat that speaks the line had no face to show (see `LogEntry.slug`), and
+ * nothing reading the log afterwards could tell whose thousand it was. Both
+ * showed up at once: the banner art Mike reported missing, and a sweep trying
+ * to prove Darkbright's beat had fired.
+ */
+function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = false, by?: string) {
   if (amount <= 0) return;
   if (battle && state.ongoing.some((o) => o.kind === 'preventBattleDamage' && o.target === to)) {
     log(state, `${state.players[to].name} takes no battle damage.`, 'effect', to);
@@ -1237,15 +1255,16 @@ function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = fal
   // from a player who never had that many Life Points.
   const applied = Math.min(amount, state.players[to].lp);
   state.players[to].lp -= applied;
-  log(state, `${state.players[to].name} takes ${amount} damage. (${state.players[to].lp} LP)`, 'damage', to);
+  log(state, `${state.players[to].name} takes ${amount} damage. (${state.players[to].lp} LP)`, 'damage', to, by);
   anim(state, { kind: 'damage', player: to, amount, applied });
   checkLifePoints(state);
 }
 
-function healPlayer(state: DuelState, to: PlayerId, amount: number) {
+/** `by` for the same reason as `dealDamage`'s: a gain with no face on it. */
+function healPlayer(state: DuelState, to: PlayerId, amount: number, by?: string) {
   if (amount <= 0) return;
   state.players[to].lp += amount;
-  log(state, `${state.players[to].name} gains ${amount} Life Points. (${state.players[to].lp} LP)`, 'effect', to);
+  log(state, `${state.players[to].name} gains ${amount} Life Points. (${state.players[to].lp} LP)`, 'effect', to, by);
   anim(state, { kind: 'heal', player: to, amount });
 }
 
@@ -1902,7 +1921,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            done at the moment it is fired — and a Red-Eyes that dies loses the
            lot, because the counters go to the Graveyard with the body. */
         if (op.plusPerCounter) amount += op.plusPerCounter * (ctx.counters ?? ctx.source.counters);
-        for (const pid of sideToPlayers(ctx, op.to)) dealDamage(state, pid, amount);
+        for (const pid of sideToPlayers(ctx, op.to)) dealDamage(state, pid, amount, false, ctx.source.slug);
         break;
       }
       case 'heal': {
@@ -1911,7 +1930,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
            Healer is paid exactly what it destroys, so a monster that shrugged
            the attempt off pays nothing. */
         const gain = op.scale === 'destroyedAtk' ? (ctx.destroyedAtk ?? 0) : (op.amount ?? 0);
-        for (const pid of sideToPlayers(ctx, op.to)) healPlayer(state, pid, gain);
+        for (const pid of sideToPlayers(ctx, op.to)) healPlayer(state, pid, gain, ctx.source.slug);
         break;
       }
       case 'gainAtk': {
@@ -4219,10 +4238,19 @@ function resolveBattle(state: DuelState) {
 
   const targetFound = findOnField(state, susp.targetUid);
   if (!targetFound) {
-    // Target vanished — treat as a direct attack for the remaining swing.
+    /* Target vanished — treat as a direct attack for the remaining swing.
+       Which means treating it as one all the way down: this branch dealt the
+       damage and then fired nothing, so a swing that reached the player
+       because its wall had been bounced paid out neither the damage trigger
+       nor the beat, while the identical swing at an empty board paid both. */
     const dmg = battleDamageFrom(state, attacker, controller, swingOf(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
+    const before = state.players[defender].lp;
     dealDamage(state, defender, dmg, true);
+    if (!state.winner && state.players[defender].lp < before) {
+      fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
+    }
+    if (!state.winner) fireTriggers(state, attacker, controller, 'onBattle', { attackerUid: attacker.uid });
     return;
   }
   const target = targetFound.c;
@@ -4397,10 +4425,49 @@ function resolveBattle(state: DuelState) {
       state, controller: side, source: killer, targets: [], cursor: 0, trig: { attackerUid: killer.uid },
     });
 
+  /**
+   * Everything a kill owes, said once and called from every branch that has a
+   * kill in it.
+   *
+   * It used to be written out at the two branches where the *attacker* wins
+   * and nowhere else, so a Battle Ox that broke the thing which ran into it
+   * gained nothing, a Vorse Raider that traded itself away drew nothing, and
+   * Serket only ever ate going forward. Fifteen cards say "when this monster
+   * destroys a monster in battle" and not one of them names a side or asks the
+   * killer to survive it — the same shape of fault as Skyscraper's thousand,
+   * which the text granted to every attack and the code granted to one branch.
+   *
+   * `killedAtk` is read by the caller while the body is still standing: a
+   * moment later it is in the Graveyard and Flame Wingman's bill has nothing
+   * left to measure.
+   */
+  const paidForTheKill = (killer: CardInstance, killed: CardInstance, side: PlayerId, killedAtk: number) => {
+    devour(killer, killed, side);
+    if (state.winner) return;
+    fireTriggers(state, killer, side, 'onBattleDestroy', { targetUid: killed.uid, destroyedAtk: killedAtk });
+  };
+
+  /**
+   * And the same for the blow itself, measured rather than assumed — a Kuriboh
+   * thrown in front of it stops the damage dead and nothing is owed.
+   *
+   * "When it inflicts battle damage" names no direction either: a wall that
+   * breaks its attacker has dealt battle damage to the player who sent it, and
+   * piercing damage is battle damage. Both were silent.
+   */
+  const paidForTheDamage = (dealer: CardInstance, side: PlayerId, hurt: PlayerId, before: number) => {
+    if (state.winner || state.players[hurt].lp >= before) return;
+    fireTriggers(state, dealer, side, 'onDealBattleDamage', { attackerUid: dealer.uid });
+  };
+
   /* Whether the swing broke what it was aimed at. The Phoenix Enforcer grows
      off every wall it fails to break, so "did not kill" has to be one answer
      for all four branches rather than an absence in three of them. */
   let broke = false;
+  /* Read while both are still standing, because a kill is paid out in the
+     numbers the battle was fought with and one of these bodies is about to be
+     in the Graveyard. */
+  const attackerAtk = effAtk(state, attacker, controller);
   if (target.position === 'atk') {
     const tAtk = guardAtk();
     if (atk > tAtk) {
@@ -4409,18 +4476,19 @@ function resolveBattle(state: DuelState) {
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
       const killed = strikeDown(target, attacker, controller);
       broke = killed;
-      if (killed) devour(attacker, target, controller);
-      if (!state.winner) {
-        if (killed) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
-        /* Damage is its own question. The blow landed on the Life Points
-           whatever the monster did about dying, so this one is not gated. */
-        if (state.players[defender].lp < before) {
-          fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
-        }
-      }
+      if (killed) paidForTheKill(attacker, target, controller, tAtk);
+      /* Damage is its own question. The blow landed on the Life Points
+         whatever the monster did about dying, so this one is not gated on the
+         kill. */
+      paidForTheDamage(attacker, controller, defender, before);
     } else if (atk < tAtk) {
+      /* The wall wins, and is owed for it on both counts — the damage it put
+         through and the body it broke. Neither was paid before. */
+      const before = state.players[controller].lp;
       battleHit(controller, tAtk - atk, attacker);
-      strikeDown(attacker, target, defender);
+      const killed = strikeDown(attacker, target, defender);
+      if (killed) paidForTheKill(target, attacker, defender, attackerAtk);
+      paidForTheDamage(target, defender, controller, before);
     } else {
       /* Announced only if it is what happens. Said up front, the line was
          flatly contradicted by the very next one when a Sphinx sank instead of
@@ -4429,6 +4497,10 @@ function resolveBattle(state: DuelState) {
       const bothFell = [strikeDown(target, attacker, controller), strikeDown(attacker, target, defender)];
       broke = bothFell[0];
       if (bothFell.every(Boolean)) log(state, 'Both monsters are destroyed!', 'attack');
+      /* A trade is two kills, and each one is owed. Both are paid from the
+         Graveyard, which is where `onBattle` already speaks from. */
+      if (bothFell[0]) paidForTheKill(attacker, target, controller, tAtk);
+      if (bothFell[1]) paidForTheKill(target, attacker, defender, attackerAtk);
     }
   } else {
     const tDef = guardDef();
@@ -4437,14 +4509,20 @@ function resolveBattle(state: DuelState) {
          is still worth its ATK to a Flame Wingman — the card says "the ATK of
          the destroyed monster", not "the number it was defending with". */
       const tAtk = effAtk(state, target, defender);
+      const before = state.players[defender].lp;
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
       const killed = strikeDown(target, attacker, controller);
       broke = killed;
-      if (killed) devour(attacker, target, controller);
-      if (killed && !state.winner) fireTriggers(state, attacker, controller, 'onBattleDestroy', { targetUid: target.uid, destroyedAtk: tAtk });
+      if (killed) paidForTheKill(attacker, target, controller, tAtk);
+      /* Piercing damage is battle damage, and was not being counted as any. */
+      paidForTheDamage(attacker, controller, defender, before);
     } else if (atk < tDef) {
+      /* A wall that hurts what runs into it has inflicted battle damage, and
+         is owed for that the same as any attacker is. */
+      const before = state.players[controller].lp;
       battleHit(controller, tDef - atk, attacker);
       log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));
+      paidForTheDamage(target, defender, controller, before);
     } else {
       log(state, `${displayName(state, target)} holds firm.`, 'attack', defender, logSlug(target));
     }

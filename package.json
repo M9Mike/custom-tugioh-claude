@@ -79,7 +79,8 @@
     "doorshots": "tsx scripts/door-shots.ts",
     "linger": "tsx scripts/linger-check.ts",
     "duelreturn": "tsx scripts/duelreturn-check.ts",
-    "silent": "tsx scripts/silent-picks.ts"
+    "silent": "tsx scripts/silent-picks.ts",
+    "paths": "tsx scripts/path-coverage.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
