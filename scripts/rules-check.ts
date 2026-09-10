@@ -9984,6 +9984,34 @@ console.log('\nThe Deck answers to the player, and never twice in the same order
       'and the Deck it searched is shuffled behind it',
       uids(planted, ME).join(','));
 
+    /* And a plain `search`, which is the commonest of the four Deck-opening ops
+       and the only one nothing was watching. Winged Kuriboh LV10 names any card
+       at all, so it is the widest look at a Deck in the game — and I told the
+       owner it did not shuffle, having grepped for `shuffle` and missed that
+       every one of these routes goes through `deckSeen`. Pinned now rather
+       than read. */
+    const looked = table();
+    const lv10 = card(ME, 'winged-kuriboh-lv10');
+    lv10.summonedOnTurn = 0;
+    looked.players[ME].monsters = [lv10, null, null];
+    const wanted = card(ME, 'monster-reborn');
+    looked.players[ME].deck = [...looked.players[ME].deck, wanted];
+    const orderBefore = uids(looked, ME);
+    const sweep = card(FOE, 'dark-hole');
+    looked.players[FOE].hand = [sweep];
+    looked.active = FOE;
+    let swept = act(looked, FOE, { type: 'activateSpell', uid: sweep.uid });
+    let sg = 0;
+    while (swept.pending?.kind === 'choose' && sg++ < 6) {
+      swept = act(swept, swept.pending.player, { type: 'chooseCard', uids: [wanted.uid] });
+    }
+    ok(swept.players[ME].hand.some((c) => c.uid === wanted.uid),
+      'a plain search takes the card the player named',
+      swept.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    ok(!stillInOrder(orderBefore, uids(swept, ME)),
+      'and shuffles the Deck it just read',
+      uids(swept, ME).join(',').slice(0, 60));
+
     /* And flipped face-up by an attack, where the board never had a chance to
        ask, the engine stops and asks instead of choosing — `raiseChoice`, which
        has been waiting for a card like this. Before the Spy declared `targets`
