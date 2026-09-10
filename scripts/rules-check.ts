@@ -12794,6 +12794,34 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     const hit = act(s, ME, { type: 'attack', uid: blade.uid, targetUid: ox.uid });
     ok(hit.players[FOE].lp === 4000 - (2600 + 1000 - 1700),
       'CITY: the surge lands even when the HERO was already bigger', `LP ${hit.players[FOE].lp}`);
+
+    /* And on a swing that reaches the player. The thousand lived inside the
+       monster-versus-monster branch alone, so a HERO going around an empty
+       board swung at its printed ATK — the city rose only when something was
+       in the way. The card says "when an Elemental HERO monster you control
+       attacks", with nothing after it. Reported. */
+    const open = jaden();
+    open.phase = 'battle';
+    const spark = card(ME, 'elemental-hero-sparkman'); // 1600
+    spark.summonedOnTurn = 0;
+    open.players[ME].monsters = [spark, null, null];
+    open.players[ME].field = card(ME, 'skyscraper');
+    const through = act(open, ME, { type: 'attack', uid: spark.uid, targetUid: null });
+    ok(through.players[FOE].lp === 4000 - (1600 + 1000),
+      'CITY: and it rises for a swing that reaches the player too',
+      `LP ${through.players[FOE].lp}`);
+
+    /* CONTROL: no city, no thousand — so the line above is measuring the
+       Field Spell and not the body. */
+    const bare = jaden();
+    bare.phase = 'battle';
+    const spark2 = card(ME, 'elemental-hero-sparkman');
+    spark2.summonedOnTurn = 0;
+    bare.players[ME].monsters = [spark2, null, null];
+    const plain = act(bare, ME, { type: 'attack', uid: spark2.uid, targetUid: null });
+    ok(plain.players[FOE].lp === 4000 - 1600,
+      'CITY: CONTROL: and without it the HERO swings at its own number',
+      `LP ${plain.players[FOE].lp}`);
   }
 
   {
@@ -12828,16 +12856,19 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(dragon?.turnAtkMod === -2000, 'BARRIER: two HEROes take 2000 off the attacker', String(dragon?.turnAtkMod));
     ok(!out.players[ME].monsters.some((m) => m?.uid === a.uid),
       'BARRIER: and the attack still happens — 2500 still beats a 1600 Sparkman');
-    /* "Can be activated on each enemy attack" — a Continuous Trap that answers
-       one swing and then sits there is a card, not the card the owner asked
-       for. It has to still be on the table. */
-    ok(out.players[ME].spellTrap?.uid === bar.uid,
-      'BARRIER: and the card is still standing, ready for the next one',
+    /* A Normal Trap: one swing, one answer, and the card is spent. It was
+       Continuous while the wording was "each time"; the owner changed both, so
+       these two lines changed with them — the old pair asserted it was still
+       standing and that a second attacker paid too, which is now exactly what
+       must not happen. */
+    ok(!out.players[ME].spellTrap,
+      'BARRIER: and the card is spent — one swing, one answer',
       out.players[ME].spellTrap?.slug ?? '(gone)');
+    ok(out.players[ME].grave.some((c) => c.uid === bar.uid),
+      'BARRIER: it is in the Graveyard, not sitting in the zone',
+      out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
 
-    /* And it answers the second swing too, which is the whole of "each enemy
-       attack". A second attacker, a second toll — read off a monster that is
-       still alive to carry it. */
+    /* And a second attacker meets nothing, because there is nothing left. */
     const twice = { ...out };
     twice.players = { ...out.players, [FOE]: { ...out.players[FOE] } };
     const second = card(FOE, 'blue-eyes-ultimate-dragon');
@@ -12846,16 +12877,26 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     const free = twice.players[FOE].monsters.findIndex((m) => !m);
     twice.players[FOE].monsters[free] = second;
     let again = act(twice, FOE, { type: 'attack', uid: second.uid, targetUid: b.uid });
-    if (again.pending) again = act(again, again.pending.player, { type: 'respondTrap', uid: bar.uid });
+    /* Taken if it is offered, not waved away. Declining the window reads "full
+       weight" whether the card is spent or still standing, so the pin below it
+       passed with the barrier Continuous — blind to the one thing it is here
+       to watch. Reach for the barrier; the point is that it is not there. */
+    let offered = false;
     let g2 = 0;
     while (again.pending && g2++ < 4) {
       const p = again.pending;
-      again = act(again, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+      if (p.kind === 'trap' && p.options.includes(bar.uid)) {
+        offered = true;
+        again = act(again, p.player, { type: 'respondTrap', uid: bar.uid });
+      } else {
+        again = act(again, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+      }
     }
+    ok(!offered, 'BARRIER: and it is not offered a second swing', offered ? '(offered again)' : '(spent)');
     const twoDeep = again.players[FOE].monsters.find((m) => m?.uid === second.uid);
-    ok(twoDeep?.turnAtkMod === -1000,
-      'BARRIER: the second attacker pays the toll as well — one HERO left, one thousand',
-      String(twoDeep?.turnAtkMod));
+    ok(!twoDeep?.turnAtkMod,
+      'BARRIER: so the next attacker walks in at full weight',
+      String(twoDeep?.turnAtkMod ?? 0));
   }
 
   {
@@ -14273,42 +14314,57 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
   }
 
   {
-    /* A Fusion lands standing, and is asked its posture afterwards. */
+    /* The posture is asked *before* the Fusion lands, not after it: the modal
+       shows the card standing beside the same card kneeling and the answer
+       rides on the summon itself, so the monster is never seen in a posture
+       the player did not pick. Which puts the whole question on this action —
+       it has to honour both answers, and land the body face-up either way,
+       because a Fusion is never Set. */
     const s = jaden();
     const giant = card(ME, 'elemental-hero-thunder-giant');
     s.players[ME].extra = [giant, ...s.players[ME].extra];
     s.players[ME].monsters = [card(ME, 'elemental-hero-sparkman'), card(ME, 'elemental-hero-clayman'), null];
     s.players[ME].hand = [card(ME, 'polymerization')];
+    /* Something for the arrival to do, so the last pin can tell a summon that
+       resolved from one that was swallowed by the posture. */
+    s.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), null, null];
     const route = fusionOptions(s, ME).find((o) => o.extraUid === giant.uid);
     ok(!!route, 'POSE: the materials assemble it');
     if (route) {
-      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
-      let g = 0;
-      while (out.pending?.kind === 'choose' && g++ < 6) {
-        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
-      }
-      const body = out.players[ME].monsters.find((m) => m?.uid === giant.uid);
-      ok(body?.position === 'atk', 'POSE: it arrives standing', body?.position ?? '(nowhere)');
-      ok(body?.awaitingPose === true, 'POSE: and the question is open', String(body?.awaitingPose));
+      const land = (position: 'atk' | 'def') => {
+        let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position });
+        let g = 0;
+        while (out.pending?.kind === 'choose' && g++ < 6) {
+          out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+        }
+        return out;
+      };
 
-      const knelt = act(out, ME, { type: 'poseFusion', uid: giant.uid, position: 'def' });
-      const after = knelt.players[ME].monsters.find((m) => m?.uid === giant.uid);
-      ok(after?.position === 'def', 'POSE: and I may set it to guard instead', after?.position ?? '-');
-      ok(!after?.awaitingPose, 'POSE: the question closes once answered', String(after?.awaitingPose));
-      /* And it costs nothing: the once-a-turn position change is untouched, so
-         the monster may still be turned later in the turn like any other. */
-      ok(after?.positionChangedOnTurn == null,
+      const standing = land('atk');
+      const up = standing.players[ME].monsters.find((m) => m?.uid === giant.uid);
+      ok(up?.position === 'atk', 'POSE: answered "attack", it arrives standing', up?.position ?? '(nowhere)');
+      ok(up?.face === 'up', 'POSE: face-up — a Fusion is never Set', up?.face ?? '-');
+
+      const kneeling = land('def');
+      const down = kneeling.players[ME].monsters.find((m) => m?.uid === giant.uid);
+      ok(down?.position === 'def', 'POSE: answered "defence", it arrives kneeling', down?.position ?? '(nowhere)');
+      ok(down?.face === 'up', 'POSE: and still face-up, not a Set monster', down?.face ?? '-');
+      /* The posture is free: it does not spend the turn's one position change,
+         so the monster may still be turned later like any other. */
+      ok(down?.positionChangedOnTurn == null,
         'POSE: and it does not spend the turn\'s position change',
-        String(after?.positionChangedOnTurn));
-      /* Asked once. A second answer is refused rather than quietly re-posing. */
-      const again = applyAction(knelt, ME, { type: 'poseFusion', uid: giant.uid, position: 'atk' });
-      ok(!!again.error, 'POSE: and it is asked once, not every turn', again.error ?? '(allowed twice)');
-
-      /* An unanswered question lapses rather than following the monster into
-         a later turn — nothing can wedge waiting for it. */
-      const passed = act(out, ME, { type: 'endTurn' });
-      ok(!passed.players[ME].monsters.find((m) => m?.uid === giant.uid)?.awaitingPose,
-        'POSE: CONTROL: and left unanswered it simply fights');
+        String(down?.positionChangedOnTurn));
+      /* CONTROL. Two answers that both came back "atk" would pass everything
+         above except this, and an arrival whose effect the posture swallowed
+         would pass all of it — so the giant has to clear the dragon from its
+         knees exactly as it does standing. */
+      ok(up?.position !== down?.position,
+        'POSE: CONTROL: the two answers are two postures, not one');
+      for (const [what, out] of [['standing', standing], ['kneeling', kneeling]] as const) {
+        ok(!out.players[FOE].monsters.some((m) => m?.uid),
+          `POSE: CONTROL: and it clears the 2400s ${what}`,
+          out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+      }
     }
   }
 

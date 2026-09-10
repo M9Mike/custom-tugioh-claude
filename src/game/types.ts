@@ -1619,18 +1619,6 @@ export interface CardInstance {
    */
   positionChangedOnTurn?: number;
   /**
-   * This monster arrived by Fusion Summon this turn and has not been posed yet.
-   *
-   * A Fusion lands standing so the arrival reads as an arrival, and *then* its
-   * controller says whether it fights or guards — the choice comes after the
-   * animation, which is where the player is actually looking. Purely an offer:
-   * a Fusion nobody poses simply stays in Attack Position, so no board can
-   * wedge waiting for an answer, and the End Phase clears the flag either way.
-   * Spending it costs neither the once-a-turn position change nor a turn of
-   * summoning sickness — it is part of the summon, not a move after it.
-   */
-  awaitingPose?: boolean;
-  /**
    * Monsters absorbed by Relinquished / Thousand-Eyes Restrict.
    *
    * The owner travels with the slug. While absorbed a monster is nowhere —
@@ -1995,14 +1983,6 @@ export type DuelAction =
   /** Spend a card out of the hand for its `handDiscard` effect. */
   | { type: 'discardForEffect'; uid: string; targets?: string[] }
   | { type: 'fusionSummon'; extraUid: string; materials: string[]; zone: number; position: Position; targets?: string[] }
-  /**
-   * Stand the Fusion that just arrived up, or set it to guard.
-   *
-   * See `CardInstance.awaitingPose`: the posture is chosen after the summon
-   * animation rather than before it, so the player answers while looking at
-   * the monster. Declining is an answer too — the flag lapses and it fights.
-   */
-  | { type: 'poseFusion'; uid: string; position: Position }
   | {
       type: 'attack';
       uid: string;

@@ -670,6 +670,29 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
 }
 
 /**
+ * What this monster swings *with*, before anything on the other side of the
+ * battle answers it.
+ *
+ * Skyscraper's thousand lived inside the monster-versus-monster branch alone,
+ * so a HERO going around an empty board swung at its printed ATK — the city
+ * rose behind it only when there was something in the way. The card says "when
+ * an Elemental HERO monster you control attacks", with no restriction, and that
+ * includes attacking the player. Reported.
+ *
+ * `surgesVsStronger` is deliberately not here: it is a question about the thing
+ * being attacked, and a direct swing has nothing to be bigger than.
+ */
+function swingOf(state: DuelState, attacker: CardInstance, controller: PlayerId): number {
+  const f = effFlags(state, attacker, controller);
+  /* `doublesWhenAttacking` is its twin and is deliberately *not* here.
+     Metalmorph says "attacks at twice its ATK" and has the same argument for
+     applying to a direct swing — but it is a card in somebody else's deck and
+     doubling it is a balance change nobody asked for. Named here rather than
+     left as a silent inconsistency: the day that is wanted, this is the line. */
+  return effAtk(state, attacker, controller) + (f.surgesOnAttack ? 1000 : 0);
+}
+
+/**
  * Battle damage `attacker` inflicts, after whatever its own text charges for it.
  *
  * Sky Scout "can attack your opponent directly, but its battle damage is
@@ -937,7 +960,6 @@ function resetInstance(c: CardInstance) {
   c.controlRevertsOnTurn = undefined;
   c.effectUsedOnTurn = -1;
   c.positionChangedOnTurn = undefined;
-  c.awaitingPose = undefined;
   c.equippedTo = undefined;
   /* Cleared here and set again by the Special Summon itself, so a card that
      was bounced back to the hand and then properly Tribute Summoned cannot
@@ -4177,7 +4199,7 @@ function resolveBattle(state: DuelState) {
        expensive ("monsters needing lp to attack is a lot") and removed with
        the rest of that pricing pass; the flag went with it rather than
        staying behind as a branch no card can reach. */
-    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller), true);
+    const dmg = battleDamageFrom(state, attacker, controller, swingOf(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     /* "When it inflicts battle damage" means damage that actually landed.
        Measured rather than assumed: a Kuriboh thrown in front of the swing
@@ -4198,7 +4220,7 @@ function resolveBattle(state: DuelState) {
   const targetFound = findOnField(state, susp.targetUid);
   if (!targetFound) {
     // Target vanished — treat as a direct attack for the remaining swing.
-    const dmg = battleDamageFrom(state, attacker, controller, effAtk(state, attacker, controller), true);
+    const dmg = battleDamageFrom(state, attacker, controller, swingOf(state, attacker, controller), true);
     anim(state, { kind: 'directAttack', uid: attacker.uid, slug: attacker.slug, player: controller, amount: dmg });
     dealDamage(state, defender, dmg, true);
     return;
@@ -4463,9 +4485,6 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       m.turnFlags = {};
       m.attacksUsed = 0;
       m.attacked = [];
-      /* An offer nobody took. A Fusion left unposed simply fights, and the
-         question does not follow it into a later turn. */
-      m.awaitingPose = undefined;
     }
   }
   // Return borrowed monsters.
@@ -6223,25 +6242,6 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       checkExodia(state);
       return { state };
     }
-    case 'poseFusion': {
-      /* Part of the summon rather than a move after it, so it costs neither the
-         once-a-turn position change nor a turn of summoning sickness — and it
-         is offered exactly once, to the player whose Fusion just landed. */
-      const c = p.monsters.find((m) => m?.uid === action.uid);
-      if (!c || !c.awaitingPose) return { state: prev, error: 'That monster is not waiting to be posed.' };
-      c.awaitingPose = undefined;
-      if (action.position === c.position) return { state };
-      c.position = action.position;
-      log(
-        state,
-        `${displayName(state, c)} ${action.position === 'def' ? 'settles into a guard' : 'stands up to fight'}.`,
-        'summon',
-        pid,
-        logSlug(c)
-      );
-      anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: pid });
-      return { state };
-    }
     case 'ignition': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const c = p.monsters.find((m) => m?.uid === action.uid) ?? (p.field?.uid === action.uid ? p.field : null);
@@ -6375,12 +6375,6 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       ex.position = action.position ?? 'atk';
       ex.face = 'up';
       ex.summonedOnTurn = state.turn;
-      /* It lands standing and is asked its posture afterwards — see
-         `awaitingPose`. The offer is only worth making to a player who can
-         answer it, so a board acting on its own (the computer, the autoplayer)
-         is not left holding a question: the flag lapses on its own and the
-         monster simply fights. */
-      ex.awaitingPose = true;
       p.monsters[zone] = ex;
       log(state, `${p.name} Fusion Summons ${displayName(state, ex)}!`, 'summon', pid);
       anim(state, {

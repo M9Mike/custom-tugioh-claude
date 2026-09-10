@@ -910,15 +910,24 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const cardAnywhere = (uid: string): CardInstance | null =>
     mine.hand.find((c) => c.uid === uid) ?? mine.monsters.find((m) => m?.uid === uid) ?? null;
 
-  /* The Fusion that has just landed and has not been posed yet. Read off the
-     board rather than held in a ref, so a reload, a rejoin or a spectator's
-     view all agree about whether the question is still open. */
-  const posing = !spectator && myTurn ? (mine.monsters.find((m) => m?.awaitingPose) ?? null) : null;
+  /* The Fusion route waiting on its posture. Asked *before* the summon is
+     sent, so the monster is never seen standing in Attack Position first — the
+     owner's "before the monster appears in atk on the field" — and answered by
+     looking at the card each way up rather than by reading two numbers. */
+  const [posing, setPosing] = useState<{ extraUid: string; materials: string[] } | null>(null);
+  const poseCard = posing ? (mine.extra.find((e) => e.uid === posing.extraUid) ?? null) : null;
 
+  /* Which Fusion is settled first, then how it stands, then it arrives — so
+     the board never shows a posture the player did not choose. */
   const summonFusion = (f: { extraUid: string; materials: string[] }) => {
-    const zone = mine.monsters.findIndex((m) => !m);
     setFusionPick(false);
-    return run({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone: zone < 0 ? 0 : zone, position: 'atk' });
+    setPosing(f);
+  };
+
+  const landFusion = (f: { extraUid: string; materials: string[] }, position: 'atk' | 'def') => {
+    const zone = mine.monsters.findIndex((m) => !m);
+    setPosing(null);
+    return run({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone: zone < 0 ? 0 : zone, position });
   };
 
   const startSummon = (uid: string, position: 'atk' | 'def', face: 'up' | 'down') => {
@@ -2461,42 +2470,77 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       )}
 
-      {/* And how it stands, once you have watched it arrive. Gated on
-          `narrating` so the question waits for the fusion animation to finish
-          — the owner asked for it after the summon, which is where the player
-          is actually looking. Declining is an answer: the flag lapses at the
-          end of the turn and the monster fights. */}
-      {posing && !narrating && (
+      {/* And how it stands — asked before the body lands, on the owner's word.
+          It was the other way round: the Fusion arrived standing and was then
+          asked whether it meant to, which meant the player watched it take a
+          posture they had not picked and then saw it flip. So the answer is
+          taken here and rides on the `fusionSummon` action itself; nothing on
+          the server waits for it, because nothing is summoned until it comes.
+          Which also means nothing has been spent yet, so backing out is free
+          and the modal says so — a question with no way out is a trap when the
+          player only wanted to see what the Extra Deck held. */}
+      {posing && poseCard && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
              style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
-          <div className="panel grain w-full max-w-sm rounded p-4">
+          <div className="panel grain w-full max-w-md rounded p-4">
             <h3 className="font-display text-lg text-brassbright">How does it stand?</h3>
-            <p className="mt-1 text-xs text-ptext/85">
-              {shownName(posing) ?? CARDS[posing.slug]?.name} has arrived.
-            </p>
+            <p className="mt-1 text-xs text-ptext/85">{shownName(poseCard) ?? CARDS[poseCard.slug]?.name}</p>
             <div className="brass-rule my-3" />
-            <div className="flex justify-center gap-3">
+            {/* The card itself, each way up, rather than two numbers to read.
+                The defending one is laid on its side exactly as the board draws
+                it, so what the player picks is what they are about to see.
+                Both cards sit in the same square box, and `card-shell` is an
+                `aspect-ratio` with no width of its own — dropped straight into
+                a centred column it collapses to nothing, which is what the
+                standing one did. At 68% of the box a card is 99% of it tall,
+                so the same number frames it upright and on its side, and the
+                two columns stay the same size at every width. */}
+            <div className="flex items-stretch justify-center gap-3">
               <button
-                className="btn btn-primary flex-1 rounded px-3 py-2 text-[11px]"
+                className="selectable flex min-w-0 flex-1 flex-col items-center gap-2 rounded p-1 sm:max-w-[11rem]"
                 disabled={busy}
                 onClick={() => {
                   sfx.click();
-                  void run({ type: 'poseFusion', uid: posing.uid, position: 'atk' });
+                  void landFusion(posing, 'atk');
                 }}
               >
-                ⚔ Attack — {effAtk(state, posing, me)}
+                <span className="flex aspect-square w-full items-center justify-center">
+                  <span className="block w-[68%]">
+                    <GameCard card={poseCard} displayName={shownName(poseCard)} />
+                  </span>
+                </span>
+                <span className="font-display text-[11px] uppercase tracking-wide text-brassbright">
+                  ⚔ Attack
+                </span>
               </button>
               <button
-                className="btn flex-1 rounded px-3 py-2 text-[11px]"
+                className="selectable flex min-w-0 flex-1 flex-col items-center gap-2 rounded p-1 sm:max-w-[11rem]"
                 disabled={busy}
                 onClick={() => {
                   sfx.click();
-                  void run({ type: 'poseFusion', uid: posing.uid, position: 'def' });
+                  void landFusion(posing, 'def');
                 }}
               >
-                🛡 Defence — {effDef(state, posing, me)}
+                <span className="flex aspect-square w-full items-center justify-center">
+                  <span className="block w-[68%]">
+                    <GameCard card={poseCard} displayName={shownName(poseCard)} defending />
+                  </span>
+                </span>
+                <span className="font-display text-[11px] uppercase tracking-wide text-brass">
+                  🛡 Defence
+                </span>
               </button>
             </div>
+            <button
+              className="btn mt-3 rounded px-3 py-1.5 text-[10px]"
+              disabled={busy}
+              onClick={() => {
+                sfx.click();
+                setPosing(null);
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

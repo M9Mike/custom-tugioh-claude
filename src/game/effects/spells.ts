@@ -2040,17 +2040,13 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
     /* Not a wall any more: a toll. The blow still lands — it just lands a
        thousand lighter for every HERO standing behind the barrier, so three of
        them turn a Blue-Eyes into something Clayman can look at.
-       `reusable` because the owner asked for it on *each* attack: a Continuous
-       Trap that answers every swing rather than one, which is what makes a
-       single card worth the one Spell/Trap Zone this game gives you. */
-    /* Continuous by override, because the printed card is a Normal Trap and the
-       owner asked for one that answers *each* attack. `reusable` alone is not
-       enough and reads like it should be: it only decides whether a face-up
-       Trap keeps being offered, and a Normal Trap is in the Graveyard before it
-       can be offered anything. Both halves, or the card fires once. */
-    subKindOverride: 'Continuous',
+       A Normal Trap, on the owner's word: one swing, one answer, and the card
+       is spent. It was briefly Continuous — which took `subKindOverride` as
+       well as `reusable`, since a Normal Trap is in the Graveyard before the
+       second attack can be offered it — back when the wording was "each time".
+       That wording is gone and so is the machinery under it. */
     text:
-      'Continuous Trap: each time your opponent declares an attack, the attacking monster loses 1000 ATK ' +
+      'Trap: when your opponent declares an attack, the attacking monster loses 1000 ATK ' +
       'for each "Elemental HERO" monster you control. The attack still happens.',
     cry: 'Not this one.',
     effects: [
@@ -2058,7 +2054,6 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         trigger: 'trap',
         window: 'opponentDeclareAttack',
         label: 'Hero Barrier — take the weight out of it',
-        reusable: true,
         ops: [
           {
             op: 'gainAtk',
