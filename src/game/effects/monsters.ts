@@ -4760,7 +4760,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'This monster can attack your opponent directly. When it inflicts battle damage: destroy every monster your opponent controls ' +
       'and inflict damage to your opponent equal to their combined ATK. ' +
       'This monster cannot be attacked, and while it is the only monster you control your opponent may attack you directly. ' +
-      'When this monster is sent to the Graveyard: add 1 card from your Deck to your hand.',
+      /* "From the field" said out loud, because every other HERO in this deck
+         prints the same sentence without it and means the wider trigger. Two
+         cards reading identically and behaving differently is how this one got
+         swept into a bulk change in the first place. */
+      'When this monster is sent from the field to the Graveyard: add 1 card from your Deck to your hand.',
     cry: 'Kuri-kuri!',
     summonOnlyBy: ['transcendent-wings'],
     effects: [
@@ -4776,8 +4780,15 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
           { op: 'damage', scale: 'destroyedAtk', to: 'opp' },
         ],
       },
+      /* `onSentToGrave` — the field-only one, and the only card in this deck
+         that wants it. The owner's line for LV10 is "goes to the graveyard
+         *from the field* (any way)", where the "(any way)" is about how it
+         leaves the board and not about which zone it came from. Every HERO
+         beside it says plain "when sent to the Graveyard" and reads the wider
+         trigger; this one was swept along with them by a bulk change and would
+         have paid out on a copy milled off the top of the Deck. */
       {
-        trigger: 'onAnyToGrave',
+        trigger: 'onSentToGrave',
         targets: 1,
         ops: [{ op: 'search', filter: {} }],
       },

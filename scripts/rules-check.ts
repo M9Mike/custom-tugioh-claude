@@ -14057,6 +14057,50 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(f.players[ME].hand.some((c) => c.slug === 'elemental-hero-bladedge'),
       'ROAD: CONTROL: and a death on the field still names it too',
       f.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+
+    /* And the one card in the deck that means the *narrow* sentence. Winged
+       Kuriboh LV10 says "sent from the field to the Graveyard", so a copy
+       thrown out of the hand pays nothing — which is the distinction a bulk
+       change flattened once already, and which no check was watching. */
+    const held = jaden();
+    const lv10 = card(ME, 'winged-kuriboh-lv10');
+    const engine2 = card(ME, 'elemental-hero-wild-wingman');
+    engine2.summonedOnTurn = 0;
+    engine2.effectUsedOnTurn = -1;
+    held.players[ME].monsters = [engine2, null, null];
+    held.players[ME].hand = [lv10];
+    held.players[ME].deck = [card(ME, 'pot-of-greed')];
+    held.players[FOE].spellTrap = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    const bIdx = ignitionOptions(held, ME, engine2)[0]?.index;
+    let thrown = act(held, ME, { type: 'ignition', uid: engine2.uid, effectIndex: bIdx, targets: [lv10.uid] });
+    let tg = 0;
+    while (thrown.pending?.kind === 'choose' && tg++ < 6) {
+      thrown = act(thrown, thrown.pending.player, { type: 'chooseCard', uids: [thrown.pending.options[0]] });
+    }
+    ok(thrown.players[ME].grave.some((c) => c.uid === lv10.uid),
+      'ROAD: LV10 discarded out of the hand reaches the pile',
+      thrown.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
+    ok(!thrown.players[ME].hand.some((c) => c.slug === 'pot-of-greed'),
+      'ROAD: and pays nothing — its sentence says "from the field"',
+      thrown.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+
+    /* CONTROL: off the field, it pays. */
+    const stood = jaden();
+    const lv10b = card(ME, 'winged-kuriboh-lv10');
+    lv10b.summonedOnTurn = 0;
+    stood.players[ME].monsters = [lv10b, null, null];
+    stood.players[ME].deck = [card(ME, 'pot-of-greed')];
+    const sweep = card(FOE, 'dark-hole');
+    stood.players[FOE].hand = [sweep];
+    stood.active = FOE;
+    let gone = act(stood, FOE, { type: 'activateSpell', uid: sweep.uid });
+    let gg = 0;
+    while (gone.pending?.kind === 'choose' && gg++ < 6) {
+      gone = act(gone, gone.pending.player, { type: 'chooseCard', uids: [gone.pending.options[0]] });
+    }
+    ok(gone.players[ME].hand.some((c) => c.slug === 'pot-of-greed'),
+      'ROAD: CONTROL: but off the field it names a card out of the Deck',
+      gone.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
   }
 
   {
