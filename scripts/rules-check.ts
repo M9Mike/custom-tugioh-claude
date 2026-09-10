@@ -13950,7 +13950,7 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
 
     /* And Necroshade, which reaches two zones at once — "from your hand or
        Deck (you pick)" was one pool the picker could not describe. */
-    const shade = specChainFor('elemental-hero-necroshade', 'onSentToGrave')[0];
+    const shade = specChainFor('elemental-hero-necroshade', 'onAnyToGrave')[0];
     ok(!!shade, 'CALL: Necroshade asks too', shade ? shade.prompt : '(asks nothing)');
     ok(shade?.zone === 'handOrDeck', 'CALL: across the hand and the Deck together', shade?.zone ?? '-');
 
@@ -14007,6 +14007,148 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(out.players[ME].grave.some((c) => c.uid === spend.uid),
       'PAY: while the one I named is the one that went',
       out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
+  }
+
+  {
+    /* Sent to the Graveyard means sent to the Graveyard. Sparkman and Clayman
+       fed to a Polymerization *out of the hand* fetched nothing, because every
+       HERO was written on `onSentToGrave` — which is the field-only trigger.
+       The owner's text says neither "destroyed" nor "from the field". */
+    const s = jaden();
+    const giant = card(ME, 'elemental-hero-thunder-giant');
+    s.players[ME].extra = [giant, ...s.players[ME].extra];
+    s.players[ME].hand = [
+      card(ME, 'elemental-hero-sparkman'),
+      card(ME, 'elemental-hero-clayman'),
+      card(ME, 'polymerization'),
+    ];
+    /* What each of them names on the way down, waiting in the Deck. */
+    s.players[ME].deck = [card(ME, 'elemental-hero-bladedge'), card(ME, 'elemental-hero-bubbleman')];
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === giant.uid);
+    ok(!!route, 'ROAD: two materials out of the hand assemble it');
+    if (route) {
+      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 0, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 8) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      const hand = out.players[ME].hand.map((c) => c.slug);
+      ok(hand.includes('elemental-hero-bladedge'),
+        'ROAD: Sparkman spent from the hand still names Bladedge', hand.join(',') || '(empty)');
+      ok(hand.includes('elemental-hero-bubbleman'),
+        'ROAD: and Clayman still names Bubbleman', hand.join(',') || '(empty)');
+    }
+
+    /* CONTROL: and the road off the field still works, which is the one that
+       already did — the trigger widened, it did not move. */
+    const field = jaden();
+    const spark = card(ME, 'elemental-hero-sparkman');
+    spark.summonedOnTurn = 0;
+    field.players[ME].monsters = [spark, null, null];
+    field.players[ME].deck = [card(ME, 'elemental-hero-bladedge')];
+    const hole = card(FOE, 'dark-hole');
+    field.players[FOE].hand = [hole];
+    field.active = FOE;
+    let f = act(field, FOE, { type: 'activateSpell', uid: hole.uid });
+    let fg = 0;
+    while (f.pending?.kind === 'choose' && fg++ < 6) {
+      f = act(f, f.pending.player, { type: 'chooseCard', uids: [f.pending.options[0]] });
+    }
+    ok(f.players[ME].hand.some((c) => c.slug === 'elemental-hero-bladedge'),
+      'ROAD: CONTROL: and a death on the field still names it too',
+      f.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+  }
+
+  {
+    /* Darkbright bills them after the damage step, and bills them even when
+       the battle killed it. Written on `onDeclareAttack` + `onAttacked` it did
+       neither: both resolve before the numbers are compared, and neither
+       reaches a monster that has just been broken. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const db = card(ME, 'elemental-hero-darkbright'); // 2000
+    db.summonedOnTurn = 0;
+    s.players[ME].monsters = [db, null, null];
+    const bews = card(FOE, 'blue-eyes-white-dragon'); // 3000 — it dies
+    bews.summonedOnTurn = 0;
+    s.players[FOE].monsters = [bews, null, null];
+    let out = act(s, FOE, { type: 'attack', uid: bews.uid, targetUid: db.uid });
+    let g = 0;
+    while (out.pending && g++ < 4) {
+      const p = out.pending;
+      out = act(out, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
+    }
+    ok(!out.players[ME].monsters.some((m) => m?.uid === db.uid), 'BILL: the 3000 breaks it');
+    ok(out.players[FOE].lp === 4000 - 1000,
+      'BILL: and it bills them the thousand from the Graveyard',
+      `LP ${out.players[FOE].lp}`);
+
+    /* And when it is the one swinging and dying — with the ordering made
+       visible. On the two before-damage triggers a Darkbright swinging into a
+       wall billed them *first*, so an opponent sitting on exactly 1000 died to
+       the effect before the battle ever resolved: I paid nothing and Darkbright
+       never fell. Bills after the damage step, both of those happen and then
+       they go to nought. "LP 0 either way" is what made the old pin blind. */
+    const swing = jaden();
+    swing.phase = 'battle';
+    const db2 = card(ME, 'elemental-hero-darkbright'); // 2000
+    db2.summonedOnTurn = 0;
+    swing.players[ME].monsters = [db2, null, null];
+    const wall = card(FOE, 'blue-eyes-white-dragon'); // 3000
+    wall.summonedOnTurn = 0;
+    swing.players[FOE].monsters = [wall, null, null];
+    swing.players[FOE].lp = 1000; // exactly what the effect is worth
+    const dead = act(swing, ME, { type: 'attack', uid: db2.uid, targetUid: wall.uid });
+    ok(!dead.players[ME].monsters.some((m) => m?.uid === db2.uid),
+      'BILL: the battle happens first — it swings into a 3000 and falls',
+      dead.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(dead.players[ME].lp === 4000 - 1000,
+      'BILL: and the battle damage came out of me before the bill landed',
+      `LP ${dead.players[ME].lp}`);
+    ok(dead.players[FOE].lp === 0,
+      'BILL: and then they are billed from the Graveyard, to nought',
+      `LP ${dead.players[FOE].lp}`);
+  }
+
+  {
+    /* A Fusion lands standing, and is asked its posture afterwards. */
+    const s = jaden();
+    const giant = card(ME, 'elemental-hero-thunder-giant');
+    s.players[ME].extra = [giant, ...s.players[ME].extra];
+    s.players[ME].monsters = [card(ME, 'elemental-hero-sparkman'), card(ME, 'elemental-hero-clayman'), null];
+    s.players[ME].hand = [card(ME, 'polymerization')];
+    const route = fusionOptions(s, ME).find((o) => o.extraUid === giant.uid);
+    ok(!!route, 'POSE: the materials assemble it');
+    if (route) {
+      let out = act(s, ME, { type: 'fusionSummon', extraUid: route.extraUid, materials: route.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 6) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      const body = out.players[ME].monsters.find((m) => m?.uid === giant.uid);
+      ok(body?.position === 'atk', 'POSE: it arrives standing', body?.position ?? '(nowhere)');
+      ok(body?.awaitingPose === true, 'POSE: and the question is open', String(body?.awaitingPose));
+
+      const knelt = act(out, ME, { type: 'poseFusion', uid: giant.uid, position: 'def' });
+      const after = knelt.players[ME].monsters.find((m) => m?.uid === giant.uid);
+      ok(after?.position === 'def', 'POSE: and I may set it to guard instead', after?.position ?? '-');
+      ok(!after?.awaitingPose, 'POSE: the question closes once answered', String(after?.awaitingPose));
+      /* And it costs nothing: the once-a-turn position change is untouched, so
+         the monster may still be turned later in the turn like any other. */
+      ok(after?.positionChangedOnTurn == null,
+        'POSE: and it does not spend the turn\'s position change',
+        String(after?.positionChangedOnTurn));
+      /* Asked once. A second answer is refused rather than quietly re-posing. */
+      const again = applyAction(knelt, ME, { type: 'poseFusion', uid: giant.uid, position: 'atk' });
+      ok(!!again.error, 'POSE: and it is asked once, not every turn', again.error ?? '(allowed twice)');
+
+      /* An unanswered question lapses rather than following the monster into
+         a later turn — nothing can wedge waiting for it. */
+      const passed = act(out, ME, { type: 'endTurn' });
+      ok(!passed.players[ME].monsters.find((m) => m?.uid === giant.uid)?.awaitingPose,
+        'POSE: CONTROL: and left unanswered it simply fights');
+    }
   }
 
   {

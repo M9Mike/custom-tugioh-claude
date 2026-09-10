@@ -910,6 +910,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   const cardAnywhere = (uid: string): CardInstance | null =>
     mine.hand.find((c) => c.uid === uid) ?? mine.monsters.find((m) => m?.uid === uid) ?? null;
 
+  /* The Fusion that has just landed and has not been posed yet. Read off the
+     board rather than held in a ref, so a reload, a rejoin or a spectator's
+     view all agree about whether the question is still open. */
+  const posing = !spectator && myTurn ? (mine.monsters.find((m) => m?.awaitingPose) ?? null) : null;
+
   const summonFusion = (f: { extraUid: string; materials: string[] }) => {
     const zone = mine.monsters.findIndex((m) => !m);
     setFusionPick(false);
@@ -2452,6 +2457,46 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <button className="btn mt-3 rounded px-3 py-1.5 text-[10px]" onClick={() => setMode({ kind: 'idle' })}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* And how it stands, once you have watched it arrive. Gated on
+          `narrating` so the question waits for the fusion animation to finish
+          — the owner asked for it after the summon, which is where the player
+          is actually looking. Declining is an answer: the flag lapses at the
+          end of the turn and the monster fights. */}
+      {posing && !narrating && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+             style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
+          <div className="panel grain w-full max-w-sm rounded p-4">
+            <h3 className="font-display text-lg text-brassbright">How does it stand?</h3>
+            <p className="mt-1 text-xs text-ptext/85">
+              {shownName(posing) ?? CARDS[posing.slug]?.name} has arrived.
+            </p>
+            <div className="brass-rule my-3" />
+            <div className="flex justify-center gap-3">
+              <button
+                className="btn btn-primary flex-1 rounded px-3 py-2 text-[11px]"
+                disabled={busy}
+                onClick={() => {
+                  sfx.click();
+                  void run({ type: 'poseFusion', uid: posing.uid, position: 'atk' });
+                }}
+              >
+                ⚔ Attack — {effAtk(state, posing, me)}
+              </button>
+              <button
+                className="btn flex-1 rounded px-3 py-2 text-[11px]"
+                disabled={busy}
+                onClick={() => {
+                  sfx.click();
+                  void run({ type: 'poseFusion', uid: posing.uid, position: 'def' });
+                }}
+              >
+                🛡 Defence — {effDef(state, posing, me)}
+              </button>
+            </div>
           </div>
         </div>
       )}

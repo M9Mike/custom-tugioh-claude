@@ -4502,7 +4502,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ],
       },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-burstinatrix'] }, orGrave: true }],
       },
     ],
@@ -4519,7 +4519,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'damage', amount: 500, scale: 'perOppHandCard', to: 'opp' }] },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-avian'] }, orGrave: true }],
       },
     ],
@@ -4539,7 +4539,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
          from under a card back. */
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'], evenFaceDown: true } },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bubbleman'] }, orGrave: true }],
       },
     ],
@@ -4566,7 +4566,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bladedge'] }, orGrave: true }],
       },
     ],
@@ -4594,7 +4594,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }],
       },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-clayman'] }, orGrave: true }],
       },
     ],
@@ -4624,7 +4624,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [{ op: 'destroy', target: sel('opp', 'strongest', { zone: 'backrow' }) }],
       },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-necroshade'] }, orGrave: true }],
       },
     ],
@@ -4641,7 +4641,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     cry: 'Rise, in my place!',
     effects: [
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         targets: 1,
         ops: [
           /* No ceiling and no zone left out: the ladder the owner asked for is
@@ -4685,7 +4685,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ops: [{ op: 'summonSelf', position: 'atk', face: 'up' }],
       },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-sparkman'] }, orGrave: true }],
       },
     ],
@@ -4777,7 +4777,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         ],
       },
       {
-        trigger: 'onSentToGrave',
+        trigger: 'onAnyToGrave',
         targets: 1,
         ops: [{ op: 'search', filter: {} }],
       },
@@ -4919,7 +4919,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     fusionMaterials: ['elemental-hero-burstinatrix', 'elemental-hero-bubbleman'],
     effects: [
       { trigger: 'onBattleDestroy', ops: [{ op: 'heal', scale: 'destroyedAtk', to: 'own' }] },
-      { trigger: 'onSentToGrave', ops: [{ op: 'heal', amount: 3800, to: 'own' }] },
+      { trigger: 'onAnyToGrave', ops: [{ op: 'heal', amount: 3800, to: 'own' }] },
     ],
   },
 
@@ -4967,22 +4967,26 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
 
   'elemental-hero-darkbright': {
     /* The 600-on-a-kill is gone; what is left bills them for the battle itself,
-       won or lost, swung or received. Written as two triggers because the
-       engine has no single "was in a battle" beat and inventing one to say what
-       two existing ones already say is a rule with two readings.
+       won or lost, swung or received. It was written as `onDeclareAttack` plus
+       `onAttacked`, which I claimed said the same thing as one beat — it does
+       not. Both of those resolve *before* the numbers are compared, so the
+       thousand landed ahead of the battle damage, and neither reaches a monster
+       the battle has just broken: a Darkbright that traded itself away collected
+       nothing. `onBattle` is the moment after, on either end of the fight, from
+       the Graveyard if that is where it ended up. Reported.
        And it gets up: broken in battle it lies in the Graveyard for the rest of
        the turn and stands back up before the turn closes, kneeling — a monster
        that has just been killed does not come back swinging. */
     text:
       'Fusion: Elemental HERO Sparkman + Elemental HERO Necroshade. This monster inflicts piercing battle damage. ' +
-      'Each time this monster attacks or is attacked: inflict 1000 damage to your opponent. ' +
+      'Each time this monster is in a battle, attacking or attacked: after the damage step, inflict 1000 damage to your opponent — ' +
+      'even if this monster was destroyed by that battle. ' +
       'If this monster is destroyed by battle: at the end of that turn, Special Summon it in Defence Position.',
     cry: 'Spark of the dark!',
     fusionMaterials: ['elemental-hero-sparkman', 'elemental-hero-necroshade'],
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
-      { trigger: 'onDeclareAttack', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
-      { trigger: 'onAttacked', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
+      { trigger: 'onBattle', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
       { trigger: 'onDestroyedByBattle', ops: [{ op: 'reviveSelfAtEndPhase' }] },
     ],
   },

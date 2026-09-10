@@ -190,6 +190,21 @@ export type Trigger =
    * — there is no monster there to fail against.
    */
   | 'onAttackNoKill'
+  /**
+   * This monster was in a battle — either end of it — and the damage step is
+   * over.
+   *
+   * The one beat `onDeclareAttack` and `onAttacked` together cannot give:
+   * both of those resolve *before* the numbers are compared, and both are
+   * skipped entirely if the monster is broken. Darkbright bills them for the
+   * battle whichever way it was pointed and whether or not it survived it, so
+   * it needs the moment after — and the card is fired from the Graveyard if
+   * that is where it ended up, exactly as `onDestroyedByBattle` is.
+   *
+   * Fires once per battle per monster, on both sides. A direct swing has only
+   * an attacker in it, and it fires for that one.
+   */
+  | 'onBattle'
   /** This monster inflicted battle damage to the opponent. */
   | 'onDealBattleDamage'
   /** This monster destroyed another monster in battle. */
@@ -1604,6 +1619,18 @@ export interface CardInstance {
    */
   positionChangedOnTurn?: number;
   /**
+   * This monster arrived by Fusion Summon this turn and has not been posed yet.
+   *
+   * A Fusion lands standing so the arrival reads as an arrival, and *then* its
+   * controller says whether it fights or guards — the choice comes after the
+   * animation, which is where the player is actually looking. Purely an offer:
+   * a Fusion nobody poses simply stays in Attack Position, so no board can
+   * wedge waiting for an answer, and the End Phase clears the flag either way.
+   * Spending it costs neither the once-a-turn position change nor a turn of
+   * summoning sickness — it is part of the summon, not a move after it.
+   */
+  awaitingPose?: boolean;
+  /**
    * Monsters absorbed by Relinquished / Thousand-Eyes Restrict.
    *
    * The owner travels with the slug. While absorbed a monster is nowhere —
@@ -1948,6 +1975,14 @@ export type DuelAction =
   /** Spend a card out of the hand for its `handDiscard` effect. */
   | { type: 'discardForEffect'; uid: string; targets?: string[] }
   | { type: 'fusionSummon'; extraUid: string; materials: string[]; zone: number; position: Position; targets?: string[] }
+  /**
+   * Stand the Fusion that just arrived up, or set it to guard.
+   *
+   * See `CardInstance.awaitingPose`: the posture is chosen after the summon
+   * animation rather than before it, so the player answers while looking at
+   * the monster. Declining is an answer too — the flag lapses and it fights.
+   */
+  | { type: 'poseFusion'; uid: string; position: Position }
   | {
       type: 'attack';
       uid: string;

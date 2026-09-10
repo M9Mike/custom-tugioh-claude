@@ -936,6 +936,7 @@ function resetInstance(c: CardInstance) {
   c.controlRevertsOnTurn = undefined;
   c.effectUsedOnTurn = -1;
   c.positionChangedOnTurn = undefined;
+  c.awaitingPose = undefined;
   c.equippedTo = undefined;
   /* Cleared here and set again by the Special Summon itself, so a card that
      was bounced back to the hand and then properly Tribute Summoned cannot
@@ -4103,6 +4104,10 @@ function resolveBattle(state: DuelState) {
     if (!state.winner && state.players[defender].lp < before) {
       fireTriggers(state, attacker, controller, 'onDealBattleDamage', { attackerUid: attacker.uid });
     }
+    /* A direct swing is a battle with one monster in it, and that one still
+       gets the beat — a Darkbright that goes around an empty board bills them
+       for the trip as well. */
+    if (!state.winner) fireTriggers(state, attacker, controller, 'onBattle', { attackerUid: attacker.uid });
     return;
   }
 
@@ -4343,6 +4348,18 @@ function resolveBattle(state: DuelState) {
   if (!broke && !state.winner && findOnField(state, attacker.uid)) {
     fireTriggers(state, attacker, controller, 'onAttackNoKill', { attackerUid: attacker.uid, targetUid: target.uid });
   }
+  /* And the beat both sides get whatever happened: the damage step is over,
+     and this fires whether the monster is standing in its zone or lying in the
+     Graveyard. Darkbright bills them for the battle either way round and even
+     when the battle killed it — which is exactly what `onDeclareAttack` and
+     `onAttacked` cannot say, since both of those resolve before the numbers
+     are compared and neither reaches a monster that has just been broken. */
+  if (!state.winner) {
+    fireTriggers(state, attacker, controller, 'onBattle', { attackerUid: attacker.uid, targetUid: target.uid });
+    if (!state.winner) {
+      fireTriggers(state, target, defender, 'onBattle', { attackerUid: attacker.uid, targetUid: target.uid });
+    }
+  }
 
   resolveFlip();
   resolveAfterDamage();
@@ -4362,6 +4379,9 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       m.turnFlags = {};
       m.attacksUsed = 0;
       m.attacked = [];
+      /* An offer nobody took. A Fusion left unposed simply fights, and the
+         question does not follow it into a later turn. */
+      m.awaitingPose = undefined;
     }
   }
   // Return borrowed monsters.
@@ -6119,6 +6139,25 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       checkExodia(state);
       return { state };
     }
+    case 'poseFusion': {
+      /* Part of the summon rather than a move after it, so it costs neither the
+         once-a-turn position change nor a turn of summoning sickness — and it
+         is offered exactly once, to the player whose Fusion just landed. */
+      const c = p.monsters.find((m) => m?.uid === action.uid);
+      if (!c || !c.awaitingPose) return { state: prev, error: 'That monster is not waiting to be posed.' };
+      c.awaitingPose = undefined;
+      if (action.position === c.position) return { state };
+      c.position = action.position;
+      log(
+        state,
+        `${displayName(state, c)} ${action.position === 'def' ? 'settles into a guard' : 'stands up to fight'}.`,
+        'summon',
+        pid,
+        logSlug(c)
+      );
+      anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: pid });
+      return { state };
+    }
     case 'ignition': {
       if (state.phase !== 'main') return { state: prev, error: 'Only during your Main Phase.' };
       const c = p.monsters.find((m) => m?.uid === action.uid) ?? (p.field?.uid === action.uid ? p.field : null);
@@ -6252,6 +6291,12 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       ex.position = action.position ?? 'atk';
       ex.face = 'up';
       ex.summonedOnTurn = state.turn;
+      /* It lands standing and is asked its posture afterwards — see
+         `awaitingPose`. The offer is only worth making to a player who can
+         answer it, so a board acting on its own (the computer, the autoplayer)
+         is not left holding a question: the flag lapses on its own and the
+         monster simply fights. */
+      ex.awaitingPose = true;
       p.monsters[zone] = ex;
       log(state, `${p.name} Fusion Summons ${displayName(state, ex)}!`, 'summon', pid);
       anim(state, {
