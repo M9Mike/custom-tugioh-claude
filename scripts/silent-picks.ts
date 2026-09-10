@@ -66,6 +66,12 @@ function flatten(ops: Op[]): Op[] {
   return out;
 }
 
+/** Does this one op reach into a pool the player should be choosing from? */
+function wantsAPick(op: Op): boolean {
+  if (PICKS_FROM_A_POOL.has(op.op)) return true;
+  return 'target' in op && !!op.target && op.target.pick === 'chosen';
+}
+
 function silentOps(eff: CardEffect): Op[] {
   return flatten(eff.ops).filter((op) => {
     if (decided(op)) return false;
@@ -88,13 +94,38 @@ for (const def of Object.values(CARDS) as CardDef[]) {
     const wantsDiscard = !!eff.cost?.discard;
     if (!silent.length && !wantsCost && !wantsDiscard) return;
     const asked = specChainForEffect(def.slug, index);
-    if (asked.length) return;
-    const why = silent.length
-      ? `${silent.map((o) => o.op).join(', ')} picks from a pool with no prompt`
-      : wantsCost
-        ? 'a Tribute cost with no prompt'
-        : 'a discard cost with no prompt';
-    faults.push({ slug: def.slug, name: def.name, index, trigger: eff.trigger, why });
+    if (!asked.length) {
+      const why = silent.length
+        ? `${silent.map((o) => o.op).join(', ')} picks from a pool with no prompt`
+        : wantsCost
+          ? 'a Tribute cost with no prompt'
+          : 'a discard cost with no prompt';
+      faults.push({ slug: def.slug, name: def.name, index, trigger: eff.trigger, why });
+      return;
+    }
+    /* And one prompt per pick, not one prompt for all of them. A card asking
+       *some* of its questions passes the line above and is still choosing for
+       the player: Wroughtweiler makes four picks out of three different pools
+       and was asked twice, one of those prompts standing in for three with the
+       effect's whole `targets` count on it. Reported.
+       A cascade contributes one question however many branches it carries —
+       only one branch runs — which is why the count is taken from the ops as
+       the chain sees them rather than from `flatten`. */
+    const asking = eff.ops.filter((op) => {
+      if (decided(op)) return false;
+      if (op.op === 'cascade') return op.branches.some((b) => b.ops.some((o) => !decided(o) && wantsAPick(o)));
+      return wantsAPick(op);
+    }).length;
+    const want = asking + (wantsCost || wantsDiscard ? 1 : 0);
+    if (asked.length < want) {
+      faults.push({
+        slug: def.slug,
+        name: def.name,
+        index,
+        trigger: eff.trigger,
+        why: `makes ${want} pick(s) and asks ${asked.length} question(s)`,
+      });
+    }
   });
 }
 

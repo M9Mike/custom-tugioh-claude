@@ -144,14 +144,32 @@ function chosenSpec(op: Op): TargetSpec | null {
                  sentence at all now that it is put to the player. */
               : op.op === 'shuffleIntoDeck'
                 ? 'Choose a card to shuffle into the Deck'
-                : 'Choose a target';
+                : op.op === 'returnToExtra'
+                  ? 'Choose a Fusion to return to the Extra Deck'
+                  : op.op === 'banish'
+                    ? 'Choose a card to banish'
+                    : op.op === 'swapControl'
+                      ? 'Choose a monster to take'
+                      : 'Choose a target';
   /* Which op is asking, so the picker can drop the monsters it would
      leave exactly as it found them. Stop Defense beside one kneeling
      monster and one already attacking is a legal card with one real
      answer, and the modal offered both — so the pick landed on the
      standing one and the card was spent changing nothing. The gate reads
      the same rule; the two must not disagree about which targets exist. */
-  return { side: op.target.side, zone, count: op.target.count ?? 1, prompt: verb, changing: op.op };
+  /* The selector's own filter, which this dropped. Wroughtweiler's last pick
+     is "1 Fusion monster from your Graveyard" and the modal laid out the whole
+     pile — six cards where two were legal answers — so the player could name a
+     Polymerization and watch the op quietly do nothing with it. The picker and
+     the engine must not hold two opinions about which cards qualify. */
+  return {
+    side: op.target.side,
+    zone,
+    count: op.target.count ?? 1,
+    prompt: verb,
+    changing: op.op,
+    filter: op.target.filter,
+  };
 }
 
 /**
@@ -302,24 +320,39 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
       filter: op.filter,
     };
   }
+  /* Taking a card back out of a Graveyard. Graverobber is a player standing
+     right there pressing a button, and Magician of Faith is a card turning
+     face-up in the middle of somebody else's attack — the same question either
+     way. It lived a level up, in the head-only path, so a `stealFromGrave` that
+     was not the *first* asking op on its card produced no question at all:
+     Wroughtweiler lifts a HERO out of the pile as its second of four picks and
+     was never asked which. Reported. */
+  if (op.op === 'stealFromGrave') {
+    return {
+      /* An unset `from` is "either Graveyard", not the opponent's — which is
+         what the engine has always done with it (`[own, theirs]`, own first)
+         and the opposite of what this line used to say. Magician of Faith
+         reaches into both piles and the picker would have offered her only the
+         enemy's, so the one card she is actually for — your own Monster Reborn
+         — was not among her answers. */
+      side: op.from === 'own' ? 'own' : op.from === 'opp' ? 'opp' : 'both',
+      zone: 'grave',
+      count: 1,
+      prompt: 'Choose a card to take from the Graveyard',
+      filter: op.filter,
+    };
+  }
   return chosenSpec(op);
 }
 
-function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
+/** The question a cost asks, if it asks one. Always the card's first. */
+function costSpec(eff: CardEffect): TargetSpec | null {
   /* A cost is a choice too, and it is the *first* one: a card that pays a price
      before it does anything is asked about the price first. Catapult Turtle
      says "Tribute 1 monster you control" and asked for nothing, so the engine
      paid with whatever happened to be standing in the first zone — invisible
      while the damage was a flat 1000, and the whole card once it is worth what
-     it throws. `tributeSelf` pays with the card itself and has nothing to ask.
-
-     Asked above `scanOps` rather than below it. Below, the ordering held only
-     by accident — because the one op that would have jumped it, a Special
-     Summon out of the Deck, was left out of `scanOps` for exactly that reason.
-     That silence then let a *later* op take the card's first question instead:
-     Necroshade summons and then searches, and with the summon unasked the
-     search's prompt came first. The rule is about the cost, so it lives on the
-     cost. */
+     it throws. `tributeSelf` pays with the card itself and has nothing to ask. */
   if (eff.cost?.tribute && !eff.cost.tributeSelf) {
     return {
       side: 'own',
@@ -331,8 +364,7 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
   }
   /* And so is a discard. Elemental HERO Wild Wingman throws a card away to fire
      its button and the engine took whatever lay leftmost in the hand — the same
-     fault as the Tribute above, on the other kind of price. Reported. The
-     hand-summon route has always honoured a named card; this one did not. */
+     fault as the Tribute above, on the other kind of price. Reported. */
   if (eff.cost?.discard) {
     return {
       side: 'own',
@@ -344,103 +376,34 @@ function specFromEffect(eff: CardEffect, owner: string): TargetSpec | null {
       prompt: 'Choose a card to discard',
     };
   }
-  const spec = scanOps(eff.ops, owner);
-  if (spec) return { ...spec, count: Math.max(spec.count, eff.targets ?? 1) };
-  /* Calling a monster out of the Deck. `scanOps` handles a Special Summon from
-     the hand or the Graveyard and stops short of the Deck, which is a
-     deliberate split rather than an oversight: this branch sits *after* the
-     Tribute cost above, so a card that pays a price first is asked about the
-     price first, and it cannot move into `scanOps` for that reason alone —
-     Black Illusion Ritual would match it there, and its first question is which
-     monster to Tribute, the summon coming after and asked by
-     `summonRiderSpec`.
-
-     What used to gate it was the effect's own `targets`, one card opting in at
-     a time. Gravekeeper's Spy names *nine* possible Flip monsters and took the
-     biggest one every single time, reported by the owner as "it should allow me
-     to select which monster I would special summon" — and the fix was to switch
-     that one card on. Eighty-odd others were still choosing for themselves, so
-     the gate has gone; `worthAsking` keeps the silence where silence was the
-     point. */
-  {
-    const summon = eff.ops.find((o) => o.op === 'specialSummon' && !selfRuled(o));
-    if (summon && summon.op === 'specialSummon') {
-      const zones = Array.isArray(summon.from) ? summon.from : [summon.from];
-      if (zones.includes('deck')) {
-        const zone: TargetSpec['zone'] = zones.includes('grave')
-          ? zones.includes('hand')
-            ? 'handOrDeckOrGrave'
-            : 'deckOrGrave'
-          : zones.includes('hand')
-            ? 'handOrDeck'
-            : 'deck';
-        return {
-          side: summon.side === 'both' ? 'both' : 'own',
-          zone,
-          count: summon.count ?? 1,
-          prompt: 'Choose a monster to Special Summon',
-          filter: { ...(summon.filter ?? {}), kind: 'monster' },
-          revivableOnly: true,
-          revivableBy: owner,
-        };
-      }
-    }
-  }
-  /* And taking a card back out of a Graveyard. Graverobber is a player
-     standing right there pressing a button, and Magician of Faith is a card
-     turning face-up in the middle of somebody else's attack — the same
-     question either way, and only the first of them was ever asked. */
-  {
-    const steal = eff.ops.find((o) => o.op === 'stealFromGrave' && !selfRuled(o));
-    if (steal && steal.op === 'stealFromGrave') {
-      return {
-        /* An unset `from` is "either Graveyard", not the opponent's — which is
-           what the engine has always done with it (`[own, theirs]`, own first)
-           and the opposite of what this line used to say. Magician of Faith
-           reaches into both piles and the picker would have offered her only
-           the enemy's, so the one card she is actually for — your own Monster
-           Reborn — was not among her answers. Invisible until she started
-           asking, which is how this file keeps learning the same lesson: the
-           picker and the engine must not hold two opinions about one word. */
-        side: steal.from === 'own' ? 'own' : steal.from === 'opp' ? 'opp' : 'both',
-        zone: 'grave',
-        count: eff.targets ?? 1,
-        prompt: 'Choose a card to take from the Graveyard',
-        filter: steal.filter,
-      };
-    }
-  }
   return null;
 }
 
 /**
- * Every question one effect asks, in the order it asks them.
+ * Every question one effect asks, in the order the ops ask them.
  *
- * Nearly every card has one. Two cards have two, and both were answering the
- * second themselves: Luster Dragon's ignition asked which Dragon to shuffle
- * back into the Deck and then destroyed a Spell or Trap of the engine's
- * choosing — which, with the Field Zone in reach, can be your own Field Spell.
- * Bickuribox names a monster and a Spell or Trap in one sentence and only ever
- * asked about the monster.
+ * One question per asking op, which is the whole of the rule and was not how
+ * this worked: the head came from the first op that asked and the tail from
+ * the *generic* `chosen` selectors after it, so any other kind of asking op
+ * further down the list — a Deck search, a lift out of the Graveyard, a Special
+ * Summon — was silent. Wroughtweiler makes four picks and was asked twice, and
+ * the one question it did ask carried `targets: 3` as its count: a single
+ * prompt over the wrong pool, standing in for three different ones. Reported.
  *
- * The head is exactly what `specFromEffect` has always returned, so a card that
- * asks once is untouched; the tail is the generic `chosen` selectors that come
- * after the op the head was read off. Only those repeat — a Deck search, a
- * Tribute cost, an equip's host and a Special Summon's body are all "the one
- * thing this card wants to know", and a card carrying two of those does not
- * exist. When one does, this is where it goes.
+ * `eff.targets` still means "this many out of that pool" for the cards that
+ * have exactly one asking op — The Warrior Returning Alive takes two Warriors
+ * out of one Graveyard and should say so in one prompt. With more than one op
+ * asking, it is the total across them and each op states its own count.
  */
 function specChain(eff: CardEffect, owner: string): TargetSpec[] {
-  const head = specFromEffect(eff, owner);
-  if (!head) return [];
-  const found = scanOpsAt(eff.ops, owner);
-  if (!found) return [head];
-  const tail: TargetSpec[] = [];
-  for (let i = found.at + 1; i < eff.ops.length; i++) {
-    const spec = chosenSpec(eff.ops[i]);
-    if (spec) tail.push(spec);
+  const cost = costSpec(eff);
+  const asks: TargetSpec[] = [];
+  for (const op of eff.ops) {
+    const spec = scanOp(op, owner);
+    if (spec) asks.push(spec);
   }
-  return [head, ...tail];
+  if (asks.length === 1) asks[0] = { ...asks[0], count: Math.max(asks[0].count, eff.targets ?? 1) };
+  return cost ? [cost, ...asks] : asks;
 }
 
 /** Every question this card's effect asks, for the trigger the board pressed. */
@@ -461,7 +424,7 @@ export function targetSpecFor(slug: string, trigger: Trigger): TargetSpec | null
   if (!def) return null;
   const eff = def.effects.find((e) => e.trigger === trigger);
   if (!eff) return null;
-  return specFromEffect(eff, slug);
+  return specChain(eff, slug)[0] ?? null;
 }
 
 /**
@@ -477,7 +440,7 @@ export function targetSpecForEffect(slug: string, index: number): TargetSpec | n
   const def: CardDef | undefined = CARDS[slug];
   const eff = def?.effects[index];
   if (!def || !eff) return null;
-  return specFromEffect(eff, slug);
+  return specChain(eff, slug)[0] ?? null;
 }
 
 /**

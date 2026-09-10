@@ -1770,6 +1770,26 @@ export interface PendingChoice {
   picked: string[];
   /** Where the source was standing, so the resumed effect can find it. */
   from: 'field' | 'grave' | 'hand';
+  /**
+   * Which question of this effect's chain is being asked, and the answers its
+   * earlier questions already collected.
+   *
+   * An effect can ask more than once — Wroughtweiler takes four cards out of
+   * three different pools — and this queue used to park only the first of them
+   * and then run every op with whatever single answer came back. Firing from a
+   * trigger, that meant the engine chose the other three: a card fetching a
+   * Polymerization, two HEROes and a Fusion asked nothing at all, because its
+   * *first* question happened to have one answer and the gate stopped there.
+   * Reported.
+   *
+   * `step` indexes `specChain`, `carry` is everything answered before it, and
+   * `effectIndex` names which effect on this trigger is doing the asking — a
+   * card with two effects on one trigger must not resume the second one at the
+   * first one's step.
+   */
+  step: number;
+  carry: string[];
+  effectIndex: number;
 }
 
 export interface TriggerContext {

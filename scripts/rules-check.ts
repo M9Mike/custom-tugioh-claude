@@ -13976,6 +13976,95 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(!!spec, 'CALL: the card asks which HERO', spec ? spec.prompt : '(asks nothing)');
     ok(spec?.zone === 'deck', 'CALL: out of the Deck', spec?.zone ?? '-');
 
+    /* One question per pick, not one question standing in for all of them.
+       Wroughtweiler takes four cards out of three different pools and asked
+       twice — and the one prompt it did put up carried the effect's whole
+       `targets` count, so a single Deck picker was covering a Graveyard lift
+       and a Deck search at once. Reported. */
+    const dog = specChainFor('wroughtweiler', 'onAnyToGrave');
+    ok(dog.length === 4, 'CALL: Wroughtweiler asks about all four of its picks',
+      `${dog.length}: ${dog.map((c) => c.zone + '/' + c.count).join(' | ')}`);
+    ok(dog.every((c) => c.count === 1),
+      'CALL: and each question is about one card, not three at once',
+      dog.map((c) => c.zone + '/' + c.count).join(' | '));
+    ok(dog.filter((c) => c.zone === 'grave').length === 3 && dog.some((c) => c.zone === 'deck'),
+      'CALL: and each names the pool its own op reaches',
+      dog.map((c) => c.zone).join(','));
+
+    /* And the engine puts them, which is the half that actually broke. The dog
+       fires from the Graveyard on the opponent's turn, so nothing is asked
+       through the board — the queue asks — and the queue parked only the
+       card's *first* question and then ran every op on that one answer. Its
+       first question names one slug, so it was never worth asking, so nothing
+       was asked at all and the engine chose all four. Reported.
+       A rich pile and a rich Deck, so each pick has a real decision in it. */
+    const dead = jaden();
+    const pup = card(ME, 'wroughtweiler');
+    pup.summonedOnTurn = 0;
+    dead.players[ME].monsters = [pup, null, null];
+    dead.players[ME].grave = [
+      card(ME, 'polymerization'),
+      card(ME, 'elemental-hero-avian'),
+      card(ME, 'elemental-hero-sparkman'),
+      card(ME, 'elemental-hero-flame-wingman'),
+      card(ME, 'elemental-hero-thunder-giant'),
+    ];
+    dead.players[ME].deck = [
+      card(ME, 'elemental-hero-clayman'),
+      card(ME, 'elemental-hero-bladedge'),
+      card(ME, 'elemental-hero-bubbleman'),
+    ];
+    const sweep2 = card(FOE, 'dark-hole');
+    dead.players[FOE].hand = [sweep2];
+    dead.active = FOE;
+    let asked = 0;
+    const pools: string[] = [];
+    let d = act(dead, FOE, { type: 'activateSpell', uid: sweep2.uid });
+    while (d.pending?.kind === 'choose' && asked < 10) {
+      asked += 1;
+      pools.push(String(d.pending.options.length));
+      d = act(d, d.pending.player, { type: 'chooseCard', uids: [d.pending.options[0]] });
+    }
+    ok(asked === 3, 'CALL: and dying, it puts every pick that has a decision in it',
+      `${asked} question(s), option counts ${pools.join('/')}`);
+    /* The Fusion question offers Fusions and not the whole pile — a `chosen`
+       selector's filter was dropped from its spec, so the modal laid out six
+       cards where two were legal answers. */
+    ok(pools[2] === '2', 'CALL: and the Fusion question offers Fusions, not the whole pile',
+      pools.join('/'));
+
+    /* A once-per-turn effect that parks a question spends its one use on the
+       way out and must not trip over its own mark coming back. Revival Jam is
+       the card: it never parked while its second Special Summon went unasked,
+       and the moment that question started being put, the Jam stopped reviving
+       at all — the resume hit the once-per-turn gate and returned. */
+    const jam = jaden();
+    jam.active = FOE;
+    const slime = card(ME, 'revival-jam');
+    slime.summonedOnTurn = 0;
+    jam.players[ME].monsters = [slime, null, null];
+    /* Two bodies it could bring up, and two different names — one option is no
+       question, nothing parks, and the fault this pin is for never happens. */
+    jam.players[ME].grave = [card(ME, 'mystical-elf'), card(ME, 'kuriboh')];
+    const wipe = card(FOE, 'dark-hole');
+    jam.players[FOE].hand = [wipe];
+    let j = act(jam, FOE, { type: 'activateSpell', uid: wipe.uid });
+    let jg = 0;
+    while (j.pending?.kind === 'choose' && jg++ < 6) {
+      j = act(j, j.pending.player, { type: 'chooseCard', uids: [j.pending.options[0]] });
+    }
+    ok(j.players[ME].monsters.some((m) => m?.uid === slime.uid),
+      'CALL: a once-per-turn effect that stopped to ask still runs when answered',
+      j.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(j.players[ME].monsters.filter(Boolean).length >= 2,
+      'CALL: and brings the body it was asked about up with it',
+      j.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Necroshade summons and then searches, and both are the player's. */
+    const shade2 = specChainFor('elemental-hero-necroshade', 'onAnyToGrave');
+    ok(shade2.length === 2, 'CALL: Necroshade asks about the body and the search',
+      shade2.map((c) => c.zone).join(' | ') || '(none)');
+
     /* And Necroshade, which reaches two zones at once — "from your hand or
        Deck (you pick)" was one pool the picker could not describe. */
     const shade = specChainFor('elemental-hero-necroshade', 'onAnyToGrave')[0];

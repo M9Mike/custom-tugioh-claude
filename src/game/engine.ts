@@ -10,7 +10,8 @@ import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookO
 import { changesAnything, faceUpOnSide, matchesFilter, revivable } from './targeting';
 /* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
    targeting rules from `targeting.ts` now, not from here. */
-import { targetCandidates, targetSpecFor, worthAsking } from './ui';
+import { specChainForEffect, targetCandidates, targetSpecFor, worthAsking } from './ui';
+import type { TargetSpec } from './ui';
 /* Re-exported because they lived here for the whole of this game's history and
    dozens of callers — the board, the checks, the harnesses — import them from
    the engine. Moving the file they live in should not move everyone's import. */
@@ -3465,7 +3466,7 @@ function fireTriggers(
   if (triggerDepth >= MAX_TRIGGER_DEPTH) return;
   triggerDepth += 1;
   try {
-    fireTriggersInner(state, c, controller, trigger, trig, targets, def, false, phase);
+    fireTriggersInner(state, c, controller, trigger, trig, targets, def, undefined, phase);
   } finally {
     triggerDepth -= 1;
   }
@@ -3489,18 +3490,28 @@ function fireTriggersInner(
    * targets, was indistinguishable from nobody having been asked, and asked
    * again, and again. Declining Uraby's shatter hung the duel.
    */
-  resumed = false,
+  /**
+   * Where a parked effect is picking up: which effect on this trigger, and
+   * which of its questions has just been answered.
+   *
+   * It used to be a bare `resumed` boolean meaning "do not ask again", which
+   * was right while an effect could only ask once. An effect that asks four
+   * times has to come back and ask the next one, so the flag carries the
+   * position instead — and names the effect, because a card with two effects
+   * on one trigger must not resume the second at the first one's step.
+   */
+  resumeAt?: { effectIndex: number; step: number },
   phase?: TriggerPhase
 ) {
-  for (const eff of def.effects) {
-    if (eff.trigger !== trigger) continue;
+  def.effects.forEach((eff, effectIndex) => {
+    if (eff.trigger !== trigger) return;
     /* The two halves of `onAttacked`, kept apart: the battle calls this twice
        — once before the damage step for the answers that stop it landing,
        once after for the answers that follow it — and each pass takes only
        the effects that belong to it. Every other trigger fires in one pass
        and `phase` is undefined, so nothing else can notice. */
-    if (phase && !!eff.afterDamage !== (phase === 'afterDamage')) continue;
-    if (!conditionMet(state, eff, c, controller, trig)) continue;
+    if (phase && !!eff.afterDamage !== (phase === 'afterDamage')) return;
+    if (!conditionMet(state, eff, c, controller, trig)) return;
     /* "Once per turn" used to mean it only for an ignition, where the count
        lives on the card instance — which is no use to a card that dies and
        comes back, because `resetInstance` clears the marker on the way in.
@@ -3510,10 +3521,17 @@ function fireTriggersInner(
        not a fuse they share. The uid survives every zone change, so Revival
        Jam still revives only once a turn however many times it is broken.
        Cleared at every turn start, so it really is per turn, not per duel. */
-    if (eff.oncePerTurn && trigger !== 'ignition') {
+    /* Not asked of the effect coming back with its answer: it spent its one
+       use on the way *out*, and asking again means it trips over its own mark
+       and never runs. Invisible until an effect could park at all — Revival Jam
+       is once per turn and had no question worth putting, so it never left and
+       came back. The moment its second Special Summon started asking, the Jam
+       stopped reviving entirely. */
+    const resuming = !!resumeAt && resumeAt.effectIndex === effectIndex;
+    if (eff.oncePerTurn && trigger !== 'ignition' && !resuming) {
       const key = `${controller}:${c.uid}:${trigger}`;
       const used = state.oncePerTurnUsed ?? (state.oncePerTurnUsed = []);
-      if (used.includes(key)) continue;
+      if (used.includes(key)) return;
       used.push(key);
     }
     /* Ask, if there is a question and nobody has answered it. On your own turn
@@ -3522,7 +3540,11 @@ function fireTriggersInner(
        turn — Sangan on the way to the pile, Newdoria taking one with it — that
        reach here with nothing, and those are the ones that used to have the
        engine choose on their controller's behalf. */
-    if (!resumed && raiseChoice(state, c, controller, trigger, eff, targets)) continue;
+    /* Where this effect starts asking: at the top for a fresh fire, and at the
+       question after the one just answered for a parked one. An effect that is
+       not the one that parked always starts at the top. */
+    const from = resuming ? resumeAt!.step + 1 : 0;
+    if (raiseChoice(state, c, controller, trigger, eff, targets, effectIndex, from)) return;
     /* What the battle just killed, if this fired because of one. `destroyedAtk`
        is otherwise the running total of an effect's OWN destructions, and a
        battle kill belongs to nobody's op — so it is seeded from the trigger
@@ -3538,7 +3560,7 @@ function fireTriggersInner(
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: controller, text: def.cry, arrival });
     }
     runOps(ctx, eff.ops);
-  }
+  });
 }
 
 /**
@@ -3592,9 +3614,50 @@ function raiseChoice(
   controller: PlayerId,
   trigger: Trigger,
   eff: CardEffect,
-  targets: string[]
+  targets: string[],
+  /** Which effect on this trigger, and which of its questions to start from. */
+  effectIndex: number,
+  step: number
 ): boolean {
-  if (targets.length || state.winner) return false;
+  if (state.winner) return false;
+  /* Answers already in hand and nothing resumed: the board walked this card's
+     whole chain before it sent the action, so there is nothing left to ask.
+     Only the trigger-fired effects arrive here empty. Dropping this line let
+     the walk below append its own auto-picks *after* the player's, which
+     shifted every op's answer by one — Gravekeeper's Spy planted the wrong
+     monster and a Deck search handed back the wrong card. */
+  if (targets.length && step === 0) return false;
+  /* Only the *first* question was ever parked, and every op then ran on the
+     single answer that came back — so a card asking more than once had the
+     engine answer the rest. Wroughtweiler takes four cards out of three pools
+     and asked nothing at all, because its first question named one slug and
+     the gate stopped there. Reported. The chain is walked instead: each
+     question that is worth putting parks with the answers so far, and the ops
+     run only once every question has been asked. */
+  const chain = specChainForEffect(c.slug, effectIndex);
+  for (let i = step; i < chain.length; i++) {
+    const spec = chain[i];
+    if (askOne(state, c, controller, trigger, spec, targets, effectIndex, i)) return true;
+  }
+  return false;
+}
+
+/**
+ * Put one question of a chain, or answer it the way it would have answered
+ * itself and fold that into `targets`.
+ *
+ * Returns true when the effect has been parked and must not run yet.
+ */
+function askOne(
+  state: DuelState,
+  c: CardInstance,
+  controller: PlayerId,
+  trigger: Trigger,
+  spec: TargetSpec,
+  targets: string[],
+  effectIndex: number,
+  step: number
+): boolean {
   /* No opt-in. There used to be one — an effect asked only if it declared
      `targets` — and it was there to keep the noise down: Hitotsu-Me Giant
      reaching for the one Pot of Greed in its Graveyard has nothing to ask, and
@@ -3608,8 +3671,6 @@ function raiseChoice(
      belongs to whoever controls the card — applied everywhere, including to
      cards nobody has written yet. `targets` survives as what it reads like: how
      many, not whether. */
-  const spec = targetSpecFor(c.slug, trigger);
-  if (!spec) return false;
   /* Never the card doing the asking. A monster does not Special Summon itself
      with its own "when this card is destroyed" effect — the summon op has
      refused that for as long as it has existed — and Anthrosaurus, which is a
@@ -3644,7 +3705,13 @@ function raiseChoice(
      pile at random and call it a decision. The board asks the same function —
      it has to, or it raises a question the engine would have skipped and the
      answer matches nothing. */
-  if (optional ? options.length === 0 : !worthAsking(spec, options, want)) return false;
+  if (optional ? options.length === 0 : !worthAsking(spec, options, want)) {
+    /* Not worth putting — so answer it the way it would have answered itself
+       and carry that forward, or the ops downstream read the *next* question's
+       answer as this one's. A chain is only as good as its alignment. */
+    for (const o of options.slice(0, want)) targets.push(o.uid);
+    return false;
+  }
 
   const from = whereIs(state, c.uid);
   if (!from) return false;
@@ -3661,6 +3728,9 @@ function raiseChoice(
     optional,
     picked: [],
     from,
+    step,
+    carry: [...targets],
+    effectIndex,
   };
   /* One slot, and a duel can raise two questions in a breath — a Dark Hole over
      two Sangans. The second waits its turn rather than being answered by the
@@ -3751,7 +3821,9 @@ function drainChoices(state: DuelState) {
   /* The board has moved since it was parked. Re-ask rather than trusting the
      list it was queued with: the card it was going to offer may be gone. */
   const src = findAnywhere(state, next.sourceUid);
-  const spec = src ? targetSpecFor(next.sourceSlug, next.trigger) : null;
+  /* The question this parked entry is actually on, not the card's first one —
+     a chain re-derived from the head would re-ask question one forever. */
+  const spec = src ? (specChainForEffect(next.sourceSlug, next.effectIndex)[next.step] ?? null) : null;
   if (!src || !spec) {
     drainChoices(state);
     return;
@@ -3774,7 +3846,19 @@ function drainChoices(state: DuelState) {
 function resumeChoice(state: DuelState, choice: PendingChoice, picked: string[]) {
   const src = findAnywhere(state, choice.sourceUid);
   if (!src) return;
-  fireTriggersInner(state, src, choice.player, choice.trigger, {}, picked, CARDS[choice.sourceSlug], true);
+  /* Everything answered before this question, then this question's answer —
+     the ops read one flat list in order, so a chain that loses its earlier
+     answers hands op three the answer to op four. */
+  fireTriggersInner(
+    state,
+    src,
+    choice.player,
+    choice.trigger,
+    {},
+    [...choice.carry, ...picked],
+    CARDS[choice.sourceSlug],
+    { effectIndex: choice.effectIndex, step: choice.step }
+  );
 }
 
 /* ------------------------------------------------------------------ */
