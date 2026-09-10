@@ -381,7 +381,17 @@ export interface Selector {
   piercesProtection?: boolean;
 }
 
-export type Duration = 'permanent' | 'turn' | 'opponentTurn';
+/**
+ * How long a modifier lasts.
+ *
+ * `battle` is the narrowest and the newest: it belongs to the one battle it was
+ * applied in and is gone the moment that battle resolves, whichever way it
+ * went. Hero Barrier is the card that needs it — the owner's "just for one
+ * attacker just once it activates". Written as `turn` the toll sat on the
+ * monster for the rest of the turn, so a Gaia the Fierce Knight, which attacks
+ * twice, walked into the second swing still a thousand light per HERO.
+ */
+export type Duration = 'permanent' | 'turn' | 'opponentTurn' | 'battle';
 
 /** A single atomic action an effect can perform. */
 export type Op =
@@ -1509,6 +1519,15 @@ export interface CardInstance {
   /** Modifiers that expire at the end of the current turn. */
   turnAtkMod: number;
   turnDefMod: number;
+  /**
+   * Modifiers that belong to one battle and go when it resolves.
+   *
+   * See `Duration`. Cleared around every exit of the battle rather than at each
+   * `return` inside it — this file has twice paid for a rule written out once
+   * per branch, and the branch that gets forgotten is never the one you check.
+   */
+  battleAtkMod?: number;
+  battleDefMod?: number;
   counters: number;
   /** Slugs of cards equipped to this monster, for display. */
   equips: string[];

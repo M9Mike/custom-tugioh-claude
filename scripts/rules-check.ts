@@ -13020,8 +13020,13 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       const p = out.pending;
       out = act(out, p.player, p.kind === 'choose' ? { type: 'chooseCard', uids: [p.options[0]] } : { type: 'respondTrap', uid: null });
     }
-    const dragon = out.players[FOE].monsters.find((m) => m?.uid === bews.uid);
-    ok(dragon?.turnAtkMod === -2000, 'BARRIER: two HEROes take 2000 off the attacker', String(dragon?.turnAtkMod));
+    /* Read off the damage, not off the field the toll is stored in. It used to
+       measure `turnAtkMod`, which stopped existing the moment the toll became
+       a thing that belongs to the battle — and a pin that reads storage rather
+       than consequence goes red on a change that made the card *more* right.
+       4500, less a thousand a head, into a 1600 Sparkman: 900 gets through. */
+    ok(out.players[ME].lp === 4000 - (4500 - 2000 - 1600),
+      'BARRIER: two HEROes take 2000 off the swing', `LP ${out.players[ME].lp}`);
     ok(!out.players[ME].monsters.some((m) => m?.uid === a.uid),
       'BARRIER: and the attack still happens — 2500 still beats a 1600 Sparkman');
     /* A Normal Trap: one swing, one answer, and the card is spent. It was
@@ -13062,9 +13067,80 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     }
     ok(!offered, 'BARRIER: and it is not offered a second swing', offered ? '(offered again)' : '(spent)');
     const twoDeep = again.players[FOE].monsters.find((m) => m?.uid === second.uid);
-    ok(!twoDeep?.turnAtkMod,
+    ok(!twoDeep?.turnAtkMod && !twoDeep?.battleAtkMod,
       'BARRIER: so the next attacker walks in at full weight',
-      String(twoDeep?.turnAtkMod ?? 0));
+      String(twoDeep?.turnAtkMod ?? twoDeep?.battleAtkMod ?? 0));
+  }
+
+  {
+    /* And it is one swing even for the monster it was aimed at. "Just for one
+       attacker just once it activates" — so the toll belongs to that battle,
+       not to the turn.
+       Written as `duration: 'turn'` it stayed on the body afterwards, and
+       anything that attacks twice paid it again on every swing off the one
+       card: Gaia the Fierce Knight here, and Panther Warrior, Serpent Night
+       Dragon and a Blue-Eyes Ultimate walking down the row behind him.
+       One HERO on the table, so the toll is a clean thousand — and a
+       non-HERO second body for the second swing to have somewhere to go. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const avian = card(ME, 'elemental-hero-avian'); // 1000
+    const kuri = card(ME, 'kuriboh'); // 300, and not a HERO
+    avian.summonedOnTurn = 0;
+    kuri.summonedOnTurn = 0;
+    s.players[ME].monsters = [avian, kuri, null];
+    const bar = { ...card(ME, 'hero-barrier'), face: 'down' as const };
+    bar.summonedOnTurn = 0;
+    s.players[ME].spellTrap = bar;
+    const gaia = card(FOE, 'gaia-the-fierce-knight'); // 2300, twice a turn
+    gaia.summonedOnTurn = 0;
+    s.players[FOE].monsters = [gaia, null, null];
+
+    const drain = (st: DuelState, take: string | null) => {
+      let out = st;
+      let g = 0;
+      while (out.pending && g++ < 5) {
+        const p = out.pending;
+        out = act(out, p.player, p.kind === 'choose'
+          ? { type: 'chooseCard', uids: [p.options[0]] }
+          : { type: 'respondTrap', uid: take && p.options.includes(take) ? take : null });
+      }
+      return out;
+    };
+
+    let out = drain(act(s, FOE, { type: 'attack', uid: gaia.uid, targetUid: avian.uid }), bar.uid);
+    /* 2300 less the thousand, into a 1000 Avian: 300 through. */
+    ok(out.players[ME].lp === 4000 - 300,
+      'ONCE: the barrier takes a thousand off the swing it answered',
+      `LP ${out.players[ME].lp}`);
+
+    out = drain(act(out, FOE, { type: 'attack', uid: gaia.uid, targetUid: kuri.uid }), bar.uid);
+    /* And the second swing is the knight's own 2300, into a 300 Kuriboh. Left
+       on for the turn it would have been 1300 here, and 1000 through. */
+    ok(out.players[ME].lp === 4000 - 300 - (2300 - 300),
+      'ONCE: and his second swing is at his own weight again',
+      `LP ${out.players[ME].lp}`);
+
+    /* DUR. `duration: 'battle'` reaches the stats and nothing else: `applyFlag`
+       has two bags and posts anything non-permanent to the turn one, so a flag
+       op asking for a battle would quietly be given a turn. No card does, and
+       this is what keeps it that way — a silent widening is precisely the fault
+       the rest of this block exists because of. */
+    const STAT_OPS = new Set(['gainAtk', 'gainDef']);
+    const overreach: string[] = [];
+    for (const def of Object.values(CARDS)) {
+      for (const eff of def.effects ?? []) {
+        for (const op of eff.ops ?? []) {
+          if ('duration' in op && op.duration === 'battle' && !STAT_OPS.has(op.op)) {
+            overreach.push(`${def.name} (${op.op})`);
+          }
+        }
+      }
+    }
+    ok(overreach.length === 0,
+      'DUR: nothing asks for a battle-long flag, which would silently be a turn',
+      overreach.join(', '));
   }
 
   {

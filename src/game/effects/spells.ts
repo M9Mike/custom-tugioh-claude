@@ -2044,10 +2044,16 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        is spent. It was briefly Continuous — which took `subKindOverride` as
        well as `reusable`, since a Normal Trap is in the Graveyard before the
        second attack can be offered it — back when the wording was "each time".
-       That wording is gone and so is the machinery under it. */
+       That wording is gone and so is the machinery under it.
+       And the toll goes with the battle, not with the turn: "just for one
+       attacker just once it activates". At `duration: 'turn'` it stayed on the
+       monster after the swing it answered, so anything attacking twice — Gaia
+       the Fierce Knight, Panther Warrior, a Blue-Eyes Ultimate walking down the
+       row — paid the thousand a head again on every swing after the first, off
+       one card. See `Duration`. */
     text:
       'Trap: when your opponent declares an attack, the attacking monster loses 1000 ATK ' +
-      'for each "Elemental HERO" monster you control. The attack still happens.',
+      'for that battle, for each "Elemental HERO" monster you control. The attack still happens.',
     cry: 'Not this one.',
     effects: [
       {
@@ -2061,7 +2067,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
             scale: 'perOwnMonster',
             filter: { nameIncludes: 'Elemental HERO' },
             target: sel('opp', 'attacker'),
-            duration: 'turn',
+            duration: 'battle',
           },
         ],
       },

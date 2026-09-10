@@ -477,7 +477,7 @@ function selfAtk(state: DuelState, target: CardInstance, ctrl: PlayerId): number
       if (eq) bonus += eq.atk;
     }
   }
-  return Math.max(0, base + absorbed + target.atkMod + target.turnAtkMod + bonus);
+  return Math.max(0, base + absorbed + target.atkMod + target.turnAtkMod + (target.battleAtkMod ?? 0) + bonus);
 }
 
 function aurasFor(state: DuelState, target: CardInstance, targetController: PlayerId): AuraBonus {
@@ -607,7 +607,7 @@ export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId)
   const rate = c.flags.absorbHalved || c.turnFlags.absorbHalved ? 0.5 : 1;
   const absorbed = Math.floor(c.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0) * rate);
   const scaled = tokenScaleOf(state, c, ctrl).atk;
-  return Math.max(0, base + scaled + absorbed + c.atkMod + c.turnAtkMod + aurasFor(state, c, ctrl).atk);
+  return Math.max(0, base + scaled + absorbed + c.atkMod + c.turnAtkMod + (c.battleAtkMod ?? 0) + aurasFor(state, c, ctrl).atk);
 }
 
 export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId): number {
@@ -616,7 +616,7 @@ export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId)
   const rate = c.flags.absorbHalved || c.turnFlags.absorbHalved ? 0.5 : 1;
   const absorbed = Math.floor(c.absorbed.reduce((sum, a) => sum + baseDef(a.slug), 0) * rate);
   const scaled = tokenScaleOf(state, c, ctrl).def;
-  return Math.max(0, base + scaled + absorbed + c.defMod + c.turnDefMod + aurasFor(state, c, ctrl).def);
+  return Math.max(0, base + scaled + absorbed + c.defMod + c.turnDefMod + (c.battleDefMod ?? 0) + aurasFor(state, c, ctrl).def);
 }
 
 export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerId): CardFlags {
@@ -954,6 +954,8 @@ function resetInstance(c: CardInstance) {
   c.defMod = 0;
   c.turnAtkMod = 0;
   c.turnDefMod = 0;
+  c.battleAtkMod = undefined;
+  c.battleDefMod = undefined;
   /* Counters reset with everything else, and a moth revived from the pile
      places its own again on the way in — the summon does the seeding now. */
   c.counters = 0;
@@ -1627,6 +1629,19 @@ function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, c
   return !!effFlags(state, c).untargetable;
 }
 
+/**
+ * `battle` is deliberately absent here, and `npm run rules` holds it absent.
+ *
+ * There are two bags — permanent and this turn — so anything that is not
+ * permanent lands in `turnFlags`, which means a flag op asking for `battle`
+ * would quietly get a whole turn instead. That is the exact shape of fault this
+ * file has spent a session paying for: a duration that is honoured on the stat
+ * path and silently widened on the flag path. Nothing needs it today (Hero
+ * Barrier's toll is a `gainAtk`), so rather than build a third bag no card
+ * reaches — untested code being its own risk — the DUR pin refuses any card
+ * that tries. Wanting it is the signal to add `battleFlags` beside the mods,
+ * cleared by the same wipe in `resolveBattle`.
+ */
 function applyFlag(c: CardInstance, key: keyof CardFlags, value: boolean | number, duration: Duration) {
   const bag = duration === 'permanent' ? c.flags : c.turnFlags;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1968,6 +1983,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         amount += flat;
         for (const t of resolveTargets(ctx, op.target)) {
           if (op.duration === 'permanent') t.atkMod += amount;
+          else if (op.duration === 'battle') t.battleAtkMod = (t.battleAtkMod ?? 0) + amount;
           else t.turnAtkMod += amount;
           if (amount !== 0) {
             log(state, `${displayName(state, t)} ${amount > 0 ? 'gains' : 'loses'} ${Math.abs(amount)} ATK.`, 'effect', undefined, logSlug(t));
@@ -1983,6 +1999,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         for (const t of resolveTargets(ctx, op.target)) {
           if (op.duration === 'permanent') t.defMod += amount;
+          else if (op.duration === 'battle') t.battleDefMod = (t.battleDefMod ?? 0) + amount;
           else t.turnDefMod += amount;
         }
         break;
@@ -4171,7 +4188,37 @@ function beginAttack(state: DuelState, attackerUid: string, targetUid: string | 
   if (!opened) resolveBattle(state);
 }
 
+/**
+ * The battle, and then the slate wiped of anything that only belonged to it.
+ *
+ * `duration: 'battle'` is Hero Barrier's — the owner's "just for one attacker
+ * just once it activates". Written as `turn` its toll sat on the monster for
+ * the rest of the turn, so a Gaia the Fierce Knight, which attacks twice, took
+ * the second swing still a thousand light per HERO standing.
+ *
+ * The clearing is here, wrapped around the whole thing, rather than at each
+ * `return` inside it. `resolveBattleInner` leaves by seven different doors —
+ * the attacker changed hands, the path was blocked, a bounce called it off, the
+ * wall vanished, and the three ways the damage step ends — and a rule written
+ * out once per door is the exact fault this file has already paid for twice
+ * over: the branch that forgets is never the one anybody checks. `finally`, so
+ * a throw mid-battle cannot leave a toll behind either.
+ */
 function resolveBattle(state: DuelState) {
+  try {
+    resolveBattleInner(state);
+  } finally {
+    for (const pid of ['p1', 'p2'] as PlayerId[]) {
+      for (const m of state.players[pid].monsters) {
+        if (!m) continue;
+        m.battleAtkMod = undefined;
+        m.battleDefMod = undefined;
+      }
+    }
+  }
+}
+
+function resolveBattleInner(state: DuelState) {
   const susp = state.suspendedAttack;
   state.suspendedAttack = null;
   if (!susp || state.winner) return;
@@ -4560,6 +4607,8 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       if (!m) continue;
       m.turnAtkMod = 0;
       m.turnDefMod = 0;
+      m.battleAtkMod = undefined;
+      m.battleDefMod = undefined;
       m.turnFlags = {};
       m.attacksUsed = 0;
       m.attacked = [];
