@@ -16,6 +16,7 @@ interface Reading {
   audio: string;
   audioRate: string;
   audioEnabled: string;
+  audioSession: string;
   standalone: string;
   displayMode: string;
   envTop: string;
@@ -52,7 +53,7 @@ const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listen
 function refreshAudio() {
   if (!reading) return;
   const a = audioState();
-  reading = { ...reading, audio: a.state, audioRate: a.sampleRate };
+  reading = { ...reading, audio: a.state, audioRate: a.sampleRate, audioSession: a.session };
   for (const fn of listeners) fn();
 }
 function readOnce(): Reading {
@@ -65,6 +66,7 @@ function readOnce(): Reading {
       audio: a.state,
       audioRate: a.sampleRate,
       audioEnabled: a.enabled ? 'on' : 'off (turned off in the duel menu)',
+      audioSession: a.session,
       standalone: nav.standalone === undefined ? 'undefined (not iOS)' : String(nav.standalone),
       displayMode: ['standalone', 'fullscreen', 'minimal-ui', 'browser']
         .filter((m) => window.matchMedia(`(display-mode: ${m})`).matches)
@@ -91,6 +93,7 @@ export default function Diag() {
         ['AudioContext state', r.audio],
         ['audio sample rate', r.audioRate],
         ['sound setting', r.audioEnabled],
+        ['audio session', r.audioSession],
         ['navigator.standalone', r.standalone],
         ['display-mode matches', r.displayMode],
         ['env(safe-area-inset-top)', r.envTop],
@@ -144,8 +147,11 @@ export default function Diag() {
 
         {/* Tapping this is a real user gesture, which is the only thing iOS
             will unlock audio inside. If the state above says "suspended" and
-            this makes a noise, the context needed a gesture; if it says
-            "running" and you hear nothing, it is the ringer switch. */}
+            this makes a noise, the context needed a gesture. If it says
+            "running" and you hear nothing, it is the ringer switch — and the
+            session row says whether the page could do anything about that:
+            "playback" plays through the switch, "auto" means this WebKit never
+            offered the choice. */}
         <button
           className="btn mx-auto rounded px-5 py-2 text-xs"
           onClick={() => {
