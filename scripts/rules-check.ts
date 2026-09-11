@@ -13427,6 +13427,128 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
   }
 
   {
+    /* The swings are attacks, and the other player gets to answer them.
+     *
+     * The onslaught used to drive `suspendedAttack` and `resolveBattle` in a
+     * loop inside its own op, stepping round `beginAttack` — the one door that
+     * declares an attack and offers the window. So the whole row fell in a
+     * single state with nothing offered, which is both the rules fault and the
+     * reason the beats played over a board they had already emptied.
+     *
+     * Reported as "these are attacks, even tho automatic, so maybe the opponent
+     * would even activate a trap or something on some of the attacks".
+     */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const mine = card(ME, 'elemental-hero-clayman');
+    mine.summonedOnTurn = 0;
+    s.players[ME].monsters = [mine, null, null];
+    const gate = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+    gate.summonedOnTurn = 0;
+    s.players[ME].spellTrap = gate;
+    const bews = card(FOE, 'blue-eyes-white-dragon'); // 3000 — the body I take
+    const ox = card(FOE, 'battle-ox');               // 1700 — the one that swings
+    const elf = card(FOE, 'mystical-elf');
+    for (const m of [bews, ox, elf]) m.summonedOnTurn = 0;
+    s.players[FOE].monsters = [bews, ox, elf];
+    /* And something of theirs to answer with, face-down. */
+    const force = { ...card(FOE, 'mirror-force'), face: 'down' as const };
+    force.summonedOnTurn = 0;
+    s.players[FOE].spellTrap = force;
+
+    let out = act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: mine.uid });
+    ok(out.pending?.kind === 'trap', 'SWING: CONTROL: the swing opens my window');
+    out = act(out, ME, { type: 'respondTrap', uid: gate.uid, targets: [bews.uid] });
+
+    /* And here is the whole point: the gate has resolved, the borrowed dragon
+       has swung once, and the board has *stopped* — because the next swing is
+       an attack and they are being offered the answer to it. Resolved in one
+       breath, this is null and there is nothing to take. */
+    ok(out.pending?.kind === 'trap' && out.pending.player === FOE,
+      'SWING: the row pauses and the answer is theirs to give',
+      out.pending ? `${out.pending.kind}/${out.pending.player}` : '(resolved in one breath)');
+    ok(!!out.pending && out.pending.options.includes(force.uid),
+      'SWING: and the card they are holding is what they are offered',
+      out.pending?.options.join(',') ?? '(none)');
+    ok(!!out.onslaught, 'SWING: with the row still half-walked', JSON.stringify(out.onslaught ?? null));
+
+    /* Taking it has to mean something. Mirror Force answers an attack by
+       breaking what is attacking — so the borrowed dragon falls and the rest
+       of their row is never reached, which is exactly what an answer is for. */
+    const answered = act(out, FOE, { type: 'respondTrap', uid: force.uid });
+    ok(!answered.players[ME].monsters.some((m) => m?.uid === bews.uid),
+      'SWING: and answering it breaks the borrowed body mid-row',
+      answered.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(answered.players[FOE].monsters.some((m) => m?.uid === elf.uid),
+      'SWING: so the rest of their row is never reached',
+      answered.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!answered.onslaught, 'SWING: and the run is over, not left hanging',
+      JSON.stringify(answered.onslaught ?? null));
+
+    /* CONTROL: declined instead, the row falls exactly as it always did — the
+       pause is an offer, not a wall. */
+    let declined = out;
+    let g = 0;
+    while (declined.pending && g++ < 8) {
+      const pd = declined.pending;
+      declined = act(declined, pd.player, pd.kind === 'choose'
+        ? { type: 'chooseCard', uids: pd.options.length ? [pd.options[0]] : [] }
+        : { type: 'respondTrap', uid: null });
+    }
+    ok(declined.players[FOE].monsters.every((m) => !m),
+      'SWING: CONTROL: declined, the row falls as it always did',
+      declined.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!declined.onslaught, 'SWING: CONTROL: and that run is finished too',
+      JSON.stringify(declined.onslaught ?? null));
+  }
+
+  {
+    /* "Once each" — and the only way to see it is a wall the runner cannot
+       break. Every other setup kills what it touches, so the list of what has
+       already been struck never has to hold anything and a run without it
+       passes: the next unstruck body and the next *surviving* body are the
+       same monster right up until one of them survives.
+       Here the Elf is 2000 in defence and the borrowed Ox is 1700, so it
+       bounces — and has to move on down the row rather than stand there
+       hitting the same shield until the guard runs out. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const avian = card(ME, 'elemental-hero-avian'); // 1000, and no wall of its own
+    avian.summonedOnTurn = 0;
+    s.players[ME].monsters = [avian, null, null];
+    const gate = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+    gate.summonedOnTurn = 0;
+    s.players[ME].spellTrap = gate;
+    const ox = card(FOE, 'battle-ox');        // 1700 — the body I take, and the one swinging
+    const elf = card(FOE, 'mystical-elf');    // 800/2000, kneeling: the shield it cannot break
+    const kuri = card(FOE, 'kuriboh');        // 300 — the one it must still reach
+    for (const m of [ox, elf, kuri]) m.summonedOnTurn = 0;
+    elf.position = 'def';
+    s.players[FOE].monsters = [ox, elf, kuri];
+
+    let out = act(s, FOE, { type: 'attack', uid: ox.uid, targetUid: avian.uid });
+    out = act(out, ME, { type: 'respondTrap', uid: gate.uid, targets: [ox.uid] });
+    let g = 0;
+    while (out.pending && g++ < 10) {
+      const pd = out.pending;
+      out = act(out, pd.player, pd.kind === 'choose'
+        ? { type: 'chooseCard', uids: pd.options.length ? [pd.options[0]] : [] }
+        : { type: 'respondTrap', uid: null });
+    }
+    ok(out.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'ONCE2: CONTROL: the ox is mine and survived the row',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(out.players[FOE].monsters.some((m) => m?.uid === elf.uid),
+      'ONCE2: CONTROL: and the shield it could not break is still standing',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === kuri.uid),
+      'ONCE2: so it walked past the shield and reached what was behind it',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  {
     /* Mirror Gate: you choose the body, they get yours, and the one you took
        goes back through the board it came out of. */
     const s = jaden();

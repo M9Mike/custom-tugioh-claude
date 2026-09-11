@@ -376,6 +376,64 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     }
     return out;
   }, [unspoken]);
+  /**
+   * Where every monster was last seen standing.
+   *
+   * The mirror of `unannounced` needs something the arrival case does not: a
+   * monster that has *left* is not in the server's board any more, so there is
+   * nothing to hold back — it has to be remembered. Only ever added to; the
+   * ghosts it feeds are bounded by `unspoken`, which empties itself.
+   */
+  /**
+   * Monsters the server has already taken off the board but whose death has not
+   * been announced. They keep their zone until their beat plays.
+   *
+   * The arrival half of this rule existed and the departure half did not, so a
+   * monster destroyed on the server vanished the instant the view arrived while
+   * the attack that killed it was still queued — the swing then animated over
+   * an empty square. Reported of Mirror Gate, where a whole row goes down and
+   * every beat played to nobody, and true of everything that clears a board.
+   *
+   * Built entirely from the beat, which carries where the body stood — see
+   * `AnimEvent.zoneIndex`. No map of last-known positions, no ref read during
+   * render: the beat already knows, so the board does not have to remember.
+   */
+  const departing = useMemo(() => {
+    const out: { uid: string; player: PlayerId; idx: number; card: CardInstance }[] = [];
+    for (const a of unspoken) {
+      if (a.kind !== 'destroy' || !a.uid || !a.slug || a.zoneIndex == null || !a.player) continue;
+      // Something already standing there again needs no ghost over the top.
+      if (state.players[a.player].monsters[a.zoneIndex]) continue;
+      out.push({
+        uid: a.uid,
+        player: a.player,
+        idx: a.zoneIndex,
+        /* A body just long enough to be drawn. Nothing reads it but the card
+           face, and nothing may point at it — see `renderMonsterZone`. */
+        card: {
+          uid: a.uid,
+          slug: a.slug,
+          owner: a.player,
+          face: 'up',
+          position: a.zonePosition ?? 'atk',
+          atkMod: 0,
+          defMod: 0,
+          turnAtkMod: 0,
+          turnDefMod: 0,
+          counters: 0,
+          equips: [],
+          flags: {},
+          turnFlags: {},
+          summonedOnTurn: -1,
+          attacksUsed: 0,
+          effectUsedOnTurn: -1,
+          absorbed: [],
+          ...(a.as ? { isToken: true, tokenName: a.as } : {}),
+        } as CardInstance,
+      });
+    }
+    return out;
+  }, [unspoken, state]);
   const fxTimer = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const handRef = useRef<HTMLDivElement>(null);
@@ -1342,12 +1400,22 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        appeared in its zone and *then* its summon animation played over the top
        of it — most obviously with a signature card, whose whole flourish is it
        coming towards you before it lands. */
-    const c = p.monsters[idx] && unannounced.has(p.monsters[idx]!.uid) ? null : p.monsters[idx];
+    const live = p.monsters[idx] && unannounced.has(p.monsters[idx]!.uid) ? null : p.monsters[idx];
+    /* And the other half: a monster the server has taken away but whose death
+       has not been announced is still standing as far as the board is
+       concerned — otherwise the blow that killed it lands on an empty square.
+       Only ever fills a zone the live board has left empty, so a body that has
+       already been replaced never gets a ghost over the top of it. */
+    const ghost = live ? null : (departing.find((d) => d.player === owner && d.idx === idx)?.card ?? null);
+    const c = live ?? ghost;
     const isMine = owner === me;
-    const targetable = c ? targetableSet.has(c.uid) : false;
-    const attackable = isMine && !!c && state.phase === 'battle' && myTurn && canAttackWith(state, me, c);
+    /* A ghost can be looked at and nothing else. It is not on the server's
+       board, so pointing an attack or an effect at it would send a uid the
+       engine has already buried. */
+    const targetable = live ? targetableSet.has(live.uid) : false;
+    const attackable = isMine && !!live && state.phase === 'battle' && myTurn && canAttackWith(state, me, live);
     const selectable =
-      isMine && !!c && !targetable && myTurn && state.phase === 'main' && (canChangePosition(state, me, c) || canIgnite(state, me, c));
+      isMine && !!live && !targetable && myTurn && state.phase === 'main' && (canChangePosition(state, me, live) || canIgnite(state, me, live));
 
     return (
       <div

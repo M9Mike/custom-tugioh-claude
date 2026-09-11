@@ -864,6 +864,7 @@ export function createDuel(opts: {
     version: 0,
     uidSeq: 0,
     suspendedAttack: null,
+    onslaught: null,
   };
   state.players.p1 = buildPlayer(state, 'p1', opts.p1.duelistId, opts.p1.name, opts.p1.deck);
   state.players.p2 = buildPlayer(state, 'p2', opts.p2.duelistId, opts.p2.name, opts.p2.deck);
@@ -1865,7 +1866,15 @@ function destroyCard(
      off `speakRemainingLog`. One monster on the board hid it completely,
      which is why it read as "sometimes". */
   log(state, `${displayName(state, c)} is destroyed.`, 'effect', found.controller, logSlug(c));
-  anim(state, { kind: 'destroy', uid: c.uid, slug: c.slug, player: found.controller });
+  anim(state, {
+    kind: 'destroy',
+    uid: c.uid,
+    slug: c.slug,
+    player: found.controller,
+    /* Where it was standing, for the board to keep drawing it until this beat
+       has had its moment — see `AnimEvent.zoneIndex`. */
+    ...(found.zone === 'monster' ? { zoneIndex: found.index, zonePosition: c.position } : {}),
+  });
   // The card leaves the field *before* its own destruction effect resolves.
   // Otherwise it is still sitting in its Monster Zone, and an effect like
   // Anthrosaurus's — "when destroyed by battle, Special Summon a Dinosaur" —
@@ -3188,26 +3197,21 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       }
       case 'onslaught': {
         /* The body you just took turns round and goes through the board it was
-           standing in. Resolved one battle at a time through the ordinary
-           machinery — `suspendedAttack` and `resolveBattle`, the same pair a
-           declared attack uses — so piercing, protection, flip effects and
-           everything a kill pays out behave exactly as they always do. The
-           board is read fresh each time, because the last battle may have
-           changed it. */
+           standing in — one swing at a time, and each one a real attack.
+           It used to drive `suspendedAttack` and `resolveBattle` directly in a
+           loop here. That settled every battle inside this one op, which cost
+           two things the owner reported together: the whole outcome arrived in
+           a single state, so the beats played over a board they had already
+           emptied; and no trap window ever opened, because `beginAttack` — the
+           one door that declares an attack and offers the answer — was stepped
+           around. They are attacks, automatic or not.
+           The sequence lives on the state now and `advanceOnslaught` walks it,
+           stopping wherever a window opens and picked up again by the tail of
+           `applyAction`. */
         const [runner] = resolveTargets(ctx, op.target);
         if (!runner) break;
-        const struck = new Set<string>();
-        for (let round = 0; round < MONSTER_ZONES; round++) {
-          if (state.winner || state.pending) break;
-          const here = findOnField(state, runner.uid);
-          if (!here || here.zone !== 'monster') break;
-          const foe = other(here.controller);
-          const next = state.players[foe].monsters.find((m): m is CardInstance => !!m && !struck.has(m.uid));
-          if (!next) break;
-          struck.add(next.uid);
-          state.suspendedAttack = { attackerUid: runner.uid, targetUid: next.uid, controller: here.controller };
-          resolveBattle(state);
-        }
+        state.onslaught = { runnerUid: runner.uid, struck: [] };
+        advanceOnslaught(state);
         break;
       }
       case 'shuffleIntoDeck':
@@ -4167,6 +4171,49 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
 /* ------------------------------------------------------------------ */
 /* Battle                                                              */
 /* ------------------------------------------------------------------ */
+
+/**
+ * The next swing of a monster sent down the row, or the end of it.
+ *
+ * Loops rather than recurses: `beginAttack` either opens a window — in which
+ * case this returns and the tail of `applyAction` picks the sequence up after
+ * the other player has answered — or resolves the battle then and there, and
+ * the next swing follows in the same breath. Bounded by the zones, so a board
+ * that somehow keeps refilling cannot spin.
+ *
+ * Everything that ends a run is asked fresh each pass, because the last battle
+ * may have changed all of it: the runner can be destroyed by what it walked
+ * into, the row can empty, and a monster that has already been struck is not
+ * struck twice even if the board shuffles around it.
+ */
+function advanceOnslaught(state: DuelState) {
+  for (let guard = 0; guard <= MONSTER_ZONES; guard++) {
+    const run = state.onslaught;
+    if (!run) return;
+    /* A question in flight is a pause — the tail of `applyAction` comes back
+       for this. A finished duel is not: nothing will ever come back, so the
+       run is closed here rather than left on the state, where it would sit as
+       a half-walked row for anything reading the board afterwards. */
+    if (state.pending) return;
+    if (state.winner) {
+      state.onslaught = null;
+      return;
+    }
+    const here = findOnField(state, run.runnerUid);
+    if (!here || here.zone !== 'monster') {
+      state.onslaught = null;
+      return;
+    }
+    const foe = other(here.controller);
+    const next = state.players[foe].monsters.find((m): m is CardInstance => !!m && !run.struck.includes(m.uid));
+    if (!next) {
+      state.onslaught = null;
+      return;
+    }
+    run.struck = [...run.struck, next.uid];
+    beginAttack(state, run.runnerUid, next.uid);
+  }
+}
 
 function beginAttack(state: DuelState, attackerUid: string, targetUid: string | null) {
   const found = findOnField(state, attackerUid);
@@ -5973,6 +6020,13 @@ export function applyAction(prev: DuelState, pid: PlayerId, action: DuelAction):
       }
     }
     res.state.leftField = undefined;
+    /* And a monster still walking down the row takes its next swing, now that
+       whatever paused it has been answered. Here rather than beside the trap
+       window it stopped at, because the pause can be any question at all — a
+       trap offered, a card the effect asked the player to name — and a
+       sequence resumed from only one of those is a sequence that strands on
+       the others. Same reason `leftField` is drained here. */
+    advanceOnslaught(res.state);
     checkExodia(res.state);
     speakRemainingLog(res.state);
   }

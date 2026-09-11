@@ -1890,6 +1890,18 @@ export interface AnimEvent {
   /** Display name when it is not the card's own — a Token's, whose art comes
       from the card that made it but which is not that card. */
   as?: string;
+  /**
+   * Which Monster Zone the card was standing in, and which way up.
+   *
+   * Only on a `destroy` beat, and only for a monster. The board holds a
+   * destroyed monster in its zone until this beat has played — otherwise the
+   * server's removal reaches the screen first and the blow that killed it
+   * animates over an empty square. Saying it here rather than having the board
+   * remember where everything was keeps the beat self-describing, and keeps a
+   * whole map of last-known positions out of the render path.
+   */
+  zoneIndex?: number;
+  zonePosition?: Position;
   text?: string;
   /** This effect fired *because the card arrived*, not because it was played.
       A card with several effects otherwise announces every one of them with
@@ -1943,6 +1955,20 @@ export interface DuelState {
   /** How much of the log has already been paired with an animation beat. */
   logShown?: number;
   anims: AnimEvent[];
+  /**
+   * A monster going down the row, one swing at a time.
+   *
+   * Mirror Gate takes their attacker and turns it round on the board it was
+   * standing in. That used to resolve as a single op — every battle settled
+   * inside one action — so the whole outcome arrived at once, the beats played
+   * against a board they had already emptied, and no trap window ever opened
+   * between the swings. They are attacks; the other player gets to answer them.
+   *
+   * `struck` is what it has already been at, so a board that changes under it
+   * cannot send it round twice. Advanced in `applyAction`'s tail, which is
+   * where a sequence that pauses for a window gets picked up again.
+   */
+  onslaught?: { runnerUid: string; struck: string[] } | null;
   pending: Pending | null;
   winner: PlayerId | 'draw' | null;
   winReason?: string;
