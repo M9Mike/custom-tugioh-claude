@@ -646,3 +646,31 @@ export const KIND_LABEL: Record<string, string> = {
   spell: 'Spell',
   trap: 'Trap',
 };
+
+/**
+ * The locks on each side's monsters, written for the board.
+ *
+ * A Spell that locks a board goes to the Graveyard as it resolves — Swords of
+ * Revealing Light, Nightmare's Steelcage — so nothing on the field says the
+ * lock exists, and from across the table a locked computer looks like one
+ * that "has a clear direct attack and won't make it": no monsters to stop it,
+ * no Spells, and a turn passed. The lock is the engine's `ongoing` list, which
+ * the board never read for the other side. One line per locked side, naming
+ * the card and how many of that side's turns it has left; the viewer's own
+ * lock first.
+ */
+export function lockNotices(state: DuelState, viewer: PlayerId): { side: PlayerId; text: string }[] {
+  const out: { side: PlayerId; text: string }[] = [];
+  for (const o of state.ongoing) {
+    if (o.kind !== 'freezeMonsters' || o.turns <= 0) continue;
+    const own = o.target === viewer;
+    const name = CARDS[o.source]?.name ?? o.source;
+    /* The count is the locked side's turns still to be spent, one of them in
+       progress when it is their turn — so it falls only as their turns end,
+       and a caster reads it as "their next N turns" straight off. The card
+       leads and the line is short, because it stands under the opponent's
+       strip for the length of the lock and must clear the buttons beside it. */
+    out.push({ side: o.target, text: `${name} locks ${own ? 'your' : 'their'} monsters — ${o.turns} turn${o.turns === 1 ? '' : 's'}` });
+  }
+  return out.sort((a, b) => (a.side === viewer ? -1 : 0) - (b.side === viewer ? -1 : 0));
+}

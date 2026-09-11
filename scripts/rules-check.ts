@@ -13,7 +13,7 @@ import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect } from '../src/game/ui';
+import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
@@ -15044,6 +15044,50 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       'FLAME: and a thousand more for the blow it took',
       String(took.players[ME].monsters.find((m) => m?.uid === spe.uid)?.atkMod));
   }
+}
+
+/* ------------------------------------------------------------------ */
+console.log('\nA lock the board can see: the card is in the Graveyard, the notice names it');
+{
+  /* Swords of Revealing Light goes to the Graveyard as it resolves and the lock
+     lives on in `ongoing`, where the board never read it for the other side.
+     From across the table that was the computer "having a clear direct attack
+     and not making it": no monsters, no Spells, a turn passed. The notice and
+     the log line come from here, for both sides, with the card's name and how
+     many of the locked side's turns are left. */
+  const s = fresh();
+  const spell = card(ME, 'swords-of-revealing-light');
+  s.players[ME].hand = [spell];
+  const theirs = card(FOE, 'baby-dragon');
+  theirs.summonedOnTurn = 0;
+  s.players[FOE].monsters[0] = theirs;
+  const after = act(s, ME, { type: 'activateSpell', uid: spell.uid, targets: [] });
+  ok(!after.players[ME].spellTrap && after.players[ME].grave.some((c) => c.slug === 'swords-of-revealing-light'),
+    'LOCK: the Swords are in the Graveyard, not on the field');
+  ok(JSON.stringify(after.log).includes("Foe's monsters are locked down for 3 of their turns."),
+    'LOCK: the log line says how long', JSON.stringify(after.log.slice(-3)));
+  const swords = 'Swords of Revealing Light';
+  const seenByMe = lockNotices(after, ME);
+  ok(seenByMe.length === 1 && seenByMe[0].side === FOE && seenByMe[0].text === `${swords} locks their monsters — 3 turns`,
+    'LOCK: the caster is told whose, which card, and how long', seenByMe[0]?.text);
+  ok(lockNotices(after, FOE)[0]?.text === `${swords} locks your monsters — 3 turns`,
+    'LOCK: and the locked side is told the same in the second person', lockNotices(after, FOE)[0]?.text);
+  let t = act(after, ME, { type: 'endTurn' });
+  ok(t.active === FOE && lockNotices(t, ME)[0]?.text === `${swords} locks their monsters — 3 turns`,
+    'LOCK: on their turn the count still holds, this turn being one of them', lockNotices(t, ME)[0]?.text);
+  t = act(t, FOE, { type: 'endTurn' });
+  ok(lockNotices(t, ME)[0]?.text === `${swords} locks their monsters — 2 turns`,
+    'LOCK: their turn ending spends one', lockNotices(t, ME)[0]?.text);
+  t = act(t, ME, { type: 'endTurn' });
+  t = act(t, FOE, { type: 'endTurn' });
+  ok(lockNotices(t, ME)[0]?.text === `${swords} locks their monsters — 1 turn`,
+    'LOCK: one left reads in the singular', lockNotices(t, ME)[0]?.text);
+  t = act(t, ME, { type: 'endTurn' });
+  ok(lockNotices(t, ME)[0]?.text === `${swords} locks their monsters — 1 turn`,
+    'LOCK: and holds through their last locked turn', lockNotices(t, ME)[0]?.text);
+  t = act(t, FOE, { type: 'endTurn' });
+  ok(lockNotices(t, ME).length === 0 && lockNotices(t, FOE).length === 0,
+    'LOCK: after their third turn the notice is gone from both sides');
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

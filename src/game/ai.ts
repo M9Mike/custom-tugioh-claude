@@ -21,7 +21,7 @@
  *    sampled world their hand is dealt from the pool of cards the AI has not
  *    seen, so the model plays a *plausible* opponent, never the actual one.
  */
-import { CARDS, baseAtk } from './cards';
+import { CARDS, baseAtk, baseDef } from './cards';
 import {
   applyAction,
   canActivateFromHand,
@@ -191,11 +191,11 @@ function unknownFor(state: DuelState, pid: PlayerId): { small: { atk: number; de
     const d = CARDS[slug];
     if (d?.kind !== 'monster' || d.type === 'Divine-Beast') return;
     if ((d.level ?? 0) > 4) {
-      bigAtk.push(Math.max(0, d.atk ?? 0));
-      bigDef.push(Math.max(0, d.def ?? 0));
+      bigAtk.push(Math.max(0, baseAtk(slug)));
+      bigDef.push(Math.max(0, baseDef(slug)));
     } else {
-      smallAtk.push(Math.max(0, d.atk ?? 0));
-      smallDef.push(Math.max(0, d.def ?? 0));
+      smallAtk.push(Math.max(0, baseAtk(slug)));
+      smallDef.push(Math.max(0, baseDef(slug)));
     }
   };
   for (const c of p.hand) consider(c.slug);
@@ -734,7 +734,7 @@ function enableTargets(slug: string): { slugs: string[]; summon: boolean }[] {
   const cached = ENABLE_TARGETS.get(slug);
   if (cached) return cached;
   const out: { slugs: string[]; summon: boolean }[] = [];
-  const worthOf = (t: string): number => (menace(t) + Math.max(0, CARDS[t]?.atk ?? 0) * 0.12) || 0;
+  const worthOf = (t: string): number => (menace(t) + Math.max(0, baseAtk(t)) * 0.12) || 0;
   for (const eff of CARDS[slug]?.effects ?? []) {
     for (const op of eff.ops) {
       let filter: CardFilter | undefined;
@@ -764,7 +764,7 @@ function promiseOf(slug: string, deckSlugs: Set<string>): number {
   for (const en of enableTargets(slug)) {
     for (const t of en.slugs) {
       if (!deckSlugs.has(t)) continue;
-      const worth = (menace(t) + Math.max(0, CARDS[t]?.atk ?? 0) * 0.12) * (en.summon ? 0.3 : 0.2);
+      const worth = (menace(t) + Math.max(0, baseAtk(t)) * 0.12) * (en.summon ? 0.3 : 0.2);
       best = Math.max(best, Math.min(en.summon ? 300 : 220, worth));
     }
   }
@@ -1604,8 +1604,8 @@ const UNKNOWN_PROXY: string = (() => {
  */
 function proxyBody(c: CardInstance, atk = UNKNOWN_ATK, def = UNKNOWN_DEF): void {
   reidentify(c, UNKNOWN_PROXY);
-  c.atkMod = atk - (CARDS[UNKNOWN_PROXY].atk ?? 0);
-  c.defMod = def - (CARDS[UNKNOWN_PROXY].def ?? 0);
+  c.atkMod = atk - baseAtk(UNKNOWN_PROXY);
+  c.defMod = def - baseDef(UNKNOWN_PROXY);
 }
 
 /**

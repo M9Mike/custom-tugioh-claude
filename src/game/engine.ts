@@ -3081,7 +3081,17 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'freezeMonsters':
         for (const pid of sideToPlayers(ctx, op.who)) {
           addOngoing(state, 'freezeMonsters', pid, op.turns, ctx.source.slug);
-          log(state, `${state.players[pid].name}'s monsters are locked down.`, 'effect', pid);
+          /* The length is written down because the card is not: a Spell that
+             locks the board goes to the Graveyard as it resolves, so nothing
+             on the field says how long the lock has left. Reported from the
+             other side of the table as the computer "having a clear direct
+             attack and not making it" — it was standing under Swords. */
+          log(
+            state,
+            `${state.players[pid].name}'s monsters are locked down for ${op.turns} of their turn${op.turns === 1 ? '' : 's'}.`,
+            'effect',
+            pid
+          );
         }
         break;
       case 'negateEffects':

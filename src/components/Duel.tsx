@@ -22,7 +22,6 @@ import {
   handSummonOffer,
   legalAttackTargets,
   maxAttacks,
-  monstersFrozen,
   other,
   summonAffordable,
   summonBanishFor,
@@ -33,7 +32,7 @@ import {
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
-import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonRiderSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
+import { lockNotices, pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonRiderSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -535,6 +534,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
      buttons, the hand's action sheets, and its trap windows as full-screen
      prompts the computer was already about to answer itself. */
   const myTurn = !spectator && state.active === me && !state.winner;
+  /* The locks on either side's monsters, by name and length. The card that
+     cast one is already in the Graveyard, so this is the only place the board
+     can say why a full row of monsters is not attacking — which, from across
+     the table, is what a locked computer looks like. */
+  const locks = lockNotices(state, me);
   const respondingToTrap = !spectator && state.pending?.kind === 'trap' && state.pending.player === me;
   /* A card of mine stopping to ask me which card to take — on whichever turn it
      happens to fire. The same overlay slot as a trap window, because from the
@@ -3007,12 +3011,20 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
         </div>
       )}
 
-      {/* frozen-monsters notice */}
-      {myTurn && monstersFrozen(state, me) && state.phase !== 'draw' && (
-        <div className="pointer-events-none absolute inset-x-0 top-14 z-20 flex justify-center">
-          <span className="rounded border border-sea/60 bg-[#0f2422]/90 px-3 py-1 text-[10px] text-[#bfe8e2]">
-            Your monsters are locked down this turn
-          </span>
+      {/* locked-monsters notice — either side, whoever's turn it is. It used
+          to show only the viewer's own lock, on the viewer's own turn, so the
+          computer standing under the player's Swords was three turns of a
+          monster that "had a clear direct attack and would not make it". */}
+      {locks.length > 0 && (
+        /* Below the opponent's strip, not over its Life Point bar, and short of
+           the button column on the right: this stands for three turns at a
+           time, and at `top-14` it sat on the bar and ran under the buttons. */
+        <div className="pointer-events-none absolute left-2 right-[4.25rem] top-[70px] z-20 flex flex-col items-start gap-1">
+          {locks.map((lock) => (
+            <span key={lock.side} className="rounded border border-sea/60 bg-[#0f2422]/90 px-3 py-1 text-[10px] text-[#bfe8e2]">
+              {lock.text}
+            </span>
+          ))}
         </div>
       )}
     </div>
