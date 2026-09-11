@@ -1871,9 +1871,10 @@ function destroyCard(
     uid: c.uid,
     slug: c.slug,
     player: found.controller,
-    /* Where it was standing, for the board to keep drawing it until this beat
-       has had its moment — see `AnimEvent.zoneIndex`. */
+    /* Where it was standing, and whether a battle put it there — for the board
+       to know how long to keep drawing it. See `AnimEvent.zoneIndex`. */
     ...(found.zone === 'monster' ? { zoneIndex: found.index, zonePosition: c.position } : {}),
+    ...(byBattle ? { byBattle: true } : {}),
   });
   // The card leaves the field *before* its own destruction effect resolves.
   // Otherwise it is still sitting in its Monster Zone, and an effect like

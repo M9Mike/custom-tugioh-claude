@@ -1902,6 +1902,18 @@ export interface AnimEvent {
    */
   zoneIndex?: number;
   zonePosition?: Position;
+  /**
+   * This death was a battle's, not an effect's.
+   *
+   * The two want different timing on screen. An effect's kill is announced by
+   * its own beat — "Battle Ox is destroyed" — so the body has to still be there
+   * while that beat is on screen. A battle's kill has already been announced by
+   * the swing and the Life Points, so a body still standing after those reads
+   * as one that survived: it has to go at the moment the blow lands, not a beat
+   * later. Reported exactly that way — "it gives initially the idea that it
+   * would survive".
+   */
+  byBattle?: boolean;
   text?: string;
   /** This effect fired *because the card arrived*, not because it was played.
       A card with several effects otherwise announces every one of them with

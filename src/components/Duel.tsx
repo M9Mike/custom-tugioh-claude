@@ -400,10 +400,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
    */
   const departing = useMemo(() => {
     const out: { uid: string; player: PlayerId; idx: number; card: CardInstance }[] = [];
-    for (const a of unspoken) {
-      if (a.kind !== 'destroy' || !a.uid || !a.slug || a.zoneIndex == null || !a.player) continue;
+    unspoken.forEach((a, at) => {
+      if (a.kind !== 'destroy' || !a.uid || !a.slug || a.zoneIndex == null || !a.player) return;
       // Something already standing there again needs no ghost over the top.
-      if (state.players[a.player].monsters[a.zoneIndex]) continue;
+      if (state.players[a.player].monsters[a.zoneIndex]) return;
+      /* How long the body stays is the difference between the two kinds of
+         death. An effect's kill is announced by this very beat, so it is held
+         until the beat is on screen — `unspoken` still containing it is the
+         test, which is every case below.
+         A battle's kill was already announced by the swing and the Life Points.
+         Held to its own beat as well, the body stood there through both of
+         them and then vanished a beat later — "it gives initially the idea that
+         it would survive". So it goes the moment nothing *earlier* is left to
+         say: `markPlayed` fires as a beat reaches the screen, so being at the
+         head of the queue is the same instant the blow lands. */
+      if (a.byBattle && at === 0) return;
       out.push({
         uid: a.uid,
         player: a.player,
@@ -431,7 +442,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           ...(a.as ? { isToken: true, tokenName: a.as } : {}),
         } as CardInstance,
       });
-    }
+    });
     return out;
   }, [unspoken, state]);
   const fxTimer = useRef<number | null>(null);
