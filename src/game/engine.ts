@@ -600,6 +600,10 @@ export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId)
      which ask for stats: this is inside the stat calculation and cannot call
      back into it. Nothing grants infinite ATK from outside anyway — the Fist of
      Fate sets it on Obelisk himself and nothing else in the game does. */
+  /* A number already worked out where all the information was — see
+     `CardInstance.shownAtk`. Only a view carries it, and a view is replaced
+     whole on every poll, so it can never be stale. */
+  if (c.shownAtk != null) return c.shownAtk;
   if (c.flags.infiniteAtk || c.turnFlags.infiniteAtk) return INFINITE_ATK;
   const base = c.isToken ? (c.tokenAtk ?? 0) : baseAtk(c.slug);
   /* Half for a monster that swallows what it kills. A scorpion eating a
@@ -611,6 +615,7 @@ export function effAtk(state: DuelState, c: CardInstance, controller?: PlayerId)
 }
 
 export function effDef(state: DuelState, c: CardInstance, controller?: PlayerId): number {
+  if (c.shownDef != null) return c.shownDef;
   const ctrl = controller ?? controllerOf(state, c.uid) ?? c.owner;
   const base = c.isToken ? (c.tokenDef ?? 0) : baseDef(c.slug);
   const rate = c.flags.absorbHalved || c.turnFlags.absorbHalved ? 0.5 : 1;
@@ -6794,6 +6799,20 @@ function handleTrapResponse(state: DuelState, pid: PlayerId, uid: string | null,
 
 export function viewFor(state: DuelState, viewer: PlayerId): DuelState {
   const s: DuelState = structuredClone(state);
+  /* Worked out first, while every pile is still itself. A monster's stats can
+     depend on a zone this viewer is about to lose sight of — Bladedge counts
+     the HEROes in its controller's hand — and the masking below would leave the
+     other player's board drawing a number the server never fought at. The ATK
+     of a face-up monster is public; the hand it is counting is not, and
+     stamping the answer gives the first without giving the second.
+     See `CardInstance.shownAtk`. */
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    s.players[pid].monsters.forEach((m) => {
+      if (!m) return;
+      m.shownAtk = effAtk(state, m, pid);
+      m.shownDef = effDef(state, m, pid);
+    });
+  }
   const opp = s.players[other(viewer)];
   opp.hand = opp.hand.map((c) => ({ ...c, slug: 'facedown', face: 'down' as Face }));
   opp.deck = opp.deck.map((c) => ({ ...c, slug: 'facedown' }));

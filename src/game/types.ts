@@ -1539,6 +1539,22 @@ export interface CardInstance {
    */
   battleAtkMod?: number;
   battleDefMod?: number;
+  /**
+   * What this monster really stands at, stamped into a *view* by `viewFor`.
+   *
+   * A face-up monster's ATK is public even when the reason for it is not.
+   * Bladedge gains 1000 for each "Elemental HERO" card in its controller's
+   * hand, and the opponent's copy of that hand is masked card-by-card to the
+   * slug `facedown` — so the filter matched nothing, the other player's board
+   * drew 2600 for a body the server was fighting at 3600, and a 2600 attacker
+   * walked into what the screen called a tie and lost 1000 Life Points.
+   * Reported from a real duel, with the screenshot.
+   *
+   * Never set on the server's own state: it exists only on the copy a player is
+   * sent, which is the only place the two can disagree.
+   */
+  shownAtk?: number;
+  shownDef?: number;
   counters: number;
   /** Slugs of cards equipped to this monster, for display. */
   equips: string[];
