@@ -403,7 +403,10 @@ green. Jaden against the field, the same search on both seats at the arena's
 1500 ms budget: **86.8% ±4.7 over 204 games (177W–27L)**, against 85.3% ±8.4
 over 68 before — the losses that remain are mostly hands with no body to
 summon, which a 25-card deck with two Kuribohs, a Level 5 and a Level 7 in it
-deals more often than it looks. The general AI against the shipped one, pilot-
+deals more often than it looks. Measured again on `main` once the HERO pairs
+stopped fetching each other off a Polymerization and Mirror Gate's row started
+falling one swing at a time: **84.3% ±5.0 over 204 games (172W–32L)** — the
+same search, a deck that now pays for its Fusions, and inside the band. The general AI against the shipped one, pilot-
 swapped over every deck pair: **51.9% ±5.7 (154W–143L over 297 games)** — no
 measurable difference at the 95% band, with every reported misplay pinned and
 gone, which is what "not worse in a fair arena" has cost every time.
