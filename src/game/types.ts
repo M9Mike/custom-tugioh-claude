@@ -1224,6 +1224,17 @@ export interface EffectCondition {
    * it the trigger answers every summon there is, its own included.
    */
   summonedIs?: CardFilter;
+  /**
+   * Refuse the effect when the card reached the Graveyard as Fusion Material.
+   *
+   * The eight Elemental HERO pairs fetch each other on the way down, which off
+   * a Polymerization gave back two cards for the two it ate and made the Fusion
+   * cost nothing. Every other road to the Graveyard still pays: destroyed in
+   * battle, discarded, milled, tributed, a cost. The owner's line was "if they
+   * went to the graveyard for polymerization / fusion then they don't add the
+   * other elemental hero to the hand, any other case it still works as is".
+   */
+  notAsFusionMaterial?: boolean;
   /** Controller's LP must be at or below this. */
   ownLpBelow?: number;
   /**
@@ -1802,6 +1813,13 @@ export interface PendingChoice {
 export interface TriggerContext {
   /** For `onAllySummon`: the monster that just arrived — see `summonedIs`. */
   summonedUid?: string;
+  /**
+   * This card is in the Graveyard because it was spent assembling a Fusion.
+   *
+   * Set on all three departure triggers by the one door every card takes down
+   * — see `landInGrave`. Read by `EffectCondition.notAsFusionMaterial`.
+   */
+  asFusionMaterial?: boolean;
   attackerUid?: string;
   targetUid?: string;
   sourceUid?: string;

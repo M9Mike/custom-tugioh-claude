@@ -4480,7 +4480,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       'When this monster is Summoned: add 1 "Polymerization" from your Deck to your hand, ' +
       'then destroy 1 Spell or Trap your opponent controls — or, if they control none, ' +
       'they discard 1 random Spell or Trap card. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Burstinatrix" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Burstinatrix" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Feather Break!',
     effects: [
       {
@@ -4503,6 +4503,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-burstinatrix'] }, orGrave: true }],
       },
     ],
@@ -4514,12 +4516,14 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        the Doomed already charges in. */
     text:
       'When this monster is Summoned: inflict 500 damage to your opponent for each card in their hand. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Avian" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Avian" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Burst Fire!',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'damage', amount: 500, scale: 'perOppHandCard', to: 'opp' }] },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-avian'] }, orGrave: true }],
       },
     ],
@@ -4531,7 +4535,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        be one number in this game and not two. */
     text:
       'Anything that attacks this monster does so 1000 ATK lighter, even while this monster is face-down. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bubbleman" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bubbleman" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Clay Guard!',
     effects: [
       /* `evenFaceDown` because a wall is a wall whether or not you have turned
@@ -4540,6 +4544,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'], evenFaceDown: true } },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bubbleman'] }, orGrave: true }],
       },
     ],
@@ -4552,7 +4558,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'This monster inflicts piercing battle damage and gains 1000 ATK and DEF for each Fusion monster in your Graveyard. ' +
       'When this monster destroys a monster in battle: inflict 1000 damage to your opponent. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bladedge" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Bladedge" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Static Shockwave!',
     effects: [
       {
@@ -4567,6 +4573,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-bladedge'] }, orGrave: true }],
       },
     ],
@@ -4580,7 +4588,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'If you control no monsters, this monster can be Special Summoned from your hand in Attack Position. ' +
       'When this monster is Summoned: draw 2 cards. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Clayman" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Clayman" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Bubble Shuffle!',
     effects: [
       /* The restriction came off the draw and moved onto the summon, which is
@@ -4595,6 +4603,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-clayman'] }, orGrave: true }],
       },
     ],
@@ -4608,7 +4618,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'This monster is unaffected by Spell and Trap effects. ' +
       'When this monster is Summoned, and again when it declares an attack: destroy 1 Spell or Trap your opponent controls. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Necroshade" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Necroshade" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Wildheart never backs down!',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['unaffectedBySpellsAndTraps'] } },
@@ -4625,6 +4635,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-necroshade'] }, orGrave: true }],
       },
     ],
@@ -4635,9 +4647,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        about paying for a summon. This says the same thing as an event: he goes
        down, and the big one comes up in his place — the anime beat, and the
        reason Bladedge is in a deck whose next-biggest monster is 1600. */
+    /* Two sentences, and only one of them is the pair's fetch — so they are two
+       effects. Written as one, the `notAsFusionMaterial` condition that belongs
+       to the hand-add silenced the Special Summon with it, which is a nerf
+       nobody asked for: the owner's line was about adding the other HERO to the
+       hand, not about the body that comes up in Necroshade's place. He still
+       rises off a Polymerization. */
     text:
-      'When this monster is sent to the Graveyard: Special Summon 1 "Elemental HERO" monster from your hand or Deck, ' +
-      'and add 1 "Elemental HERO Wildheart" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: Special Summon 1 "Elemental HERO" monster from your hand or Deck. ' +
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Wildheart" from your Deck or Graveyard to your hand, ' +
+      'unless it was sent there as Fusion Material.',
     cry: 'Rise, in my place!',
     effects: [
       {
@@ -4653,8 +4672,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
             filter: { nameIncludes: 'Elemental HERO' },
             position: 'atk',
           },
-          { op: 'search', filter: { slugs: ['elemental-hero-wildheart'] }, orGrave: true },
         ],
+      },
+      {
+        trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+        ops: [{ op: 'search', filter: { slugs: ['elemental-hero-wildheart'] }, orGrave: true }],
       },
     ],
   },
@@ -4666,7 +4689,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'If this is the only monster in your hand, it can be Special Summoned from your hand. ' +
       'This monster inflicts piercing battle damage and gains 1000 ATK for each "Elemental HERO" card in your hand. ' +
-      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Sparkman" from your Deck or Graveyard to your hand.',
+      'When this monster is sent to the Graveyard: add 1 "Elemental HERO Sparkman" from your Deck or Graveyard to your hand, unless it was sent there as Fusion Material.',
     cry: 'Slice and dice!',
     effects: [
       {
@@ -4686,6 +4709,8 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
       },
       {
         trigger: 'onAnyToGrave',
+        condition: { notAsFusionMaterial: true },
+       
         ops: [{ op: 'search', filter: { slugs: ['elemental-hero-sparkman'] }, orGrave: true }],
       },
     ],

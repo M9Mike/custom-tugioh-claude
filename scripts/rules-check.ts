@@ -14412,10 +14412,14 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
   }
 
   {
-    /* Sent to the Graveyard means sent to the Graveyard. Sparkman and Clayman
-       fed to a Polymerization *out of the hand* fetched nothing, because every
-       HERO was written on `onSentToGrave` — which is the field-only trigger.
-       The owner's text says neither "destroyed" nor "from the field". */
+    /* The eight pairs fetch each other on every road to the Graveyard except
+       one: spent to assemble a Fusion, they go down quietly.
+       Both halves of that are here, and the pair matters — the trigger was
+       widened to `onAnyToGrave` precisely so a material spent out of the *hand*
+       would pay, and this is the same road being closed again for one reason.
+       Closed too far and Sparkman stops naming Bladedge when he is destroyed;
+       not far enough and a Polymerization costs nothing, because the two bodies
+       it eats hand back two cards before the Fusion has finished landing. */
     const s = jaden();
     const giant = card(ME, 'elemental-hero-thunder-giant');
     s.players[ME].extra = [giant, ...s.players[ME].extra];
@@ -14424,7 +14428,7 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
       card(ME, 'elemental-hero-clayman'),
       card(ME, 'polymerization'),
     ];
-    /* What each of them names on the way down, waiting in the Deck. */
+    /* What each of them would name on the way down, waiting in the Deck. */
     s.players[ME].deck = [card(ME, 'elemental-hero-bladedge'), card(ME, 'elemental-hero-bubbleman')];
     const route = fusionOptions(s, ME).find((o) => o.extraUid === giant.uid);
     ok(!!route, 'ROAD: two materials out of the hand assemble it');
@@ -14435,10 +14439,98 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
         out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
       }
       const hand = out.players[ME].hand.map((c) => c.slug);
-      ok(hand.includes('elemental-hero-bladedge'),
-        'ROAD: Sparkman spent from the hand still names Bladedge', hand.join(',') || '(empty)');
-      ok(hand.includes('elemental-hero-bubbleman'),
-        'ROAD: and Clayman still names Bubbleman', hand.join(',') || '(empty)');
+      ok(!hand.includes('elemental-hero-bladedge'),
+        'ROAD: Sparkman spent on the Fusion names nobody', hand.join(',') || '(empty)');
+      ok(!hand.includes('elemental-hero-bubbleman'),
+        'ROAD: and neither does Clayman', hand.join(',') || '(empty)');
+      ok(out.players[ME].monsters.some((m) => m?.uid === giant.uid),
+        'ROAD: CONTROL: and the Fusion did land, so this measures the fetch');
+      ok(out.players[ME].grave.some((c) => c.slug === 'elemental-hero-sparkman'),
+        'ROAD: CONTROL: from the Graveyard, where the trigger would have fired',
+        out.players[ME].grave.map((c) => c.slug).join(',') || '(empty)');
+    }
+
+    /* Necroshade carries two sentences on that one trigger and only one of them
+       goes quiet. The Special Summon is the card's whole reason for being in a
+       deck whose next-biggest body is 1600 — the owner asked for the hand-add to
+       stop, not for the thing that rises in his place.
+       Written as one effect the condition took both, which is how this pin came
+       to exist: the bulk edit that added `notAsFusionMaterial` to all eight put
+       it on Necroshade's summon as well. */
+    const shade = jaden();
+    const wingman = card(ME, 'elemental-hero-flame-wingman'); // Avian + Burstinatrix
+    shade.players[ME].extra = [wingman, ...shade.players[ME].extra];
+    shade.players[ME].hand = [
+      card(ME, 'elemental-hero-avian'),
+      card(ME, 'elemental-hero-burstinatrix'),
+      card(ME, 'polymerization'),
+    ];
+    shade.players[ME].deck = [card(ME, 'elemental-hero-necroshade')];
+    /* Necroshade is not the material here — he is milled below, so the two
+       questions are asked about him alone and nothing else is in flight. */
+    const shadeRoute = fusionOptions(shade, ME).find((o) => o.extraUid === wingman.uid);
+    ok(!!shadeRoute, 'SHADE: CONTROL: Avian and Burstinatrix assemble the Wingman');
+
+    /* And now Necroshade himself, spent as material. Wildheart waits in the
+       Deck for the fetch that must not happen, and Bladedge for the body that
+       must. */
+    const spent = jaden();
+    /* The Fusion he is actually material for, so he goes down as one. */
+    const dark = card(ME, 'elemental-hero-darkbright'); // Sparkman + Necroshade
+    spent.players[ME].extra = [dark, ...spent.players[ME].extra];
+    const shadeBody = card(ME, 'elemental-hero-necroshade');
+    shadeBody.summonedOnTurn = 0;
+    const spark2 = card(ME, 'elemental-hero-sparkman');
+    spark2.summonedOnTurn = 0;
+    spent.players[ME].monsters = [spark2, shadeBody, null];
+    spent.players[ME].hand = [card(ME, 'polymerization')];
+    spent.players[ME].deck = [card(ME, 'elemental-hero-wildheart'), card(ME, 'elemental-hero-bladedge')];
+    const darkRoute = fusionOptions(spent, ME).find((o) => o.extraUid === dark.uid);
+    ok(!!darkRoute, 'SHADE: Sparkman and Necroshade assemble Darkbright');
+    if (darkRoute) {
+      let out = act(spent, ME, { type: 'fusionSummon', extraUid: darkRoute.extraUid, materials: darkRoute.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 8) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      const hand = out.players[ME].hand.map((c) => c.slug);
+      ok(!hand.includes('elemental-hero-wildheart'),
+        'SHADE: spent as material, Necroshade names nobody', hand.join(',') || '(empty)');
+      /* But he still rises. The body came out of the Deck, so the board holds
+         the Fusion and whatever Necroshade brought up with it. */
+      const bodies = out.players[ME].monsters.filter(Boolean).map((m) => m!.slug);
+      ok(bodies.some((b) => b !== 'elemental-hero-darkbright'),
+        'SHADE: and something still rises in his place', bodies.join(',') || '(empty board)');
+      /* And Sparkman, the other material, names nobody either — the same rule
+         reaching the card that has only the one sentence. */
+      ok(!hand.includes('elemental-hero-bladedge'),
+        'SHADE: CONTROL: nor does Sparkman beside him', hand.join(',') || '(empty)');
+    }
+
+    /* And the same two off the *field*, spent on a free assembly — no
+       Polymerization in it, so the road is `toGrave` rather than the hand
+       route. One rule, two roads, and a rule true of one of them is not one. */
+    const onField = jaden();
+    const blaster = card(ME, 'elemental-hero-rampart-blaster'); // Clayman + Burstinatrix
+    onField.players[ME].extra = [blaster, ...onField.players[ME].extra];
+    const clay = card(ME, 'elemental-hero-clayman');
+    const burst = card(ME, 'elemental-hero-burstinatrix');
+    clay.summonedOnTurn = 0;
+    burst.summonedOnTurn = 0;
+    onField.players[ME].monsters = [clay, burst, null];
+    onField.players[ME].hand = [card(ME, 'polymerization')];
+    onField.players[ME].deck = [card(ME, 'elemental-hero-bubbleman'), card(ME, 'elemental-hero-avian')];
+    const fieldRoute = fusionOptions(onField, ME).find((o) => o.extraUid === blaster.uid);
+    ok(!!fieldRoute, 'ROAD: and two off the field assemble one too');
+    if (fieldRoute) {
+      let out = act(onField, ME, { type: 'fusionSummon', extraUid: fieldRoute.extraUid, materials: fieldRoute.materials, zone: 2, position: 'atk' });
+      let g = 0;
+      while (out.pending?.kind === 'choose' && g++ < 8) {
+        out = act(out, out.pending.player, { type: 'chooseCard', uids: [out.pending.options[0]] });
+      }
+      const hand = out.players[ME].hand.map((c) => c.slug);
+      ok(!hand.includes('elemental-hero-bubbleman') && !hand.includes('elemental-hero-avian'),
+        'ROAD: spent off the field, they name nobody either', hand.join(',') || '(empty)');
     }
 
     /* CONTROL: and the road off the field still works, which is the one that

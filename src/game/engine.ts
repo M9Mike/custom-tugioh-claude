@@ -1080,6 +1080,8 @@ interface PendingDeparture {
    *  the way to the pile, so a card that answers being destroyed *face-down*
    *  was always asked the question after it had been turned over. */
   face: Face;
+  /** Spent to assemble a Fusion — see `landInGrave`'s `asFusionMaterial`. */
+  asFusionMaterial?: boolean;
 }
 
 /**
@@ -1113,14 +1115,22 @@ export function makesSeven(dice: number[]): boolean {
  * goes through it. `toGrave` calls this too, for the field route, alongside the
  * field-only trigger it has always fired.
  */
-function landInGrave(state: DuelState, c: CardInstance, controller: PlayerId) {
+/*
+ * `asFusionMaterial` is *why* it is arriving, and the eight Elemental HERO
+ * pairs are what care. They fetch each other out of the Deck or Graveyard on
+ * the way down, which off a Polymerization meant the two bodies you spent
+ * handed you two more before the Fusion had finished landing — the owner's
+ * "unless used for a fusion summon". Everything else about the trip is
+ * unchanged: it is the same door, carrying one more fact about the journey.
+ */
+function landInGrave(state: DuelState, c: CardInstance, controller: PlayerId, asFusionMaterial = false) {
   /* WHICH pile is the card's own business, not the spender's: a stolen or
      retrieved card goes home to its owner's Graveyard however it was used —
      Magician of Faith lifts an enemy Spell, the Spell is cast, and the card
      crosses the table again on its way down. The controller seat is kept
      for the trigger's point of view only. */
   state.players[c.owner].grave.push(c);
-  fireTriggers(state, c, controller, 'onAnyToGrave', {});
+  fireTriggers(state, c, controller, 'onAnyToGrave', asFusionMaterial ? { asFusionMaterial } : {});
 }
 
 function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
@@ -1133,14 +1143,19 @@ function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
        for being broken under its own card back, and `resetInstance` had already
        turned it over by the time it was asked. */
     d.c.face = d.face;
-    if (d.destroyed) fireTriggers(state, d.c, d.controller, 'onDestroyed', {});
-    fireTriggers(state, d.c, d.controller, 'onSentToGrave', {});
+    /* The same fact reaches the field-only pair. No card reads it there yet;
+       written here anyway, because a reason that is true on one of three
+       departure triggers and absent from the other two is the divergence this
+       engine keeps being bitten by. */
+    const why = d.asFusionMaterial ? { asFusionMaterial: true } : {};
+    if (d.destroyed) fireTriggers(state, d.c, d.controller, 'onDestroyed', why);
+    fireTriggers(state, d.c, d.controller, 'onSentToGrave', why);
     d.c.counters = 0;
     d.c.face = 'up';
   }
 }
 
-function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false, defer?: PendingDeparture[]) {
+function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false, defer?: PendingDeparture[], asFusionMaterial = false) {
   const found = fromField ? findOnField(state, uid) : null;
   const controller = found?.controller;
   const c = removeFromAnywhere(state, uid);
@@ -1177,8 +1192,9 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
   state.players[c.owner].grave.push(c);
 
   if (wasOnField) {
-    if (defer) defer.push({ c, controller, destroyed, counters, face });
-    else fireDepartures(state, [{ c, controller, destroyed, counters, face }]);
+    const leaving = { c, controller, destroyed, counters, face, asFusionMaterial };
+    if (defer) defer.push(leaving);
+    else fireDepartures(state, [leaving]);
   }
   /* And the arrival, which is a different sentence from the departure: this one
      is true of a card that was never on the board.
@@ -1186,7 +1202,7 @@ function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = 
      longer: Winged Kuriboh comes back when it is discarded and stays down when
      it is destroyed, and `onAnyToGrave` alone cannot tell those apart. */
   if (wasOnField) c.flags.justLeftTheField = true;
-  fireTriggers(state, c, c.owner, 'onAnyToGrave', {});
+  fireTriggers(state, c, c.owner, 'onAnyToGrave', asFusionMaterial ? { asFusionMaterial } : {});
   delete c.flags.justLeftTheField;
 }
 
@@ -3380,6 +3396,11 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
     const arrived = trig?.summonedUid ? findOnField(state, trig.summonedUid)?.c : null;
     if (!arrived || !matchesFilter(arrived, cond.summonedIs)) return false;
   }
+  /* Read off the trigger rather than the instance, deliberately: "was this card
+     spent on a Fusion" is only true for the length of that one trip to the pile.
+     Parked on the card it would survive a Monster Reborn and silence the fetch
+     the next time it died, which is a different card's rule. */
+  if (cond.notAsFusionMaterial && trig?.asFusionMaterial) return false;
   /* How this monster got here. Read off the instance rather than the trigger
      context, because the question outlives the summon: a continuous effect
      asks it on every stat calculation, long after the beat that put the card
@@ -6485,12 +6506,17 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       /* Both spends go through the one door: a borrowed Polymerization or a
          stolen material spent from hand still goes home to its owner's pile. */
       if (route.spendPoly >= 0) landInGrave(state, p.hand.splice(route.spendPoly, 1)[0], pid);
+      /* Spent, and the pile is told *why*. The eight Elemental HERO pairs fetch
+         each other on the way down, so a Polymerization used to hand back two
+         cards for the two it ate — the owner asked for the fetch everywhere
+         except here. Marked on both roads, field and hand, because a material
+         can come from either and a rule true of one of them is not a rule. */
       for (const m of chosen) {
         const onField = !!findOnField(state, m.uid);
-        if (onField) toGrave(state, m.uid, true);
+        if (onField) toGrave(state, m.uid, true, false, undefined, true);
         else {
           const hi = p.hand.findIndex((h) => h.uid === m.uid);
-          if (hi >= 0) landInGrave(state, p.hand.splice(hi, 1)[0], pid);
+          if (hi >= 0) landInGrave(state, p.hand.splice(hi, 1)[0], pid, true);
         }
       }
       const zone = p.monsters[action.zone] ? p.monsters.findIndex((m) => !m) : action.zone;

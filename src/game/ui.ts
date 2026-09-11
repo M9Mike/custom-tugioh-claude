@@ -407,9 +407,26 @@ function specChain(eff: CardEffect, owner: string): TargetSpec[] {
 }
 
 /** Every question this card's effect asks, for the trigger the board pressed. */
+/**
+ * Every question a card asks on one trigger — across *all* its effects on that
+ * trigger, not the first of them.
+ *
+ * The note on `targetSpecForEffect` has said for a while that taking the first
+ * match is "right for every card that has one of a thing and silently wrong for
+ * the first card that has two". Necroshade is now that card: he carries two
+ * `onAnyToGrave` sentences, because only one of them — the fetch — falls silent
+ * when he is spent as Fusion Material, and a condition belongs to an effect
+ * rather than to an op. Left on `.find`, the second sentence's question simply
+ * did not exist as far as this helper was concerned.
+ *
+ * The engine itself resolves parked questions by effect index and was never
+ * wrong here; this is the trigger-keyed door, which the board and the AI use
+ * for cards they activate. Merging is what those two want either way: two
+ * sentences on one trigger are two questions, asked in the order written.
+ */
 export function specChainFor(slug: string, trigger: Trigger): TargetSpec[] {
-  const eff = CARDS[slug]?.effects.find((e) => e.trigger === trigger);
-  return eff ? specChain(eff, slug) : [];
+  const effs = (CARDS[slug]?.effects ?? []).filter((e) => e.trigger === trigger);
+  return effs.flatMap((eff) => specChain(eff, slug));
 }
 
 /** The same, for a card carrying more than one effect on the same trigger. */
