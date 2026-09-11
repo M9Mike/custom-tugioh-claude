@@ -309,3 +309,101 @@ mirror of the standing-leak) raced together with every pin green and read
 were deleted rather than kept for plausibility. The evaluation keeps its
 depth where the arena said it mattered: the world priced honestly, the
 cliffs, the leak, the clock.
+
+## The deck that knows itself (2026-09-11)
+
+The owner's ask: the computer should play perfectly, and it should play
+*Jaden* perfectly — a deck built so that, played right, it barely loses.
+Measured first (`scripts/.bench/jaden-bench.ts`, Jaden against every other
+deck four times, the shipped AI on both seats, the arena's 1500 ms budget):
+**85.3% ±8.4**. Then the losses were watched, one transcript at a time, and
+every misplay traced to a mechanism. Eight of them were general — nothing
+about HEROes, everything about how the search reads a board — and those
+shipped as general rules; what was left was the shape of one deck, and that
+became the first *duelist brain*.
+
+**The battle's own arithmetic, in the model.** `bodyOf` read ATK, DEF,
+pierce and direct attack, and nothing else the engine applies when two
+monsters meet. Skyscraper's thousand, Clayman's toll, Metalzoa's doubling
+and halving, Wildedge's attack-all and half-defender, Rampart Blaster's
+fixed gun and its shooting from Defence, LV10's "cannot be attacked" and
+"does not block", Winged Kuriboh's shut door on the rest of the turn's
+damage — all invisible to the evaluation and to the attack filter, so a
+HERO under the city was priced a thousand short on every swing and a 1600
+was never even offered the 2000 it beats. `swingInto`/`guardAgainst`/
+`directSwing` mirror `resolveBattle` clause for clause, and the candidate
+filter, the leak term, the judge's tie-break and the threat model all read
+the same numbers. Pinned: the 2500 that will not swing into a wall that
+saps a thousand (and the 3100 that does), the Sparkman that attacks a 2000
+from under Skyscraper (and does not without it).
+
+**A plan is a bet on a world, and the world is checked.** Pot of Greed
+draws two imagined cards in the planning world and two real ones in the
+duel; the old plan kept walking and the real two were never played. A
+stand-in their Sangan summoned turned out to be a Zoa and the attack
+planned into the stand-in landed on the Zoa. Every plan now carries the
+visible board it expects after each action (`expectedHashes`), the runtime
+and the room compare, and the moment reality disagrees the rest of the
+plan is dropped and the turn searched again from the board as it is.
+Their Graveyard hashes as a count, because a destroyed proxy lands there
+under the proxy's name. Pinned: the Battle Ox drawn by Pot of Greed is
+summoned the same turn.
+
+**The plan carries its own answers.** A search the plan decided to make
+used to be answered inside the beam by a one-step greedy pick the line
+never wrote down, then asked again in the real room, and the fetched card
+arrived `worldBlind` — unspendable for the rest of the turn it was fetched
+for. A choice window the planning seat itself must answer is now a
+decision the beam branches on (`chooseCard` in the line), the chosen card
+is claimed as known, and the room plays the recorded answer. Fusions may
+not be built on imagined materials either. Pinned: E - Emergency Call
+fetches the Clayman that finishes Thunder Giant, and the Giant is made in
+the same turn.
+
+**The nightmare is priced against this board.** The paranoid world stood
+the trap that priced highest on an empty table behind their Set card.
+Ring of Destruction prices as a plain kill there, because "damage equal to
+that monster's ATK" is unbound — so with a 5200 Bladedge standing on 4700
+Life Points the nightmare was a Crush Card Virus, every line lost the
+Bladedge equally, and the computer walked into the Ring and lost. The
+threat is read against the body it would be wrapped round, lethal is
+lethal, and the judged pool widens to two dozen lines chosen round-robin
+by what each develops before it attacks — so the version of the kill that
+first summons Avian and breaks the Ring, or first fuses to shrink the
+Bladedge below the Life Points, is in the room when the dark world votes.
+
+**Smaller things the transcripts named.** A floater is worth what it gives
+back (`floatWorth`, read off `onAnyToGrave`-family ops and checked against
+what is still in the Deck). A Set card keeps the promise it carried in hand
+(the opening turn used to keep Hero Signal unarmed for a hundred points of
+imaginary value). One Spell/Trap Zone means a Set trap is a door shut on
+every Spell in the hand, and is charged for it. A Fusion that is a wall, or
+fights from its knees, is offered lying down. The beam's dedup signature
+carries the Normal Summon — Bubbleman called for free and Bubbleman Normal
+Summoned left the same board and the dedup kept the wrong one. The
+near-tie band halved to 350 and only a decisive Life-Point difference may
+overrule the judge inside it: at 700 with a secondary key, an exact tie fell
+through to "bodies exposed" and kneeled Lady of Faith away from a free 800,
+then to "board left" and swung Morphing Jar face-up into a Sheep Token.
+
+**The brain.** `src/game/brain.ts` is the contract, `src/game/brains/` the
+registry, looked up by the `duelistId` every seat carries — rooms, bracket,
+arena and checks alike. A brain adds evaluation terms only its own cards
+explain and ranks its own questions; everything else is shared. Jaden's
+(`brains/jaden.ts`) prices a Fusion half-assembled in hand against the
+board it would land on (Thunder Giant is worth nothing against three 1900s
+and most of a duel against a Blue-Eyes), the Kuriboh-and-Wings option at
+what stands across the table, and answers "which HERO" by the Fusion it
+completes, the free summon it enables, the burn it lands — not the biggest
+number. Both seats read their brains, so the computer fears Jaden's combos
+when a human plays them.
+
+**Measured.** All 55 pinned positions green on every deck order, `ai-honesty`
+green. Jaden against the field, the same search on both seats at the arena's
+1500 ms budget: **86.8% ±4.7 over 204 games (177W–27L)**, against 85.3% ±8.4
+over 68 before — the losses that remain are mostly hands with no body to
+summon, which a 25-card deck with two Kuribohs, a Level 5 and a Level 7 in it
+deals more often than it looks. The general AI against the shipped one, pilot-
+swapped over every deck pair: **51.9% ±5.7 (154W–143L over 297 games)** — no
+measurable difference at the 95% band, with every reported misplay pinned and
+gone, which is what "not worse in a fair arena" has cost every time.

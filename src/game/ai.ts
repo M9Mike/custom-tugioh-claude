@@ -43,11 +43,12 @@ import {
   other,
   summonBlocked,
   tributableBodies,
-  tributesRequired, tributeSetFor } from './engine';
+  tributesRequired, tributeSetFor, wastedWithoutTarget } from './engine';
 import { changesAnything, matchesFilter } from './targeting';
 import { specChainFor, summonSpecChain, type TargetSpec } from './ui';
 import { type AiLevel } from './ai-levels';
-import { MONSTER_ZONES, type CardFilter, type CardInstance, type DuelAction, type DuelState, type PlayerId } from './types';
+import { brainFor } from './brains';
+import { MONSTER_ZONES, type CardFilter, type CardFlags, type CardInstance, type DuelAction, type DuelState, type Op, type PlayerId } from './types';
 
 export type { AiLevel };
 
@@ -237,9 +238,113 @@ interface Body {
   wall: number;
   atkPos: boolean;
   attacks: number;
+  /** May declare an attack from where it stands: face-up in Attack Position,
+   *  or face-up in Defence with `attacksInDefense` (Rampart Blaster). */
+  swings: boolean;
   pierce: boolean;
   direct: boolean;
   wallProof: boolean;
+  /* What the battle itself bends, mirrored from `resolveBattle` one clause at a
+     time. Every one of these used to be invisible to the model: a HERO under
+     Skyscraper was priced a thousand short on every swing, Clayman's toll was
+     a wall the attacker never paid, and Wildedge's halving and attack-all were
+     an ordinary 2600. The engine applied all of it and the search priced none
+     of it, so the plan and the duel disagreed by exactly these numbers. */
+  /** Swings at twice its ATK (Metalzoa, Metalmorph). */
+  doubles: boolean;
+  /** A thousand on every swing it makes (Skyscraper). */
+  surge: boolean;
+  /** A thousand more into something standing bigger than its own ATK (Flame Wingman). */
+  surgeVsStronger: boolean;
+  /** Extra ATK against a kneeling target (Pendulum Machine). */
+  bonusVsDef: number;
+  /** ATK gained on the way in, from an `onDeclareAttack` rider. */
+  declareBonus: number;
+  /** Whatever it attacks defends at half (Wildedge). */
+  halvesDefender: boolean;
+  /** May swing from Defence Position (Rampart Blaster). */
+  attacksInDefense: boolean;
+  /** A direct swing deals exactly this (Rampart Blaster's gun). */
+  directFixed?: number;
+  /** Its battle damage is halved (Sky Scout). */
+  halvedDamage: boolean;
+  /** Its direct damage is halved while they still control a monster (Gaia the Dragon Champion). */
+  halvedDirect: boolean;
+  /** What an attacker pays to swing at it while it stands / while it kneels
+   *  (Clayman, Mudballman; Rampart Blaster only lying down). */
+  tollUp: number;
+  tollDown: number;
+  /** Anything attacking it swings at half (Metalzoa). */
+  halvesAttacker: boolean;
+  /** Nothing may declare an attack on it (Winged Kuriboh LV10). */
+  cannotBeAttacked: boolean;
+  /** Standing here does not stop a direct attack (the same card). */
+  doesNotBlock: boolean;
+  /** Its death in battle stops every further point of battle damage to its
+   *  controller this turn (Winged Kuriboh) — read off the card's own ops. */
+  shield: boolean;
+}
+
+/** The plain body: no riders, no tolls, nothing special either way. */
+function plainBody(atk: number, def: number, atkPos: boolean, attacks: number): Body {
+  return {
+    atk,
+    def,
+    wall: atkPos ? atk : def,
+    atkPos,
+    attacks,
+    swings: atkPos && attacks > 0,
+    pierce: false,
+    direct: false,
+    wallProof: false,
+    doubles: false,
+    surge: false,
+    surgeVsStronger: false,
+    bonusVsDef: 0,
+    declareBonus: 0,
+    halvesDefender: false,
+    attacksInDefense: false,
+    halvedDamage: false,
+    halvedDirect: false,
+    tollUp: 0,
+    tollDown: 0,
+    halvesAttacker: false,
+    cannotBeAttacked: false,
+    doesNotBlock: false,
+    shield: false,
+  };
+}
+
+/** The ATK a card's `onDeclareAttack` riders add on the way in, read once. */
+const DECLARE_RIDER = new Map<string, number>();
+function declareRider(slug: string): number {
+  const cached = DECLARE_RIDER.get(slug);
+  if (cached !== undefined) return cached;
+  let bonus = 0;
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.trigger !== 'onDeclareAttack') continue;
+    for (const op of eff.ops) {
+      if (op.op === 'gainAtk' && 'amount' in op && !('scale' in op && op.scale)) bonus += op.amount ?? 0;
+    }
+  }
+  DECLARE_RIDER.set(slug, bonus);
+  return bonus;
+}
+
+/**
+ * Does dying in battle close the door on the rest of the turn's damage?
+ * Winged Kuriboh's whole card, derived from its ops rather than its name so
+ * the next card written this way is priced the same.
+ */
+const SHIELD = new Map<string, boolean>();
+function shieldsOnDeath(slug: string): boolean {
+  const cached = SHIELD.get(slug);
+  if (cached !== undefined) return cached;
+  const yes = (CARDS[slug]?.effects ?? []).some(
+    (e) => e.trigger === 'onDestroyedByBattle' && e.ops.some((op) => op.op === 'preventBattleDamage' && op.who === 'own')
+  );
+  SHIELD.set(slug, yes);
+  return yes;
 }
 
 /**
@@ -248,7 +353,10 @@ interface Body {
  */
 function bodyOf(state: DuelState, m: CardInstance, ctrl: PlayerId, viewer: PlayerId): Body {
   const hidden = m.face === 'down' && ctrl !== viewer;
-  const f = effFlags(state, m, ctrl);
+  /* A face-down card of theirs has no readable text: the flags stay empty and
+     the body is the pool's unknown. Reading `effFlags` off the hidden card
+     would be reading it. */
+  const f: CardFlags = hidden ? {} : effFlags(state, m, ctrl);
   const tributed = hidden && (m.setTributes ?? 0) > 0;
   const pool = hidden ? unknownFor(state, ctrl) : null;
   const atk = hidden ? (tributed ? pool!.big.atk : pool!.small.atk) : effAtk(state, m, ctrl);
@@ -259,18 +367,78 @@ function bodyOf(state: DuelState, m: CardInstance, ctrl: PlayerId, viewer: Playe
      allow, and Swords of Revealing Light read as a card spent on nothing:
      the three quiet turns it buys were invisible to every threat and race
      term, so the beam pruned the lock before the lookahead could speak. */
-  const divine = CARDS[m.slug]?.type === 'Divine-Beast';
+  const divine = !hidden && CARDS[m.slug]?.type === 'Divine-Beast';
   const locked = !divine && (monstersFrozen(state, ctrl) || (!hidden && !!f.cannotAttack));
+  const atkPos = m.face === 'up' && m.position === 'atk';
+  const attacks = locked ? 0 : hidden ? 1 : maxAttacks(state, m, ctrl);
+  const attacksInDefense = !hidden && !!f.attacksInDefense;
+  const saps = !hidden && !!f.sapsAttacker;
   return {
     atk,
     def,
-    wall: m.face === 'up' && m.position === 'atk' ? atk : def,
-    atkPos: m.face === 'up' && m.position === 'atk',
-    attacks: locked ? 0 : hidden ? 1 : maxAttacks(state, m, ctrl),
+    wall: atkPos ? atk : def,
+    atkPos,
+    attacks,
+    swings: attacks > 0 && m.face === 'up' && (atkPos || attacksInDefense),
     pierce: !hidden && !!f.pierce,
     direct: !hidden && !!f.directAttack,
     wallProof: !hidden && !!f.indestructibleByBattle,
+    doubles: !hidden && !!f.doublesWhenAttacking,
+    surge: !hidden && !!f.surgesOnAttack,
+    surgeVsStronger: !hidden && !!f.surgesVsStronger,
+    bonusVsDef: hidden ? 0 : (f.bonusVsDefense ?? 0),
+    declareBonus: hidden ? 0 : declareRider(m.slug),
+    halvesDefender: !hidden && !!f.halvesDefender,
+    attacksInDefense,
+    directFixed: hidden ? undefined : (f.directDamageFixed ?? undefined),
+    halvedDamage: !hidden && !!f.halvedBattleDamage,
+    halvedDirect: !hidden && !!f.halvedDirectDamage,
+    tollUp: saps ? 1000 : 0,
+    tollDown: saps || (!hidden && !!f.sapsAttackerInDefense) ? 1000 : 0,
+    halvesAttacker: !hidden && !!f.halvesAttacker,
+    cannotBeAttacked: !hidden && !!f.cannotBeAttacked,
+    doesNotBlock: !hidden && !!f.doesNotBlock,
+    shield: !hidden && shieldsOnDeath(m.slug),
   };
+}
+
+/**
+ * What `a` swings with into `t` — `resolveBattle`'s arithmetic, clause for
+ * clause and in the same order: the toll comes off the body, the doubling is
+ * on the body, the city's thousand goes on top, the Wingman rises against
+ * what the target stands at, and Metalzoa turns half of the lot aside.
+ */
+function swingInto(a: Body, t: Body): number {
+  let s = Math.max(0, a.atk + a.declareBonus - (t.atkPos ? t.tollUp : t.tollDown));
+  if (a.doubles) s *= 2;
+  if (!t.atkPos && a.bonusVsDef) s += a.bonusVsDef;
+  if (a.surge) s += 1000;
+  if (a.surgeVsStronger && t.wall > a.atk + a.declareBonus) s += 1000;
+  if (t.halvesAttacker) s = Math.floor(s / 2);
+  return s;
+}
+
+/** What `t` stands at against `a` — halved when `a` cuts what it attacks. */
+function guardAgainst(t: Body, a: Body): number {
+  return a.halvesDefender ? Math.floor(t.wall / 2) : t.wall;
+}
+
+/** What a direct swing by `a` is worth; `guarded` is whether they still hold a monster. */
+function directSwing(a: Body, guarded: boolean): number {
+  if (a.directFixed != null) return a.directFixed;
+  let s = (a.atk + a.declareBonus) * (a.doubles ? 2 : 1) + (a.surge ? 1000 : 0);
+  if (a.halvedDamage || (a.halvedDirect && guarded)) s = Math.floor(s / 2);
+  return s;
+}
+
+/** Battle damage after the attacker's own text has taxed it. */
+function damageDealt(a: Body, raw: number): number {
+  return a.halvedDamage ? Math.floor(raw / 2) : raw;
+}
+
+/** The same body, kneeling: what it would be worth after a position change. */
+function kneeling(b: Body): Body {
+  return { ...b, atkPos: false, wall: b.def, swings: b.attacksInDefense && b.attacks > 0 };
 }
 
 function bodiesOf(state: DuelState, pid: PlayerId, viewer: PlayerId): Body[] {
@@ -295,17 +463,35 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
   let damage = 0;
 
   let cleared = 0;
+  /* Winged Kuriboh fell: the rest of the turn's battle damage is refused. The
+     blow that killed it still landed — the engine bills the damage before it
+     asks the body about dying — and nothing after it does. */
+  let shut = false;
   for (const a of live) {
-    if (a.direct || !walls.length) {
-      damage += a.atk;
+    /* A body that does not block is not in the way: LV10 alone on the field
+       is an open field. A body nobody may attack and which still blocks is a
+       wall with no door, and the swing simply has nowhere to go. */
+    const blocking = walls.filter((w) => !w.doesNotBlock);
+    if (a.direct || !blocking.length) {
+      if (!shut) damage += directSwing(a, walls.length > 0);
       continue;
     }
-    // Prefer a kill; among kills take the biggest body off the board.
-    const killable = walls.filter((w) => a.atk > w.wall && !w.wallProof);
+    // Prefer a kill; among kills take the biggest body off the board, and the
+    // shield last of all — they choose the order, and they would.
+    const killable = walls.filter((w) => !w.cannotBeAttacked && !w.wallProof && swingInto(a, w) > guardAgainst(w, a));
     if (killable.length) {
-      const t = killable.reduce((best, w) => (w.wall > best.wall ? w : best));
-      if (t.atkPos) damage += a.atk - t.wall;
-      else if (a.pierce) damage += a.atk - t.wall;
+      let t = killable[0];
+      for (const w of killable) {
+        if (w.shield !== t.shield) {
+          if (t.shield) t = w;
+          continue;
+        }
+        if (w.wall > t.wall) t = w;
+      }
+      const s = swingInto(a, t);
+      const g = guardAgainst(t, a);
+      if (!shut && (t.atkPos || a.pierce)) damage += damageDealt(a, s - g);
+      if (t.shield) shut = true;
       walls.splice(walls.indexOf(t), 1);
       cleared += 1;
       continue;
@@ -319,8 +505,8 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
      clock at all, and pretending otherwise made the race term claim a
      two-turn win for two monsters permanently walled behind a Dark Magician
      — which then out-voted every defensive truth on the table. */
-  const walled = walls.length > 0 && cleared === 0 && !attackers.some((a) => a.direct);
-  const freeAtk = walled ? 0 : attackers.reduce((sum, a) => sum + a.atk * a.attacks, 0);
+  const walled = walls.some((w) => !w.doesNotBlock) && cleared === 0 && !attackers.some((a) => a.direct);
+  const freeAtk = walled ? 0 : attackers.reduce((sum, a) => sum + directSwing(a, false) * a.attacks, 0);
   return { damage, freeAtk };
 }
 
@@ -333,7 +519,7 @@ function battleOutcome(attackers: Body[], blockers: Body[]): { damage: number; f
  */
 function clock(state: DuelState, att: PlayerId, def: PlayerId, viewer: PlayerId): number {
   const lp = state.players[def].lp;
-  const attackers = bodiesOf(state, att, viewer).filter((b) => b.atkPos);
+  const attackers = bodiesOf(state, att, viewer).filter((b) => b.swings);
   if (!attackers.length) return 99;
   const blockers = bodiesOf(state, def, viewer);
   const { damage, freeAtk } = battleOutcome(attackers, blockers);
@@ -348,7 +534,7 @@ function clock(state: DuelState, att: PlayerId, def: PlayerId, viewer: PlayerId)
  */
 function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): number {
   const att = other(defender);
-  const attackers = bodiesOf(state, att, viewer).filter((b) => b.atkPos);
+  const attackers = bodiesOf(state, att, viewer).filter((b) => b.swings);
   /* One body they have not summoned yet. A hand is not just card advantage —
      it is next turn's attacker, and a threat term that read only the board
      said "safe" to a player tapped completely out against a full grip. The
@@ -390,18 +576,7 @@ function threatAgainst(state: DuelState, defender: PlayerId, viewer: PlayerId): 
       else attackers.splice(weakest, 1);
     }
   }
-  if (fieldable) {
-    attackers.push({
-      atk: phantomAtk,
-      def: 0,
-      wall: phantomAtk,
-      atkPos: true,
-      attacks: 1,
-      pierce: false,
-      direct: false,
-      wallProof: false,
-    });
-  }
+  if (fieldable) attackers.push(plainBody(phantomAtk, 0, true, 1));
   if (!attackers.length) return 0;
   return battleOutcome(attackers, bodiesOf(state, defender, viewer)).damage;
 }
@@ -596,6 +771,67 @@ function promiseOf(slug: string, deckSlugs: Set<string>): number {
   return best;
 }
 
+/**
+ * What a monster gives back on its way to the Graveyard, read off its own
+ * ops and checked against what is still there to give.
+ *
+ * A body that replaces itself is worth more than its numbers: Sangan, Witch
+ * of the Black Forest, every HERO that searches the next HERO as it falls,
+ * the dog that hands back a Polymerization and two bodies. The evaluation
+ * priced all of them at their ATK and DEF, so a wall that pays out when it
+ * dies looked exactly like a wall that does not, and the search saw no reason
+ * to Set the one rather than the other. Every card that fetches, revives,
+ * draws or heals as it leaves names it in its ops, so nothing here is written
+ * per card — and a fetch whose target is already spent promises nothing.
+ */
+const FLOAT_EFFECTS = new Map<string, readonly { readonly ops: readonly Op[] }[]>();
+const FLOAT_TRIGGERS = new Set(['onAnyToGrave', 'onSentToGrave', 'onDestroyed', 'onDestroyedByBattle', 'onLeaveField']);
+function floatEffects(slug: string): readonly { readonly ops: readonly Op[] }[] {
+  const cached = FLOAT_EFFECTS.get(slug);
+  if (cached) return cached;
+  const effs = (CARDS[slug]?.effects ?? []).filter((e) => FLOAT_TRIGGERS.has(e.trigger));
+  FLOAT_EFFECTS.set(slug, effs);
+  return effs;
+}
+
+function floatWorth(state: DuelState, pid: PlayerId, slug: string): number {
+  const effs = floatEffects(slug);
+  if (!effs.length) return 0;
+  const p = state.players[pid];
+  const inDeck = (f: CardFilter | undefined) => p.deck.some((c) => c.slug !== slug && matchesFilter(c, f));
+  const inGrave = (f: CardFilter | undefined) => p.grave.some((c) => c.slug !== slug && matchesFilter(c, f));
+  const inHand = (f: CardFilter | undefined) => p.hand.some((c) => c.slug !== slug && matchesFilter(c, f));
+  const opsWorth = (ops: readonly Op[]): number => {
+    let worth = 0;
+    for (const op of ops) {
+      if (op.op === 'search') {
+        if (inDeck(op.filter) || (op.orGrave && inGrave(op.filter))) worth += op.filter && Object.keys(op.filter).length ? 180 : 220;
+      } else if (op.op === 'stealFromGrave') {
+        if (inGrave(op.filter)) worth += 160;
+      } else if (op.op === 'specialSummon') {
+        const zones = Array.isArray(op.from) ? op.from : [op.from];
+        const can =
+          (zones.includes('deck') && inDeck(op.filter)) ||
+          (zones.includes('hand') && inHand(op.filter)) ||
+          (zones.includes('grave') && inGrave(op.filter));
+        if (can) worth += 280;
+      } else if (op.op === 'draw') worth += Math.min(300, 100 * op.count);
+      else if (op.op === 'returnToExtra') {
+        if (p.grave.some((c) => CARDS[c.slug]?.isFusion)) worth += 40;
+      } else if (op.op === 'heal') worth += Math.min(400, (op.amount ?? 0) * 0.25);
+      else if (op.op === 'damage') worth += Math.min(400, (op.amount ?? 0) * 0.3);
+      else if (op.op === 'summonToken') worth += 150;
+      else if (op.op === 'returnSelfToHand') worth += 150;
+      else if (op.op === 'cascade') worth += Math.max(0, ...op.branches.map((b) => opsWorth(b.ops)));
+      else worth += 30;
+    }
+    return worth;
+  };
+  let worth = 0;
+  for (const eff of effs) worth += opsWorth(eff.ops);
+  return Math.min(700, worth);
+}
+
 const MENACE = new Map<string, number>();
 function menace(slug: string): number {
   const cached = MENACE.get(slug);
@@ -651,6 +887,11 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     const b = bodyOf(state, m, me, me);
     score += b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
     if (m.face === 'up') score += menace(m.slug) * 0.6;
+    /* A body that pays out when it falls is worth what it pays, at a
+       discount for not having fallen yet — own cards only need to be on the
+       field, face-down included, because we know what is under our own
+       card back. */
+    score += floatWorth(state, me, m.slug) * 0.6;
     /* Unknown to them, loaded for us — and the load is priced at face value:
        a FLIP effect fires on every road out of face-down (our own Flip
        Summon, or their attack walking into it), so the old half-price
@@ -679,7 +920,7 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     if (!m) continue;
     const b = bodyOf(state, m, foe, me);
     score -= b.atkPos ? b.atk * w.atkPosAtk + b.def * w.atkPosDef : b.def * w.defPosDef + b.atk * w.defPosAtk;
-    if (m.face === 'up') score -= menace(m.slug) * 0.6;
+    if (m.face === 'up') score -= menace(m.slug) * 0.6 + floatWorth(state, foe, m.slug) * 0.6;
     /* An unrevealed card of theirs is worth more than its average body: the
        flip effect that might be loaded inside it, and the information they
        hold that we do not. The number is MEASURED: doubling it to 240 (to
@@ -700,10 +941,8 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
      whose target is still in the Deck is worth more than a vanilla body, and
      was priced identically. Own hand only: theirs is proxied in every world
      this function runs in, which is the honesty doing its job. */
-  {
-    const deckSlugs = new Set(my.deck.map((c) => c.slug));
-    for (const h of my.hand) score += promiseOf(h.slug, deckSlugs);
-  }
+  const deckSlugs = new Set(my.deck.map((c) => c.slug));
+  for (const h of my.hand) score += promiseOf(h.slug, deckSlugs);
   /* The Tribute ladder: bodies standing where a boss is waiting are the
      price of Summoning it already half-paid, and fodder summons stopped
      reading as weak tempo the day this landed. Counted only up to what the
@@ -729,7 +968,30 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
      card is worth, and the disagreement probe caught the AI holding
      Spellbinding Circle in hand all game — armed answers beat stored ones,
      and the backrow slot has no other use. */
-  if (my.spellTrap) score += my.spellTrap.face === 'down' ? 260 + trapWorth(my.spellTrap.slug) * 0.4 : 180;
+  /* And a Set card keeps the promise it carried in hand: Hero Signal calls
+     a Sparkman out of the Deck from the backrow exactly as it would from the
+     grip, and pricing the promise on the hand side alone made SETTING the
+     trap read as throwing the promise away — the opening turn kept it in
+     hand, unarmed, for a hundred points of imaginary value. */
+  if (my.spellTrap) {
+    score +=
+      my.spellTrap.face === 'down' ? 260 + trapWorth(my.spellTrap.slug) * 0.4 + promiseOf(my.spellTrap.slug, deckSlugs) : 180;
+    /* One Spell/Trap Zone in this game, and a card standing in it is a door
+       shut on every Spell in the hand: a Fusion Recovery held behind a Set
+       Hero Barrier could not be cast on the turn it was the only way to
+       live. Charged per card the zone is blocking, so a trap Set over a hand
+       of Spells is priced as the wall it is. */
+    let blocked = 0;
+    for (const h of my.hand) {
+      const d = CARDS[h.slug];
+      if (!d || d.kind === 'monster' || d.subKind === 'Field') continue;
+      /* A card that could not be cast anyway is not being blocked — Wings
+         with no Kuriboh, a Fusion Recovery over an empty Graveyard. */
+      if (d.kind === 'spell' && wastedWithoutTarget(state, me, h, 'activate')) continue;
+      blocked += 1;
+    }
+    score -= Math.min(3, blocked) * 70;
+  }
   if (their.spellTrap) score -= their.spellTrap.face === 'down' ? 300 : 180;
   if (my.field) score += 120;
   if (their.field) score -= 120;
@@ -783,28 +1045,30 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
      turn. Charged per body, against their best visible attacker, and only
      when Defence genuinely takes less. */
   {
-    let bestFoe = 0;
-    let foePierces = false;
+    let best: Body | null = null;
     for (const fm of their.monsters) {
-      if (!fm || fm.face !== 'up' || fm.position !== 'atk') continue;
+      if (!fm || fm.face !== 'up') continue;
       const fb = bodyOf(state, fm, foe, me);
-      if (fb.atk > bestFoe) {
-        bestFoe = fb.atk;
-        foePierces = fb.pierce;
-      }
+      if (!fb.swings) continue;
+      if (!best || fb.atk > best.atk) best = fb;
     }
-    if (bestFoe > 0) {
+    if (best) {
       let leak = 0;
       for (const m of my.monsters) {
         if (!m || m.face !== 'up' || m.position !== 'atk') continue;
         const b = bodyOf(state, m, me, me);
-        if (b.atk >= bestFoe) continue;
-        const standing = bestFoe - b.atk;
-        const kneeling = foePierces ? Math.max(0, bestFoe - b.def) : 0;
+        /* Measured with the battle's own arithmetic: their swing into this
+           body as it stands, against the same body kneeling — so a Clayman
+           whose toll takes a thousand off the blow, or a HERO under their
+           city, is charged what the engine would actually bill. */
+        const standing = Math.max(0, swingInto(best, b) - guardAgainst(b, best));
+        if (!standing) continue;
+        const down = kneeling(b);
+        const knelt = best.pierce ? Math.max(0, swingInto(best, down) - guardAgainst(down, best)) : 0;
         /* Capped per body and in total: the charge is for standing wrong,
            and it must never grow past the point where dying starts to look
            like relief. */
-        if (standing > kneeling) leak += Math.min(400, (standing - kneeling) * 0.65 * (1 + 0.4 * (w.styleCaution ?? 0)));
+        if (standing > knelt) leak += Math.min(400, (standing - knelt) * 0.65 * (1 + 0.4 * (w.styleCaution ?? 0)));
       }
       score -= Math.min(800, leak);
     }
@@ -818,6 +1082,16 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
      mechanism, measured move for move, behind "I win 100% of the games". */
   if (pressure >= their.lp && !(their.spellTrap && their.spellTrap.face === 'down')) score += 20_000;
   else score += pressure * 0.4;
+
+  /* What the deck itself knows. A duelist's brain adds the terms only their
+     own cards can explain — a fusion half-assembled in hand, a combo waiting
+     for the right board — from public information alone. Both seats: the
+     opponent's deck reads its own combos too, which is how the computer
+     learns to fear them. */
+  const mine = brainFor(my.duelistId);
+  if (mine?.bonus) score += mine.bonus(state, me);
+  const theirs = brainFor(their.duelistId);
+  if (theirs?.bonus) score -= theirs.bonus(state, foe);
 
   return score;
 }
@@ -881,7 +1155,44 @@ function rankPool(state: DuelState, pool: CardInstance[]): CardInstance[] {
     }
     return baseAtk(c.slug) + menace(c.slug) * 0.8;
   };
-  return [...pool].sort((a, b) => worth(b) - worth(a));
+  /* Equal worth breaks on the card, not on the pile's order — a Deck pool
+     arrives in Deck order, which nobody is allowed to read. */
+  return [...pool].sort((a, b) => worth(b) - worth(a) || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+}
+
+/**
+ * A pile — Deck, Graveyard, hand — in the order the deck itself would reach
+ * into it, where the deck has an opinion. The engine's strongest-first is
+ * right for removal and revival and wrong for a search: the HERO worth
+ * fetching is the one that finishes the Fusion in hand, not the biggest
+ * number in the Deck, and only the deck's own brain knows which that is.
+ */
+const PILES = new Set(['deck', 'grave', 'hand', 'handOrDeck', 'deckOrGrave', 'handOrDeckOrGrave']);
+function rankPile(state: DuelState, pid: PlayerId, slug: string, spec: TargetSpec, pool: CardInstance[]): CardInstance[] {
+  const brain = PILES.has(spec.zone) ? brainFor(state.players[pid].duelistId) : null;
+  if (brain?.rankChoice && pool.length > 1) {
+    const order = brain.rankChoice(state, pid, {
+      kind: 'choose',
+      player: pid,
+      options: pool.map((c) => c.uid),
+      reason: spec.prompt,
+      context: {},
+      sourceUid: '',
+      sourceSlug: slug,
+      trigger: 'activate',
+      want: spec.count,
+      picked: [],
+      from: 'hand',
+      step: 0,
+      carry: [],
+      effectIndex: 0,
+    });
+    if (order?.length) {
+      const at = new Map(order.map((uid, i) => [uid, i] as const));
+      return [...pool].sort((a, b) => (at.get(a.uid) ?? 1e9) - (at.get(b.uid) ?? 1e9));
+    }
+  }
+  return rankPool(state, pool);
 }
 
 /** Sensible target choices for an effect, best-first rather than random. */
@@ -894,7 +1205,7 @@ function targetsFor(
   const chain = trigger === 'onSummon' ? summonSpecChain(slug) : specChainFor(slug, trigger);
   const spec = chain[0];
   if (!spec) return [[]];
-  const ranked = rankPool(state, poolFor(state, pid, spec));
+  const ranked = rankPile(state, pid, slug, spec, poolFor(state, pid, spec));
   const out: string[][] = [];
   const take = Math.min(3, Math.max(0, ranked.length - spec.count + 1));
   for (let i = 0; i < take; i++) {
@@ -957,7 +1268,21 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
     /* A parked effect asking which card to take — one rule, in the engine, so
        the computer, the autoplayer and the simulator all answer it the same
        way. The search then picks between the candidates it hands back. */
-    if (state.pending.kind === 'choose') return choiceResponses(state, pid);
+    if (state.pending.kind === 'choose') {
+      /* A deck that knows its own cards ranks its own answers: which HERO the
+         signal calls, which body the dog brings back. The engine's ranking
+         (strongest first) is the default for everyone else. */
+      const brain = brainFor(p.duelistId);
+      const order = brain?.rankChoice?.(state, pid, state.pending);
+      if (order?.length) {
+        const want = state.pending.want;
+        const out: DuelAction[] = [];
+        const take = Math.min(3, Math.max(1, order.length - want + 1));
+        for (let i = 0; i < take; i++) out.push({ type: 'chooseCard', uids: order.slice(i, i + want) });
+        return out;
+      }
+      return choiceResponses(state, pid);
+    }
     acts.push({ type: 'respondTrap', uid: null });
     for (const uid of state.pending.options) {
       const c = p.hand.find((h) => h.uid === uid) ?? (p.spellTrap?.uid === uid ? p.spellTrap : null);
@@ -973,6 +1298,11 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
   if (state.phase === 'main') {
     // Fusions first — they are usually the strongest play available.
     for (const f of fusionOptions(state, pid)) {
+      /* A material drawn inside the world is imagined, and a Fusion built on
+         it is a Fusion the real turn cannot make: the plan said "Pot of Greed,
+         then Thunder Giant" and the Clayman it fused was a card the Pot had
+         not drawn yet. Same rule as every other spend — counted, never spent. */
+      if (f.materials.some((uid) => p.hand.some((h) => h.uid === uid && h.turnFlags.worldBlind))) continue;
       /* The engine sends the materials to the Graveyard BEFORE it resolves
          the zone, so a board filled by its own materials is a legal fusion —
          and the audit caught the old free-zone check silently deleting
@@ -981,7 +1311,20 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
          field material is about to vacate. */
       let zone = p.monsters.findIndex((m) => !m);
       if (zone < 0) zone = p.monsters.findIndex((m) => m && f.materials.includes(m.uid));
-      if (zone >= 0) acts.push({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone, position: 'atk' });
+      if (zone >= 0) {
+        acts.push({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone, position: 'atk' });
+        /* A Fusion that is a wall, or that fights from its knees, is offered
+           lying down as well — Rampart Blaster never has to stand up, and a
+           3000-DEF Mudballman summoned standing is a 1900 body. The board
+           asks the same question of the player before the Fusion lands. */
+        const ex = p.extra.find((e) => e.uid === f.extraUid);
+        const def = ex ? CARDS[ex.slug] : undefined;
+        const kneels =
+          !!def &&
+          ((def.def ?? 0) > (def.atk ?? 0) ||
+            def.effects.some((e) => e.aura?.grants?.includes('attacksInDefense')));
+        if (kneels) acts.push({ type: 'fusionSummon', extraUid: f.extraUid, materials: f.materials, zone, position: 'def' });
+      }
     }
 
     const freeZone = p.monsters.findIndex((m) => !m);
@@ -1066,7 +1409,7 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
          Spell prices at zero, so the equip that was the only kill got fed
          first. Offer the cheapest monster AND the cheapest spell as separate
          candidates and let the search compare what each future is worth. */
-      const others = p.hand.filter((x) => x.uid !== h.uid);
+      const others = p.hand.filter((x) => x.uid !== h.uid && !x.turnFlags.worldBlind);
       const spares: CardInstance[] = [];
       const cheapMonster = others
         .filter((x) => CARDS[x.slug]?.kind === 'monster')
@@ -1151,45 +1494,32 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
 
   if (state.phase === 'battle') {
     const attackers = ownMonsters.filter((m) => canAttackWith(state, pid, m)).sort(byAtkDesc(state, pid));
-    /* What the monster swings WITH, not what it stands at: Metalzoa doubles
-       when attacking, Pendulum Machine hits Defence 1250 harder, and a
-       declare-rider pumps on the way in. The audit caught the plain-ATK
-       filter deleting on-board lethals through every one of these. */
-    const declareRider = (slug: string): number => {
-      let bonus = 0;
-      for (const eff of CARDS[slug]?.effects ?? []) {
-        if (eff.trigger !== 'onDeclareAttack') continue;
-        for (const op of eff.ops) {
-          if (op.op === 'gainAtk' && 'amount' in op) bonus += op.amount ?? 0;
-        }
-      }
-      return bonus;
-    };
-    const swingAtk = (m: CardInstance, vsDefense: boolean): number => {
-      const f = effFlags(state, m, pid);
-      let atk = effAtk(state, m, pid) + declareRider(m.slug);
-      if (f.doublesWhenAttacking) atk *= 2;
-      if (vsDefense) atk += f.bonusVsDefense ?? 0;
-      return atk;
-    };
     for (const m of attackers) {
       const { uids, direct } = legalAttackTargets(state, pid, m);
       if (direct) acts.push({ type: 'attack', uid: m.uid, targetUid: null });
-      // Prefer targets this monster actually beats, weakest-kill first.
-      const atk = effAtk(state, m, pid);
+      /* What the monster swings WITH, not what it stands at: Metalzoa doubles
+         when attacking, Pendulum Machine hits Defence 1250 harder, a
+         declare-rider pumps on the way in, the city adds its thousand and
+         Clayman's toll takes one off. The audit caught the plain-ATK filter
+         deleting on-board lethals through every one of these, and the same
+         arithmetic the evaluation prices with is what generates the move —
+         `swingInto` — so the two cannot disagree about a kill. */
+      const me = bodyOf(state, m, pid, pid);
       /* What the viewer is allowed to believe this target defends with. A
          face-down is the conditioned unknown, never its real numbers — the
          old sort read `effDef` straight off the hidden card, which quietly
          ordered the beam by information the player does not have. */
-      const foePool = unknownFor(state, foe);
-      const wallOf = (t: CardInstance): number =>
-        t.face === 'down'
-          ? (t.setTributes ?? 0) > 0
-            ? foePool.big.def
-            : foePool.small.def
-          : t.position === 'atk'
-            ? effAtk(state, t, foe)
-            : effDef(state, t, foe);
+      const bodies = new Map<string, Body>();
+      const bodyFor = (t: CardInstance): Body => {
+        let b = bodies.get(t.uid);
+        if (!b) {
+          b = bodyOf(state, t, foe, pid);
+          bodies.set(t.uid, b);
+        }
+        return b;
+      };
+      const wallOf = (t: CardInstance): number => guardAgainst(bodyFor(t), me);
+      const swingAt = (t: CardInstance): number => swingInto(me, bodyFor(t));
       const ranked = uids
         .map((u) => state.players[foe].monsters.find((x) => x?.uid === u)!)
         .filter(Boolean)
@@ -1213,12 +1543,12 @@ export function candidates(state: DuelState, pid: PlayerId, limit: number): Duel
            speculative below-median probes were beam pollution the real
            opponent punished with real cards. Above the median, the move
            generates and the samples decide. */
-        .filter((t) => swingAtk(m, t.face === 'down' || t.position === 'def') >= wallOf(t))
+        .filter((t) => swingAt(t) >= wallOf(t))
         .sort((a, b) => {
           const av = wallOf(a);
           const bv = wallOf(b);
-          const aKill = av < atk ? 0 : 1;
-          const bKill = bv < atk ? 0 : 1;
+          const aKill = av < swingAt(a) ? 0 : 1;
+          const bKill = bv < swingAt(b) ? 0 : 1;
           // Among kills, the monster that threatens the most goes down first.
           const am = a.face === 'up' ? menace(a.slug) * 0.8 : 0;
           const bm = b.face === 'up' ? menace(b.slug) * 0.8 : 0;
@@ -1342,6 +1672,47 @@ function visibleHash(state: DuelState, viewer: PlayerId): number {
   return h >>> 0;
 }
 
+/**
+ * The visible position as a PLAN sees it — `visibleHash` with their Graveyard
+ * reduced to a count.
+ *
+ * The expectation world stands a proxy body in for every card of theirs the
+ * plan cannot see, and a proxy that gets destroyed lands in their Graveyard
+ * under the proxy's name while the real card lands under its own. The
+ * identities down there change nothing the plan depends on mid-turn, and
+ * reading them as a divergence made the computer search again after every
+ * Set card it broke. Everything else stays: a coin that came up the other
+ * way, a stand-in that turned out to be a Zoa, a draw that was imagined.
+ */
+function planHash(state: DuelState, viewer: PlayerId): number {
+  let h = 0x811c9dc5;
+  const mix = (str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+  };
+  mix(`${state.turn}|${state.phase}|${state.active}|`);
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    const p = state.players[pid];
+    const own = pid === viewer;
+    mix(`${p.lp}|${p.hand.length}|${p.deck.length}|${own ? p.grave.map((c) => c.slug).join(',') : p.grave.length}|`);
+    if (own) mix(p.hand.map((c) => c.slug).join(','));
+    for (const m of p.monsters) {
+      if (!m) {
+        mix('-');
+        continue;
+      }
+      const hidden = !own && m.face === 'down';
+      mix(hidden ? `?${m.uid}` : `${m.slug}.${m.face}.${m.position}.${m.atkMod}.${m.counters}`);
+    }
+    const st = p.spellTrap;
+    mix(st ? (!own && st.face === 'down' ? `?${st.uid}` : st.slug) : '-');
+    mix(p.field?.slug ?? '-');
+  }
+  return h >>> 0;
+}
+
 /** A deterministic RNG keyed off the visible position and a salt. */
 function saltedRng(state: DuelState, viewer: PlayerId, salt: number): () => number {
   let s = (visibleHash(state, viewer) ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0;
@@ -1403,13 +1774,52 @@ function unseenAnswers(foe: { hand: CardInstance[]; deck: CardInstance[]; spellT
   return pool.filter((c) => (CARDS[c.slug]?.effects ?? []).some((e) => e.trigger === 'trap'));
 }
 
-/** The most punishing trap the opponent's unseen cards could put in that zone. */
-function scariestUnseenTrap(foe: { hand: CardInstance[]; deck: CardInstance[]; spellTrap: CardInstance | null }): string | null {
+/**
+ * The most punishing trap the opponent's unseen cards could put in that zone —
+ * for THIS board, not in general.
+ *
+ * `trapWorth` is the card's price on an empty table, and the nightmare used to
+ * be whichever unseen trap priced highest there. Ring of Destruction prices
+ * at a plain kill, because the damage it deals is "that monster's ATK" and
+ * an unbound amount reads as nothing — so with a 5200 Bladedge standing on
+ * 4700 Life Points the nightmare was a Crush Card Virus, every line lost the
+ * Bladedge in it equally, and the computer walked into the Ring and died.
+ * The ring is priced at the body it would be wrapped round, and lethal is
+ * lethal: a trap that can end the duel from this board is the one feared.
+ */
+function scariestUnseenTrap(state: DuelState, viewer: PlayerId): string | null {
+  const foe = state.players[other(viewer)];
+  const mine = state.players[viewer];
+  let maxAtk = 0;
+  let sumAtk = 0;
+  for (const m of mine.monsters) {
+    if (!m || m.face !== 'up') continue;
+    const atk = effAtk(state, m, viewer);
+    maxAtk = Math.max(maxAtk, atk);
+    sumAtk += atk;
+  }
+  const threat = (slug: string): number => {
+    let worth = trapWorth(slug);
+    for (const eff of CARDS[slug]?.effects ?? []) {
+      if (eff.trigger !== 'trap') continue;
+      for (const op of eff.ops) {
+        if (op.op === 'damage' && (op.scale === 'targetAtk' || op.scale === 'selfAtk') && op.to === 'opp') {
+          worth += Math.min(4000, maxAtk) * 0.6 + (maxAtk >= mine.lp ? 6000 : 0);
+        } else if (op.op === 'destroy' && 'target' in op && op.target?.pick === 'all') worth += sumAtk * 0.3;
+        else if (op.op === 'takeControl' || op.op === 'swapControl') worth += maxAtk * 0.5;
+      }
+    }
+    return worth;
+  };
+  /* Ties broken by name, never by where the card happens to sit: the pool
+     is walked in hand-then-Deck order, and two answers priced the same would
+     otherwise hand the choice to the Deck's arrangement — which is hidden
+     information, and `ai-honesty` says so. */
   let best: string | null = null;
   let bestWorth = 0;
   for (const c of unseenAnswers(foe)) {
-    const worth = trapWorth(c.slug);
-    if (worth > bestWorth) {
+    const worth = threat(c.slug);
+    if (worth > bestWorth || (worth === bestWorth && best !== null && c.slug < best)) {
       bestWorth = worth;
       best = c.slug;
     }
@@ -1491,7 +1901,7 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      evaluation still counts the zone as an unknown threat, and the real card
      gets its say in the real duel, where it belongs. */
   if (foe.spellTrap && foe.spellTrap.face === 'down') {
-    const trap = paranoid ? scariestUnseenTrap(foe) : null;
+    const trap = paranoid ? scariestUnseenTrap(state, viewer) : null;
     if (trap) reidentify(foe.spellTrap, trap);
     else proxyBody(foe.spellTrap);
   }
@@ -1685,6 +2095,29 @@ const MODEL_CFG: AiConfig = { beam: 3, branch: 12, slack: 0, depth: 0 };
  * sampled world the face-down cards are samples of the AI's own making, so the
  * same machinery reads them as what the sample says they are.
  */
+/** A choice window the planning seat itself has to answer. */
+function ownChoiceOpen(state: DuelState, pid: PlayerId): boolean {
+  return !!state.pending && state.pending.kind === 'choose' && state.pending.player === pid;
+}
+
+/**
+ * The cards a plan's own answer named are no longer imagined.
+ *
+ * A Deck card in a world is `worldBlind` because nobody knows the next draw —
+ * but a search is not a draw: the plan said "take Avian", the real room will
+ * take Avian, and the card is exactly as known as one in hand. Unmarked, so
+ * the rest of the line may spend it.
+ */
+function claimChosen(state: DuelState, pid: PlayerId, uids: string[]): void {
+  const p = state.players[pid];
+  for (const uid of uids) {
+    const h = p.hand.find((c) => c.uid === uid);
+    if (h?.turnFlags.worldBlind) delete h.turnFlags.worldBlind;
+    const m = p.monsters.find((c) => c?.uid === uid);
+    if (m?.turnFlags.worldBlind) delete m.turnFlags.worldBlind;
+  }
+}
+
 function settleWindows(clock: Clock, state: DuelState, viewer: PlayerId, w: EvalWeights, omniscient = false): DuelState {
   if (!state.pending) return state;
   const model: AiConfig = { ...MODEL_CFG, weights: w };
@@ -1764,7 +2197,7 @@ function beamSearch(world: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock
   const finished: Line[] = [];
   const out = () => clock.left <= floor || Date.now() > clock.wallCap;
 
-  for (let step = 0; step < 24; step++) {
+  for (let step = 0; step < 32; step++) {
     if (out()) break;
     const next: Line[] = [];
     for (const line of lines) {
@@ -1775,23 +2208,45 @@ function beamSearch(world: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock
       for (const action of candidates(line.state, pid, cfg.branch)) {
         if (out()) break;
         const res = sim(clock, line.state, pid, action);
-        if (res.error) continue;
+        if (res.error) {
+          if (process.env.DEBUG_AI === '3') console.log(`    [expand ${step}] ${describeAction(line.state, action)} → ${res.error}`);
+          continue;
+        }
         /* A window it can read is settled and scored as settled. A window it
            cannot read is left exactly where it is, but the score takes the
            *worse* of leaving it and of the attack simply landing — caution
            about unseen traps without blindness to what a move costs even if
            the opponent does nothing. */
-        const unread = !!res.state.pending && !canSeeResponse(res.state, pid);
-        const after = unread ? res.state : settleWindows(clock, res.state, pid, w);
+        /* A question the plan itself is being asked — which card a search
+           takes, which HERO a signal calls — is a DECISION, and the beam
+           branches on it like any other: the line carries the window open
+           into the next step, where `candidates` hands back its answers. It
+           used to be settled here by a one-step greedy pick that the line
+           never wrote down, so the real room answered the same window a
+           second time on its own, and the card the plan had chosen arrived
+           blind — unspendable for the rest of the turn it was fetched for. */
+        const ownChoice = ownChoiceOpen(res.state, pid);
+        const unread = !!res.state.pending && !ownChoice && !canSeeResponse(res.state, pid);
+        const after = unread || ownChoice ? res.state : settleWindows(clock, res.state, pid, w);
+        /* A card the plan itself named — the answer to its own window, or
+           the target an activation carried in — is the plan's decision, and
+           the real turn will fetch exactly that card. E - Emergency Call
+           naming its Clayman left the Clayman `worldBlind`, and the Thunder
+           Giant it was fetched for was never offered. */
+        if (action.type === 'chooseCard') claimChosen(after, pid, action.uids);
+        else if ('targets' in action && action.targets?.length) claimChosen(after, pid, action.targets);
         const score = unread
           ? Math.min(evaluate(after, pid, w), evaluate(settleWindows(clock, res.state, pid, w), pid, w))
           : evaluate(after, pid, w);
         const ends = action.type === 'endTurn' || after.active !== pid || !!after.winner;
+        if (process.env.DEBUG_AI === '3') {
+          console.log(`    [expand ${step}] ${describeAction(line.state, action)} → ${Math.round(score)} done=${ends || (!!after.pending && !ownChoice)} pending=${after.pending ? `${after.pending.kind}/${after.pending.player}` : '-'}`);
+        }
         next.push({
           state: after,
           actions: [...line.actions, action],
           score,
-          done: ends || !!after.pending,
+          done: ends || (!!after.pending && !ownChoice),
         });
       }
     }
@@ -1868,9 +2323,24 @@ function playOutPlan(clock: Clock, world: DuelState, pid: PlayerId, actions: Due
   let cur = world;
   for (const action of actions) {
     if (cur.winner) break;
+    /* The plan's own answers are applied as written; every other window is
+       settled with the world's full knowledge. A question this world never
+       asked (one legal answer, resolved by the engine) is simply skipped. */
+    if (action.type === 'chooseCard') {
+      if (!ownChoiceOpen(cur, pid)) continue;
+      const picked = sim(clock, cur, pid, action);
+      if (picked.error) {
+        cur = settleWindows(clock, cur, pid, w, true);
+        continue;
+      }
+      cur = picked.state;
+      claimChosen(cur, pid, action.uids);
+      continue;
+    }
     if (cur.pending) cur = settleWindows(clock, cur, pid, w, true);
     if (cur.winner || cur.active !== pid) break;
     const res = sim(clock, cur, pid, action);
+    if (!res.error && 'targets' in action && action.targets?.length) claimChosen(res.state, pid, action.targets);
     if (res.error) {
       /* The plan does not fit this world — the tribute it counted on is a
          different card here, the attack's target never existed. Skipping the
@@ -2000,6 +2470,9 @@ function planWith(state: DuelState, pid: PlayerId, cfg: AiConfig, clock: Clock):
   }
   const all = [...merged.values()].sort((a, b) => b.score - a.score);
   if (!all.length) return [{ type: 'endTurn' }];
+  if (process.env.DEBUG_AI === '2') {
+    for (const l of all) console.log(`    [beam] ${Math.round(l.score)}  ${l.actions.map((a) => describeAction(state, a)).join(' > ')}`);
+  }
 
   /* A gambling leader is judged against its own sober twin: the same turn
      with the coin and dice actions removed. The beam never writes the twin
@@ -2160,8 +2633,51 @@ function judgeAcrossWorlds(
   clock: Clock,
   worlds: number
 ): Line[] | null {
-  const M = Math.min(10, all.length);
-  const examine = all.slice(0, M);
+  /* Ten lines, or more when the top of the table is a tie of decided wins
+     under a Set card. Every lethal reads ±1e9 in the bright world, so the
+     first ten found — the shortest, "walk in and swing" — were the only ones
+     the nightmare ever got to try, and the developed version of the same
+     kill (fuse first, summon first, shrink the body a Ring of Destruction
+     would bill for) sat unjudged at eleventh. The extra lines cost a playout
+     each in the dark world and nothing in the rollouts, which stay with the
+     leaders. */
+  const decided = all.filter((l) => Math.abs(l.score) >= WIN / 2).length;
+  const widen = decided > 3 && paranoiaPrior(state, pid) > 0;
+  const examine = all.slice(0, Math.min(10, all.length));
+  if (widen) {
+    /* Round-robin over what each line DEVELOPS before it attacks — the
+       summons, the Fusions, the Spells — so the pool holds one of each shape
+       before it holds a second ordering of the same one. Ties at ±1e9 sort by
+       insertion, and the first two dozen found are the shortest kills, which
+       all share the empty shape. */
+    const shape = (l: Line): string =>
+      l.actions
+        .filter((a) => a.type !== 'attack' && a.type !== 'toPhase' && a.type !== 'endTurn')
+        .map(actionKey)
+        .sort()
+        .join('|');
+    const groups = new Map<string, Line[]>();
+    for (const l of all) {
+      const k = shape(l);
+      const g = groups.get(k);
+      if (g) g.push(l);
+      else groups.set(k, [l]);
+    }
+    const picked = new Set(examine);
+    let added = true;
+    while (examine.length < 24 && added) {
+      added = false;
+      for (const g of groups.values()) {
+        const next = g.find((l) => !picked.has(l));
+        if (!next) continue;
+        picked.add(next);
+        examine.push(next);
+        added = true;
+        if (examine.length >= 24) break;
+      }
+    }
+  }
+  const M = examine.length;
   const gambling = examine.some((l) => planGambles(l.actions, state));
 
   /* Running estimates, folded into monotonically better averages for as long
@@ -2170,7 +2686,7 @@ function judgeAcrossWorlds(
      rollout is a noisier instrument and gets a bounded vote at the end. */
   const imm = examine.map(() => ({ sum: 0, n: 0, vals: [] as number[] }));
   const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0, vals: [] as number[] }));
-  const dark = examine.map(() => ({ sum: 0, n: 0 }));
+  const dark = examine.map(() => ({ sum: 0, n: 0, losses: 0 }));
   const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
   /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
      the first attack and the first summon go in whatever is face-down, or the
@@ -2292,6 +2808,7 @@ function judgeAcrossWorlds(
         }
         dark[i].sum += seen;
         dark[i].n += 1;
+        if (seen <= -WIN / 2) dark[i].losses += 1;
       }
     }
 
@@ -2426,13 +2943,37 @@ function judgeAcrossWorlds(
       const atk = examine[i].actions.filter((a) => a.type === 'attack').length;
       const pos = examine[i].actions.filter((a) => a.type === 'changePosition').length;
       console.log(
-        `    [judge] line ${i}: attacks=${atk} defswitch=${pos} beam=${Math.round(examine[i].score)} imm=${imm[i].n ? Math.round(imm[i].sum / imm[i].n) : '-'}(n${imm[i].n},r${roll[i].n}) dark=${dark[i].n ? Math.round(dark[i].sum / dark[i].n) : '-'} final=${Math.round(score(i))}`
+        `    [judge] line ${i}: attacks=${atk} defswitch=${pos} beam=${Math.round(examine[i].score)} imm=${imm[i].n ? Math.round(imm[i].sum / imm[i].n) : '-'}(n${imm[i].n},r${roll[i].n}) dark=${dark[i].n ? Math.round(dark[i].sum / dark[i].n) : '-'} final=${Math.round(score(i))}  ${examine[i].actions.map((a) => describeAction(state, a)).join(' > ')}`
       );
     }
     console.log(`    [judge] prior=${prior.toFixed(2)}`);
   }
   const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) }));
   out.sort((a, b) => b.score - a.score);
+  /* A line whose nightmare EVER loses the duel yields to one whose nightmare
+     never does, when the two sit inside the noise. The commitment discount
+     is doctrine — one body risked carries no fear — and the majority rule on
+     a dark loss protects it; but at 2900 Life Points with Swords of
+     Revealing Light in hand, the plain swing lost the duel in two of seven
+     nightmares and sat 157 points ahead of the same swing with the Swords
+     cast first, which lost it in none. Two futures out of seven is not a
+     coin the doctrine ever meant to flip. The control pins hold because
+     their safe line is nowhere near: declining the kill costs far more than
+     the band. */
+  {
+    const idx = new Map(examine.map((l, i) => [l.actions, i] as const));
+    const lossy = (l: Line): boolean => {
+      const i = idx.get(l.actions);
+      return i !== undefined && dark[i].losses > 0;
+    };
+    if (out.length > 1 && Math.abs(out[0].score) < WIN / 2 && lossy(out[0])) {
+      const safe = out.find((l) => !lossy(l) && Math.abs(l.score) < WIN / 2 && out[0].score - l.score < 600);
+      if (safe && safe !== out[0]) {
+        out.splice(out.indexOf(safe), 1);
+        out.unshift(safe);
+      }
+    }
+  }
   /* A certain win outranks a coin-flip win whatever the sampled throws said:
      with few samples a fair coin can land heads every time, and the audit
      caught Time Wizard spinning a dominant board it could simply have swung.
@@ -2456,24 +2997,21 @@ function judgeAcrossWorlds(
   const lpAfterBlow = (s: DuelState): number => {
     const mineP = s.players[pid];
     const foeP = s.players[other(pid)];
-    let best = 0;
-    let pierces = false;
+    let best: Body | null = null;
     for (const fm of foeP.monsters) {
-      if (!fm || fm.face !== 'up' || fm.position !== 'atk') continue;
+      if (!fm || fm.face !== 'up') continue;
       const fb = bodyOf(s, fm, other(pid), pid);
-      if (fb.atk > best) {
-        best = fb.atk;
-        pierces = fb.pierce;
-      }
+      if (!fb.swings) continue;
+      if (!best || fb.atk > best.atk) best = fb;
     }
     if (!best) return mineP.lp;
     const bodies = mineP.monsters.filter((m): m is CardInstance => !!m);
-    if (!bodies.length) return mineP.lp - best; // nothing in the way at all
+    if (!bodies.length) return mineP.lp - directSwing(best, false); // nothing in the way at all
     /* They pick the target, so price the worst one they could pick. */
     let worst = 0;
     for (const m of bodies) {
       const b = bodyOf(s, m, pid, pid);
-      const taken = b.atkPos ? Math.max(0, best - b.atk) : pierces ? Math.max(0, best - b.def) : 0;
+      const taken = b.atkPos || best.pierce ? Math.max(0, swingInto(best, b) - guardAgainst(b, best)) : 0;
       worst = Math.max(worst, taken);
     }
     return mineP.lp - worst;
@@ -2497,13 +3035,46 @@ function judgeAcrossWorlds(
      halves fixed: the band holds only true near-ties, and the metric is the
      LP DIFFERENTIAL after the queued blow — damage dealt is worth exactly
      what damage kept is worth, which is what Life Points mean. */
-  if (out.length > 1 && out[0].score - out[1].score < 700 && Math.abs(out[0].score) < WIN / 2) {
-    const band = out.filter((l) => out[0].score - l.score < 700 && Math.abs(l.score) < WIN / 2);
+  /* When the judge may be overruled, and by what.
+
+     Two bands. Inside 350 points the top two are a true near-tie — the
+     sampling's own error bar — and the line that keeps more Life Points
+     after the blow already queued up across the table wins, if it keeps
+     three hundred more. Out to 700 the judge is trusted, UNLESS the leader
+     ends the turn in danger: the blow takes more than a third of what it
+     has left. Standing in front of that, "keep the most Life Points"
+     outranks a verdict the rollouts could only have reached by imagining
+     what the other side draws — the Elf Set behind 2000 DEF at 1200 Life
+     Points was 456 points behind a face-up Sonic Maid and the only body
+     that lived through the turn, and two outgunned bodies at 2000 kneel
+     rather than donate 800 of it.
+
+     Why the seam sits where it does, in three positions the old 700-band
+     got wrong once each: Bubbleman called for free with a Sparkman behind
+     him was 682 ahead of the bare Sparkman and 800 "worse" after the blow
+     (the metric reads the blow, not the two cards it was paid for) — at 3100
+     of 4000 Life Points that is not danger, and the judge stands. Lady of
+     Faith's free 800 and Morphing Jar's flip were exact Life-Point ties that
+     a secondary key then decided the wrong way; a tie moves nothing now.
+     Only a decisive difference moves a line, and only in a band the
+     position has earned. */
+  if (out.length > 1 && Math.abs(out[0].score) < WIN / 2) {
+    const top = out[0];
+    const near = top.score - out[1].score < 350;
+    const danger = lpAfterBlow(top.state) < 0.66 * top.state.players[pid].lp;
+    const reach = danger ? 700 : near ? 350 : 0;
+    const band = reach ? out.filter((l) => top.score - l.score < reach && Math.abs(l.score) < WIN / 2) : [top];
     const lpDiff = (s: DuelState): number => lpAfterBlow(s) - s.players[other(pid)].lp;
-    band.sort((a, b) => lpDiff(b.state) - lpDiff(a.state) || exposure(a.state) - exposure(b.state));
-    if (band[0] !== out[0]) {
-      out.splice(out.indexOf(band[0]), 1);
-      out.unshift(band[0]);
+    let best = top;
+    for (const l of band) if (lpDiff(l.state) > lpDiff(best.state) + 1e-9) best = l;
+    if (process.env.DEBUG_AI === '1') {
+      for (const l of band) {
+        console.log(`    [tie] lpDiff=${lpDiff(l.state)} exposure=${exposure(l.state)} score=${Math.round(l.score)} ${l.actions.map((a) => describeAction(state, a)).join(' > ')}`);
+      }
+    }
+    if (best !== top && lpDiff(best.state) - lpDiff(top.state) >= 300) {
+      out.splice(out.indexOf(best), 1);
+      out.unshift(best);
     }
   }
 
@@ -2569,7 +3140,8 @@ function judgeAcrossWorlds(
       out.unshift(sober);
     }
   }
-  out.push(...all.slice(examine.length));
+  const examined = new Set(examine);
+  out.push(...all.filter((l) => !examined.has(l)));
   return out;
 }
 
@@ -2620,9 +3192,59 @@ function stateSig(s: DuelState): string {
     const mons = p.monsters
       .map((m) => (m ? `${m.slug}.${m.face}.${m.position}.${m.atkMod + m.turnAtkMod}.${m.attacksUsed}` : '-'))
       .join(',');
-    return `${p.lp}|${mons}|${p.hand.length}|${p.spellTrap ? p.spellTrap.slug + p.spellTrap.face : '-'}|${p.field?.slug ?? '-'}|${p.grave.length}`;
+    /* The Normal Summon is part of the position: Bubbleman called for free
+       and Bubbleman Normal Summoned leave the same board and the same hand,
+       and the dedup kept whichever came first — the one that had spent the
+       summon a Sparkman was waiting on. */
+    return `${p.lp}|${mons}|${p.hand.length}|${p.normalSummonUsed ? 'N' : 'n'}|${p.spellTrap ? p.spellTrap.slug + p.spellTrap.face : '-'}|${p.field?.slug ?? '-'}|${p.grave.length}`;
   };
   return `${s.phase}|${side('p1')}#${side('p2')}`;
+}
+
+/** A readable one-liner for an action, for the debug trace only. */
+function describeAction(state: DuelState, a: DuelAction): string {
+  const nameOf = (uid: string | null | undefined): string => {
+    if (!uid) return 'direct';
+    for (const pid of ['p1', 'p2'] as PlayerId[]) {
+      const p = state.players[pid];
+      const c =
+        p.hand.find((x) => x.uid === uid) ??
+        p.monsters.find((x) => x?.uid === uid) ??
+        p.extra.find((x) => x.uid === uid) ??
+        (p.spellTrap?.uid === uid ? p.spellTrap : undefined) ??
+        p.grave.find((x) => x.uid === uid) ??
+        p.deck.find((x) => x.uid === uid);
+      if (c) return CARDS[c.slug]?.name ?? c.slug;
+    }
+    return uid;
+  };
+  switch (a.type) {
+    case 'normalSummon':
+      return `summon ${nameOf(a.uid)}${a.face === 'down' ? ' set' : ''}${a.tributes?.length ? ` for ${a.tributes.map(nameOf).join('+')}` : ''}`;
+    case 'fusionSummon':
+      return `fuse ${nameOf(a.extraUid)}`;
+    case 'attack':
+      return `${nameOf(a.uid)}→${nameOf(a.targetUid)}`;
+    case 'activateSpell':
+    case 'activateSetCard':
+      return `cast ${nameOf(a.uid)}${a.targets?.length ? `→${a.targets.map(nameOf).join(',')}` : ''}`;
+    case 'setSpellTrap':
+      return `set ${nameOf(a.uid)}`;
+    case 'ignition':
+      return `ignite ${nameOf(a.uid)}`;
+    case 'handSummon':
+      return `call ${nameOf(a.uid)}`;
+    case 'discardForEffect':
+      return `discard ${nameOf(a.uid)}`;
+    case 'changePosition':
+      return `turn ${nameOf(a.uid)}`;
+    case 'chooseCard':
+      return `choose ${a.uids.map(nameOf).join(',')}`;
+    case 'toPhase':
+      return a.phase;
+    default:
+      return a.type;
+  }
 }
 
 /** A stable short signature for one action, for de-duplicating merged beams. */
@@ -2781,8 +3403,16 @@ export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSet
   const worlds: DuelState[] = [];
   for (let k = 0; k < K; k++) worlds.push(buildWorld(state, pid, k + 31, k > 0));
 
+  /* On our own turn the question is not "which card is worth more in hand"
+     but "which card makes the better turn": a searched Avian is a fusion
+     this Main Phase, a searched Sparkman is a body. So each answer is judged
+     by the rest of the turn it enables — a short beam in the expectation
+     world, the chosen card unblinded because the choice is ours — and only
+     when it is not our turn to act does the one-step reading remain. */
+  const ownTurn = state.active === pid && state.phase === 'main' && !state.winner;
   let best: DuelAction = options[0];
   let bestScore = -Infinity;
+  const perOption = Math.max(120, Math.round((clock.left * 0.9) / options.length));
   for (const action of options) {
     let sum = 0;
     let taken = 0;
@@ -2790,7 +3420,15 @@ export function chooseCardResponse(state: DuelState, pid: PlayerId, level: AiSet
       if (drained(clock) && taken) break;
       const res = sim(clock, world, pid, action);
       if (res.error) continue;
-      sum += evaluate(settleWindows(clock, res.state, pid, w, true), pid, w);
+      if (action.type === 'chooseCard') claimChosen(res.state, pid, action.uids);
+      const settled = settleWindows(clock, res.state, pid, w, true);
+      if (ownTurn && !settled.pending && settled.active === pid && !settled.winner && world === worlds[0]) {
+        const floor = Math.max(0, clock.left - perOption);
+        const lines = beamSearch(settled, pid, { ...MODEL_CFG, beam: 4, branch: 14, weights: w }, clock, floor, w);
+        sum += lines.length ? Math.max(lines[0].score, evaluate(settled, pid, w)) : evaluate(settled, pid, w);
+      } else {
+        sum += evaluate(settled, pid, w);
+      }
       taken += 1;
     }
     if (!taken) continue;
@@ -2879,14 +3517,69 @@ export function chooseTrapResponse(state: DuelState, pid: PlayerId, level: AiSet
 export interface AiRuntime {
   plan: DuelAction[];
   key: string;
+  /** What the board should look like after each remaining planned action —
+   *  see `expectedHashes`. Empty for a plan made before this existed. */
+  expected?: number[];
+  /** How many actions the current plan held when it was made. */
+  planned: number;
 }
 
-export const createAiRuntime = (): AiRuntime => ({ plan: [], key: '' });
+export const createAiRuntime = (): AiRuntime => ({ plan: [], key: '', expected: [], planned: 0 });
 
 /** Forces a fresh search — call this whenever an action did not apply. */
 export function invalidatePlan(rt: AiRuntime) {
   rt.plan = [];
   rt.key = '';
+  rt.expected = [];
+  rt.planned = 0;
+}
+
+/**
+ * The board the plan expects after each of its actions, as the planning seat
+ * would see it — a hash of the visible position in the world the plan was
+ * made in.
+ *
+ * A plan is a bet on a world: the cards Pot of Greed draws in that world are
+ * imagined, the monster their Sangan calls up is a stand-in, the coin lands
+ * one way. The real turn then differs, and a plan that keeps walking past the
+ * difference walks off a cliff — the owner watched a turn built around two
+ * imagined draws end with the two real ones never played, and an attack
+ * planned into a stand-in land on a Zoa. So every step is checked against
+ * what it was supposed to produce, and the moment reality disagrees the rest
+ * of the plan is thrown away and the turn is searched again from the board
+ * as it actually is. Cheap: one replay of the plan in the expectation world.
+ */
+export function expectedHashes(state: DuelState, pid: PlayerId, actions: DuelAction[]): number[] {
+  const out: number[] = [];
+  let cur = buildWorld(state, pid, 0, false);
+  for (const a of actions) {
+    const res = applyAction(cur, pid, a);
+    if (res.error) break;
+    cur = res.state;
+    if (a.type === 'chooseCard') claimChosen(cur, pid, a.uids);
+    out.push(planHash(cur, pid));
+  }
+  return out;
+}
+
+/** The visible position, hashed the way the plan's expectations are. */
+export function visibleHashOf(state: DuelState, pid: PlayerId): number {
+  return planHash(state, pid);
+}
+
+/** The world a plan is made in, for the diagnostics that ask why one diverged. */
+export function expectationWorld(state: DuelState, pid: PlayerId): DuelState {
+  return buildWorld(state, pid, 0, false);
+}
+
+/**
+ * True when the board has left the plan behind: the last action produced a
+ * position the planning world did not predict. Answered from the plan's
+ * bookkeeping alone, so the room and the runtime ask the same question.
+ */
+export function planDiverged(state: DuelState, pid: PlayerId, expected: number[] | undefined, played: number): boolean {
+  if (!expected || played <= 0 || played > expected.length) return false;
+  return expected[played - 1] !== planHash(state, pid);
 }
 
 /** The next action the AI wants to take, planning a whole turn at a time. */
@@ -2898,7 +3591,25 @@ export function aiNext(
   budgetMs = 2500
 ): DuelAction | null {
   if (state.winner) return null;
+  const key = `${state.turn}:${pid}`;
   if (state.pending) {
+    /* The plan carries its own answers: a search it decided to make names the
+       card it decided to take, and that answer is played rather than asked
+       again. Anything else — their window, a question the plan did not
+       foresee — is decided on the spot, and the plan is dropped, because the
+       board is about to change underneath it. */
+    const next = rt.plan[0];
+    if (
+      rt.key === key &&
+      next?.type === 'chooseCard' &&
+      state.pending.kind === 'choose' &&
+      state.pending.player === pid &&
+      next.uids.every((u) => state.pending!.options.includes(u)) &&
+      !planDiverged(state, pid, rt.expected, rt.planned - rt.plan.length)
+    ) {
+      rt.plan.shift();
+      return next;
+    }
     invalidatePlan(rt);
     if (state.pending.player !== pid) return null;
     return state.pending.kind === 'choose'
@@ -2909,12 +3620,25 @@ export function aiNext(
     invalidatePlan(rt);
     return null;
   }
-  const key = `${state.turn}:${pid}`;
+  if (rt.key === key && rt.plan.length && planDiverged(state, pid, rt.expected, rt.planned - rt.plan.length)) {
+    if (process.env.DEBUG_REPLAN === '1') {
+      console.log(`    [replan] turn ${state.turn} ${pid}: reality left the plan after ${rt.planned - rt.plan.length} of ${rt.planned} actions (${rt.plan.map((a) => a.type).join(',')} dropped)`);
+    }
+    invalidatePlan(rt);
+  }
   if (rt.key !== key || !rt.plan.length) {
     rt.plan = planTurn(state, pid, level, budgetMs);
     rt.key = key;
+    rt.expected = expectedHashes(state, pid, rt.plan);
+    rt.planned = rt.plan.length;
   }
-  return rt.plan.shift() ?? { type: 'endTurn' };
+  const action = rt.plan.shift() ?? { type: 'endTurn' };
+  /* A plan may not end on its own question. */
+  if (action.type === 'chooseCard') {
+    invalidatePlan(rt);
+    return aiNext(state, pid, level, rt, budgetMs);
+  }
+  return action;
 }
 
 /** One-shot convenience wrapper; prefer `aiNext` with a runtime in a loop. */

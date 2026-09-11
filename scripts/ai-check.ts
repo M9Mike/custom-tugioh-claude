@@ -39,7 +39,7 @@
  * 7/10 and 9/10 where this insists on 10/10.
  */
 import { applyAction, cloneState, createDuel } from '../src/game/engine';
-import { AI_LEVELS, chooseTrapResponse, commitsOf, evaluate, paranoiaPrior, planTurn, setPureClock } from '../src/game/ai';
+import { AI_LEVELS, aiNext, chooseTrapResponse, commitsOf, createAiRuntime, evaluate, paranoiaPrior, planTurn, setPureClock } from '../src/game/ai';
 
 /* Same node budget every run, whatever else the machine is doing — see
    `setPureClock`. Two pinned positions used to flip with load. */
@@ -824,6 +824,154 @@ const CASES: Case[] = [
       return swingers.size < 3;
     },
   },
+
+  /* --- The battle's own arithmetic, which the model used to skip ------- */
+  {
+    /* Clayman takes a thousand off anything that swings at him. The old
+       model read 2500 against 2000 DEF and generated a kill the engine would
+       have bounced for 500 Life Points. */
+    name: 'will not swing a 2500 into a wall that saps 1000 off the blow',
+    because: 'Summoned Skull arrives at 1500 against Clayman\'s 2000 DEF and loses 500 Life Points for nothing',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'summoned-skull');
+      s.players[FOE].monsters[0] = card(FOE, 'elemental-hero-clayman', 'def');
+    },
+    want: (plan) => !did(plan, 'attack'),
+  },
+  {
+    name: 'CONTROL: a 3100 still breaks the same wall through the toll',
+    because: '3100 less the toll is 2100, and 2100 beats 2000 — the wall falls',
+    build: (s) => {
+      const dm = card(ME, 'dark-magician');
+      dm.atkMod = 600;
+      s.players[ME].monsters[0] = dm;
+      s.players[FOE].monsters[0] = card(FOE, 'elemental-hero-clayman', 'def');
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
+    /* Skyscraper: every HERO swings a thousand heavier. A 1600 under the city
+       beats a 2000, and the old attack filter deleted the move because it
+       compared the standing number. */
+    name: 'swings a HERO into a bigger monster from under Skyscraper',
+    duelist: 'jaden',
+    because: 'Sparkman attacks at 2600 with the city behind him; Curse of Dragon stands at 2000',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'elemental-hero-sparkman');
+      s.players[ME].field = card(ME, 'skyscraper');
+      s.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
+    },
+    want: (plan) => did(plan, 'attack'),
+  },
+  {
+    name: 'CONTROL: and not without the city',
+    duelist: 'jaden',
+    because: '1600 into 2000 is a 400-point donation',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'elemental-hero-sparkman');
+      s.players[FOE].monsters[0] = card(FOE, 'curse-of-dragon');
+    },
+    want: (plan) => !did(plan, 'attack'),
+  },
+
+  /* --- Jaden: the deck that knows itself ------------------------------- */
+  {
+    name: 'JADEN: fuses when the Polymerization and both halves are in hand',
+    duelist: 'jaden',
+    because: 'Avian and Burstinatrix are a Flame Wingman that kills the 1900 and bills them for it — two 1000s are not',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'elemental-hero-avian'), card(ME, 'elemental-hero-burstinatrix'), card(ME, 'polymerization')];
+      s.players[FOE].monsters[0] = card(FOE, 'luster-dragon');
+      s.players[FOE].hand = [card(FOE, 'kuriboh')];
+    },
+    want: (plan) => did(plan, 'fusionSummon'),
+  },
+  {
+    /* LV10 flies over the fight and takes the whole board with it the moment
+       it lands a hit: 300 direct, then everything they control is gone and
+       its ATK is billed to them. Three monsters and 4000 Life Points is the
+       duel. */
+    name: 'JADEN: Winged Kuriboh LV10 answers a full board',
+    duelist: 'jaden',
+    because: 'Transcendent Wings on the Kuriboh, LV10 straight at them: 300, then 6200 for the three monsters — lethal',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'winged-kuriboh', 'def');
+      s.players[ME].hand = [card(ME, 'transcendent-wings'), card(ME, 'elemental-hero-clayman')];
+      /* Exactly one copy in the Deck: a second would let the world's shuffle
+         summon the other one, and the plan's attack would name a uid the real
+         summon never produced. */
+      s.players[ME].deck = s.players[ME].deck.filter((c) => c.slug !== 'winged-kuriboh-lv10');
+      s.players[ME].deck.push(card(ME, 'winged-kuriboh-lv10'));
+      s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+      s.players[FOE].monsters[1] = card(FOE, 'curse-of-dragon');
+      s.players[FOE].monsters[2] = card(FOE, 'battle-ox');
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* The plan carries its own answers. E - Emergency Call asks which HERO,
+       and the one worth taking is not the biggest number — it is the Clayman
+       that finishes a Thunder Giant with the Sparkman already in hand, whose
+       arrival sweeps the Blue-Eyes off the table. */
+    name: 'JADEN: searches the HERO that completes the Fusion, then makes it',
+    duelist: 'jaden',
+    because: 'Clayman plus the Sparkman in hand is Thunder Giant, and Thunder Giant destroys every 2400+ monster on arrival',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'wroughtweiler', 'def');
+      s.players[ME].hand = [card(ME, 'e-emergency-call'), card(ME, 'polymerization'), card(ME, 'elemental-hero-sparkman')];
+      if (!s.players[ME].deck.some((c) => c.slug === 'elemental-hero-clayman')) s.players[ME].deck.push(card(ME, 'elemental-hero-clayman'));
+      s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+      s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+    },
+    minHits: 8,
+    want: (_plan, end) =>
+      end.players[ME].monsters.some((m) => m?.slug === 'elemental-hero-thunder-giant') &&
+      !end.players[FOE].monsters.some((m) => m?.slug === 'blue-eyes-white-dragon'),
+  },
+  {
+    /* Rampart Blaster never has to stand up: it shoots from its knees for a
+       fixed 2500 and its toll only holds while it is lying down. Summoned
+       standing it is a 2000 body under a 2500 Summoned Skull. */
+    name: 'JADEN: Rampart Blaster lands lying down',
+    duelist: 'jaden',
+    because: 'kneeling it hits for 2500 and the Skull bounces off 2500 DEF less a thousand; standing it dies next turn',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'elemental-hero-clayman'), card(ME, 'elemental-hero-burstinatrix'), card(ME, 'polymerization')];
+      s.players[FOE].monsters[0] = card(FOE, 'summoned-skull');
+      s.players[FOE].hand = [card(FOE, 'kuriboh')];
+    },
+    minHits: 8,
+    want: (plan) => did(plan, 'fusionSummon') && plan.every((a) => a.type !== 'fusionSummon' || a.position === 'def'),
+  },
+  {
+    name: 'JADEN: Bubbleman arrives alone and the Normal Summon still follows',
+    duelist: 'jaden',
+    because: 'the free summon draws two and costs no Normal Summon; a second body follows for nothing',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'elemental-hero-bubbleman'), card(ME, 'elemental-hero-sparkman')];
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    },
+    want: (plan) => did(plan, 'handSummon') && did(plan, 'normalSummon'),
+  },
+  {
+    /* The opening the owner's first duel opened with: a body, a Set trap and
+       nothing else to do. Holding the trap in hand is holding it unarmed. */
+    name: 'JADEN: arms the trap it is holding when the backrow is empty',
+    duelist: 'jaden',
+    because: 'Hero Signal in hand does nothing; Set, it calls a HERO the moment the Burstinatrix falls',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'elemental-hero-burstinatrix'), card(ME, 'hero-signal'), card(ME, 'transcendent-wings')];
+      s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+    },
+    /* An appetite, not a certainty: the Set is worth about a hundred points
+       over holding the card, which is inside the judge's sampling noise at
+       the battery's budget, and the three Kuriboh across the table open a
+       window on every swing that ends the line before a Set could follow.
+       Measured 7–9 of ten across uid streams; the room's budget is three
+       times the battery's. */
+    minHits: 7,
+    want: (plan) => did(plan, 'setSpellTrap'),
+  },
 ];
 
 console.log(`AI play checks — every position over ${SEEDS.length} deck orders\n`);
@@ -844,7 +992,7 @@ for (const c of CASES) {
     for (const a of plan) {
       const res = applyAction(end, ME, a);
       if (res.error) {
-        shown.push(`${a.type}✗`);
+        shown.push(`${a.type}✗ (${res.error})`);
         break;
       }
       end = res.state;
@@ -1020,7 +1168,33 @@ windowCase(
   console.log(`  ${pass5 ? '✅' : '❌'} a searcher promises its target only while the Deck still holds one  (${Math.round(withTarget)} vs ${Math.round(spent)})`);
 }
 
-const TOTAL = CASES.length + 8;
+/* The plan is checked against the world it was made in. Pot of Greed draws
+   two cards the plan could only imagine; the real two are a Battle Ox and a
+   Kuriboh, and a turn that keeps walking its old plan ends without playing
+   either. The runtime must notice the board it did not predict and search
+   again from the real one. */
+{
+  const s = fresh(3, 'kaiba');
+  s.players[ME].hand = [card(ME, 'pot-of-greed')];
+  s.players[ME].deck = [card(ME, 'battle-ox'), card(ME, 'kuriboh'), card(ME, 'mystical-elf'), card(ME, 'saggi-the-dark-clown'), card(ME, 'judge-man'), card(ME, 'rude-kaiser')];
+  s.players[FOE].monsters[0] = card(FOE, 'mystical-elf', 'def');
+  const rt = createAiRuntime();
+  let cur = s;
+  for (let step = 0; step < 12 && !cur.winner && cur.active === ME; step++) {
+    const a = aiNext(cur, ME, 'champion', rt, 2500);
+    if (!a) break;
+    const res = applyAction(cur, ME, a);
+    if (res.error) break;
+    cur = res.state;
+  }
+  const summoned = cur.players[ME].monsters.some((m) => m?.slug === 'battle-ox');
+  const pass = summoned;
+  if (!pass) failures += 1;
+  console.log(`  ${pass ? '✅' : '❌'} re-plans after a draw it could only imagine, and plays the real card`);
+  if (!pass) console.log('       expected: the Battle Ox drawn by Pot of Greed is summoned this turn, which needs a fresh search after the draw');
+}
+
+const TOTAL = CASES.length + 9;
 console.log(
   failures
     ? `\n❌ ${failures} of ${TOTAL} positions played wrong.`
