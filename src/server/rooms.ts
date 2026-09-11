@@ -7,7 +7,7 @@
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
 import { applyAction, createDuel, other, viewFor, viewForSpectator } from '@/game/engine';
-import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, planTurn, type AiConfig } from '@/game/ai';
+import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, expectedHashes, planDiverged, planTurn, type AiConfig } from '@/game/ai';
 import { loadBrain, recordGame } from './learning';
 import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
@@ -71,7 +71,16 @@ export interface Room {
    * free, and it keeps the AI committed to the line it chose instead of
    * second-guessing itself halfway through a combo.
    */
-  aiPlan?: { key: string; actions: DuelAction[] };
+  aiPlan?: {
+    key: string;
+    actions: DuelAction[];
+    /** The visible board the plan expects after each action, and how many
+     *  actions it held when made — see `expectedHashes`. Optional so a room
+     *  saved by the previous build still loads; a plan without them is
+     *  simply never checked. */
+    expected?: number[];
+    planned?: number;
+  };
   /** How many actions the computer has taken on its current turn. */
   aiActions?: { key: string; count: number };
   /** Set on a tournament room: the bracket this series of duels belongs to. */
@@ -537,23 +546,43 @@ export async function stepAI(room: Room): Promise<boolean> {
     : { ...AI_LEVELS[GAME_AI] };
 
   let action: DuelAction;
+  const plan = room.aiPlan;
+  const played = plan ? (plan.planned ?? plan.actions.length) - plan.actions.length : 0;
+  const stale = !plan || plan.key !== turnKey || planDiverged(s, pid, plan.expected, played);
   if (s.pending) {
-    // A response window cannot be planned in advance — decide it on the spot,
-    // and drop whatever was left of the turn plan, since the board is about to
-    // change underneath it.
-    room.aiPlan = undefined;
-    action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, cfg, 800) : chooseTrapResponse(s, pid, cfg, 2000);
+    /* The plan carries its own answers — a search it decided to make names
+       the card it decided to take — and that answer is played rather than
+       asked again. Anything else (their window, a question the plan did not
+       foresee) is decided on the spot, and the plan is dropped, since the
+       board is about to change underneath it. */
+    const next = plan?.actions[0];
+    if (
+      !stale &&
+      next?.type === 'chooseCard' &&
+      s.pending.kind === 'choose' &&
+      s.pending.player === pid &&
+      next.uids.every((u) => s.pending!.options.includes(u))
+    ) {
+      plan!.actions.shift();
+      action = next;
+    } else {
+      room.aiPlan = undefined;
+      action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, cfg, 800) : chooseTrapResponse(s, pid, cfg, 2000);
+    }
   } else {
-    const key = turnKey;
-    if (room.aiPlan?.key !== key || !room.aiPlan.actions.length) {
+    /* A plan is checked against the world it was made in, and the moment the
+       real turn differs — a draw came up different, a stand-in turned out to
+       be a Zoa — the rest of it is thrown away and the turn searched again. */
+    if (stale || !plan?.actions.length || plan.actions[0].type === 'chooseCard') {
       /* Eight seconds to plan the whole turn, once per turn. The board
          narrates every beat for over a second anyway, so the think overlaps
          the tail of the previous action far more often than it is felt — and
          the function has a 30s ceiling with a hard wall inside the search,
          so there is no platform pressure to hurry. */
-      room.aiPlan = { key, actions: planTurn(s, pid, cfg, 8000) };
+      const actions = planTurn(s, pid, cfg, 8000);
+      room.aiPlan = { key: turnKey, actions, expected: expectedHashes(s, pid, actions), planned: actions.length };
     }
-    action = room.aiPlan.actions.shift() ?? { type: 'endTurn' };
+    action = room.aiPlan!.actions.shift() ?? { type: 'endTurn' };
   }
 
   let res = applyAction(s, pid, action);

@@ -28,7 +28,13 @@
  * distinguish either.
  */
 import { createDuel, cloneState } from '../src/game/engine';
-import { planTurn, chooseTrapResponse, AI_LEVELS } from '../src/game/ai';
+import { planTurn, chooseTrapResponse, AI_LEVELS, setPureClock } from '../src/game/ai';
+
+/* Node budgets, not milliseconds — the same discipline as `ai-check`. On a
+   loaded machine the wall cap cut the judge's rounds at different points for
+   the two permutations of one position, and the invariant read as broken
+   when only the weather had changed. */
+setPureClock(true);
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
