@@ -410,3 +410,68 @@ same search, a deck that now pays for its Fusions, and inside the band. The gene
 swapped over every deck pair: **51.9% ±5.7 (154W–143L over 297 games)** — no
 measurable difference at the 95% band, with every reported misplay pinned and
 gone, which is what "not worse in a fair arena" has cost every time.
+
+## The three Gods (2026-09-12)
+
+Three more brains, one per Egyptian God, on the scaffolding Jaden's built. The
+shared helpers every brain was about to copy — reading their board, telling a
+real card from an imagined one, finding where a choice is pointing, counting
+the damage that arrives at every turn start — moved into `brains/common.ts`,
+and Jaden's copies were deleted rather than left to drift.
+
+**What each deck knows that the DSL does not.** Slifer has a printed ATK of
+nought and fights with a thousand for every card in the hand that summoned it,
+and the Summon costs nothing in hand size because its own effect draws the card
+back — so it lands at exactly a thousand times the hand holding it, and the
+deck's real engine is the monsters that arrive in threes to pay for it (the
+Queen calls the King, the King calls the Jack; Multiply lays three Tokens for
+one card; Valkyrion comes apart into the three Warriors that made him).
+Millennium Seeker is a one-card Obelisk — it fetches the God from the Deck or
+the Graveyard and lays two more of itself beside it — and Obelisk with two
+spare souls is not a 4000 body, it is a Fist of Fate and a won duel, which
+makes the deck's Ka Tokens ammunition rather than chaff. Ra has no numbers of
+its own at all: its ATK is the combined *effective* ATK of what it ate, so
+Melchid's aura is worth fifteen hundred on the God he is fed to, and once a
+turn it will take every Life Point but one and add it — Life Points are
+ammunition in that deck, not a health bar. Under all of it Marik's burn
+collects eleven hundred a turn per Bowganian whether the God ever arrives or
+not, and the beam, which searches one turn, prices an engine that collects
+every turn at one turn's collection.
+
+**Measured, and the honest version of it.** Each deck against the whole field,
+the same search on both seats at the arena's 1500 ms budget, 204 games:
+
+| | before | after |
+|---|---|---|
+| Priest Seto (Obelisk) | 64.2% ±6.6 | **68.6% ±6.4** |
+| Yami Marik (Ra) | 59.8% ±6.7 | 60.8% ±6.7 |
+| Yami Yugi (Slifer) | 66.7% ±6.5 | 66.2% ±6.5 |
+
+Only Seto moved. The reason is in the census (`scripts/.bench/god-census.ts`):
+over sixteen games Obelisk was drawn in twelve and landed in seven, on turn 4.7
+— the Seeker is a one-card route and the brain's job was to see one turn past
+it. Ra landed seven times but on turn 8.9. Slifer landed **three** times in
+sixteen, and was held and never Summoned in six — and reading those six, the
+search was mostly right to hold: the board had three bodies in four of them,
+but the hand was one, two, three and three cards, so the God on offer was a
+1000 to a 3000 body against a board worth more. Slifer is not worth more than
+everything; it is worth a thousand a card, and the first version of its pin
+asked the search to Summon it over three Knights worth 5900 and was refused ten
+times out of ten, rightly. The pin was rewritten to the honest claim — cheap
+Tokens, a full hand — and passes.
+
+So: Seto's brain is worth four points, Marik's and Yami's are inside the noise,
+and all three play their God's signature line correctly and pinned. What the
+three decks have in common is where they lose — to Jaden, at 17–25% — and that
+is a card-power fact about a HERO deck with fourteen Fusions, not something an
+evaluation term reaches.
+
+**A latent fault this turned up.** A plan that lays Tokens and then Tributes
+them names uids the real game will never mint: `makeUid` mixes the RNG into
+every new card's name, and the search's world deliberately carries a different
+seed (that is what `ai-honesty` insists on). So Multiply into Slifer plans
+correctly, fails on "Invalid tribute", and is re-planned from the board that
+now really has the Tokens — the room recovers and the God lands, at the cost of
+one wasted search. Left as it is rather than made deterministic: the random part
+of a uid is what keeps a rematch's cards from colliding with the previous
+duel's, and this codebase has already paid once for that collision.

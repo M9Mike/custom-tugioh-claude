@@ -19,25 +19,11 @@ import { effAtk, other } from '../engine';
 import { matchesFilter } from '../targeting';
 import type { DuelistBrain } from '../brain';
 import type { CardInstance, DuelState, PendingChoice, PlayerId } from '../types';
+import { findOwn, known, theirBoard } from './common';
 
 const HERO = 'Elemental HERO';
 const isHero = (slug: string): boolean => (CARDS[slug]?.name ?? '').includes(HERO);
 const isFusion = (slug: string): boolean => !!CARDS[slug]?.isFusion;
-const known = (c: CardInstance): boolean => !c.turnFlags.worldBlind;
-
-/** Their face-up bodies as they stand, and what they hide under card backs. */
-function theirBoard(state: DuelState, me: PlayerId): { atks: number[]; hidden: number; backrow: number; hand: number } {
-  const foe = state.players[other(me)];
-  const atks: number[] = [];
-  let hidden = 0;
-  for (const m of foe.monsters) {
-    if (!m) continue;
-    if (m.face === 'down') hidden += 1;
-    else atks.push(effAtk(state, m, other(me)));
-  }
-  const backrow = (foe.spellTrap ? 1 : 0) + (foe.field ? 1 : 0);
-  return { atks, hidden, backrow, hand: foe.hand.length };
-}
 
 /** Printed ATK plus what the Graveyards already promise it — the Shining pair grow a thousand a head. */
 function fusionAtk(state: DuelState, me: PlayerId, slug: string): number {
@@ -215,18 +201,6 @@ function bonus(state: DuelState, me: PlayerId): number {
   return fusionReadiness(state, me) + wingsOption(state, me);
 }
 
-function findCard(state: DuelState, me: PlayerId, uid: string): CardInstance | null {
-  const p = state.players[me];
-  return (
-    p.hand.find((c) => c.uid === uid) ??
-    p.deck.find((c) => c.uid === uid) ??
-    p.grave.find((c) => c.uid === uid) ??
-    p.monsters.find((c) => c?.uid === uid) ??
-    p.extra.find((c) => c.uid === uid) ??
-    null
-  );
-}
-
 /**
  * Which HERO. The engine's default takes the biggest number; the deck knows
  * better: a card fetched to the hand is worth the Fusion it completes, a body
@@ -323,7 +297,7 @@ function rankChoice(state: DuelState, me: PlayerId, pending: PendingChoice): str
   };
 
   const ranked = pending.options
-    .map((uid) => ({ uid, c: findCard(state, me, uid) }))
+    .map((uid) => ({ uid, c: findOwn(state, me, uid) }))
     .filter((x): x is { uid: string; c: CardInstance } => !!x.c)
     .map((x) => ({ uid: x.uid, worth: worthOf(x.c) }))
     .sort((a, b) => b.worth - a.worth);

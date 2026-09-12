@@ -50,6 +50,20 @@ import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/
 const ME: PlayerId = 'p1';
 const FOE: PlayerId = 'p2';
 
+/**
+ * Everything Viser Des chooses between, actually in the Deck.
+ *
+ * Its search reaches the Deck alone, and the deal fills a hand these pins then
+ * overwrite — so on most orders one or two of the four had already gone, and
+ * the pin was measuring which cards survived the deal rather than which card
+ * the deck would rather have.
+ */
+function stockViserDes(s: DuelState) {
+  const want = ['the-winged-dragon-of-ra', 'bowganian', 'nightmare-wheel', 'coffin-seller', 'viser-des'];
+  s.players[ME].deck = s.players[ME].deck.filter((c) => !want.includes(c.slug));
+  for (const slug of want) s.players[ME].deck.push(card(ME, slug));
+}
+
 /** Ten arbitrary deck orders. The bugs this guards are order-dependent. */
 const SEEDS = [3, 12, 41, 99, 137, 256, 511, 900, 1234, 4242];
 
@@ -971,6 +985,174 @@ const CASES: Case[] = [
        times the battery's. */
     minHits: 7,
     want: (plan) => did(plan, 'setSpellTrap'),
+  },
+
+  /* --- The three Gods -------------------------------------------------- */
+  {
+    /* Slifer costs three bodies and this deck buys them one card at a time:
+       the Queen calls the King, the King calls the Jack while a Warrior is
+       standing beside him — and she is. One Normal Summon, the God's whole
+       price. */
+    name: 'YAMI: one Normal Summon becomes the three bodies a God costs',
+    duelist: 'yami',
+    because: "Queen's Knight calls King's, King's calls Jack's: one card, three bodies, and Slifer is waiting in hand",
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'queen-s-knight'), card(ME, 'slifer-the-sky-dragon')];
+      /* The links have to be IN the Deck. The deal puts five cards in a hand
+         this pin then overwrites, so on three of the ten orders King's Knight
+         was simply gone and the chain could not fire — the AI was right to Set
+         a lone 1500 body and the pin was wrong to ask. */
+      for (const slug of ['king-s-knight', 'jack-s-knight']) {
+        s.players[ME].deck = s.players[ME].deck.filter((c) => c.slug !== slug);
+        s.players[ME].deck.push(card(ME, slug));
+      }
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    },
+    want: (_plan, end) => end.players[ME].monsters.filter(Boolean).length === 3,
+  },
+  {
+    /* The first version of this pin asked for the God over three Knights, and
+       the search refused it ten times out of ten — rightly. Those three are
+       5900 ATK of board and Slifer, measured against that hand, would have
+       landed at 3000: the God is not worth more than everything, it is worth a
+       thousand a card. The honest claim is this one — the bodies are Tokens
+       worth 900 between them and the hand is five, so the trade is 900 for
+       5000 and a lock on everything they summon. */
+    name: 'YAMI: the God lands when the bodies are cheap and the hand is full',
+    duelist: 'yami',
+    because: 'three Tokens are 900 of board; Slifer off a hand of five is 5000 and nothing they hold can target it',
+    build: (s) => {
+      for (let i = 0; i < 3; i++) {
+        const t = card(ME, 'kuriboh', 'def');
+        (t as unknown as { isToken: boolean }).isToken = true;
+        s.players[ME].monsters[i] = t;
+      }
+      s.players[ME].hand = [
+        card(ME, 'slifer-the-sky-dragon'),
+        card(ME, 'big-shield-gardna'),
+        card(ME, 'spellbinding-circle'),
+        card(ME, 'mirror-force'),
+        card(ME, 'magical-hats'),
+      ];
+      s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+      s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+    },
+    minHits: 8,
+    want: (_plan, end) => end.players[ME].monsters.some((m) => m?.slug === 'slifer-the-sky-dragon'),
+  },
+  {
+    /* The Turtle throws a monster at their face for exactly what it was worth,
+       over everything standing in the way. Jack's Knight is 1900 and they are
+       on 1500. */
+    name: 'YAMI: the Catapult throws the duel',
+    duelist: 'yami',
+    because: 'their 2600 wall does not matter — the Turtle launches the Knight over the top of it for 2200, and they hold 1500',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'catapult-turtle');
+      s.players[ME].monsters[1] = card(ME, 'jack-s-knight');
+      s.players[FOE].monsters[0] = card(FOE, 'big-shield-gardna', 'def');
+      s.players[FOE].lp = 1500;
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* One card: it fetches Obelisk out of the Deck and lays two more of itself
+       beside it. Three bodies and the God in hand, off a single Normal Summon. */
+    name: 'SETO: the Seeker is the God, one turn early',
+    duelist: 'priestseto',
+    because: 'Millennium Seeker fetches Obelisk and calls two more Seekers: the price and the God in one card',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'millennium-seeker')];
+      /* The two Seekers it calls and the God it fetches have to be IN the
+         Deck: the deal fills a hand this pin overwrites, and on half the
+         orders one of them had gone with it. */
+      s.players[ME].deck = s.players[ME].deck.filter((c) => c.slug !== 'millennium-seeker' && c.slug !== 'obelisk-the-tormentor');
+      s.players[ME].deck.push(card(ME, 'millennium-seeker'), card(ME, 'millennium-seeker'), card(ME, 'obelisk-the-tormentor'));
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    },
+    want: (_plan, end) =>
+      end.players[ME].monsters.filter((m) => m?.slug === 'millennium-seeker').length === 3 &&
+      end.players[ME].hand.some((h) => h.slug === 'obelisk-the-tormentor'),
+  },
+  {
+    name: 'SETO: Obelisk and two souls end the duel',
+    duelist: 'priestseto',
+    because: 'the Fist of Fate eats two bodies and its ATK stops being a number — a 3000 Blue-Eyes is not a wall, it is the target',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'obelisk-the-tormentor');
+      s.players[ME].monsters[1] = card(ME, 'millennium-seeker', 'def');
+      s.players[ME].monsters[2] = card(ME, 'millennium-seeker', 'def');
+      s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* The God standing alone is a 4000 body. The Ankh is three Tokens for a
+       thousand Life Points, and they are destroyed at the end of the turn
+       anyway — so spending two of them on the Fist costs nothing that was not
+       already spent. */
+    name: 'SETO: the Ankh buys the Fist',
+    duelist: 'priestseto',
+    because: 'three Tokens for 1000 Life Points, two of them straight into the Fist of Fate, and the duel is over',
+    build: (s) => {
+      s.players[ME].monsters[0] = card(ME, 'obelisk-the-tormentor');
+      s.players[ME].hand = [card(ME, 'millennium-ankh')];
+      s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+      s.players[FOE].monsters[1] = card(FOE, 'battle-ox');
+    },
+    minHits: 8,
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* Ra is worth what it eats, plus three hundred a head for the Graveyard,
+       plus every Life Point but one if it asks for them. */
+    name: 'MARIK: Ra is fed the board and then the sun',
+    duelist: 'yamimarik',
+    because: 'three bodies make the God, and pouring the Life Points into it makes the swing lethal',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'the-winged-dragon-of-ra')];
+      s.players[ME].monsters[0] = card(ME, 'viser-des', 'def');
+      s.players[ME].monsters[1] = card(ME, 'viser-des', 'def');
+      s.players[ME].monsters[2] = card(ME, 'bowganian', 'def');
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+      s.players[FOE].lp = 5000;
+    },
+    want: (_plan, end) => end.winner === ME,
+  },
+  {
+    /* Viser Des asks the deck's one real question — the God, the burn, the
+       wall or the toll — and the answer is the board. Two bodies standing and
+       a Normal Summon still to come next turn: fetch the God. */
+    name: 'MARIK: Viser Des fetches the God when the bodies are standing',
+    duelist: 'yamimarik',
+    because: 'two bodies beside the Viser Des is the price of Ra next turn; the burn is the answer to a board that has none',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'viser-des')];
+      stockViserDes(s);
+      s.players[ME].monsters[0] = card(ME, 'granadora');
+      s.players[ME].monsters[1] = card(ME, 'melchid-the-four-face-beast');
+      s.players[FOE].monsters[0] = card(FOE, 'battle-ox');
+    },
+    minHits: 8,
+    want: (_plan, end) => end.players[ME].hand.some((h) => h.slug === 'the-winged-dragon-of-ra'),
+  },
+  {
+    name: 'MARIK: CONTROL: and the toll when a real attacker is standing there',
+    duelist: 'yamimarik',
+    because: 'no bodies to pay a God with and a 3000 across the table: Nightmare Wheel binds it and bills them 800 a turn',
+    build: (s) => {
+      s.players[ME].hand = [card(ME, 'viser-des')];
+      stockViserDes(s);
+      s.players[FOE].monsters[0] = card(FOE, 'blue-eyes-white-dragon');
+    },
+    minHits: 8,
+    /* In hand OR already Set. The first version of this asked for it in hand
+       and failed ten times out of ten because the search fetched the Wheel and
+       armed it in the same turn, which is strictly better than holding it —
+       the pin was measuring where the card ended up rather than which card the
+       deck chose. */
+    want: (_plan, end) =>
+      end.players[ME].hand.some((h) => h.slug === 'nightmare-wheel') || end.players[ME].spellTrap?.slug === 'nightmare-wheel',
   },
 ];
 
