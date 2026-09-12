@@ -475,3 +475,88 @@ now really has the Tokens — the room recovers and the God lands, at the cost o
 one wasted search. Left as it is rather than made deterministic: the random part
 of a uid is what keeps a rematch's cards from colliding with the previous
 duel's, and this codebase has already paid once for that collision.
+
+## The deck that remembers (2026-09-12)
+
+Mike asked whether the brain had learned anything from a duel he pasted, and
+the honest answer was: two knobs. `server/learning.ts` folded a finished duel
+into an aggression and a caution number, clamped to a quarter either way, and
+that was the whole of the memory. Reading it found two faults on top of that.
+`recordGame` seeded a deck's first record from `NEUTRAL`, so the first duel a
+deck ever played wiped the style it was built with (`deckStyle`); it now seeds
+from `firstLesson`, which folds the first game on top of the built style. And
+every learning write went into the store with the *room's* TTL — ninety
+minutes — so a lesson outlived the duel that taught it by about an hour and a
+half. Learning now writes with `LEARN_TTL_SECONDS`, a year.
+
+Then the actual request: learn the opponent, learn the deck, and learn from a
+loss why it was lost. Three memories, all in `src/game/experience.ts`, all
+read off `state.log` and nothing else — the log is the record of what was
+*shown*, so a memory built from it cannot know a card it was never allowed to
+see, and `ai-honesty` keeps meaning what it says. (That needed the engine's
+Summon and activation lines to carry the card's slug, which they now do; a
+synthetic pin passed for a whole afternoon while the real log carried none,
+and the learner learned nothing but Sets. The pin now reads a log the engine
+wrote.)
+
+**The opponent's profile** — keyed by their name and their deck: duels, Sets,
+Sets that turned out to be an answer (a Trap that fired), which Traps, which
+cards they have been seen to play and in how many duels, and the cards they
+played on the turn that turned a duel they won. The search reads it three
+ways. `learnedPrior` leans the paranoia prior an eighth either way by how
+often this opponent's Sets have fired, scaled up over six Sets, and never past
+the ceiling or below the floor. `nightmareWeight` makes an answer they have
+fired three times six tenths scarier than a stranger when the nightmare picks
+the trap to fear. `handWeight` deals the cards they actually play into their
+imagined hand first — an Efraimidis–Spirakis weight, so a card played every
+duel is three times as likely to be in hand as one never shown, and one that
+turned two lost duels half again on top of that; a sample stays a sample.
+
+**The matchup's book** — keyed by *deck against deck*, not by seat: per card
+the pilot played, how many duels and how many wins. A duel writes two books,
+one for each side, so the day the computer is dealt the human's deck it
+already holds the lines the human won with. The judge adds `bookBonus` to a
+line — ±110 per card at full confidence, a third of that on one sighting,
+each card once, capped at ±300 on the whole line — last and bounded, so it is
+a tiebreak between near-equal turns and never the reason to play a turn the
+board says is wrong. A custom deck is keyed by a hash of its cards, whatever
+duelist it is dressed as.
+
+**The post-mortem** — the room records the computer's own reading of the
+board (`evaluate` over `expectationWorld`, never the real state) at the start
+of each of its turns. When the duel ends, the biggest fall between two
+readings brackets the human's turn that did the damage; the biggest rise,
+its own turn that won. The cards played in that turn are the lesson: one
+sentence on the win screen (*"Turn 4: Mike's Polymerization and Elemental
+HERO Flame Wingman turned the duel, and the board never came back."*), a
+list of eight per deck in the store, and — for a loss — the cards go into
+the profile as `decisive`, which is what `handWeight` reads. Analyse why it
+lost; expect it next time.
+
+The room caches a reading of the memory for a minute in-process, since the
+computer asks for it on every action and it changes only when a duel ends.
+Computer-versus-computer duels neither read nor write any of it.
+
+**Measured.** `scripts/.bench/learn-curve.ts`: Priest Seto against Jaden,
+forty duels on the same forty seeds, the learner's seat carrying everything
+the previous duels taught, the other seat the plain search. Jaden is the
+matchup the God decks lose at 17–25%, chosen because there was room.
+
+| | blocks of ten | total |
+|---|---|---|
+| no memory | 2 · 0 · 1 · 1 | 4/40 |
+| profile + book | 2 · 1 · 3 · 1 | 7/40 |
+| + post-mortem | 2 · 1 · 2 · 1 | 6/40 |
+
+The first ten duels are the same duels — the memory is a tiebreak, and it
+takes a few duels' worth before it flips one. After forty, Seto's book had
+Obelisk at 6/10, Soul Exchange at 3/5 and Newdoria at 0/12, and Jaden's
+profile had 26 Sets of which 17 fired — Hero Signal eight times, Mirror Gate
+six. The post-mortem's forty duels named Burstinatrix thirteen times, Bladedge
+and Sparkman eight, Avian and The Warrior Returning Alive seven — the HERO
+engine, read off its own losses — and dealing those into Jaden's imagined
+hand first did not add wins on top of the book on this sample: six against
+seven is the same number. Forty duels is a small sample and the honest
+reading is "a few points against a deck built to be unbeatable"; it is not a
+200 IQ player, it is a player that no longer walks into the same Mirror Gate
+twice, and that can tell you which turn it lost on.

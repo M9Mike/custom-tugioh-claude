@@ -7,8 +7,9 @@
  * thing stateless and immune to Vercel scaling out mid-duel.
  */
 import { applyAction, createDuel, other, viewFor, viewForSpectator } from '@/game/engine';
-import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, expectedHashes, planDiverged, planTurn, type AiConfig } from '@/game/ai';
-import { loadBrain, recordGame } from './learning';
+import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRuntime, evaluate, expectationWorld, expectedHashes, planDiverged, planTurn, type AiConfig } from '@/game/ai';
+import { loadBrain, loadExperience, recordDuel, recordGame } from './learning';
+import { deckKeyFor } from '@/game/experience';
 import { GAME_AI } from '@/game/ai-levels';
 import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import {
@@ -83,6 +84,14 @@ export interface Room {
   };
   /** How many actions the computer has taken on its current turn. */
   aiActions?: { key: string; count: number };
+  /**
+   * The computer's own reading of the board at the start of each of its turns
+   * this duel — what its lesson is read from when the duel ends. Keyed by the
+   * duel so a rematch starts a fresh trace.
+   */
+  aiTrace?: { duelId: string; points: { turn: number; eval: number }[] };
+  /** What the computer wrote down about the duel just finished, for the win screen. */
+  lesson?: string;
   /** Set on a tournament room: the bracket this series of duels belongs to. */
   tournament?: Tournament;
   /**
@@ -111,6 +120,8 @@ export interface RoomView {
   bracketBusy?: boolean;
   /** This viewer is watching an exhibition, not sitting in it. */
   spectate?: boolean;
+  /** The computer's one sentence about the duel just finished — the turn it turned on. */
+  lesson?: string;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
@@ -544,6 +555,19 @@ export async function stepAI(room: Room): Promise<boolean> {
   const cfg: AiConfig = brain
     ? { ...AI_LEVELS[GAME_AI], style: { aggression: brain.aggression, caution: brain.caution } }
     : { ...AI_LEVELS[GAME_AI] };
+  /* And its memory of this opponent — how they have played, and what has won
+     with this deck against theirs. Only across the table from a human: the
+     bracket's computer-versus-computer duels teach nothing and read nothing,
+     so they stay exactly the shipped search. */
+  const foeSeat = room.seats[other(pid)];
+  if (deckId && foeSeat && !foeSeat.ai) {
+    const experience = await loadExperience(
+      deckKeyFor(deckId, room.seats[pid]?.deck),
+      foeSeat.name,
+      deckKeyFor(foeSeat.duelistId, foeSeat.deck)
+    ).catch(() => null);
+    if (experience && (experience.foe || experience.book)) cfg.experience = experience;
+  }
 
   let action: DuelAction;
   const plan = room.aiPlan;
@@ -570,6 +594,16 @@ export async function stepAI(room: Room): Promise<boolean> {
       action = s.pending.kind === 'choose' ? chooseCardResponse(s, pid, cfg, 800) : chooseTrapResponse(s, pid, cfg, 2000);
     }
   } else {
+    /* Where the computer thinks it stands, once per turn, for the lesson it
+       writes at the end. Read off the expectation world — the board as the
+       computer is allowed to see it — never off the real state. */
+    const duelId = s.duelId ?? 'legacy';
+    if (!room.aiTrace || room.aiTrace.duelId !== duelId) room.aiTrace = { duelId, points: [] };
+    const points = room.aiTrace.points;
+    if (!points.length || points[points.length - 1].turn !== s.turn) {
+      points.push({ turn: s.turn, eval: Math.round(evaluate(expectationWorld(s, pid), pid)) });
+      if (points.length > 60) points.splice(0, points.length - 60);
+    }
     /* A plan is checked against the world it was made in, and the moment the
        real turn differs — a draw came up different, a stand-in turned out to
        be a Zoa — the rest of it is thrown away and the turn searched again. */
@@ -677,6 +711,9 @@ export function viewOf(room: Room, pid: PlayerId, spectator = false): RoomView {
     tournament: room.tournament,
     bracketBusy: tournamentPending(room),
     spectate: spectator || undefined,
+    /* Only over a finished duel: a sentence about the last one has no business
+       on the board of the next. */
+    lesson: room.state?.winner ? room.lesson : undefined,
   };
 }
 
@@ -844,6 +881,25 @@ async function learnFromEnd(room: Room): Promise<void> {
       myBoardLeft: me.monsters.filter(Boolean).length,
       turns: s.turn,
     }).catch(() => {});
+    /* The three memories, and the sentence for the win screen: how this
+       opponent played, what won with this deck against theirs (and with
+       theirs against this one), and the turn the duel turned on. */
+    room.lesson = undefined;
+    const duelId = s.duelId ?? 'legacy';
+    const trace = room.aiTrace?.duelId === duelId ? room.aiTrace.points : [];
+    const lesson = await recordDuel({
+      log: s.log,
+      winner: s.winner,
+      me: pid,
+      foeName: foeSeat?.name ?? 'the opponent',
+      myDeck: deckKeyFor(seat.duelistId, seat.deck),
+      foeDeck: deckKeyFor(foeSeat?.duelistId, foeSeat?.deck),
+      trace,
+    }).catch(() => null);
+    if (lesson) {
+      room.lesson = `${seat.name} will remember this one. ${lesson}`;
+      await saveRoom(room);
+    }
   }
 }
 

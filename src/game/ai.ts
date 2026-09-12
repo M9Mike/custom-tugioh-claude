@@ -22,6 +22,7 @@
  *    seen, so the model plays a *plausible* opponent, never the actual one.
  */
 import { CARDS, baseAtk, baseDef } from './cards';
+import { bookBonus, handWeight, learnedPrior, nightmareWeight, type Experience, type FoeProfile } from './experience';
 import {
   applyAction,
   canActivateFromHand,
@@ -92,6 +93,13 @@ export interface AiConfig {
    * inside the range the check suite was validated against.
    */
   style?: { aggression: number; caution: number };
+  /**
+   * What the computer remembers of this opponent and this matchup, from
+   * `src/game/experience.ts`. Absent, the search is byte-for-byte the shipped
+   * one — every pinned position runs without it — and present, every effect
+   * it has is bounded there.
+   */
+  experience?: Experience;
 }
 
 export const AI_LEVELS: Record<AiLevel, AiConfig> = {
@@ -1787,7 +1795,7 @@ function unseenAnswers(foe: { hand: CardInstance[]; deck: CardInstance[]; spellT
  * The ring is priced at the body it would be wrapped round, and lethal is
  * lethal: a trap that can end the duel from this board is the one feared.
  */
-function scariestUnseenTrap(state: DuelState, viewer: PlayerId): string | null {
+function scariestUnseenTrap(state: DuelState, viewer: PlayerId, habits?: FoeProfile): string | null {
   const foe = state.players[other(viewer)];
   const mine = state.players[viewer];
   let maxAtk = 0;
@@ -1818,7 +1826,10 @@ function scariestUnseenTrap(state: DuelState, viewer: PlayerId): string | null {
   let best: string | null = null;
   let bestWorth = 0;
   for (const c of unseenAnswers(foe)) {
-    const worth = threat(c.slug);
+    /* Sharpened by memory: an answer this opponent has fired before outranks
+       a slightly scarier one they have never shown. Nothing without a
+       profile — see `nightmareWeight`. */
+    const worth = threat(c.slug) * nightmareWeight(c.slug, habits);
     if (worth > bestWorth || (worth === bestWorth && best !== null && c.slug < best)) {
       bestWorth = worth;
       best = c.slug;
@@ -1856,7 +1867,7 @@ export function paranoiaPrior(state: DuelState, viewer: PlayerId): number {
   return Math.max(0.4, Math.min(0.55, (2.5 * answers) / pool.length));
 }
 
-function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean, paranoid = false): DuelState {
+function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: boolean, paranoid = false, exp?: Experience): DuelState {
   const view = cloneState(state);
   view.log = [];
   view.logShown = 0;
@@ -1901,7 +1912,7 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      evaluation still counts the zone as an unknown threat, and the real card
      gets its say in the real duel, where it belongs. */
   if (foe.spellTrap && foe.spellTrap.face === 'down') {
-    const trap = paranoid ? scariestUnseenTrap(state, viewer) : null;
+    const trap = paranoid ? scariestUnseenTrap(state, viewer, exp?.foe) : null;
     if (trap) reidentify(foe.spellTrap, trap);
     else proxyBody(foe.spellTrap);
   }
@@ -1980,6 +1991,18 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
   }
   const remain = [...monsters, ...rest];
   shuffleWith(remain, rnd);
+  /* With a memory of this opponent, the cards they have been seen to play are
+     dealt to their hand first — a weighted draw, so a card played in every
+     duel so far is more likely in hand than one never shown, not certain to
+     be. Only with a profile: the plain shuffle above is stream-stable and a
+     pinned position turns on exactly that, so nothing here touches the RNG
+     when there is nothing to remember. */
+  if (exp?.foe && exp.foe.games > 0) {
+    const habits = exp.foe;
+    const keyed = remain.map((slug) => ({ slug, key: Math.pow(rnd(), 1 / handWeight(slug, habits)) }));
+    keyed.sort((a, b) => b.key - a.key);
+    for (let i = 0; i < remain.length; i++) remain[i] = keyed[i].slug;
+  }
   let at = 0;
   for (const h of foe.hand) reidentify(h, remain[at++]);
   for (const d of foe.deck) reidentify(d, remain[at++]);
@@ -2687,7 +2710,7 @@ function judgeAcrossWorlds(
   const imm = examine.map(() => ({ sum: 0, n: 0, vals: [] as number[] }));
   const roll = examine.map(() => ({ sum: 0, n: 0, nodes: 0, vals: [] as number[] }));
   const dark = examine.map(() => ({ sum: 0, n: 0, losses: 0 }));
-  const prior = Math.min(0.65, paranoiaPrior(state, pid) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
+  const prior = Math.min(0.65, learnedPrior(paranoiaPrior(state, pid), cfg.experience?.foe) * (1 + 0.5 * (cfg.style?.caution ?? 0)));
   /* Doctrine, exactly as pinned: a Set card must neither be read nor FEARED —
      the first attack and the first summon go in whatever is face-down, or the
      computer stops duelling. The nightmare's weight therefore scales with the
@@ -2768,7 +2791,7 @@ function judgeAcrossWorlds(
        The emergency cap alone let a judge round begin at 1.4x and stretch
        the serving turn past 12 seconds — the wall-clock probe's catch. */
     if (round > 0 && (clock.left <= 300 || Date.now() > clock.wallCap || Date.now() > (clock.soft ?? Number.MAX_SAFE_INTEGER))) break;
-    const world = buildWorld(state, pid, salt, true);
+    const world = buildWorld(state, pid, salt, true, false, cfg.experience);
     salt += 1;
     for (let i = 0; i < M; i++) {
       if (round > 0 && drained(clock)) break;
@@ -2791,7 +2814,7 @@ function judgeAcrossWorlds(
        see this term because both seats share the blindness; a human never
        shares it. */
     if (!drained(clock) && prior > 0) {
-      const nightmare = buildWorld(state, pid, 990 + round, true, true);
+      const nightmare = buildWorld(state, pid, 990 + round, true, true, cfg.experience);
       for (let i = 0; i < M; i++) {
         if (drained(clock)) break;
         const end = playOutPlan(clock, nightmare, pid, examine[i].actions, w);
@@ -2816,7 +2839,7 @@ function judgeAcrossWorlds(
        opponent, re-salted RNG, so the coin is resampled while everything else
        is held constant. */
     if (gambling && !drained(clock)) {
-      const rethrow = buildWorld(state, pid, salt + 100, true);
+      const rethrow = buildWorld(state, pid, salt + 100, true, false, cfg.experience);
       for (let i = 0; i < M; i++) {
         if (!planGambles(examine[i].actions, state)) continue;
         if (drained(clock)) break;
@@ -2919,7 +2942,7 @@ function judgeAcrossWorlds(
     const [a, b] = [ranked[0], ranked[1]];
     if (Math.abs(score(a)) >= WIN / 2 || Math.abs(score(b)) >= WIN / 2) break;
     if (Math.abs(score(a) - score(b)) >= ROLLOUT_AUTHORITY) break;
-    const world = buildWorld(state, pid, 500 + salt, true);
+    const world = buildWorld(state, pid, 500 + salt, true, false, cfg.experience);
     salt += 1;
     const slice = Math.max(ROLLOUT_FLOOR, Math.round(clock.left / 6));
     for (const i of [a, b]) {
@@ -2948,7 +2971,11 @@ function judgeAcrossWorlds(
     }
     console.log(`    [judge] prior=${prior.toFixed(2)}`);
   }
-  const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) }));
+  /* The book's word, last and bounded: what the cards this line spends have
+     done in this matchup before. A tiebreak between near-equal turns, capped
+     so it is never the reason to play a turn the board says is wrong. */
+  const book = examine.map((l) => bookBonus(cfg.experience?.book, spentSlugs(state, pid, l.actions)));
+  const out: Line[] = examine.map((line, i) => ({ ...line, score: score(i) + book[i] }));
   out.sort((a, b) => b.score - a.score);
   /* A line whose nightmare EVER loses the duel yields to one whose nightmare
      never does, when the two sit inside the noise. The commitment discount
@@ -3202,6 +3229,43 @@ function stateSig(s: DuelState): string {
 }
 
 /** A readable one-liner for an action, for the debug trace only. */
+/**
+ * The cards a line spends — Summoned, cast, Set, called, fused or ignited —
+ * named off the position the line starts from, where every one of them is
+ * still in the zone the plan found it in.
+ */
+function spentSlugs(state: DuelState, pid: PlayerId, actions: DuelAction[]): string[] {
+  const p = state.players[pid];
+  const slugOf = (uid: string | undefined): string | undefined => {
+    if (!uid) return undefined;
+    const c =
+      p.hand.find((x) => x.uid === uid) ??
+      p.monsters.find((x) => x?.uid === uid) ??
+      p.extra.find((x) => x.uid === uid) ??
+      (p.spellTrap?.uid === uid ? p.spellTrap : undefined);
+    return c?.slug;
+  };
+  const out: string[] = [];
+  for (const a of actions) {
+    let slug: string | undefined;
+    switch (a.type) {
+      case 'normalSummon':
+      case 'activateSpell':
+      case 'activateSetCard':
+      case 'setSpellTrap':
+      case 'handSummon':
+      case 'ignition':
+        slug = slugOf(a.uid);
+        break;
+      case 'fusionSummon':
+        slug = slugOf(a.extraUid);
+        break;
+    }
+    if (slug && !out.includes(slug)) out.push(slug);
+  }
+  return out;
+}
+
 function describeAction(state: DuelState, a: DuelAction): string {
   const nameOf = (uid: string | null | undefined): string => {
     if (!uid) return 'direct';

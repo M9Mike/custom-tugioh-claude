@@ -16,6 +16,32 @@
  */
 import { claim, readJson, writeJsonIf } from './store';
 import { CARDS, DUELISTS } from '../game/cards';
+import {
+  EMPTY_BOOK,
+  EMPTY_FOE,
+  lessonFrom,
+  readDuel,
+  updateBook,
+  updateProfile,
+  type Experience,
+  type FoeProfile,
+  type Lesson,
+  type LineBook,
+  type TracePoint,
+} from '../game/experience';
+import type { LogEntry, PlayerId } from '../game/types';
+
+/**
+ * How long a memory lives: a year, refreshed by every duel that touches it.
+ *
+ * Every learning key used to be written with the store's DEFAULT expiry, which
+ * is the room's — ninety minutes. So a deck learned from a duel and forgot it
+ * before the next evening: "the computer gets better after each duel" was
+ * true for an hour and a half at a time, and the built-in style being thrown
+ * away by the first recorded game (see `recordGame`) could never be noticed
+ * because the record that threw it away had itself expired by morning.
+ */
+export const LEARN_TTL_SECONDS = 365 * 24 * 60 * 60;
 
 export interface DeckBrain {
   games: number;
@@ -138,6 +164,16 @@ export function updateBrain(brain: DeckBrain, s: GameSummary): DeckBrain {
 }
 
 /** Records one finished duel, compare-and-swap so concurrent games both count. */
+/**
+ * The first lesson a deck ever records, folded onto the style it was built
+ * with. Pure, so the seam between `deckStyle` and `updateBrain` — the one the
+ * rules suite never crossed, which is how a first duel came to wipe the style
+ * unnoticed — is pinned.
+ */
+export function firstLesson(deckId: string, summary: GameSummary): DeckBrain {
+  return updateBrain({ ...NEUTRAL, ...deckStyle(deckId) }, summary);
+}
+
 export async function recordGame(deckId: string, summary: GameSummary): Promise<void> {
   for (let attempt = 0; attempt < 4; attempt++) {
     const held = await readJson<Held>(brainKey(deckId));
@@ -146,11 +182,130 @@ export async function recordGame(deckId: string, summary: GameSummary): Promise<
          both deal the first lesson — the loser re-reads and folds its game
          in on top. Force-creating here lost a lesson, and the race suite is
          what caught it. */
-      const fresh: Held = { revision: 1, brain: updateBrain({ ...NEUTRAL }, summary) };
-      if (await claim(brainKey(deckId), JSON.stringify(fresh))) return;
+      /* Onto the style the deck was BUILT with, not onto nothing. This
+         started from bare NEUTRAL, so the one duel that created the record
+         also discarded the decklist's own starting point — every deck the
+         owner had ever duelled was running at neutral rather than at the
+         style its list implies, and `loadBrain`'s comment above had promised
+         otherwise all along. */
+      const fresh: Held = { revision: 1, brain: firstLesson(deckId, summary) };
+      if (await claim(brainKey(deckId), JSON.stringify(fresh), LEARN_TTL_SECONDS)) return;
       continue;
     }
     const next: Held = { revision: held.revision + 1, brain: updateBrain(held.brain, summary) };
-    if (await writeJsonIf(brainKey(deckId), next, held.revision, next.revision)) return;
+    if (await writeJsonIf(brainKey(deckId), next, held.revision, next.revision, LEARN_TTL_SECONDS)) return;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* The memories: an opponent's habits, a matchup's book, the lessons   */
+/* ------------------------------------------------------------------ */
+
+interface Kept<T> {
+  revision: number;
+  value: T;
+}
+
+const foeKey = (name: string, deckKey: string) => `learn:foe:${name.trim().toLowerCase()}|${deckKey}`;
+const bookKey = (mine: string, theirs: string) => `learn:book:${mine}|${theirs}`;
+const lessonsKey = (deckKey: string) => `learn:lessons:${deckKey}`;
+
+/** How many lessons a deck keeps. Enough to read back a week of duels. */
+const LESSONS_KEPT = 8;
+
+/**
+ * Folds one step into a stored value, compare-and-swap, the way `recordGame`
+ * does — two duels ending in the same instant both get their lesson in, and
+ * the loser of the race re-reads and folds on top.
+ */
+async function fold<T>(key: string, seed: T, step: (value: T) => T): Promise<T | null> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const held = await readJson<Kept<T>>(key);
+    if (!held) {
+      const fresh: Kept<T> = { revision: 1, value: step(seed) };
+      if (await claim(key, JSON.stringify(fresh), LEARN_TTL_SECONDS)) return fresh.value;
+      continue;
+    }
+    const next: Kept<T> = { revision: held.revision + 1, value: step(held.value) };
+    if (await writeJsonIf(key, next, held.revision, next.revision, LEARN_TTL_SECONDS)) return next.value;
+  }
+  return null;
+}
+
+/**
+ * A memory changes only when a duel ends, and the computer asks for it on
+ * every action it takes — so a reading is kept for a minute in this process,
+ * and thrown away the moment a duel this process saw end has written to it.
+ * Another instance's duel is a minute late at worst, which is the gap between
+ * one duel and the next. Exact keys: a different deck or opponent is a miss.
+ */
+const remembered = new Map<string, { at: number; experience: Experience }>();
+const REMEMBER_MS = 60_000;
+const forget = (myDeck: string, foeName: string, foeDeck: string) => remembered.delete(`${myDeck}|${foeName.trim().toLowerCase()}|${foeDeck}`);
+
+/**
+ * What the computer remembers walking into this duel: how this opponent has
+ * played before, and what has won with this deck against theirs. Either may
+ * be absent, and absent is exactly the shipped search.
+ */
+export async function loadExperience(myDeck: string, foeName: string, foeDeck: string): Promise<Experience> {
+  const key = `${myDeck}|${foeName.trim().toLowerCase()}|${foeDeck}`;
+  const kept = remembered.get(key);
+  if (kept && Date.now() - kept.at < REMEMBER_MS) return kept.experience;
+  const [foe, book] = await Promise.all([
+    readJson<Kept<FoeProfile>>(foeKey(foeName, foeDeck)).catch(() => null),
+    readJson<Kept<LineBook>>(bookKey(myDeck, foeDeck)).catch(() => null),
+  ]);
+  const experience: Experience = { foe: foe?.value, book: book?.value };
+  remembered.set(key, { at: Date.now(), experience });
+  if (remembered.size > 64) remembered.delete(remembered.keys().next().value as string);
+  return experience;
+}
+
+/** The lessons a deck has written down, newest first. */
+export async function loadLessons(deckKey: string): Promise<Lesson[]> {
+  const held = await readJson<Kept<Lesson[]>>(lessonsKey(deckKey)).catch(() => null);
+  return held?.value ?? [];
+}
+
+export interface DuelEnd {
+  /** The finished duel's log — the only record that says just what was shown. */
+  log: LogEntry[];
+  winner: PlayerId;
+  /** The computer's seat, and the human's. */
+  me: PlayerId;
+  foeName: string;
+  myDeck: string;
+  foeDeck: string;
+  /** The computer's reading of the board at the start of each of its turns. */
+  trace: TracePoint[];
+}
+
+/**
+ * Everything one finished duel teaches, written down.
+ *
+ * Three memories, from one reading of the log. The opponent's profile learns
+ * how they play. The matchup's book learns what the computer's cards did
+ * against theirs — and the REVERSE book learns what their cards did against
+ * the computer's, so that the day the computer is dealt the human's deck it
+ * already knows the lines the human won with. And the deck writes one
+ * sentence about the turn the duel turned on, which the win screen shows.
+ */
+export async function recordDuel(end: DuelEnd): Promise<string | null> {
+  const record = readDuel(end.log, end.winner);
+  const foe: PlayerId = end.me === 'p1' ? 'p2' : 'p1';
+  /* The post-mortem first: a lost duel's turning turn names the cards the
+     profile should expect from now on. */
+  const lesson = lessonFrom(end.trace, record, end.me, end.foeName);
+  const decisive = lesson?.theirs ? lesson.slugs : [];
+  forget(end.myDeck, end.foeName, end.foeDeck);
+  await Promise.all([
+    fold<FoeProfile>(foeKey(end.foeName, end.foeDeck), EMPTY_FOE, (v) => updateProfile(v, record, foe, decisive)),
+    fold<LineBook>(bookKey(end.myDeck, end.foeDeck), EMPTY_BOOK, (v) => updateBook(v, record, end.me)),
+    fold<LineBook>(bookKey(end.foeDeck, end.myDeck), EMPTY_BOOK, (v) => updateBook(v, record, foe)),
+  ]);
+  if (!lesson) return null;
+  const entry: Lesson = { won: end.winner === end.me, turn: lesson.turn, text: lesson.text, foe: end.foeName, at: Date.now() };
+  await fold<Lesson[]>(lessonsKey(end.myDeck), [], (v) => [entry, ...v].slice(0, LESSONS_KEPT));
+  return lesson.text;
 }

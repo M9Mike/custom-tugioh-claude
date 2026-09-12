@@ -8,7 +8,24 @@
  *
  *   npx tsx scripts/rules-check.ts
  */
-import { deckStyle, KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
+import { deckStyle, firstLesson, KNOB_LIMIT, NEUTRAL, updateBrain } from '../src/server/learning';
+import {
+  BOOK_CAP,
+  EMPTY_BOOK,
+  EMPTY_FOE,
+  PRIOR_CEILING,
+  PRIOR_FLOOR,
+  bookBonus,
+  deckKeyFor,
+  handWeight,
+  learnedPrior,
+  lessonFrom,
+  nightmareWeight,
+  readDuel,
+  updateBook,
+  updateProfile,
+} from '../src/game/experience';
+import type { LogEntry } from '../src/game/types';
 import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits} from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
@@ -15088,6 +15105,168 @@ console.log('\nA lock the board can see: the card is in the Graveyard, the notic
   t = act(t, FOE, { type: 'endTurn' });
   ok(lockNotices(t, ME).length === 0 && lockNotices(t, FOE).length === 0,
     'LOCK: after their third turn the notice is gone from both sides');
+}
+
+/* ------------------------------------------------------------------ */
+console.log('\nThe deck that remembers: the first lesson lands on the built style');
+{
+  const win = { won: true, myLp: 2300, theirLp: 0, myHandLeft: 1, myBoardLeft: 2, turns: 5 };
+  const built = deckStyle('priestseto');
+  const first = firstLesson('priestseto', win);
+  ok(built.caution > 0.1, 'MEMORY: Priest Seto is built with some caution', `caution ${built.caution}`);
+  ok(
+    Math.abs(first.caution - built.caution * 0.97) < 1e-9 && Math.abs(first.aggression - built.aggression * 0.97) < 1e-9,
+    'MEMORY: the first recorded win consolidates the built style rather than replacing it with nought',
+    `caution ${built.caution} -> ${first.caution}`
+  );
+  ok(first.games === 1 && first.wins === 1, 'MEMORY: and counts the game');
+}
+
+console.log('\nThe deck that remembers: a duel read off its log');
+{
+  let n = 0;
+  const line = (turn: number, player: 'p1' | 'p2' | undefined, text: string, slug?: string): LogEntry => ({ id: `l${n++}`, turn, player, text, slug });
+  const log: LogEntry[] = [
+    line(1, ME, "Turn 1 — Me's turn."),
+    line(1, ME, 'Me Normal Summons Battle Ox!', 'battle-ox'),
+    line(1, ME, 'Me sets a card.'),
+    line(2, FOE, "Turn 2 — Foe's turn."),
+    line(2, FOE, 'Foe Normal Summons Kuriboh!', 'kuriboh'),
+    line(2, FOE, 'Foe enters the Battle Phase.'),
+    line(2, FOE, 'Kuriboh attacks Battle Ox!', 'kuriboh'),
+    line(2, ME, 'Me activates Mirror Force!', 'mirror-force'),
+    line(2, FOE, 'Kuriboh is destroyed.', 'kuriboh'),
+    line(3, ME, "Turn 3 — Me's turn."),
+    line(3, ME, 'Me activates Pot of Greed!', 'pot-of-greed'),
+    line(3, ME, 'Me draws 2 cards.'),
+    line(3, ME, "Me activates Battle Ox's effect!", 'battle-ox'),
+  ];
+  const record = readDuel(log, ME);
+  ok(record.sets[ME] === 1 && record.sets[FOE] === 0, 'MEMORY: a Set is counted for the seat that Set it', JSON.stringify(record.sets));
+  ok(
+    record.trapsFired[ME].length === 1 && record.trapsFired[ME][0] === 'mirror-force' && record.trapsFired[FOE].length === 0,
+    'MEMORY: a Trap firing is the Set card shown to have been an answer',
+    JSON.stringify(record.trapsFired)
+  );
+  ok(
+    record.turns.length === 3 && record.turns[0].slugs.join() === 'battle-ox' && record.turns[1].slugs.join() === 'kuriboh' && record.turns[2].slugs.join() === 'pot-of-greed,battle-ox',
+    "MEMORY: each turn's line is the turn's own player's plays, and a Trap fired on their turn is not part of their line",
+    JSON.stringify(record.turns)
+  );
+  ok(
+    record.played[ME].join() === 'battle-ox,mirror-force,pot-of-greed' && record.played[FOE].join() === 'kuriboh',
+    'MEMORY: what each seat was seen to play, once each',
+    JSON.stringify(record.played)
+  );
+  const profile = updateProfile(EMPTY_FOE, record, ME);
+  ok(
+    profile.games === 1 && profile.sets === 1 && profile.answers === 1 && profile.traps['mirror-force'] === 1 && profile.plays['pot-of-greed'] === 1,
+    "MEMORY: the opponent's profile learns their Sets, their answers and their plays",
+    JSON.stringify(profile)
+  );
+  const mine = updateBook(EMPTY_BOOK, record, ME);
+  const theirs = updateBook(EMPTY_BOOK, record, FOE);
+  ok(
+    mine.cards['battle-ox']?.wins === 1 && mine.cards['battle-ox']?.n === 1 && theirs.cards['kuriboh']?.wins === 0 && theirs.cards['kuriboh']?.n === 1,
+    'MEMORY: the book credits the winner\'s cards and debits the loser\'s',
+    JSON.stringify({ mine: mine.cards, theirs: theirs.cards })
+  );
+}
+
+console.log("\nThe deck that remembers: the engine's own log carries the cards");
+{
+  /* The synthetic log above says what the parser expects; this one is written
+     by the engine itself, on the first turn — whose line names nobody — so the
+     day a Summon stops carrying its card, or the opening turn goes unread, the
+     memory is found empty here and not in production. */
+  let s = structuredClone(createDuel({ seed: 7, p1: { duelistId: 'kaiba', name: 'Me' }, p2: { duelistId: 'yugi', name: 'Foe' } }));
+  s.players[ME].hand = [];
+  const ox = card(ME, 'battle-ox');
+  const pot = card(ME, 'pot-of-greed');
+  const force = card(ME, 'mirror-force');
+  s.players[ME].hand.push(ox, pot, force);
+  s = act(s, ME, { type: 'normalSummon', uid: ox.uid, zone: 0, position: 'atk', face: 'up' });
+  s = act(s, ME, { type: 'activateSpell', uid: pot.uid });
+  s = act(s, ME, { type: 'setSpellTrap', uid: force.uid });
+  const record = readDuel(s.log, ME);
+  ok(
+    record.turns.length === 1 && record.turns[0].turn === 1 && record.turns[0].player === ME && record.turns[0].slugs.join() === 'battle-ox,pot-of-greed',
+    'MEMORY: a Normal Summon and a Spell on the engine\'s own first turn are read as that turn\'s line',
+    JSON.stringify(record.turns)
+  );
+  ok(record.sets[ME] === 1 && record.played[ME].join() === 'battle-ox,pot-of-greed', 'MEMORY: and the Set beside them is counted, not named', JSON.stringify(record));
+  s = act(s, ME, { type: 'endTurn' });
+  s.players[FOE].hand = [];
+  const kuriboh = card(FOE, 'kuriboh');
+  s.players[FOE].hand.push(kuriboh);
+  s = act(s, FOE, { type: 'normalSummon', uid: kuriboh.uid, zone: 0, position: 'atk', face: 'up' });
+  const two = readDuel(s.log, ME);
+  ok(
+    two.turns.length === 2 && two.turns[1].turn === 2 && two.turns[1].player === FOE && two.turns[1].slugs.join() === 'kuriboh',
+    "MEMORY: the second turn's line is the other seat's, off the engine's own turn line",
+    JSON.stringify(two.turns)
+  );
+}
+
+console.log('\nThe deck that remembers: what the search reads, and the walls around it');
+{
+  ok(learnedPrior(0.45, undefined) === 0.45 && learnedPrior(0, { ...EMPTY_FOE, sets: 6, answers: 6 }) === 0, 'MEMORY: no profile, or no Set card, leaves the prior alone');
+  const fired = { ...EMPTY_FOE, games: 3, sets: 6, answers: 6 };
+  const bluffed = { ...EMPTY_FOE, games: 3, sets: 6, answers: 0 };
+  ok(Math.abs(learnedPrior(0.45, fired) - 0.575) < 1e-9, 'MEMORY: an opponent whose every Set has fired is feared an eighth more', String(learnedPrior(0.45, fired)));
+  ok(Math.abs(learnedPrior(0.45, bluffed) - 0.325) < 1e-9, 'MEMORY: and one whose Sets never fire an eighth less', String(learnedPrior(0.45, bluffed)));
+  ok(learnedPrior(0.62, fired) === PRIOR_CEILING && learnedPrior(0.31, bluffed) === PRIOR_FLOOR, 'MEMORY: never past the ceiling on fear, never below the floor under a Set card');
+  const one = { ...EMPTY_FOE, games: 1, sets: 1, answers: 1 };
+  ok(learnedPrior(0.45, one) < learnedPrior(0.45, fired), 'MEMORY: one Set is a weaker lesson than six');
+  ok(nightmareWeight('mirror-force', { ...EMPTY_FOE, traps: { 'mirror-force': 3 } }) === 1.6 && nightmareWeight('mirror-force', undefined) === 1, 'MEMORY: an answer fired three times outranks a stranger by six tenths, and no more');
+  ok(handWeight('polymerization', { ...EMPTY_FOE, games: 2, plays: { polymerization: 2 } }) === 3 && handWeight('polymerization', undefined) === 1, 'MEMORY: a card played every duel is dealt to their hand three times as readily, not certainly');
+  ok(
+    handWeight('polymerization', { ...EMPTY_FOE, games: 2, plays: { polymerization: 2 }, decisive: { polymerization: 2 } }) === 4.5 &&
+      handWeight('polymerization', { ...EMPTY_FOE, games: 2, plays: { polymerization: 2 }, decisive: { polymerization: 1 } }) === 3.75 &&
+      handWeight('polymerization', { ...EMPTY_FOE, games: 2, plays: { polymerization: 2 }, decisive: { polymerization: 9 } }) === 4.5,
+    'MEMORY: a card that turned two lost duels is dealt half again on top of that, and no more'
+  );
+  ok(handWeight('polymerization', { games: 2, sets: 0, answers: 0, traps: {}, plays: { polymerization: 2 } }) === 3, 'MEMORY: a profile written before the post-mortem was kept still reads');
+  const book = { games: 3, cards: { 'soul-exchange': { n: 3, wins: 3 }, 'pot-of-greed': { n: 3, wins: 0 }, 'kuriboh': { n: 1, wins: 1 } } };
+  ok(Math.abs(bookBonus(book, ['soul-exchange']) - 110) < 1e-9, 'MEMORY: a card that has won every duel it was played in is worth 110 to a line that plays it');
+  ok(Math.abs(bookBonus(book, ['pot-of-greed']) + 110) < 1e-9, 'MEMORY: and one that has lost them all costs 110');
+  ok(Math.abs(bookBonus(book, ['kuriboh']) - 110 / 3) < 1e-9, 'MEMORY: a single sighting is a third of the confidence');
+  ok(bookBonus(book, ['soul-exchange', 'soul-exchange']) === bookBonus(book, ['soul-exchange']), 'MEMORY: a card counts once however many times a line names it');
+  const heavy = { games: 3, cards: Object.fromEntries(['a', 'b', 'c', 'd', 'e'].map((k) => [k, { n: 3, wins: 3 }])) };
+  ok(bookBonus(heavy, ['a', 'b', 'c', 'd', 'e']) === BOOK_CAP && bookBonus(undefined, ['a']) === 0, 'MEMORY: the book is capped on the whole line, and silent without one');
+  ok(deckKeyFor('kaiba') === 'kaiba' && deckKeyFor('yugi', ['a', 'b']) === deckKeyFor('kaiba', ['b', 'a']) && deckKeyFor('yugi', ['a', 'b']) !== deckKeyFor('yugi', ['a', 'c']),
+    'MEMORY: a custom deck is keyed by its cards, whatever costume it wears');
+}
+
+console.log('\nThe deck that remembers: the sentence it writes');
+{
+  const turns = [
+    { turn: 1, player: ME, slugs: ['soul-exchange', 'obelisk-the-tormentor'] },
+    { turn: 2, player: FOE, slugs: ['polymerization', 'elemental-hero-avian'] },
+    { turn: 3, player: ME, slugs: ['pot-of-greed'] },
+    { turn: 4, player: FOE, slugs: ['monster-reborn'] },
+  ];
+  const base = { turns, played: { p1: [], p2: [] }, sets: { p1: 0, p2: 0 }, trapsFired: { p1: [], p2: [] } };
+  const lost = lessonFrom([{ turn: 1, eval: 0 }, { turn: 3, eval: -2400 }, { turn: 5, eval: -2600 }], { ...base, winner: FOE }, ME, 'Mihail');
+  ok(
+    lost?.turn === 2 && lost.text === "Turn 2: Mihail's Polymerization and Elemental HERO Avian turned the duel, and the board never came back.",
+    'MEMORY: a loss remembers the human\'s turn between the two readings that fell furthest',
+    lost?.text
+  );
+  const won = lessonFrom([{ turn: 1, eval: 0 }, { turn: 3, eval: 3100 }, { turn: 5, eval: 3200 }], { ...base, winner: ME }, ME, 'Mihail');
+  ok(won?.turn === 1 && won.text === 'Turn 1: Soul Exchange and Obelisk the Tormentor turned the duel.', 'MEMORY: a win remembers its own turn that rose furthest', won?.text);
+  const quick = lessonFrom([{ turn: 1, eval: 0 }], { ...base, winner: FOE }, ME, 'Mihail');
+  ok(quick?.turn === 4 && quick.text === "Turn 4: Mihail's Monster Reborn ended it.", 'MEMORY: a duel over in one reading remembers the last thing that happened to it', quick?.text);
+  ok(
+    lost?.theirs === true && lost.slugs.join() === 'polymerization,elemental-hero-avian' && won?.theirs === false && won.slugs.join() === 'soul-exchange,obelisk-the-tormentor',
+    "MEMORY: the post-mortem names the cards, and whose turn it was"
+  );
+  const learned = updateProfile(EMPTY_FOE, { ...base, winner: FOE }, FOE, lost?.theirs ? lost.slugs : []);
+  ok(
+    learned.decisive?.polymerization === 1 && learned.decisive?.['elemental-hero-avian'] === 1 && !learned.decisive?.['monster-reborn'],
+    'MEMORY: and a lost duel writes them into the profile as the cards to expect',
+    JSON.stringify(learned.decisive)
+  );
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

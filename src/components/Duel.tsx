@@ -2938,6 +2938,11 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             <p className="mt-2 text-sm text-ptext/85">
               {wonTheKingdom ? 'You have won the final. The Kingdom is yours.' : state.winReason}
             </p>
+            {view.lesson && !spectator && (
+              /* What the computer wrote down about this duel — the turn it
+                 turned on. The one place the player can watch it learning. */
+              <p className="mt-3 text-xs italic text-ptextdim">{view.lesson}</p>
+            )}
             <div className="brass-rule my-4" />
             <div className="flex flex-col gap-2">
               {/* The last few turns are worth being able to read back, and this

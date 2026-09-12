@@ -1248,7 +1248,7 @@ function landSpecialSummon(
      previous life's route carrying over. */
   c.summonedBy = by;
   state.players[controller].monsters[zone] = c;
-  log(state, `${state.players[controller].name} Special Summons ${displayName(state, c)}!`, 'summon', controller);
+  log(state, `${state.players[controller].name} Special Summons ${displayName(state, c)}!`, 'summon', controller, logSlug(c));
   anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: controller });
 }
 
@@ -4143,7 +4143,7 @@ function activateTrapCard(state: DuelState, pid: PlayerId, uid: string, targets:
   const effs = def.effects.filter((e) => e.trigger === 'trap');
   if (!effs.length) return null;
 
-  log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
+  log(state, `${p.name} activates ${def.name}!`, 'effect', pid, logSlug(c));
   anim(state, { kind: 'trap', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
 
   const ctx: EffectCtx = { state, controller: pid, source: c, targets, cursor: 0, trig, destroyedAtk: trig.destroyedAtk };
@@ -6233,7 +6233,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         /* `displayName`, not the printed name: a drawing Normal Summoned under
            an open Toon World is announced as the Toon it arrives as. The Flip
            Summon line beside this one already did. */
-        log(state, `${p.name} Normal Summons ${displayName(state, c)}!`, 'summon', pid);
+        log(state, `${p.name} Normal Summons ${displayName(state, c)}!`, 'summon', pid, logSlug(c));
         anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: pid });
         fireDepartures(state, departures);
         fireTriggers(state, c, pid, 'onSummon', {}, action.targets ?? []);
@@ -6313,7 +6313,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const hi2 = p.hand.findIndex((h) => h.uid === action.uid);
       if (hi2 >= 0) p.hand.splice(hi2, 1);
 
-      log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
+      log(state, `${p.name} activates ${def.name}!`, 'effect', pid, logSlug(c));
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
 
       if (isField) {
@@ -6380,7 +6380,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          Tribute, and Tribute to the Doomed took nothing at all. */
       const setPaid = payActivation(state, pid, c, def, eff, action.targets ?? []);
       if ('error' in setPaid) return { state: prev, error: setPaid.error };
-      log(state, `${p.name} activates ${def.name}!`, 'effect', pid);
+      log(state, `${p.name} activates ${def.name}!`, 'effect', pid, logSlug(c));
       anim(state, { kind: 'activate', uid: c.uid, slug: c.slug, player: pid, text: def.cry });
       /* Minus whatever the cost already ate, exactly as the hand path does. */
       const setTargets = (action.targets ?? []).filter((u) => !setPaid.paidForCost.includes(u));
@@ -6515,7 +6515,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          `ignitionOptions`. A card carrying one limited and one unlimited
          ignition keeps the limit on the one that has it. */
       if (eff.oncePerTurn !== false) c.effectUsedOnTurn = state.turn;
-      log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid);
+      log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid, logSlug(c));
       /* The card's cry speaks for a card with one button. A card with two has
          two things to say, and "Obelisk — Fist of Fate!" over the effect that
          is not the Fist of Fate names the wrong one — so once there is a
@@ -6599,7 +6599,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       ex.face = 'up';
       ex.summonedOnTurn = state.turn;
       p.monsters[zone] = ex;
-      log(state, `${p.name} Fusion Summons ${displayName(state, ex)}!`, 'summon', pid);
+      log(state, `${p.name} Fusion Summons ${displayName(state, ex)}!`, 'summon', pid, logSlug(ex));
       anim(state, {
         kind: 'fusion',
         uid: ex.uid,
