@@ -250,5 +250,96 @@ console.log('\nThe duel is over before the board has said so');
     `${over.anims.length} beats`);
 }
 
+/* ------------------------------------------------------------------ */
+console.log('\nNor is a God stolen — by the road round the back either');
+{
+  /* Reported as "Mirror Gate worked on obelisk 🤪".
+   *
+   * The decree lists stealing among the things no card effect may do, and
+   * `resolveTargets` enforces it — on the road it walks. `swapControl` has two
+   * that it does not: when nothing was named it falls back to the attacking
+   * monster, and the body going back the other way is read the same way. Both
+   * reach `findOnField` directly, so both stepped round the guard.
+   *
+   * Which is why it looked fine until it did not: with an ordinary monster
+   * standing beside the God the picker filtered the God out and the card
+   * behaved. Obelisk attacking *alone* left the fallback as the only road.
+   */
+  const alone = () => {
+    const s = fresh('battle');
+    s.active = FOE;
+    const wall = card(ME, 'elemental-hero-clayman');
+    s.players[ME].monsters = [wall, null, null];
+    const gate = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+    s.players[ME].spellTrap = gate;
+    const god = card(FOE, 'obelisk-the-tormentor');
+    s.players[FOE].monsters = [god, null, null];
+    let out = act(s, FOE, { type: 'attack', uid: god.uid, targetUid: wall.uid });
+    out = act(out, ME, { type: 'respondTrap', uid: gate.uid });
+    let g = 0;
+    while (out.pending && g++ < 8) {
+      const pd = out.pending;
+      out = act(out, pd.player, pd.kind === 'choose'
+        ? { type: 'chooseCard', uids: pd.options.length ? [pd.options[0]] : [] }
+        : { type: 'respondTrap', uid: null });
+    }
+    return { out, god };
+  };
+  const { out, god } = alone();
+  ok(!on(out, ME).some((m) => m.uid === god.uid),
+    'Mirror Gate cannot take a God that attacked alone',
+    on(out, ME).map((m) => m.slug).join(',') || '(empty)');
+  ok(on(out, FOE).some((m) => m.uid === god.uid),
+    'and it is still standing where it was',
+    on(out, FOE).map((m) => m.slug).join(',') || '(empty)');
+
+  /* CONTROL, and the point of it: the card is not simply broken. An ordinary
+     attacker on the same road is taken exactly as before. */
+  const s2 = fresh('battle');
+  s2.active = FOE;
+  const wall2 = card(ME, 'elemental-hero-clayman');
+  s2.players[ME].monsters = [wall2, null, null];
+  const gate2 = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+  s2.players[ME].spellTrap = gate2;
+  const skull = card(FOE, 'summoned-skull');
+  s2.players[FOE].monsters = [skull, null, null];
+  let mortal = act(s2, FOE, { type: 'attack', uid: skull.uid, targetUid: wall2.uid });
+  mortal = act(mortal, ME, { type: 'respondTrap', uid: gate2.uid });
+  let g2 = 0;
+  while (mortal.pending && g2++ < 8) {
+    const pd = mortal.pending;
+    mortal = act(mortal, pd.player, pd.kind === 'choose'
+      ? { type: 'chooseCard', uids: pd.options.length ? [pd.options[0]] : [] }
+      : { type: 'respondTrap', uid: null });
+  }
+  ok(on(mortal, ME).some((m) => m.uid === skull.uid),
+    'CONTROL: an ordinary attacker on that same road is still taken',
+    on(mortal, ME).map((m) => m.slug).join(',') || '(empty)');
+
+  /* And the other half of the exchange. The decree sits above the line that
+     lets a player's own cards touch their own monsters, so a God of *mine* is
+     not handed over either. */
+  const s3 = fresh('battle');
+  s3.active = FOE;
+  const myGod = card(ME, 'obelisk-the-tormentor');
+  s3.players[ME].monsters = [myGod, null, null];
+  const gate3 = { ...card(ME, 'mirror-gate'), face: 'down' as const };
+  s3.players[ME].spellTrap = gate3;
+  const ox = card(FOE, 'battle-ox');
+  s3.players[FOE].monsters = [ox, null, null];
+  let given = act(s3, FOE, { type: 'attack', uid: ox.uid, targetUid: myGod.uid });
+  given = act(given, ME, { type: 'respondTrap', uid: gate3.uid });
+  let g3 = 0;
+  while (given.pending && g3++ < 8) {
+    const pd = given.pending;
+    given = act(given, pd.player, pd.kind === 'choose'
+      ? { type: 'chooseCard', uids: pd.options.length ? [pd.options[0]] : [] }
+      : { type: 'respondTrap', uid: null });
+  }
+  ok(on(given, ME).some((m) => m.uid === myGod.uid),
+    'and a God of my own is not handed across the table either',
+    on(given, FOE).map((m) => m.slug).join(',') || '(empty)');
+}
+
 console.log(`\n${bad ? `${bad} of ${checks} FAILED` : `All ${checks} checks pass. ✅`}`);
 process.exitCode = bad ? 1 : 0;

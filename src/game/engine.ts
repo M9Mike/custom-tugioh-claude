@@ -2286,6 +2286,24 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to exchange.`);
           break;
         }
+        /* Both bodies, asked once, before either moves.
+           `resolveTargets` already refuses a protected one — but only on the
+           road it walks. Both of the roads above reach `findOnField` directly:
+           the fallback to the attacker when nothing was named, and the monster
+           going back the other way. So a God attacking *alone* was taken by the
+           one card that cannot touch it — with an ordinary monster beside it
+           the picker filtered the God out and the card behaved, which is why it
+           looked fine until it did not. Reported, of Obelisk.
+           Asked about the pair rather than at each branch, for the reason this
+           file keeps relearning: a guard written per road is a guard the next
+           road forgets. `isProtectedTarget` puts the God decree above the line
+           that lets a player's own cards touch their own monsters, so this also
+           refuses to hand over a God of mine. */
+        const untouchable = [theirs, mine].find((side) => isProtectedTarget(state, side.c, ctx.controller, ctx));
+        if (untouchable) {
+          emptyHanded(state, ctx, `${displayName(state, untouchable.c)} cannot be moved by ${displayName(state, ctx.source)}.`);
+          break;
+        }
         state.players[mine.controller].monsters[mine.index] = theirs.c;
         state.players[theirs.controller].monsters[theirs.index] = mine.c;
         /* Whatever either of them was borrowed under is over: they belong to
