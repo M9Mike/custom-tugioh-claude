@@ -23,8 +23,9 @@
  *
  * `npm run paths`
  */
-import { createDuel, applyAction } from '../src/game/engine';
-import type { CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
+import { createDuel, applyAction, effAtk, effDef, viewFor } from '../src/game/engine';
+import { CARDS } from '../src/game/cards';
+import type { CardDef, CardInstance, DuelAction, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
 const FOE: PlayerId = 'p2';
@@ -281,6 +282,56 @@ for (const branch of BRANCHES) {
         owed ? 'the branch owes it and did not fire it' : 'the branch fired it and should not have');
     }
   }
+}
+
+
+/* ------------------------------------------------------------------ */
+/* And the other kind of disagreement: the two sides of the table.     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the server fights with, against what each player is shown.
+ *
+ * `viewFor` masks the opponent's hand and Deck card by card, rewriting every
+ * slug to `facedown`. A monster whose stats *count* those cards by name then
+ * reads differently on the two sides: Bladedge gains 1000 for each "Elemental
+ * HERO" in its controller's hand, the filter matched nothing through the mask,
+ * and the other player's board drew 2600 for a body the server was fighting at
+ * 3600. A 2600 attacker walked into what the screen called a tie and lost 1000
+ * Life Points for it. Reported from a real duel, with the screenshot.
+ *
+ * Slifer and the Shining Dragon count the same hidden piles and were fine,
+ * because their filter is empty and a masked card still counts as a card — so
+ * a sweep that only tried those two would have found nothing. This one puts a
+ * matching card in every hidden pile and asks every monster in the game.
+ */
+console.log('\nThe same board, from both sides\n');
+{
+  const seen: string[] = [];
+  for (const def of Object.values(CARDS) as CardDef[]) {
+    if (def.kind !== 'monster') continue;
+    const s = fresh();
+    const m = body(FOE, def.slug);
+    s.players[FOE].monsters = [m, null, null];
+    /* Something in every pile a view masks, and something that a name filter
+       would match — one of each side's own cards, so nothing is unreachable. */
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      s.players[pid].hand = [body(pid, 'elemental-hero-sparkman'), body(pid, 'kuriboh')];
+      s.players[pid].deck = [body(pid, 'elemental-hero-avian'), body(pid, 'kuriboh')];
+    }
+    const truth = effAtk(s, m, FOE);
+    const truthDef = effDef(s, m, FOE);
+    for (const viewer of [ME, FOE] as PlayerId[]) {
+      const v = viewFor(s, viewer);
+      const drawn = v.players[FOE].monsters[0]!;
+      if (effAtk(v, drawn, FOE) !== truth || effDef(v, drawn, FOE) !== truthDef) {
+        seen.push(`${def.name}: server ${truth}/${truthDef}, ${viewer === FOE ? 'its controller' : 'the opponent'} sees ${effAtk(v, drawn, FOE)}/${effDef(v, drawn, FOE)}`);
+      }
+    }
+  }
+  ok(seen.length === 0,
+    `both sides read every monster the same — ${Object.keys(CARDS).length} cards`,
+    seen.join(' | '));
 }
 
 console.log(`\nBattle paths: ${checks - failures}/${checks}` + (failures ? ' ❌' : ' — every branch pays what it owes. ✅'));
