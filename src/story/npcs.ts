@@ -77,6 +77,34 @@ export interface DuelOffer {
   lost: string;
 }
 
+/**
+ * A route somebody walks when they are not standing still.
+ *
+ * There and back along a list of points rather than a closed loop: a loop's
+ * last leg is the jump from the end of the path to its start, and unless the
+ * author closes it by hand that jump is the character walking through
+ * everything in between. Reversing at the ends is right by construction, and
+ * on a straight run — which is what a path down an avenue is — it is also what
+ * pacing looks like.
+ *
+ * The points are where she *arrives*; `groundAt` supplies the height at every
+ * step, so a route may climb stairs without saying so.
+ */
+export interface RoamRoute {
+  /**
+   * The points, in the area's metres, in the order they are visited.
+   *
+   * Two of them at least, and the type says so rather than the renderer
+   * checking: a one-point route has no second leg to walk to, and the frame
+   * loop reading `path[1]` of it is an exception sixty times a second.
+   */
+  path: [{ x: number; z: number }, { x: number; z: number }, ...{ x: number; z: number }[]];
+  /** Metres a second. */
+  speed: number;
+  /** Seconds spent standing at each point before moving on. */
+  dwell: number;
+}
+
 export interface WorldNpc {
   id: string;
   /** Who they are, in the same record the player's own duelist is stored as. */
@@ -107,9 +135,32 @@ export interface WorldNpc {
    * the change moves or resizes with it.
    */
   build?: Record<string, [number, number, number]>;
+  /**
+   * Somebody who is not quite here: translucent, shadowless, and walked
+   * through rather than round.
+   *
+   * The third is the one that matters to the world rather than to the eye.
+   * Every other NPC is a metre-wide cylinder the player is pushed out of, and
+   * a cylinder that *moves* is a cylinder that can shove you off a terrace or
+   * corner you against a wall. A spirit has no such body, so a route may run
+   * straight down the middle of the avenue everybody walks up.
+   */
+  spirit?: boolean;
+  /**
+   * Where they go when nobody is near, if they go anywhere.
+   *
+   * Absent on everybody standing still, which is everybody else: a shopkeeper
+   * behind his counter and two duelists waiting in a street are *placed*, and
+   * a placed character who wanders is a character you cannot find twice.
+   *
+   * They stop the moment the player is close enough to be noticed — the same
+   * distance that turns them to face you — because an NPC you have to chase to
+   * talk to is a worse idea than one who never moves.
+   */
+  roam?: RoamRoute;
   /** Which area they stand in. */
   area: AreaId;
-  /** Where they stand, in that area's metres. */
+  /** Where they stand, in that area's metres — the first point of a `roam`. */
   x: number;
   z: number;
   /** Which way they face when nobody is near, in radians (0 is +Z). */
@@ -622,6 +673,150 @@ const STREET: WorldNpc[] = [
   },
 ];
 
+/* ------------------------------------------------------------------ */
+/* Isha, in the old ground                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Isha, who walks the avenue of the Old Cemetery and is not alive.
+ *
+ * ## Why here and not anywhere else
+ *
+ * She is a spirit, and the city has exactly one place that is *about* the
+ * dead: a hundred and twelve metres of cut stone, moss and fresh flowers on
+ * one grave. Standing her in a street would make her a woman with an unusual
+ * shader; standing her here makes the whole area mean something it did not
+ * mean yesterday — the biggest area in the game had nobody in it at all.
+ *
+ * ## The route
+ *
+ * Up the main walk and back down it, x 12.4, which is the one the gate opens
+ * on to and the one lined with lanterns. From z −38, a few paces inside the
+ * gate, to z 38 on the oldest ground, which is 76 metres and two flights of
+ * steps: she climbs to the middle terrace at z −16..−12 and to the high one at
+ * z 12..16 without the route saying so, because `groundAt` answers the height
+ * at every step.
+ *
+ * 0.62 m/s is well under a walking pace and it is meant to be — she is not
+ * going anywhere. Eight seconds at each end. The whole circuit takes four
+ * minutes, so somebody crossing the burial ground meets her about once, which
+ * is the right number of times to meet a ghost.
+ *
+ * Straight down the middle of the walk, which nothing else in this file may
+ * do: `spirit` means she has no collision cylinder, so she passes through the
+ * player rather than shouldering them into the graves.
+ *
+ * ## What she is
+ *
+ * Deliberately never answered. She does not say she is dead, she does not say
+ * whose the ground is, and she does not know what year it is — she tells you
+ * she has been waiting and lets you work out the rest. A ghost who explains
+ * herself is a tour guide.
+ */
+const ISHA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Oh. You can see me.',
+      'That is the part that always takes a moment. Most of them walk straight through and shiver and put it down to the weather.',
+      'I am Isha. I have been here a while, {name}.',
+    ],
+    /* One hop to the duel, like Mai's. Everything else she has to say is on
+       the other branch and is optional — a duelist you have to interview
+       before you can play them is a duelist most players never play. */
+    choices: [
+      { label: 'How long is a while?', to: 'long' },
+      { label: 'Do you play?', to: 'offer' },
+      { label: 'Nothing. I saw nothing.', to: null },
+    ],
+  },
+
+  long: {
+    lines: [
+      'The elms were smaller. The gate was wood.',
+      'I stopped counting when the counting stopped helping. You will find that is how it goes.',
+    ],
+    choices: [
+      { label: 'What are you waiting for?', to: 'waiting' },
+      { label: 'Do you play?', to: 'offer' },
+      { label: 'I should go.', to: null },
+    ],
+  },
+
+  /* The one line that says what she is, and it is about the ground rather
+     than about her. */
+  waiting: {
+    lines: [
+      'Someone to stay long enough to be worth talking to.',
+      'They come up the walk with flowers and they are gone in four minutes. You have been here longer than that already, and you have not looked at your feet once.',
+      'Everyone looks at their feet here. They know what is under them.',
+    ],
+    choices: [
+      { label: 'Do you play?', to: 'offer' },
+      { label: 'I am looking now.', to: 'feet' },
+      { label: 'I should go.', to: null },
+    ],
+  },
+
+  feet: {
+    lines: [
+      'Good. That is the only manners this place asks for.',
+      'Go on, then. Say the name on the nearest one out loud. It costs you nothing and it is the whole of what anybody here wants.',
+    ],
+    choices: [
+      { label: 'Do you play?', to: 'offer' },
+      { label: 'I will. Goodbye, Isha.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'I do. It is what there is to do.',
+      'I should tell you before you agree: nothing I put down stays down. You will kill the same thing three times and it will come back up smiling, and by then you will have spent everything you had on it.',
+      'That is not a threat. It is just what I am.',
+    ],
+    choices: [
+      { label: 'Then I will kill it a fourth time.', to: 'beaten', duel: true },
+      { label: 'Let me fix my deck first.', to: 'later' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  later: {
+    lines: [
+      'Take as long as you like. I have some.',
+    ],
+    choices: [],
+  },
+
+  /* The player won. She is not sore about it; she has lost before and she is
+     still here, which is the joke. */
+  beaten: {
+    lines: [
+      'Well.',
+      'You did not swing at the wall. You waited for the trap and then you went through. Nobody waits, {name} — everybody who comes up that walk is in a hurry.',
+      'Come back. I am not going to be anywhere else.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'I will leave it there.', to: null },
+    ],
+  },
+
+  /* The player lost, and the line that matters is the one that says what to
+     fix: she recurs, so trading one-for-one is losing slowly. */
+  won: {
+    lines: [
+      'You traded with me. One of yours for one of mine, over and over, and you thought that was even.',
+      'It is never even. Mine come back up. Yours are gone.',
+      'Stop trading and start taking the board — or make me draw the thing I need instead of the thing I want. Come and find me when you have thought about it.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'Let me think.', to: null },
+    ],
+  },
+};
+
 /**
  * Everybody standing in the field.
  *
@@ -693,6 +888,29 @@ export const WORLD_NPCS: WorldNpc[] = [
     script: GRANDPA_SCRIPT,
   },
   ...STREET,
+  {
+    id: 'isha',
+    area: 'old-cemetery',
+    character: { name: 'Isha', model: 'isha', tints: [], stature: 0.5 },
+    spirit: true,
+    /* Where the route starts, and so where she is standing the moment the
+       area is built — a few paces inside the gate, facing up the walk. */
+    x: 12.4,
+    z: -38,
+    facing: 0,
+    range: 3.2,
+    roam: {
+      path: [
+        { x: 12.4, z: -38 },
+        { x: 12.4, z: 38 },
+      ],
+      speed: 0.62,
+      dwell: 8,
+    },
+    start: 'greet',
+    duel: { opponentId: 'isha', won: 'beaten', lost: 'won' },
+    script: ISHA_SCRIPT,
+  },
 ];
 
 /** Nobody is placed outside `WORLD_NPCS`; `WAITING` is the bench. */

@@ -246,6 +246,21 @@ export interface RigOptions {
   repaint?: Record<string, RepaintRule>;
   /** Bone name → local scale, for a character built unlike the body they wear. */
   build?: Record<string, [number, number, number]>;
+  /**
+   * Somebody who is not quite here.
+   *
+   * Two changes and no third: the body renders a little transparent, and it
+   * casts no shadow. That is the whole of what says *spirit* rather than
+   * *person* at the distance you see one across a burial ground, and it is
+   * deliberately not a glow — this city has no light that is not a lamp.
+   *
+   * `depthWrite` stays **on**. A hundred thousand triangles of hair, sleeve and
+   * limb overlap themselves constantly, and a transparent body that does not
+   * write depth draws its own back through its own front — you see the inside
+   * of her head. Kept on, she blends with the world behind her and stays
+   * solid against herself, which is the half of the effect worth having.
+   */
+  spirit?: boolean;
 }
 
 /**
@@ -379,6 +394,8 @@ export async function buildPremadeRig(
          threshold they render as opaque rectangles round the head. */
       alphaTest: source.alphaTest || 0,
       side: source.side ?? THREE.FrontSide,
+      transparent: !!options.spirit,
+      opacity: options.spirit ? 0.86 : 1,
     });
     /* Hidden, not deleted: the polygons stay in the mesh they share with the
        face, and simply draw nothing. `depthWrite` off as well, or the crown
@@ -402,7 +419,10 @@ export async function buildPremadeRig(
     if (!mesh.isMesh) return;
     const skinned = o as THREE.SkinnedMesh;
     if (skinned.isSkinnedMesh) skeletons.add(skinned.skeleton);
-    mesh.castShadow = true;
+    /* A spirit throws none. It is also the honest way round: a translucent
+       body casting a hard black shadow is the one thing that would say
+       "transparency bug" rather than "ghost". */
+    mesh.castShadow = !options.spirit;
     mesh.material = Array.isArray(mesh.material)
       ? mesh.material.map(materialFor)
       : materialFor(mesh.material);

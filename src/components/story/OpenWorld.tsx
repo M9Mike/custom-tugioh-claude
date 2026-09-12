@@ -545,7 +545,28 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        the field when it lands, so one slow model never holds up the rest —
        and a model that never arrives costs its own character and nothing
        else. */
-    let npcs: { npc: WorldNpc; rig: PremadeRig }[] = [];
+    /**
+     * Where each of them actually is, which for most of them is where they
+     * were put.
+     *
+     * `at` exists because of `roam`: everything that used to read `npc.x` —
+     * the turn-to-face, the talk range, the cylinder you are pushed out of —
+     * was reading the record, and a record is where somebody *starts*. Held
+     * beside the rig rather than read back off `rig.root.position`, because
+     * that carries the breath and the step-rise on top and is a centimetre
+     * out at all times.
+     *
+     * `leg` is the point they are walking to, `hold` the seconds left standing
+     * at the one they reached.
+     */
+    let npcs: {
+      npc: WorldNpc;
+      rig: PremadeRig;
+      at: { x: number; z: number };
+      leg: number;
+      dir: 1 | -1;
+      hold: number;
+    }[] = [];
 
     /**
      * Builds the people who live in one area, and only them.
@@ -571,6 +592,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           accessories: npc.accessories,
           repaint: npc.repaint,
           build: npc.build,
+          spirit: npc.spirit,
         })
           .then((fresh) => {
             /* Two ways to be stale: the screen is gone, or the player has
@@ -582,7 +604,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             fresh.root.position.set(npc.x, groundAt(areaById(npc.area), npc.x, npc.z), npc.z);
             fresh.root.rotation.y = npc.facing;
             scene.add(fresh.root);
-            npcs.push({ npc, rig: fresh });
+            /* A roamer starts at the first point of its own path and walks to
+               the second; `npc.x`/`npc.z` are that first point, so there is
+               one place the route is written and it is the route. */
+            npcs.push({
+              npc,
+              rig: fresh,
+              at: { x: npc.x, z: npc.z },
+              leg: 1,
+              dir: 1,
+              hold: 0,
+            });
           })
           .catch((err) => {
             console.error(`open world: ${npc.id} failed to load`, err);
@@ -942,13 +974,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * nobody may be inside of. It stops you at conversation distance by
          * itself, which is the distance you wanted anyway.
          */
-        for (const { npc } of npcs) {
-          const dx = p.x - npc.x;
-          const dz = p.z - npc.z;
+        for (const { npc, at } of npcs) {
+          /* A spirit has no body to be pushed out of, which is the property
+             that lets one walk down the middle of an avenue: a *moving*
+             cylinder is one that can shove you off a terrace or corner you
+             against a wall, and this one passes through you instead. */
+          if (npc.spirit) continue;
+          const dx = p.x - at.x;
+          const dz = p.z - at.z;
           const d = Math.hypot(dx, dz);
           if (d < NPC_RADIUS && d > 1e-4) {
-            p.x = npc.x + (dx / d) * NPC_RADIUS;
-            p.z = npc.z + (dz / d) * NPC_RADIUS;
+            p.x = at.x + (dx / d) * NPC_RADIUS;
+            p.z = at.z + (dz / d) * NPC_RADIUS;
           }
         }
 
@@ -1025,17 +1062,75 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        */
       let closest: WorldNpc | null = null;
       let closestD = Infinity;
-      for (const { npc, rig: theirs } of npcs) {
-        const dx = p.x - npc.x;
-        const dz = p.z - npc.z;
+      for (const them of npcs) {
+        const { npc, rig: theirs, at } = them;
+        const dx = p.x - at.x;
+        const dz = p.z - at.z;
         const d = Math.hypot(dx, dz);
         /* Notice a little before the talk range, so they are already looking
            at you by the time the prompt appears. */
-        const want = d < npc.range * 1.6 ? Math.atan2(dx, dz) : npc.facing;
+        const noticed = d < npc.range * 1.6;
+        /*
+         * Walking a route, when there is one and nobody is standing in front
+         * of them.
+         *
+         * Stopping when noticed is the whole of what makes a roamer talkable:
+         * the prompt appears at `range` and they stop at `range * 1.6`, so by
+         * the time you can speak to them they have been still for a step and
+         * a half. Without it you would be reading a conversation panel while
+         * its owner walked out of range of it.
+         */
+        let speed = 0;
+        if (npc.roam && !noticed) {
+          const route = npc.roam;
+          if (them.hold > 0) {
+            them.hold -= dt;
+          } else {
+            const to = route.path[them.leg];
+            const tx = to.x - at.x;
+            const tz = to.z - at.z;
+            const left = Math.hypot(tx, tz);
+            const step = route.speed * dt;
+            if (left <= step || left < 1e-4) {
+              at.x = to.x;
+              at.z = to.z;
+              them.hold = route.dwell;
+              /* There and back: turn round at either end rather than jumping
+                 to the far one, which would be a walk through everything in
+                 between. */
+              const next = them.leg + them.dir;
+              if (next < 0 || next >= route.path.length) {
+                them.dir = them.dir === 1 ? -1 : 1;
+                them.leg = them.leg + them.dir;
+              } else {
+                them.leg = next;
+              }
+            } else {
+              at.x += (tx / left) * step;
+              at.z += (tz / left) * step;
+              speed = route.speed;
+            }
+          }
+          theirs.root.position.x = at.x;
+          theirs.root.position.z = at.z;
+          /* Asked every step, so a route may climb stairs without the route
+             knowing there are any. The rig's own breath and step-rise are
+             measured from whatever height it is given. */
+          theirs.root.position.y = groundAt(areaById(npc.area), at.x, at.z);
+        }
+        /* Facing: at you when noticed, along the route while walking, and
+           their own way when they are standing at the end of one. */
+        const to = npc.roam?.path[them.leg];
+        const heading = speed > 0 && to
+          ? Math.atan2(to.x - at.x, to.z - at.z)
+          : npc.facing;
+        const want = noticed ? Math.atan2(dx, dz) : heading;
         let turn = want - theirs.root.rotation.y;
         turn = Math.atan2(Math.sin(turn), Math.cos(turn));
         theirs.root.rotation.y += turn * Math.min(1, dt * 3.2);
-        theirs.update(dt, 0, 0);
+        /* `stride` against a nominal walk rather than against their own top
+           speed: a drift at 0.6 m/s is a slow walk, not a tenth of a run. */
+        theirs.update(dt, Math.min(1, speed / 1.4), speed);
         if (d < npc.range && d < closestD) {
           closest = npc;
           closestD = d;

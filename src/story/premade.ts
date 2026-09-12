@@ -167,6 +167,22 @@ export interface DuelistModel {
    */
   sculpt?: boolean;
   /**
+   * Rigged, and carrying no animation on purpose.
+   *
+   * Between `sculpt` and the rest: a sculpt has no skeleton and can never be
+   * animated, the others ship Idle, Walk and Run, and this is a model with the
+   * bones and none of the clips. `premadeRig` already does the right thing
+   * without being told — it looks for an `Idle`, finds none, and gives the
+   * root the same breath and step-rise the sculpts get — so this word exists
+   * for `npm run premade`, which otherwise reports three missing clips as
+   * three faults rather than as one decision somebody made.
+   *
+   * Declaring it is not excusing it. The audit still requires the skeleton,
+   * and the day clips are put in the file this word comes out and the three
+   * rows go back to being required.
+   */
+  still?: boolean;
+  /**
    * What this character's skin is painted, taken from what their *face* texture
    * is mostly made of.
    *
@@ -467,6 +483,39 @@ export const DUELIST_MODELS: DuelistModel[] = [
     height: 1.86,
     walkSpeed: 2.22,
     runSpeed: 4.51,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    /*
+     * Isha, who is not alive, and is the first model here that is neither
+     * rigged nor a sculpt.
+     *
+     * She arrives from Meshy skinned to her own body — one mesh, seventy-three
+     * joints, weights that work — and carrying no clips at all. That is a
+     * combination nothing in this file had yet: a `sculpt` has no skeleton and
+     * can never move, the rest ship Idle, Walk and Run, and she has the bones
+     * and none of the animation. `premadeRig` decides by looking for an `Idle`
+     * and finds none, so she takes the same root-level breath and step-rise
+     * that the unrigged cast takes — which on a character who *is* a drifting
+     * spirit is not a mitigation, it is the right motion.
+     *
+     * So `walkSpeed` and `runSpeed` are absent for the sculpts' reason: there
+     * is no clip to rate, and a number here would be a fact about nothing.
+     * `sculpt` is *not* set, because it would be false — she has a skin, and
+     * the day somebody animates her the only change is three new clips in the
+     * file and two speeds here.
+     *
+     * 1.74 m, a shade over Sarah and well under Tony: she should read as a
+     * tall, thin presence rather than as a large one.
+     */
+    id: 'isha',
+    label: 'Isha',
+    note: 'The Unquiet, old ground',
+    file: '/models/cast/isha.glb',
+    bytes: 11806536,
+    height: 1.74,
+    still: true,
     tintSlots: [],
     npcOnly: true,
   },

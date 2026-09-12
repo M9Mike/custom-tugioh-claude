@@ -1722,6 +1722,103 @@
      1
     ]
    ]
+  },
+  {
+   "id": "isha",
+   "name": "Isha",
+   "epithet": "The Unquiet",
+   "quote": "You are standing on somebody.",
+   "accent": "#4a4260",
+   "accent2": "#cfc6b0",
+   "emblem": "dark-necrofear",
+   "strategy": "Small dead things that take something with them, and traps that fetch them back up again.",
+   "extra": [],
+   "deck": [
+    [
+     "dark-necrofear",
+     1
+    ],
+    [
+     "helpoemer",
+     1
+    ],
+    [
+     "the-gross-ghost-of-fled-dreams",
+     2
+    ],
+    [
+     "earthbound-spirit",
+     2
+    ],
+    [
+     "the-portrait-s-secret",
+     1
+    ],
+    [
+     "newdoria",
+     2
+    ],
+    [
+     "souls-of-the-forgotten",
+     2
+    ],
+    [
+     "aswan-apparition",
+     1
+    ],
+    [
+     "mask-of-darkness",
+     1
+    ],
+    [
+     "sangan",
+     1
+    ],
+    [
+     "wall-of-illusion",
+     1
+    ],
+    [
+     "monster-reborn",
+     1
+    ],
+    [
+     "dark-sanctuary",
+     1
+    ],
+    [
+     "the-dark-door",
+     1
+    ],
+    [
+     "tribute-to-the-doomed",
+     1
+    ],
+    [
+     "call-of-the-haunted",
+     1
+    ],
+    [
+     "time-machine",
+     1
+    ],
+    [
+     "michizure",
+     1
+    ],
+    [
+     "coffin-seller",
+     1
+    ],
+    [
+     "nightmare-wheel",
+     1
+    ],
+    [
+     "spellbinding-circle",
+     1
+    ]
+   ]
   }
  ]
 }

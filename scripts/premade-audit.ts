@@ -108,8 +108,22 @@ for (const model of DUELIST_MODELS) {
 
   check((json.skins?.length ?? 0) > 0, 'the model is rigged');
   const clips = (json.animations ?? []).map((a) => a.name ?? '');
-  for (const need of REQUIRED_CLIPS) {
-    check(clips.includes(need), `the ${need} clip is aboard`, `clips: ${clips.join(', ')}`);
+  /*
+   * A model may declare that it carries no clips, and then it is asked for
+   * none.
+   *
+   * `still` is the one word that separates "nobody has animated her yet" from
+   * three faults a reader has to go and rule out by hand every time this runs.
+   * The skeleton is still required above — a `still` model is rigged and
+   * unanimated, which is a thing you can later fix by putting clips in the
+   * file, and not a thing you can fix by editing this check.
+   */
+  if (model.still) {
+    check(clips.length === 0, 'declared still, and carries no clips', `clips: ${clips.join(', ')}`);
+  } else {
+    for (const need of REQUIRED_CLIPS) {
+      check(clips.includes(need), `the ${need} clip is aboard`, `clips: ${clips.join(', ')}`);
+    }
   }
 
   const materials = (json.materials ?? []).map((m) => m.name ?? '');
