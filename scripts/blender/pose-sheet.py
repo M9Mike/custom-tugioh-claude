@@ -27,12 +27,34 @@ def arg(name, fallback=None):
 SRC = arg('in')
 OUT = arg('out', '/tmp/sheet')
 SIZE = int(arg('size', '420'))
+"""
+Which way round the character is shot.
+
+18 degrees is nearly front-on, which is the angle a bad *bind* shows at — a torn
+shoulder, a bloated forearm, a face pulled sideways. It is the wrong angle for a
+bad *clip*: a stride is almost entirely fore-and-aft, so front-on hides the size
+of the step, whether the knee bends, and whether the planted foot stays planted.
+Shoot 90 for those.
+"""
+AZIMUTH = float(arg('azimuth', '18'))
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
 
 arm = next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
-meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+"""
+Only the character, for framing.
+
+Blender's "empty" scene is not reliably empty — a 42-vertex icosphere two metres
+across turns up in it on this install — and these bundles are imported into it.
+It is small enough not to draw and big enough to *frame*: bounds taken over
+every mesh in the scene made a 1.70 m character 2.70 m tall, and every sheet
+rendered of one was pulled back and shifted down by the difference. The camera
+was looking at the wrong thing, quietly, in the one tool whose entire job is
+being looked at.
+"""
+meshes = [o for o in bpy.data.objects
+          if o.type == 'MESH' and (arm is None or o.parent is arm)]
 
 pts = [m.matrix_world @ v.co for m in meshes for v in m.data.vertices]
 lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
@@ -72,7 +94,7 @@ def shoot(path):
     bpy.ops.render.render(write_still=True)
 
 
-look_from(18)
+look_from(AZIMUTH)
 
 # rest pose first: nothing playing, so a bad bind shows before any motion does
 if arm and arm.animation_data:

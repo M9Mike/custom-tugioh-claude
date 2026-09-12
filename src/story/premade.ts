@@ -215,8 +215,8 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * The duelists you can be.                                          *
    *                                                                   *
    * The entries without `npcOnly`, which is what makes them — and only *
-   * them — the booth's roster. Two, added one at a time, each checked  *
-   * a frame at a time before it landed.                                *
+   * them — the booth's roster. Three, added one at a time, each        *
+   * checked a frame at a time before it landed.                        *
    *                                                                   *
    * They are why the booth has no knobs on it. The nine townspeople she  *
    * replaced each carried their look in one 256x256 atlas, so the      *
@@ -226,18 +226,41 @@ export const DUELIST_MODELS: DuelistModel[] = [
    * would not be vandalism, so the booth asks for a name and stops.     *
    * ---------------------------------------------------------------- */
   {
+    /*
+     * Sandra, resculpted — the same duelist, a far better model.
+     *
+     * The dress has real drape instead of a painted suggestion of one, the face
+     * carries detail at conversation distance, and she stands on heels that are
+     * modelled rather than implied. Her id, her label and her height are
+     * untouched, because she is the same person and every save that names her
+     * has to keep pointing at her.
+     *
+     * What she arrived without is clips. She is a UniRig export like Sky and
+     * Isha — her own skeleton fitted to her own body, thirty-five bones called
+     * `Bone_000` upward, no animation of any kind — so her Idle, Walk and Run
+     * are her predecessor's, moved onto her by `scripts/blender/retarget.py`.
+     * The outgoing model is the only honest donor for her: it is literally the
+     * same character's gait, and nobody else's cadence is hers.
+     *
+     * Her legs are longer than the old model's — hip to ankle is 53% of her
+     * height against 48% — so the same rotations carry her 20% further per
+     * stride, which is the whole of why these two numbers went up.
+     */
     id: 'sandra-afrika',
     label: 'Sandra Afrika',
     note: 'Red dress, street duelist',
     file: '/models/players/sandra-afrika.glb',
-    bytes: 5014904,
+    bytes: 5326428,
     height: 1.72,
-    /* Her own, measured by `scripts/blender/gait.py` at the height she is
-       rendered at. Never copied from another character: the bundles are
-       authored at whatever cadence they were authored at, and an inherited
-       number is exactly how feet start sliding. */
-    walkSpeed: 2.16,
-    runSpeed: 4.33,
+    /* Her own, measured by `scripts/blender/gait.py` on the shipped file and
+       scaled from the 1.70 m it is modelled at to the 1.72 she is rendered at.
+       Never copied from another character: the bundles are authored at whatever
+       cadence they were authored at, and an inherited number is exactly how
+       feet start sliding. (The old pair were the raw 1.70 figures, unscaled —
+       1.2% of slide that nobody was ever going to see, but the arithmetic is
+       written down here twice and it may as well be right in both places.) */
+    walkSpeed: 2.63,
+    runSpeed: 4.79,
     tintSlots: [],
   },
   {
@@ -257,6 +280,44 @@ export const DUELIST_MODELS: DuelistModel[] = [
     height: 1.9,
     walkSpeed: 2.34,
     runSpeed: 5.4,
+    tintSlots: [],
+  },
+  {
+    /*
+     * Sky, and the first duelist here who could not walk when she arrived.
+     *
+     * She is a UniRig export: sixty-eight bones fitted to her own body, weights
+     * that work, and not one frame of animation. That is the same shape of file
+     * Isha came in as, and Isha could stay that way — she is a spirit who stands
+     * on old ground, and `premadeRig`'s `staticMotion` breath is the right
+     * motion for her rather than a mitigation. It is not a thing a *player* can
+     * be. A duelist is the one model in the game you look at continuously, from
+     * 4.6 m behind, while she crosses a hundred metres of Domino City, and the
+     * legs of a clipless model do not move at all.
+     *
+     * So her Idle, Walk and Run are the outgoing Sandra's, transferred onto her
+     * own skeleton by `scripts/blender/retarget.py` — rotations only, nothing
+     * touched about the mesh, the weights or the bind (her rest pose out is her
+     * rest pose in to half a micron). Her Walk is a shade slower than the clip's
+     * donor and her Run a good deal quicker, both for the same reason: her shin
+     * is longer and her foot shorter, so the same rotations swing her further at
+     * speed and no further at a stroll.
+     *
+     * 1.75 m — taller than Sandra, nowhere near Robert. She is drawn long-limbed
+     * and lean and reads as the tallest woman in the city at anything under six
+     * feet, which is the useful thing for a character you pick out at a distance.
+     */
+    id: 'sky',
+    label: 'Sky',
+    note: 'Leather and fur, the wilds',
+    file: '/models/players/sky.glb',
+    bytes: 8402016,
+    height: 1.75,
+    /* Measured on the shipped file by `scripts/blender/gait.py` — 2.11 and 4.83
+       at the 1.70 m she is modelled at — and scaled to the 1.75 she is rendered
+       at, which is the height the catalog's speeds are defined against. */
+    walkSpeed: 2.17,
+    runSpeed: 4.97,
     tintSlots: [],
   },
 
@@ -422,7 +483,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
  *
  * Sandra Afrika is first because she was the first playable character and is the
  * one every save so far was built on. Robert came in after her and sits after
- * her here.
+ * her here, and Sky after him.
  */
 export const BOOTH_MODELS: DuelistModel[] = DUELIST_MODELS.filter((m) => !m.npcOnly);
 

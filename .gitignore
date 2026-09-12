@@ -51,3 +51,6 @@ next-env.d.ts
 /src/game/ai-baseline.ts
 scripts/.bench/
 scratch/
+
+# Python bytecode from the Blender tools (rigshape is imported by two of them)
+__pycache__/

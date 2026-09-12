@@ -22,8 +22,12 @@ Three numbers per model, none of which can be guessed:
 """
 
 import bpy
+import os
 import sys
 from mathutils import Vector
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rigshape import read_rig   # noqa: E402
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 SRC = argv[argv.index('--in') + 1] if '--in' in argv else (argv[0] if argv else None)
@@ -37,18 +41,22 @@ if arm is None:
     raise SystemExit('gait: not rigged')
 mesh = max((o for o in bpy.data.objects if o.type == 'MESH'), key=lambda o: len(o.data.vertices))
 
-names = {b.name.lower(): b.name for b in arm.data.bones}
+"""
+The two toes, found by the shape of the skeleton.
 
+This used to search the bone names for `lefttoe`/`leftfoot`, which is right for
+the vendored roster and finds nothing whatever on a UniRig export — every bone
+there is called `Bone_000` through `Bone_067`. Nothing failed: `sep` stayed at
+its initial `0.0`, the stride printed as `0.000 m`, the speed as `0.00 m/s`, and
+a speed of zero is a number that would have gone into the catalog and made
+`premadeRig` divide by it. A measurement tool that answers zero when it cannot
+measure is worse than one that stops.
 
-def bone(*pats):
-    for p in pats:
-        for low, real in names.items():
-            if p in low:
-                return real
-    return None
-
-
-LF, RF = bone('lefttoe', 'leftfoot', 'foot.l'), bone('righttoe', 'rightfoot', 'foot.r')
+`rigshape.read_rig` is the same reading `retarget.py` transfers against, so the
+stride is measured between exactly the bones the walk was written onto.
+"""
+rig, _facing = read_rig(arm, SRC.split('/')[-1])
+LF, RF = rig['leg+'][3], rig['leg-'][3]
 pts = [mesh.matrix_world @ v.co for v in mesh.data.vertices]
 H = max(p.z for p in pts) - min(p.z for p in pts)
 print('gait: %s  height %.3f m' % (SRC.split('/')[-1], H))
@@ -65,10 +73,9 @@ for act in sorted(bpy.data.actions, key=lambda a: a.name):
     for f in range(start, end + 1):
         bpy.context.scene.frame_set(f)
         bpy.context.view_layer.update()
-        if LF and RF:
-            a = arm.matrix_world @ arm.pose.bones[LF].matrix.translation
-            b = arm.matrix_world @ arm.pose.bones[RF].matrix.translation
-            sep = max(sep, abs(a.y - b.y))
+        a = arm.matrix_world @ arm.pose.bones[LF].matrix.translation
+        b = arm.matrix_world @ arm.pose.bones[RF].matrix.translation
+        sep = max(sep, abs(a.y - b.y))
         dg = bpy.context.evaluated_depsgraph_get()
         ev = mesh.evaluated_get(dg)
         me = ev.to_mesh()
