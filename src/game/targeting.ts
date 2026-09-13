@@ -76,6 +76,16 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
      name — Sparkman counts every one lying in the pile, whichever HERO it
      happens to be. */
   if (f.isFusion !== undefined && !!def.isFusion !== f.isFusion) return false;
+  /* Two bodies, neither of them a Fusion. Asked of the recipe rather than kept
+     as a list of names, so a Fusion written next month is judged by what it is
+     made of and not by whether anybody remembered to add it here. A Fusion with
+     no recipe at all — Relinquished's ladder, which is summoned by its own card
+     and never by Polymerization — is not one of these either. */
+  if (f.simpleFusion !== undefined) {
+    const mats = def.fusionMaterials ?? [];
+    const simple = !!def.isFusion && mats.length === 2 && mats.every((m) => !CARDS[m]?.isFusion);
+    if (simple !== f.simpleFusion) return false;
+  }
   if (f.toon && !isToon(c.slug)) return false;
   /* "A monster worth setting face-down" asked of the card itself, rather than
      kept as a list that goes stale the first time a FLIP card is written. */

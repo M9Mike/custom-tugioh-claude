@@ -324,6 +324,16 @@ export interface CardFilter {
   /** An Extra Deck Fusion. Sparkman is worth 1000 for each one in the pile, and
    *  "Fusion" is a thing about the card rather than about its type or name. */
   isFusion?: boolean;
+  /**
+   * A Fusion assembled from exactly two monsters, neither of them a Fusion.
+   *
+   * O - Oversoul names one of these and nothing else. Of Jaden's fourteen it
+   * takes ten: Tempest and Electrum are out because they want three bodies and
+   * four, and the two Shining forms are out because one of their materials is
+   * itself a Fusion. Read off `fusionMaterials` rather than written on each
+   * card, so a Fusion added later is judged by what it is made of.
+   */
+  simpleFusion?: boolean;
   /** Pegasus's cartoon monsters — see `isToon`, which knows the ones the name
       does not give away. */
   toon?: boolean;
@@ -660,6 +670,19 @@ export type Op =
    * fetches on the way out is the *smallest* body in the Deck, a wall rather
    * than a reward.
    */
+  /**
+   * Name a card now; it arrives later.
+   *
+   * O - Oversoul's whole shape: you choose the Fusion out of the Extra Deck on
+   * the turn you play it and it is Special Summoned at the start of your turn
+   * `inTurns` of your own turns from now — so the card is a telegraphed threat
+   * the other player is given time to answer, which is what pays for a body
+   * that costs no materials.
+   *
+   * Counted in *your* turns, not in the turn counter, which alternates: see
+   * `PlayerState.promised`.
+   */
+  | { op: 'promiseSummon'; target: Selector; inTurns: number }
   | { op: 'specialSummon'; from: SummonZone | SummonZone[]; side?: Side; filter?: CardFilter; count?: number; position?: Position; face?: Face; includeSelf?: boolean; pick?: 'strongest' | 'weakest' }
   /**
    * `position` defaults to Defence, which is what every token in the game was
@@ -1737,6 +1760,19 @@ export interface PlayerState {
   field: CardInstance | null;
   grave: CardInstance[];
   banished: CardInstance[];
+  /**
+   * Cards named by `promiseSummon` and not yet arrived — O - Oversoul's.
+   *
+   * `onTurn` is the turn counter, which counts every player's turn, so two of
+   * *your* turns is four of it. Kept on the player rather than the card,
+   * because the card is still sitting in the Extra Deck where nothing else
+   * would think to look for a mark on it.
+   *
+   * `by` is the card that made the promise, carried so the arrival can ask
+   * `revivable` the same question the picker asked — a Fusion that only one
+   * road may summon must not be namable here and then refused on the day.
+   */
+  promised?: { uid: string; onTurn: number; by: string }[];
   /**
    * A card in this player's Deck that their next draw will take instead of
    * whatever is on top — the Temple of the Kings choosing what tomorrow holds.

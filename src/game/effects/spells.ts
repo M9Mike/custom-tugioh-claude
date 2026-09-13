@@ -1830,7 +1830,14 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
        Jaden plays this with nothing left, which is the whole picture. The
        Winged Kuriboh itself is the cost, and what comes back is the card that
        answers a board. */
-    text: 'Tribute 1 "Winged Kuriboh" you control: Special Summon 1 "Winged Kuriboh LV10" from your hand, Deck or Graveyard.',
+    /* The Extra Deck, on the owner's word: LV10 comes down by this card and by
+       nothing else, so it was a dead draw sitting in the main forty and is a
+       standing option from the Extra instead. The Graveyard stays in the
+       sentence because it is still a place LV10 can be — it falls like anything
+       else once it has been on the field — and the hand and Deck leave it
+       because they are now places it can never be. The effect is the one it
+       always was: tribute the little one, the big one arrives. */
+    text: 'Tribute 1 "Winged Kuriboh" you control: Special Summon 1 "Winged Kuriboh LV10" from your Extra Deck or Graveyard.',
     cry: 'Spread your wings!',
     effects: [
       {
@@ -1839,7 +1846,7 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
         ops: [
           {
             op: 'specialSummon',
-            from: ['hand', 'deck', 'grave'],
+            from: ['extra', 'grave'],
             filter: { slugs: ['winged-kuriboh-lv10'] },
             position: 'atk',
           },
@@ -1950,6 +1957,40 @@ export const SPELL_EFFECTS: Record<string, EffectDef> = {
              same sentence is how that fault would find its way back. One op,
              three cards, one rule. */
           { op: 'stripMagic', count: 4, zones: ['field', 'hand'], who: 'opp' },
+        ],
+      },
+    ],
+  },
+
+  'o-oversoul': {
+    /* A Fusion with no materials and no Polymerization — bought with time
+       instead. You name it out of the Extra Deck the turn you play this, and it
+       does not arrive until the start of your second turn from now: two of your
+       own turns, four of the counter, with everything the other player can do
+       in between still on the table. That wait is the whole price. A card that
+       put the body down on the spot would be a Polymerization that costs no
+       monsters, which is not a card this game should have.
+
+       Only a Fusion made of exactly two monsters, neither of them a Fusion —
+       ten of Jaden's fourteen. Tempest and Electrum want three bodies and four,
+       and the two Shining forms are built on a Fusion apiece, so the four that
+       are hardest to assemble are exactly the four this cannot conjure. The
+       rule is read off each card's recipe (`simpleFusion`), not kept as a list
+       of names that would go stale the first time a Fusion is added. */
+    text:
+      'Choose 1 Fusion Monster in your Extra Deck that lists exactly 2 Fusion Material Monsters, ' +
+      'neither of them a Fusion Monster: Special Summon it at the start of your 2nd turn after this one.',
+    cry: 'The soul remembers what the body has not yet become.',
+    effects: [
+      {
+        trigger: 'activate',
+        targets: 1,
+        ops: [
+          {
+            op: 'promiseSummon',
+            inTurns: 2,
+            target: sel('own', 'chosen', { zone: 'extra', count: 1, filter: { simpleFusion: true } }),
+          },
         ],
       },
     ],

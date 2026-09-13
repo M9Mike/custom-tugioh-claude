@@ -83,9 +83,16 @@ function hostFor(slug: string): string | null {
  * are skipped — the engine refuses those to every summon but their own rung,
  * so putting one in the pile would prove nothing.
  */
-function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave'; slug: string }[] {
-  const out: { zone: 'hand' | 'deck' | 'grave'; slug: string }[] = [];
-  const PILES = ['hand', 'deck', 'grave'] as const;
+function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave' | 'extra'; slug: string }[] {
+  const out: { zone: 'hand' | 'deck' | 'grave' | 'extra'; slug: string }[] = [];
+  /* The Extra Deck is one of the piles a summon may reach into, and this list
+     had never held it — invisible for as long as nothing summoned out of it,
+     and wrong the moment Winged Kuriboh LV10 moved back there. It is last
+     because a body in the hand or the pile is the cheaper stocking; it is here
+     at all because "from your Extra Deck or Graveyard" is the card's own
+     sentence and a probe that can only build one of those two zones is a probe
+     that reports a working card as dead. */
+  const PILES = ['hand', 'deck', 'grave', 'extra'] as const;
   /* Down through the branches, not only across the top — the same descent
      `summonRoute` below already makes. A summon can sit inside a `cascade`
      fork: E - Emergency Call adds a HERO to the hand, or calls one out of the
@@ -107,21 +114,35 @@ function fodderFor(slug: string): { zone: 'hand' | 'deck' | 'grave'; slug: strin
       const from = Array.isArray(op.from) ? op.from : [op.from];
       const zones = PILES.filter((z) => from.includes(z));
       if (!zones.length) continue;
-      const match = Object.values(CARDS).find(
-        (d) =>
-          d.kind === 'monster' &&
-          !isExtraDeckCard(d.slug) &&
-          !d.summonRequires &&
-          /* A monster that answers only to its own ladder is skipped, because
-             the engine refuses it to every summon but that one — *unless the
-             card being probed is that ladder*. Winged Kuriboh LV10 may only be
-             Special Summoned by Transcendent Wings, which is precisely the card
-             asking here, and striking it off left the Wings with nothing to
-             call and reading as unplayable. */
-          (!d.summonOnlyBy?.length || d.summonOnlyBy.includes(slug)) &&
-          matchesFilter({ slug: d.slug } as CardInstance, op.filter)
-      );
-      if (match) out.push({ zone: zones[0], slug: match.slug });
+      /* Zone by zone rather than "the first pile the card names, and a body
+         legal anywhere". The two questions had been one for as long as every
+         summon reached only the Main Deck piles, where a body legal in one is
+         legal in all three — and they came apart the moment Transcendent Wings
+         read "from your Extra Deck or Graveyard": the Graveyard came first in
+         this list, Winged Kuriboh LV10 is an Extra Deck card and so was struck
+         off, and the Wings were reported as a card nobody could ever play. */
+      for (const zone of zones) {
+        const match = Object.values(CARDS).find(
+          (d) =>
+            d.kind === 'monster' &&
+            /* An Extra Deck body belongs in the Extra Deck and nowhere else,
+               and a Main Deck body cannot be put there. */
+            (zone === 'extra' ? isExtraDeckCard(d.slug) : !isExtraDeckCard(d.slug)) &&
+            !d.summonRequires &&
+            /* A monster that answers only to its own ladder is skipped, because
+               the engine refuses it to every summon but that one — *unless the
+               card being probed is that ladder*. Winged Kuriboh LV10 may only be
+               Special Summoned by Transcendent Wings, which is precisely the card
+               asking here, and striking it off left the Wings with nothing to
+               call and reading as unplayable. */
+            (!d.summonOnlyBy?.length || d.summonOnlyBy.includes(slug)) &&
+            matchesFilter({ slug: d.slug } as CardInstance, op.filter)
+        );
+        if (match) {
+          out.push({ zone, slug: match.slug });
+          break;
+        }
+      }
     }
   }
   return out;
@@ -245,8 +266,23 @@ function stateHolding(slug: string): { state: DuelState; card: CardInstance; me:
     const body = spare(20 + i, f.slug);
     if (f.zone === 'hand') p.hand.push(body);
     else if (f.zone === 'grave') p.grave.push(body);
+    else if (f.zone === 'extra') p.extra.push(body);
     else p.deck.push(body);
   });
+  /* And the Extra Deck a card may merely *name* rather than summon out of.
+     O - Oversoul picks a Fusion out of there two turns before it arrives, and
+     the probe's Extra Deck is whichever duelist's deck it borrowed — Kaiba's
+     three Blue-Eyes ladders satisfy nothing the card can call. */
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    for (const op of eff.ops) {
+      if (!('target' in op) || !op.target || op.target.zone !== 'extra') continue;
+      if (p.extra.some((c) => matchesFilter(c, op.target!.filter))) continue;
+      const body = Object.values(CARDS).find(
+        (d) => isExtraDeckCard(d.slug) && matchesFilter({ slug: d.slug } as CardInstance, op.target!.filter)
+      );
+      if (body) p.extra.push(spare(30, body.slug));
+    }
+  }
 
   /* Something to aim at. Two monsters rather than one because a couple of
      cards want a choice, and an Insect among them because Weevil's Eradicating

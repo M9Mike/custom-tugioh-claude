@@ -180,6 +180,7 @@ function PlayerBar({
   isActive,
   isAi,
   shownLp,
+  turn,
   onGrave,
 }: {
   player: DuelState['players'][PlayerId];
@@ -187,9 +188,21 @@ function PlayerBar({
   isActive: boolean;
   isAi: boolean;
   shownLp: number;
+  /** The turn counter, for how long a promised card still has to wait. */
+  turn: number;
   onGrave: () => void;
 }) {
   const lpPct = Math.max(0, Math.min(100, (shownLp / STARTING_LP) * 100));
+  /* What O - Oversoul has called and how long it has left, on both bars. A
+     promise two of your own turns out is the one piece of board state neither
+     player can see anywhere — the card is in the Extra Deck, which nothing on
+     the table draws — and the whole point of the card is that the other player
+     is given time to answer it. Counted in the waiting player's own turns, so
+     the number means the same thing to whoever is reading it. */
+  const promised = (player.promised ?? []).map((q) => ({
+    name: CARDS[player.extra.find((c) => c.uid === q.uid)?.slug ?? '']?.name ?? 'a Fusion',
+    left: Math.max(1, Math.ceil((q.onTurn - turn) / 2)),
+  }));
   return (
     <div className={`panel grain relative flex items-center gap-2 rounded px-2 py-1.5 ${isActive ? 'ring-1 ring-brass' : ''}`}>
       <div
@@ -226,6 +239,22 @@ function PlayerBar({
           />
         </div>
       </div>
+      {/* Its own slot, and a shrinking one: the counters beside it must keep
+          their width at phone size, so a long Fusion name has to give way
+          rather than push them off the bar. */}
+      {promised.length > 0 && (
+        <div className="flex min-w-0 shrink items-center gap-1 font-display text-[9px]">
+          {promised.map((q, i) => (
+            <span
+              key={i}
+              className="min-w-0 truncate rounded border border-brass/50 bg-black/40 px-1 py-0.5 text-brassbright"
+              title={`${q.name} arrives in ${q.left} turn${q.left === 1 ? '' : 's'}`}
+            >
+              ⧗{q.left} {q.name.replace('Elemental HERO ', '')}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex shrink-0 items-center gap-1.5 font-display text-[10px] text-ptextdim">
         <span title="Cards in hand">✋{player.hand.length}</span>
         <span title="Cards left in Deck">🂠{player.deck.length}</span>
@@ -1380,6 +1409,35 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
     return new Set<string>();
   })();
 
+  /**
+   * The caption under a card in the pile picker, minus whatever leading words
+   * every option shares.
+   *
+   * Ten Elemental HERO Fusions in one modal all read "Elemental HER…" at 76
+   * pixels wide — ten identical captions under ten different cards, which is a
+   * label doing the opposite of its job. What distinguishes them is the part
+   * that gets cut off, so the part they have in common comes off instead: the
+   * prompt above and the inspector beside already say what family is being
+   * chosen from, and the full name is on the button's own tooltip.
+   *
+   * Never down to nothing: a run is only shared if every option has a word left
+   * after it, so a pile holding "Elemental HERO" itself would keep its name.
+   * And nothing at all with one option, where there is nothing to tell apart.
+   */
+  const pileLabel: (name: string | undefined) => string | undefined = (() => {
+    const names = [...mine.hand, ...mine.deck, ...mine.grave, ...mine.extra]
+      .filter((c) => targetableSet.has(c.uid))
+      .map((c) => shownName(c) ?? CARDS[c.slug]?.name)
+      .filter((n): n is string => !!n);
+    if (names.length < 2) return (n) => n;
+    const words = names.map((n) => n.split(' '));
+    let i = 0;
+    while (words.every((w) => w.length > i + 1 && w[i] === words[0][i])) i += 1;
+    if (!i) return (n) => n;
+    const lead = `${words[0].slice(0, i).join(' ')} `;
+    return (n) => (n?.startsWith(lead) ? n.slice(lead.length) : n);
+  })();
+
   const canDirect: boolean = (() => {
     if (mode.kind !== 'attack') return false;
     const c = mine.monsters.find((m) => m?.uid === mode.uid);
@@ -1816,6 +1874,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             /* The real total plus whatever damage or healing is still queued,
                so the number never runs ahead of the blow that caused it. */
             shownLp={Math.max(0, state.players[foe].lp + pending[foe])}
+            turn={state.turn}
             onGrave={() => setGraveOpen(foe)}
           />
         </div>
@@ -1959,6 +2018,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           isActive={state.active === me && !state.winner}
           isAi={!!view.seats[me]?.ai}
           shownLp={Math.max(0, state.players[me].lp + pending[me])}
+          turn={state.turn}
           onGrave={() => setGraveOpen(me)}
         />
 
@@ -2469,6 +2529,7 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           shuffle put nearest the top. */}
       {mode.kind === 'target' &&
         (mode.spec.zone === 'deck' ||
+          mode.spec.zone === 'extra' ||
           mode.spec.zone === 'handOrDeck' ||
           mode.spec.zone === 'deckOrGrave' ||
           mode.spec.zone === 'handOrDeckOrGrave') && (
@@ -2495,13 +2556,21 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   picker ends up narrower than the card: `targetableSet` is the
                   authority, and each option says which pile it came from so the
                   player is not guessing. */}
-              {[...mine.hand, ...mine.deck, ...mine.grave]
+              {[...mine.hand, ...mine.deck, ...mine.grave, ...mine.extra]
                 .filter((c) => targetableSet.has(c.uid))
                 .map((c) => (
-                  <button key={c.uid} className="w-[76px] text-left selectable rounded" onClick={() => onPickTarget(c.uid)}>
+                  <button
+                    key={c.uid}
+                    className="w-[76px] text-left selectable rounded"
+                    title={shownName(c) ?? CARDS[c.slug]?.name}
+                    onClick={() => onPickTarget(c.uid)}
+                  >
                     <GameCard card={c} displayName={shownName(c)} />
-                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{shownName(c) ?? CARDS[c.slug]?.name}</p>
-                    {mode.spec.zone !== 'deck' && (
+                    <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{pileLabel(shownName(c) ?? CARDS[c.slug]?.name)}</p>
+                    {/* Which pile it came from, for the specs that span more
+                        than one. A single-pile prompt already said so in its
+                        own sentence. */}
+                    {mode.spec.zone !== 'deck' && mode.spec.zone !== 'extra' && (
                       <p className="truncate text-center text-[8px] uppercase tracking-wide text-brass">
                         {mine.hand.some((h) => h.uid === c.uid)
                           ? 'hand'
@@ -2513,8 +2582,10 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                   </button>
                 ))}
             </div>
-            {![...mine.hand, ...mine.deck, ...mine.grave].some((c) => targetableSet.has(c.uid)) && (
-              <p className="py-4 text-center text-xs text-ptextdim">Nothing in your Deck matches.</p>
+            {![...mine.hand, ...mine.deck, ...mine.grave, ...mine.extra].some((c) => targetableSet.has(c.uid)) && (
+              <p className="py-4 text-center text-xs text-ptextdim">
+                Nothing in your {mode.spec.zone === 'extra' ? 'Extra Deck' : 'Deck'} matches.
+              </p>
             )}
           </div>
         </div>

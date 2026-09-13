@@ -25,6 +25,10 @@ export interface TargetSpec {
     | 'grave'
     | 'hand'
     | 'deck'
+    /* The Extra Deck is a pile you pick out of like any other — O - Oversoul
+       names the Fusion it will call two turns before it arrives. Open to both
+       players all game, so unlike the Deck there is nothing to keep back. */
+    | 'extra'
     | 'handOrDeck'
     | 'deckOrGrave'
     | 'handOrDeckOrGrave';
@@ -124,7 +128,7 @@ function selfRuled(op: Op): boolean {
  * `specChain`. Every other branch in `scanOps` describes a card that asks once
  * and then goes; this is the one shape that can repeat.
  */
-function chosenSpec(op: Op): TargetSpec | null {
+function chosenSpec(op: Op, owner: string): TargetSpec | null {
   if (selfRuled(op)) return null;
   if (!('target' in op) || !op.target || op.target.pick !== 'chosen') return null;
   const zone = (op.target.zone ?? 'monster') as TargetSpec['zone'];
@@ -150,7 +154,9 @@ function chosenSpec(op: Op): TargetSpec | null {
                     ? 'Choose a card to banish'
                     : op.op === 'swapControl'
                       ? 'Choose a monster to take'
-                      : 'Choose a target';
+                      : op.op === 'promiseSummon'
+                        ? 'Choose the Fusion you will call'
+                        : 'Choose a target';
   /* Which op is asking, so the picker can drop the monsters it would
      leave exactly as it found them. Stop Defense beside one kneeling
      monster and one already attacking is a legal card with one real
@@ -169,6 +175,11 @@ function chosenSpec(op: Op): TargetSpec | null {
     prompt: verb,
     changing: op.op,
     filter: op.target.filter,
+    /* A card the player will end up *summoning* is held to the same bar the
+       summon itself is — O - Oversoul's promise is refused two turns later by
+       a `revivable` the picker never asked, and a name offered here and thrown
+       out on the day is the worst version of this file's oldest bug. */
+    ...(op.op === 'promiseSummon' ? { revivableOnly: true, revivableBy: owner } : {}),
   };
 }
 
@@ -342,7 +353,7 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
       filter: op.filter,
     };
   }
-  return chosenSpec(op);
+  return chosenSpec(op, owner);
 }
 
 /** The question a cost asks, if it asks one. Always the card's first. */
@@ -520,6 +531,8 @@ export function targetCandidates(
       out.push(...p.grave.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     } else if (spec.zone === 'deck' && pid === viewer) {
       out.push(...p.deck.filter(keep));
+    } else if (spec.zone === 'extra' && pid === viewer) {
+      out.push(...p.extra.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
     } else if ((spec.zone === 'handOrDeck' || spec.zone === 'deckOrGrave' || spec.zone === 'handOrDeckOrGrave') && pid === viewer) {
       /* One pool, laid out in the order a player would reach for it: the copy
          already in hand costs nothing, the Deck is next, and the Graveyard

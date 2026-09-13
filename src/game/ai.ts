@@ -942,6 +942,22 @@ export function evaluate(state: DuelState, me: PlayerId, w: EvalWeights = WEIGHT
     if (m.rentPerTurn && m.owner !== foe) score += m.rentPerTurn * 0.8;
   }
 
+  /* A body that is coming. O - Oversoul names a Fusion two of its controller's
+     own turns out and leaves nothing on the board to say so — which to a search
+     that reads only the board makes the card a strict loss of a card for
+     nothing, so the AI would neither play it nor value having played it.
+     Priced at the named Fusion's own worth, discounted for the wait and closing
+     as the day arrives, and symmetric, because a promise across the table is a
+     threat to be raced. */
+  for (const [p, side] of [[my, 1], [their, -1]] as const) {
+    for (const q of p.promised ?? []) {
+      const slug = p.extra.find((c) => c.uid === q.uid)?.slug;
+      if (!slug) continue;
+      const away = Math.max(0, q.onTurn - state.turn);
+      score += (side * (Math.max(0, baseAtk(slug)) * 0.5 + menace(slug) * 0.5)) / (1 + away * 0.5);
+    }
+  }
+
   // Card advantage. A card in hand is a future threat; a set Spell/Trap is a
   // live one — ours priced by what it actually does, theirs by not knowing.
   score += (my.hand.length - their.hand.length) * w.hand;
@@ -1135,6 +1151,11 @@ function poolFor(state: DuelState, pid: PlayerId, spec: TargetSpec): CardInstanc
     } else if (spec.zone === 'grave') {
       pool.push(...p.grave.filter((c) => CARDS[c.slug]?.kind === 'monster'));
     } else if (spec.zone === 'hand' && id === pid) pool.push(...p.hand);
+    /* The Extra Deck, which O - Oversoul names a Fusion out of. Narrowed by the
+       spec's filter like the field pools above and unlike the piles below — the
+       card takes ten of Jaden's fourteen Fusions and a search that ignored that
+       would promise a Tempest and watch nothing arrive. */
+    else if (spec.zone === 'extra' && id === pid) pool.push(...p.extra.filter((c) => matchesFilter(c, spec.filter)));
     else if (spec.zone === 'deck' && id === pid) {
       /* Your own Deck's CONTENTS are yours to know — only its order is
          hidden, and picking the best card by worth reads none of it. This is

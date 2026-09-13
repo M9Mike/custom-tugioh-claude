@@ -1516,10 +1516,6 @@
      1
     ],
     [
-     "winged-kuriboh-lv10",
-     1
-    ],
-    [
      "polymerization",
      2
     ],
@@ -1560,6 +1556,10 @@
      1
     ],
     [
+     "o-oversoul",
+     1
+    ],
+    [
      "hero-signal",
      1
     ],
@@ -1586,7 +1586,8 @@
     "elemental-hero-tempest",
     "elemental-hero-electrum",
     "elemental-hero-shining-flare-wingman",
-    "elemental-hero-shining-phoenix-enforcer"
+    "elemental-hero-shining-phoenix-enforcer",
+    "winged-kuriboh-lv10"
    ]
   },
   {

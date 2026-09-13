@@ -150,6 +150,8 @@ interface Side {
   uids: string[];
   /** Monsters I control that the other player owns. */
   borrowed: number;
+  /** Cards named by a `promiseSummon` and still waiting to arrive. */
+  promised: number;
 }
 interface Snap {
   me: Side;
@@ -178,6 +180,7 @@ function sideOf(s: DuelState, pid: PlayerId): Side {
     atkPos: mons.filter((m) => m.position === 'atk').length,
     uids: mons.map((m) => m.uid),
     borrowed: mons.filter((m) => m.owner !== pid).length,
+    promised: (p.promised ?? []).length,
   };
 }
 
@@ -270,6 +273,12 @@ function checkOp(op: Op, a: Snap, b: Snap, flagsBefore: Set<string>, flagsAfter:
       };
     case 'mill':
       return { what: 'sends cards from a Deck to the Graveyard', ok: fell(a.me.deck, b.me.deck) || fell(a.foe.deck, b.foe.deck) };
+    /* A promise leaves nothing on the board — the whole point of the card — so
+       the only honest signal is the list it was written into. Without this the
+       op fell through to `default: null` and O - Oversoul counted as activated
+       and unobserved, which is the audit passing a card it never looked at. */
+    case 'promiseSummon':
+      return { what: 'names a card to arrive later', ok: grew(a.me.promised, b.me.promised) };
     case 'discard':
       // Same trap as `search`, and worse for cards that discard then draw:
       // count the cards arriving in a Graveyard instead.
@@ -607,6 +616,32 @@ function stockHandFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
   }
 }
 
+/**
+ * And the Extra Deck — the fifth pile, and the one nothing here had ever read.
+ *
+ * Every card the harness drives is played out of an arbitrary duelist's deck,
+ * and the Extra Deck that comes with it holds whatever that duelist fuses into:
+ * Kaiba's is three Blue-Eyes ladders and Jaden's is fourteen HEROes. So a card
+ * that reaches back there — Transcendent Wings for one named monster,
+ * O - Oversoul for any two-material Fusion — is refused for want of a pool that
+ * was never built, and the refusal reads as a broken card. Exactly the same
+ * gap, and the same fix, as the hand one above.
+ */
+function stockExtraFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
+  for (const op of FLATTEN(eff.ops as Op[])) {
+    const filter =
+      op.op === 'specialSummon' && summonsFrom(op, 'extra')
+        ? op.filter
+        : 'target' in op && op.target?.zone === 'extra'
+          ? op.target.filter
+          : null;
+    if (filter === null) continue;
+    if (s.players[owner].extra.some((c) => matchesFilter(c, filter))) continue;
+    const match = matchCard(filter, 'any');
+    if (match) s.players[owner].extra.push(mint(s, owner, match.slug));
+  }
+}
+
 function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: PlayerId = ME) {
   /* Stocked on the side the card is actually on. A Spell or Trap is destroyed
      by the *other* player, so it sits on their side of the field — and a
@@ -615,6 +650,7 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
   stockDeckFor(s, eff, owner);
   stockGraveFor(s, eff, owner);
   stockHandFor(s, eff, owner);
+  stockExtraFor(s, eff, owner);
   stockOwnTargetFor(s, eff, owner);
   // Effects that reach across the field need a legal victim over there, and a
   // free zone over here to put it in.

@@ -12475,9 +12475,15 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(!!d, 'Jaden is on the roster');
     ok(d!.deck.reduce((n, [, c]) => n + c, 0) === 25, 'and brings exactly 25 cards, like everybody else',
       String(d!.deck.reduce((n, [, c]) => n + c, 0)));
-    ok((d!.extra ?? []).length === 14, 'with fourteen HEROes waiting behind them', String((d!.extra ?? []).length));
-    ok((d!.extra ?? []).every((s) => CARDS[s]?.isFusion), 'and every one of them a Fusion',
-      (d!.extra ?? []).filter((s) => !CARDS[s]?.isFusion).join(',') || '(all)');
+    ok((d!.extra ?? []).length === 15, 'with fourteen HEROes waiting behind them, and the little one',
+      String((d!.extra ?? []).length));
+    /* Fourteen Fusions and Winged Kuriboh LV10, which is not one — it lives
+       back here because the only road to it is Transcendent Wings, which is
+       the owner's own reasoning: "since we summon it with a spell card
+       anyway". Nothing else in the Extra Deck may be anything but a Fusion. */
+    const notFusion = (d!.extra ?? []).filter((s) => !CARDS[s]?.isFusion);
+    ok(notFusion.length === 1 && notFusion[0] === 'winged-kuriboh-lv10',
+      'and every one of them a Fusion but the Kuriboh', notFusion.join(',') || '(all Fusions)');
     /* One of each. The owner's call, and the reason the deck carries so many
        ways to fetch a card back: a singleton HERO you spend is gone unless
        something goes and gets it. */
@@ -12488,19 +12494,23 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
 
   /* --- Where the roster puts him ---
      The order of `DUELISTS` is the order the Home Screen lays the decks out,
-     and the two written-for-this-game duelists go last: everyone above them
-     came out of the anime, and a new one appended to the file lands after them
+     and the written-for-this-game duelists go last: everyone above them came
+     out of the anime, and a new one appended to the file lands after them
      unless somebody moves it. Jaden was appended and did exactly that.
      Held here rather than left to the eye, because the next duelist added will
-     land in the same place for the same reason. */
+     land in the same place for the same reason.
+
+     The list is hand-written and has to be added to when a Domino City NPC
+     gets a deck — Isha was the third, and this pin went red the moment she
+     landed, which is the pin doing its job rather than a fault in her. */
   {
     const order = DUELISTS.map((x) => x.id);
-    const NPCS = ['tony', 'sarah'];
+    const NPCS = ['tony', 'sarah', 'isha'];
     const npcAt = NPCS.map((id) => order.indexOf(id));
-    ok(npcAt.every((i) => i >= 0), 'ROSTER: the two original duelists are on it', npcAt.join(','));
+    ok(npcAt.every((i) => i >= 0), 'ROSTER: the city duelists are on it', npcAt.join(','));
     const firstNpc = Math.min(...npcAt);
     ok(npcAt.every((i) => i >= order.length - NPCS.length),
-      'ROSTER: and they sit at the very end of it', order.slice(-4).join(' → '));
+      'ROSTER: and they sit at the very end of it', order.slice(-5).join(' → '));
     ok(order.indexOf('jaden') >= 0 && order.indexOf('jaden') < firstNpc,
       'ROSTER: so Jaden comes before Tony', order.slice(-4).join(' → '));
   }
@@ -12607,7 +12617,14 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     s.players[ME].monsters = [kuri, null, null];
     const wings = card(ME, 'transcendent-wings');
     s.players[ME].hand = [wings];
-    s.players[ME].deck = [card(ME, 'winged-kuriboh-lv10'), card(ME, 'kuriboh')];
+    /* The big one lives in the Extra Deck now — "since we summon it with a
+       spell card anyway", which is the owner's own sentence. The Main Deck
+       holds nothing of the kind, so anything that arrives came from there. */
+    s.players[ME].deck = [card(ME, 'kuriboh')];
+    const inExtra = s.players[ME].extra.filter((c) => c.slug === 'winged-kuriboh-lv10').length;
+    ok(inExtra === 1, 'WINGS: the big one waits in the Extra Deck', `${inExtra} there`);
+    ok(!s.players[ME].deck.some((c) => c.slug === 'winged-kuriboh-lv10'),
+      'WINGS: CONTROL: and nowhere in the Main Deck');
     let out = act(s, ME, { type: 'activateSpell', uid: wings.uid, targets: [kuri.uid] });
     let guard = 0;
     while (out.pending?.kind === 'choose' && guard++ < 4) {
@@ -12615,27 +12632,30 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     }
     ok(out.players[ME].monsters.some((m) => m?.slug === 'winged-kuriboh-lv10'),
       'WINGS: the Kuriboh spreads its wings', out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[ME].extra.some((c) => c.slug === 'winged-kuriboh-lv10'),
+      'WINGS: and it is out of the Extra Deck, not a second copy',
+      String(out.players[ME].extra.filter((c) => c.slug === 'winged-kuriboh-lv10').length));
 
-    /* Hand, Deck or Graveyard — the owner named all three, and one zone in a
-       pin is one zone proved. Each of the other two from a board that holds
-       the big one nowhere else. */
-    for (const zone of ['hand', 'grave'] as const) {
+    /* Extra Deck or Graveyard — both zones the card names, one pin each. The
+       Graveyard one from a board whose Extra Deck holds the big one nowhere. */
+    {
       const z = jaden();
       const k2 = card(ME, 'winged-kuriboh');
       k2.summonedOnTurn = 0;
       z.players[ME].monsters = [k2, null, null];
       const w2 = card(ME, 'transcendent-wings');
       const big = card(ME, 'winged-kuriboh-lv10');
-      z.players[ME].hand = zone === 'hand' ? [w2, big] : [w2];
-      z.players[ME].grave = zone === 'grave' ? [big] : [];
-      z.players[ME].deck = [card(ME, 'kuriboh')]; // never from the Deck here
+      z.players[ME].hand = [w2];
+      z.players[ME].grave = [big];
+      z.players[ME].deck = [card(ME, 'kuriboh')];
+      z.players[ME].extra = z.players[ME].extra.filter((c) => c.slug !== 'winged-kuriboh-lv10');
       let o = act(z, ME, { type: 'activateSpell', uid: w2.uid, targets: [k2.uid] });
       let gz = 0;
       while (o.pending?.kind === 'choose' && gz++ < 4) {
         o = act(o, o.pending.player, { type: 'chooseCard', uids: [o.pending.options[0]] });
       }
       ok(o.players[ME].monsters.some((m) => m?.uid === big.uid),
-        `WINGS: and out of the ${zone === 'hand' ? 'hand' : 'Graveyard'} just as readily`,
+        'WINGS: and out of the Graveyard just as readily',
         o.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
     }
     ok(!out.players[ME].monsters.some((m) => m?.uid === kuri.uid), 'WINGS: and the little one paid for it');
@@ -12724,6 +12744,119 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(gone.players[ME].hand.length === 1,
       'WINGS: and it leaves a card out of the Deck behind it',
       gone.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+  }
+
+  /* --- O - Oversoul: name it now, it arrives in two of your own turns --- */
+  {
+    /* What it may name. "A fusion monster combined of only two non fusion
+       monsters" — ten of Jaden's fourteen. The two the owner named as examples
+       are excluded for the two different reasons the rule has: Electrum wants
+       four bodies, Shining Flare Wingman is built on a Fusion. */
+    const s = jaden();
+    const ov = card(ME, 'o-oversoul');
+    s.players[ME].hand = [ov];
+    const spec = specChainFor('o-oversoul', 'activate');
+    ok(spec.length === 1 && spec[0].zone === 'extra',
+      'SOUL: it asks once, and it asks about the Extra Deck',
+      spec.map((x) => x.zone).join(','));
+    const offered = targetCandidates(s, ME, spec[0], () => false, ov.uid).map((c) => c.slug);
+    ok(offered.length === 10, 'SOUL: ten of the fourteen are callable', String(offered.length));
+    for (const two of ['elemental-hero-flame-wingman', 'elemental-hero-thunder-giant', 'elemental-hero-wildedge']) {
+      ok(offered.includes(two), `SOUL: ${CARDS[two].name} is made of two ordinary HEROes`);
+    }
+    for (const no of [
+      'elemental-hero-electrum', // four materials
+      'elemental-hero-tempest', // three
+      'elemental-hero-shining-flare-wingman', // a Fusion among its materials
+      'elemental-hero-shining-phoenix-enforcer',
+    ]) {
+      ok(!offered.includes(no), `SOUL: CONTROL: ${CARDS[no].name} is beyond it`);
+    }
+    /* And the one card in that pile that is not a Fusion at all. */
+    ok(!offered.includes('winged-kuriboh-lv10'), 'SOUL: CONTROL: and the little one is not a Fusion');
+
+    /* Two of YOUR turns, which is four of the counter. It is played on turn 6,
+       it is still not there on turn 8, and it lands at the start of turn 10. */
+    const wing = s.players[ME].extra.find((c) => c.slug === 'elemental-hero-flame-wingman')!;
+    let out = act(s, ME, { type: 'activateSpell', uid: ov.uid, targets: [wing.uid] });
+    ok(out.turn === 6, 'SOUL: played on turn 6', String(out.turn));
+    ok(out.players[ME].promised?.length === 1 && out.players[ME].promised[0].onTurn === 10,
+      'SOUL: and owed on turn 10 — two of my turns away',
+      JSON.stringify(out.players[ME].promised));
+    ok(out.players[ME].extra.some((c) => c.uid === wing.uid),
+      'SOUL: the Fusion stays in the Extra Deck until the day');
+
+    const step = (st: DuelState) => act(st, st.active, { type: 'endTurn' });
+    out = step(out); // 7, theirs
+    out = step(out); // 8, mine
+    ok(out.turn === 8 && out.active === ME, 'SOUL: my next turn comes round', `turn ${out.turn} ${out.active}`);
+    ok(!out.players[ME].monsters.some((m) => m?.uid === wing.uid),
+      'SOUL: CONTROL: and it is still not here — one turn is not two',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    out = step(out); // 9, theirs
+    out = step(out); // 10, mine
+    ok(out.players[ME].monsters.some((m) => m?.uid === wing.uid),
+      'SOUL: on the second of my turns it answers',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[ME].extra.some((c) => c.uid === wing.uid),
+      'SOUL: out of the Extra Deck, not a copy of it', String(out.players[ME].extra.length));
+    ok(!out.players[ME].promised?.length, 'SOUL: and the promise is spent',
+      JSON.stringify(out.players[ME].promised));
+
+    /* A Fusion Summoned out from under the promise leaves nothing to arrive —
+       and the promise must not survive to try again next turn. */
+    const spent = jaden();
+    const ov2 = card(ME, 'o-oversoul');
+    spent.players[ME].hand = [ov2];
+    const wing2 = spent.players[ME].extra.find((c) => c.slug === 'elemental-hero-flame-wingman')!;
+    let g = act(spent, ME, { type: 'activateSpell', uid: ov2.uid, targets: [wing2.uid] });
+    g.players[ME].extra = g.players[ME].extra.filter((c) => c.uid !== wing2.uid);
+    for (let i = 0; i < 4; i++) g = step(g);
+    ok(!g.players[ME].monsters.some((m) => m?.uid === wing2.uid),
+      'SOUL: CONTROL: a Fusion already summoned cannot answer twice');
+    ok(!g.players[ME].promised?.length, 'SOUL: CONTROL: and the promise does not wait for it',
+      JSON.stringify(g.players[ME].promised));
+
+    /* Nowhere to put it is the other way it is spent. Three bodies standing
+       on the day, and the name comes off the list rather than hanging over
+       the rest of the duel. */
+    const full = jaden();
+    const ov3 = card(ME, 'o-oversoul');
+    full.players[ME].hand = [ov3];
+    const wing3 = full.players[ME].extra.find((c) => c.slug === 'elemental-hero-flame-wingman')!;
+    let f = act(full, ME, { type: 'activateSpell', uid: ov3.uid, targets: [wing3.uid] });
+    for (let i = 0; i < 4; i++) {
+      f = step(f);
+      f.players[ME].monsters = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+    }
+    ok(!f.players[ME].monsters.some((m) => m?.uid === wing3.uid),
+      'SOUL: CONTROL: a full board on the day has nowhere to put it');
+    /* And the card is still where it was. A summon into zone -1 leaves nothing
+       on the board and is invisible to the line above — the Fusion is simply
+       gone from the game, which is the actual shape of the bug. */
+    ok(f.players[ME].extra.some((c) => c.uid === wing3.uid),
+      'SOUL: CONTROL: and the Fusion is still in the Extra Deck, not lost',
+      f.players[ME].extra.map((c) => c.slug).join(',') || '(empty)');
+    ok(f.players[ME].monsters.length === 3,
+      'SOUL: CONTROL: and no fourth zone was invented for it', String(f.players[ME].monsters.length));
+    ok(!f.players[ME].promised?.length, 'SOUL: CONTROL: and that promise is spent too',
+      JSON.stringify(f.players[ME].promised));
+
+    /* The gate: an Extra Deck with nothing it may call refuses the card rather
+       than spending it on a promise it cannot make. */
+    const barren = jaden();
+    const ov4 = card(ME, 'o-oversoul');
+    barren.players[ME].hand = [ov4];
+    barren.players[ME].extra = barren.players[ME].extra.filter((c) =>
+      ['elemental-hero-electrum', 'elemental-hero-tempest', 'winged-kuriboh-lv10'].includes(c.slug)
+    );
+    ok(wastedWithoutTarget(barren, ME, ov4, 'activate'),
+      'SOUL: CONTROL: with nothing callable in the pile the card is refused');
+    const stocked = jaden();
+    const ov5 = card(ME, 'o-oversoul');
+    stocked.players[ME].hand = [ov5];
+    ok(!wastedWithoutTarget(stocked, ME, ov5, 'activate'),
+      'SOUL: and a full Extra Deck is not refused');
   }
 
   /* --- Necroshade goes down and the big one comes up in his place --- */

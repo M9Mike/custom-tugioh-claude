@@ -16,6 +16,7 @@ import {
   legalAttackTargets,
   other,
   summonBlocked,
+  matchesFilter,
   tributesRequired, tributeSetFor } from './engine';
 import { summonTargetSpec, targetSpecFor } from './ui';
 import type { CardInstance, DuelAction, DuelState, PlayerId } from './types';
@@ -136,6 +137,11 @@ function targetsFor(state: DuelState, pid: PlayerId, slug: string, trigger: 'act
     } else if (spec.zone === 'grave') {
       pool.push(...pl.grave.filter((c) => CARDS[c.slug]?.kind === 'monster').map((c) => c.uid));
     } else if (spec.zone === 'hand' && id === pid) pool.push(...pl.hand.map((c) => c.uid));
+    /* The Extra Deck, filtered — the random pilot must not name a Fusion the
+       card refuses, or the promise it makes is one the engine drops. */
+    else if (spec.zone === 'extra' && id === pid) {
+      pool.push(...pl.extra.filter((c) => matchesFilter(c, spec.filter)).map((c) => c.uid));
+    }
   }
   const out: string[] = [];
   const avail = [...pool];

@@ -2774,6 +2774,41 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         checkExodia(state);
         break;
       }
+      /* Name it now; it arrives later. The card is chosen out of the Extra Deck
+         the moment O - Oversoul is played and stays there, in plain sight, until
+         the turn it is owed — which is the whole of what the player is buying
+         and the whole of what the opponent is given to answer.
+
+         Counted in the controller's own turns rather than in `state.turn`,
+         which alternates: two of your turns is four of it. Derived from the
+         turn *you* are on, so the arithmetic is the same sentence whoever is
+         active — a promise made on somebody else's turn counts from your last
+         one, and lands on the second of your turns to come either way. */
+      case 'promiseSummon': {
+        /* `revivable` asked here as well as by the picker, because a card that
+           may only arrive by one road must not be namable by this one — a
+           promise that is refused on the day is the picker and the engine
+           disagreeing two turns after the player can do anything about it. */
+        const named = resolveTargets(ctx, op.target).filter((c) => revivable(state, ctx.controller, c.slug, ctx.source.slug));
+        if (!named.length) {
+          emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to call.`);
+          break;
+        }
+        const base = state.active === ctx.controller ? state.turn : state.turn - 1;
+        const onTurn = base + op.inTurns * 2;
+        const p = state.players[ctx.controller];
+        for (const c of named) {
+          (p.promised ??= []).push({ uid: c.uid, onTurn, by: ctx.source.slug });
+          log(
+            state,
+            `${p.name} calls on ${displayName(state, c)} — it answers in ${op.inTurns} turn${op.inTurns === 1 ? '' : 's'}.`,
+            'effect',
+            ctx.controller,
+            logSlug(c)
+          );
+        }
+        break;
+      }
       case 'specialSummon': {
         const count = op.count ?? 1;
         let arrived = 0;
@@ -4894,6 +4929,37 @@ function startTurn(state: DuelState) {
       fireAllySummon(state, pid, back.uid);
     }
   }
+  /* And anything promised. O - Oversoul names a Fusion two of your own turns
+     ahead and this is where it answers — the same window as a revival owed,
+     for the same two reasons: it is part of the board the standing monsters
+     wake up to, and it is on the field for the whole turn it waited through.
+
+     A promise that cannot be kept is spent rather than held. The card may have
+     been Fusion Summoned out of the Extra Deck in the meantime, and a full
+     board at the start of your own turn is your own doing; either way the name
+     comes off the list, so nothing sits in it forever. `<=` rather than `===`
+     for the same reason — a turn counter that somehow steps past the day owed
+     must not strand the card in the Extra Deck for the rest of the duel. */
+  const due = (p.promised ?? []).filter((q) => q.onTurn <= state.turn);
+  if (due.length) p.promised = (p.promised ?? []).filter((q) => q.onTurn > state.turn);
+  for (const owed of due) {
+    const at = p.extra.findIndex((c) => c.uid === owed.uid);
+    if (at < 0) continue;
+    const called = p.extra[at];
+    const zone = p.monsters.findIndex((m) => !m);
+    if (zone < 0 || !revivable(state, pid, called.slug, owed.by)) {
+      log(state, `${p.name} cannot answer for ${displayName(state, called)}.`, 'effect', pid, logSlug(called));
+      continue;
+    }
+    landSpecialSummon(state, called, pid, zone, 'atk', 'up', owed.by);
+    fireTriggers(state, called, pid, 'onSummon', {});
+    if (!state.winner) {
+      fireOpponentSummon(state, pid, called.uid);
+      fireAllySummon(state, pid, called.uid);
+    }
+  }
+  if (state.winner) return;
+
   /* Rent on anything stolen and kept. Paid before the standing monsters take
      their turn-start triggers, so a duel that is won by the rent is won before
      anything else happens — and paid to the body's *owner*, which is who the
@@ -5535,6 +5601,11 @@ const NEEDS_A_TARGET = new Set([
   'forceAttackPosition',
   'flipFaceUp',
   'equipTo',
+  /* Naming a card is a target even though nothing happens for two turns —
+     O - Oversoul over an Extra Deck holding nothing it may call is a card
+     spent on a promise it cannot make. It is deliberately *not* in
+     `NEEDS_A_ZONE`: the room is wanted on the day, not today. */
+  'promiseSummon',
 ]);
 
 /** Picks that read a pool of cards, as opposed to one the context supplies. */
