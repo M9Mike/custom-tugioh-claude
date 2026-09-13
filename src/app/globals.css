@@ -47,11 +47,33 @@
 }
 
 /** Any full-height page that is not the duel board. */
+/*
+ * The inset as a transparent border, not as padding.
+ *
+ * Fourteen screens are written `className="safe-page … p-4"`, and every one of
+ * them had **no horizontal padding at all on a phone**: this rule is unlayered
+ * and Tailwind's utilities live in `@layer utilities`, so an unlayered
+ * declaration beats them and `padding-left` was simply overwritten with the
+ * inset — which is `0px` on every device without a notch in that direction.
+ * The deck builder's card grid ran off both edges of an iPhone and its sort
+ * buttons were cut in half, and nothing said why, because the class and the
+ * utility each looked correct on its own.
+ *
+ * A border composes where padding collides. `box-sizing` is `border-box`
+ * everywhere, so this eats into the box exactly as the padding did and a
+ * `h-[100dvh]` still measures the viewport; the background paints under it, so
+ * a full-bleed screen still covers the notch; and the page's own `p-*` now
+ * applies *inside* it, which is what every one of those fourteen call sites
+ * already says it wants.
+ *
+ * The one thing it costs: an element carrying `safe-page` may not also set a
+ * border. None do, and a screen that needs one can put it on a child.
+ */
 .safe-page {
-  padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
-  padding-left: var(--safe-left);
-  padding-right: var(--safe-right);
+  border-top: var(--safe-top) solid transparent;
+  border-bottom: var(--safe-bottom) solid transparent;
+  border-left: var(--safe-left) solid transparent;
+  border-right: var(--safe-right) solid transparent;
 }
 
 :root {

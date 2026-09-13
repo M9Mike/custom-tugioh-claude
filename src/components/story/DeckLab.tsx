@@ -38,6 +38,7 @@ import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
 import type { CardInstance } from '@/game/types';
+import { isExtraDeckCard } from '@/game/engine';
 import { DECK_SIZE } from '@/story/roster';
 import {
   TRUNK_FILTERS,
@@ -60,8 +61,25 @@ import { sfx } from '@/lib/sfx';
  */
 const MAX = 3;
 
-/** Every card in the game, which is the pool — there is nothing to own here. */
-const POOL: string[] = Object.keys(CARDS);
+/**
+ * What may be picked, and the two things in `CARDS` that may not.
+ *
+ * **Face-down Card.** `cards.ts` puts one extra entry into the map after
+ * building it: a stand-in named "Face-down Card" that `viewFor` swaps in for
+ * anything the viewer is not allowed to see — a set trap, a card in the
+ * opponent's hand. It is not a card, it has no effects and no art, and the
+ * first thing Mike said on opening this screen was "what is the Face Down
+ * Card?", which is the correct question to ask about it.
+ *
+ * **The Extra Deck.** Twenty-four cards live in a duelist's `extra` list
+ * rather than in `deck`, and putting one in a main deck is not a deck. The
+ * test is the engine's own `isExtraDeckCard` and deliberately not
+ * `def.isFusion`: Flame Swordsman and Bickuribox are printed Fusions that sit
+ * in main decks, and Valkyrion is an Extra Deck card the database does not
+ * flag as a Fusion at all.
+ */
+const POOL: string[] = Object.keys(CARDS).filter((s) => s !== 'facedown' && !isExtraDeckCard(s));
+const EXTRA_POOL: string[] = Object.keys(CARDS).filter((s) => s !== 'facedown' && isExtraDeckCard(s));
 
 export interface DeckLabProps {
   onClose: () => void;
@@ -140,6 +158,8 @@ export default function DeckLab({ onClose }: DeckLabProps) {
   const [sort, setSort] = useState<TrunkSort>('curve');
   const [filter, setFilter] = useState<TrunkFilter>('all');
   const [query, setQuery] = useState('');
+  /** The Extra Deck, which is a set: a duelist's `extra` carries no counts. */
+  const [extra, setExtra] = useState<string[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
 
   const total = useMemo(() => Object.values(deck).reduce((n, c) => n + c, 0), [deck]);
@@ -148,8 +168,9 @@ export default function DeckLab({ onClose }: DeckLabProps) {
      keys on identity, and rebuilding these per render re-mounts every tile on
      every tap. Straight out of the player's builder, for the same reason. */
   const instances = useMemo(() => {
-    const list = previewInstances(POOL.map((s) => [s, 1] as [string, number]));
-    return new Map(POOL.map((slug, i) => [slug, list[i]]));
+    const all = [...POOL, ...EXTRA_POOL];
+    const list = previewInstances(all.map((s) => [s, 1] as [string, number]));
+    return new Map(all.map((slug, i) => [slug, list[i]]));
   }, []);
 
   /* The deck in the one canonical order, and the pool in whichever the buttons
@@ -157,6 +178,15 @@ export default function DeckLab({ onClose }: DeckLabProps) {
      here is laid out the way a deck is laid out everywhere else. */
   const chosen = useMemo(() => deckOrder(Object.keys(deck)), [deck]);
   const shelf = useMemo(() => trunkOrder(searchCards(POOL, query), sort, filter), [query, sort, filter]);
+  const extraShelf = useMemo(
+    () => trunkOrder(searchCards(EXTRA_POOL, query), sort, filter),
+    [query, sort, filter]
+  );
+  const inExtra = useMemo(() => new Set(extra), [extra]);
+  const toggleExtra = (slug: string) => {
+    setExtra((e) => (e.includes(slug) ? e.filter((s) => s !== slug) : [...e, slug]));
+    sfx.click();
+  };
 
   const add = (slug: string) => {
     setDeck((d) => (d[slug] >= MAX ? d : { ...d, [slug]: (d[slug] ?? 0) + 1 }));
@@ -181,13 +211,19 @@ export default function DeckLab({ onClose }: DeckLabProps) {
    * In the deck's own order so the paste reads as a deck rather than as the
    * order things happened to be tapped in.
    */
-  const asJson = useMemo(
-    () =>
+  const asJson = useMemo(() => {
+    const main =
       '[\n' +
       chosen.map((s) => `  [${JSON.stringify(CARDS[s]?.name ?? s)}, ${deck[s]}]`).join(',\n') +
-      '\n]',
-    [chosen, deck]
-  );
+      '\n]';
+    /* The bare array while there is no Extra Deck, which is what most of these
+       are and what is quickest to read in a message. The moment one is picked
+       it becomes both fields, because handing over a deck that silently
+       dropped the Extra Deck would be the real fault. */
+    if (extra.length === 0) return main;
+    const ex = deckOrder(extra).map((s) => JSON.stringify(CARDS[s]?.name ?? s));
+    return `{\n  "deck": ${main.split('\n').join('\n  ')},\n  "extra": [${ex.join(', ')}]\n}`;
+  }, [chosen, deck, extra]);
 
   /**
    * Copy, with a fallback, because `navigator.clipboard` is not there on an
@@ -218,25 +254,8 @@ export default function DeckLab({ onClose }: DeckLabProps) {
     window.setTimeout(() => setCopied(null), 4000);
   };
 
-  /*
-   * Padding that *adds* to the safe-area inset rather than being replaced by
-   * it.
-   *
-   * `.safe-page` sets `padding-left` and `padding-right` outright, so a
-   * Tailwind `p-3` beside it is overwritten and measures zero — the title sat
-   * against the glass on a phone and nothing said why. The same `calc` the
-   * world's corner menu uses.
-   */
   return (
-    <main
-      className="safe-page mx-auto flex h-[100dvh] w-full max-w-5xl flex-col gap-2"
-      style={{
-        paddingTop: 'calc(var(--safe-top) + 12px)',
-        paddingBottom: 'calc(var(--safe-bottom) + 12px)',
-        paddingLeft: 'calc(var(--safe-left) + 12px)',
-        paddingRight: 'calc(var(--safe-right) + 12px)',
-      }}
-    >
+    <main className="safe-page mx-auto flex h-[100dvh] w-full max-w-5xl flex-col gap-2 p-3">
       <div className="flex shrink-0 items-baseline justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-display text-xl leading-none text-brassbright">Deck Lab</h1>
@@ -270,7 +289,7 @@ export default function DeckLab({ onClose }: DeckLabProps) {
         <button
           className="btn btn-primary shrink-0 rounded px-3 py-2 text-[11px]"
           onClick={() => void copy()}
-          disabled={total === 0}
+          disabled={total === 0 && extra.length === 0}
         >
           Copy
         </button>
@@ -279,8 +298,9 @@ export default function DeckLab({ onClose }: DeckLabProps) {
           onClick={() => {
             sfx.click();
             setDeck({});
+            setExtra([]);
           }}
-          disabled={total === 0}
+          disabled={total === 0 && extra.length === 0}
         >
           Clear
         </button>
@@ -363,6 +383,30 @@ export default function DeckLab({ onClose }: DeckLabProps) {
           </>
         )}
 
+        {/* The Extra Deck, kept apart because it is a different list on a
+            duelist and putting one of these in a main deck is not a deck. One
+            of each, so these toggle rather than count. */}
+        {extra.length > 0 && (
+          <>
+            <p className="sticky top-0 z-10 bg-ink/95 py-1 font-display text-[10px] uppercase tracking-widest text-brass">
+              The Extra Deck · {extra.length}
+            </p>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5 pb-3">
+              {deckOrder(extra).map((slug) => (
+                <Tile
+                  key={`x-${slug}`}
+                  slug={slug}
+                  count={1}
+                  card={instances.get(slug)!}
+                  onAdd={toggleExtra}
+                  onDrop={toggleExtra}
+                  onRead={(s) => setInspect(instances.get(s) ?? null)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         <p className="sticky top-0 z-10 bg-ink/95 py-1 font-display text-[10px] uppercase tracking-widest text-brass">
           Every card · {shelf.length}
           {query.trim() || filter !== 'all' ? ` of ${POOL.length}` : ''}
@@ -384,11 +428,32 @@ export default function DeckLab({ onClose }: DeckLabProps) {
             ))}
           </div>
         )}
+
+        {extraShelf.length > 0 && (
+          <>
+            <p className="sticky top-0 z-10 bg-ink/95 py-1 font-display text-[10px] uppercase tracking-widest text-brass">
+              Extra Deck cards · {extraShelf.length}
+            </p>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5 pb-3">
+              {extraShelf.map((slug) => (
+                <Tile
+                  key={`xp-${slug}`}
+                  slug={slug}
+                  count={inExtra.has(slug) ? 1 : 0}
+                  card={instances.get(slug)!}
+                  onAdd={toggleExtra}
+                  onDrop={toggleExtra}
+                  onRead={(s) => setInspect(instances.get(s) ?? null)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* The text itself, always, and selectable — the clipboard is the happy
           path and this is the one that cannot fail. */}
-      {total > 0 && (
+      {(total > 0 || extra.length > 0) && (
         <details className="shrink-0">
           <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-ptextdim">
             Show the list

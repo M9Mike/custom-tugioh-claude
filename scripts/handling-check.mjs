@@ -229,11 +229,37 @@ try {
         }
       }
 
-      /* ---- surprise me, three times ---- */
-      for (let i = 1; i <= 3; i++) {
-        await page.locator('button:has-text("Surprise me")').tap();
+      /*
+       * ---- through the duelists on offer ----
+       *
+       * This used to tap "Surprise me" three times, and that button has not
+       * existed since the roster stopped being nine generic bodies and became
+       * finished characters whose textures cannot be recoloured — the tint
+       * swatches, the stature slider and the roll all came out together. The
+       * check went on waiting for it and timed out, but only ever when the
+       * save happened to be sitting *at* the booth, which is why it went
+       * unnoticed: with a character already bound this whole branch is
+       * skipped, and that is the state a laptop is usually in.
+       *
+       * What is worth photographing now is the thing the booth actually does:
+       * change the duelist and see the model swap. Each one in turn, however
+       * many there are.
+       */
+      /* `data-pick` is `group:key` and the group is the slugged row label —
+         "Duelist" — which the component put there precisely so a driving
+         script survives a wording change to the visible text. */
+      const duelists = page.locator('button[data-pick^="duelist:"]');
+      const howMany = await duelists.count();
+      for (let i = 0; i < Math.min(howMany, 4); i++) {
+        await duelists.nth(i).tap();
         await page.waitForTimeout(900);
-        await shot(`booth-surprise-${i}`);
+        await shot(`booth-duelist-${i + 1}`);
+      }
+      if (howMany === 0) {
+        /* Not a hard failure — it photographs what is there and a reader looks
+           at the strip — but it must say so, or a silent skip reads as a pass
+           for a booth that no longer has a way to choose anybody. */
+        console.log('  ! no duelist buttons found in the booth — has the picker changed again?');
       }
 
       /* ---- the confirmation, opened and dismissed ---- */
@@ -265,7 +291,15 @@ try {
         await page.locator('button:has-text("Bind")').last().tap();
         await page.waitForTimeout(2500);
         await shot('deck-open');
-        const cards = page.locator('main button[aria-pressed]');
+        /*
+         * The cards, by the attribute the builder puts on them for exactly
+         * this — not by `aria-pressed`, which the filter and sort buttons
+         * carry too. Tapping those first narrowed the Trunk to one kind and
+         * then there were not twenty-five buttons left to tap, so this timed
+         * out on the eleventh with a message about a locator rather than
+         * about a filter.
+         */
+        const cards = page.locator('main button[data-move]');
         for (let i = 0; i < 25; i++) {
           await cards.nth(i).scrollIntoViewIfNeeded();
           await cards.nth(i).tap();

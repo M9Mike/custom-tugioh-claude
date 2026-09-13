@@ -230,7 +230,27 @@ const STAGE_MARKERS = [
  */
 async function stage(page, expect) {
   let last = 'unknown';
-  for (let i = 0; i < 80; i++) {
+  /*
+   * A minute, not twenty seconds.
+   *
+   * The last assertion in this file — signing back in after a delete lands on
+   * the booth — failed four runs in eight and passed the other four, on
+   * identical code, and it was the *only* thing that ever failed. Driven by
+   * hand the same step is instant: tap, `/api/story/login` answers 200 with a
+   * profile carrying no character, the booth appears. So the screen was not
+   * missing, it was late, and twenty seconds was the whole of the fault.
+   *
+   * Late because of what the booth now is. It builds a 3D preview of the first
+   * duelist on the roster, and that roster's models have grown — the newest is
+   * eight and a half megabytes — so at the end of a run that has already built
+   * the world twice, on a headless renderer doing it all in software, the
+   * first frame can be half a minute away.
+   *
+   * Raised with the evidence rather than until it went green: three runs at
+   * sixty seconds, three passes, and the number that mattered was measured
+   * first. A screen that never arrives still fails, a minute later.
+   */
+  for (let i = 0; i < 240; i++) {
     for (const [name, selector] of STAGE_MARKERS) {
       if (await page.locator(selector).first().isVisible().catch(() => false)) {
         last = name;

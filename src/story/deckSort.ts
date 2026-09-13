@@ -220,7 +220,22 @@ export function searchCards(slugs: readonly string[], query: string): string[] {
       c.name.toLowerCase().includes(q) ||
       (c.type ?? '').toLowerCase().includes(q) ||
       (c.attribute ?? '').toLowerCase().includes(q) ||
-      c.kind.toLowerCase().includes(q)
+      c.kind.toLowerCase().includes(q) ||
+      /*
+       * And what the card *does*, which is how anybody actually looks for a
+       * card they have not memorised.
+       *
+       * Type "obelisk" and Millennium Seeker comes back, because fetching
+       * Obelisk is the whole of what it is for — and a search that knew the
+       * name and not the text could not find the one card in the game that
+       * searches for the card you typed. The same is true of "graveyard",
+       * "tribute" and "destroy": the deck you are building is a set of
+       * behaviours, and the behaviour is in here.
+       *
+       * The player's Trunk gets it too, deliberately — one rule rather than a
+       * search that means different things on two screens.
+       */
+      (c.text ?? '').toLowerCase().includes(q)
     );
   });
 }
