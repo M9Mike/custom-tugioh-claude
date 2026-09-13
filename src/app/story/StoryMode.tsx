@@ -22,6 +22,7 @@ import { RESUME_KEY } from '@/lib/staleBuild';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import DeckBuilder from '@/components/story/DeckBuilder';
+import DeckLab from '@/components/story/DeckLab';
 import PackOpening from '@/components/story/PackOpening';
 import Shop from '@/components/story/Shop';
 import { shopStock } from '@/story/shop';
@@ -53,6 +54,15 @@ export default function StoryMode() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The deck bench, open on the sign-in screen and nowhere else.
+   *
+   * Behind the same gate as the world and for the same reason — it is only
+   * useful to whoever is writing the game — but it is *not* a stage: the world
+   * is never built, no profile is set, nothing is saved, and closing it comes
+   * straight back to this screen with the name still typed.
+   */
+  const [labOpen, setLabOpen] = useState(false);
   const [profile, setProfile] = useState<StoryProfile | null>(null);
   const [screen, setScreen] = useState<Screen | null>(null);
   /**
@@ -187,6 +197,32 @@ export default function StoryMode() {
     try { window.localStorage.removeItem(MIRROR); } catch { /* private browsing */ }
     setProfile(res.data.profile);
     setScreen(res.data.stage);
+  };
+
+  /**
+   * The same door as Story Mode, opening on a different room.
+   *
+   * The gate is the server's, not a name checked twice: `/api/story/login` is
+   * what decides who is admitted, so asking it is the only way to be sure this
+   * screen and that one agree. What is thrown away is the answer — the profile
+   * and the stage are not set, so no world is built and nothing is resumed.
+   */
+  const openLab = async () => {
+    if (signingIn.current) return;
+    signingIn.current = true;
+    setBusy(true);
+    setError(null);
+    primeAudio();
+    sfx.click();
+    const res = await post<{ profile: StoryProfile; stage: StoryStage }>('/api/story/login', { username: name });
+    setBusy(false);
+    signingIn.current = false;
+    if (!res.ok) {
+      sfx.error();
+      setError(res.error);
+      return;
+    }
+    setLabOpen(true);
   };
 
   useEffect(() => {
@@ -503,6 +539,9 @@ export default function StoryMode() {
   /* ---------------- sign in ---------------- */
 
   if (!profile || !screen) {
+    /* The bench sits in front of the sign-in rather than replacing it: closing
+       it comes back here with the name still in the box. */
+    if (labOpen) return <DeckLab onClose={() => setLabOpen(false)} />;
     /* Coming back from a duel is not a visit: no card, no question, until the
        sign-in has actually failed and the name is a question again. */
     if ((returned || walkingBack) && !error) return <Waiting line="Walking back in" />;
@@ -544,6 +583,16 @@ export default function StoryMode() {
             disabled={busy || !ready || !name.trim()}
           >
             {!ready ? 'Waking the arena…' : busy ? 'Signing in…' : 'Enter Story Mode'}
+          </button>
+
+          {/* The bench. Same gate, no world: it is for building a deck to hand
+              to somebody who is not you. */}
+          <button
+            className="btn mt-2 w-full rounded px-4 py-2.5 text-xs"
+            onClick={() => void openLab()}
+            disabled={busy || !ready || !name.trim()}
+          >
+            Deck Lab
           </button>
 
           {error && (
