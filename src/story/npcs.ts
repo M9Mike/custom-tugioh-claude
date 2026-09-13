@@ -257,7 +257,83 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
     ],
     choices: [
       { label: 'What have you got for sale?', to: 'greet', shop: true },
+      { label: 'Will you play me?', to: 'offer' },
       { label: 'I will go and duel, then.', to: null },
+    ],
+  },
+
+  /*
+   * The one fixture in the game that is not about winning something.
+   *
+   * He says the terms out loud — no cards — because every other duelist in the
+   * city hands over a pack when they lose, and a player who beat the hardest
+   * deck in the game and got nothing would reasonably think it was broken.
+   * What he does not do is quote the hundred: the money is a thing that happens
+   * when it happens, in his hand, in his own words.
+   */
+  offer: {
+    lines: [
+      'Me? I am eighty and I run a shop.',
+      'But yes. Sit down.',
+      'I will tell you what you are getting into, because it is not what the others offer you. You beat Tony out there and he gives you his cards. You beat me and you get nothing out of my deck — not one of them, not ever. I have had some of these a very long time.',
+      'What you get is the practice. I play the hardest deck you are going to meet for a long while, and I will not go easy, and you can come back tomorrow and lose to it again. That is worth more than a card.',
+    ],
+    choices: [
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Then let us duel.', to: 'beaten', duel: true },
+      { label: 'Maybe when I am better.', to: 'later' },
+    ],
+  },
+
+  /* He tells you exactly what is coming, which is both in character and the
+     fairest thing in the game: the deck takes your monsters and tributes them,
+     so a player who leaves a big one on the board has been warned. */
+  style: {
+    lines: [
+      'Three gods, and no honest way of paying for them.',
+      'A god wants two monsters on the table to be summoned, and I am an old man with a shop — I do not have two monsters. So I take yours. I borrow, I swap, I buy the thing you were so pleased with, and then I feed it to something older than both of us.',
+      'It is not clever. It has been working since 1987.',
+    ],
+    choices: [
+      { label: 'Then let us duel.', to: 'beaten', duel: true },
+      { label: 'I will think about it.', to: null },
+    ],
+  },
+
+  later: {
+    lines: [
+      'Sensible. I will be here — I am always here.',
+    ],
+    choices: [],
+  },
+
+  /* The player won. He pays, and the payment is the line rather than a number
+     on a card: what the save actually does is `BOUNTY.solomon`. */
+  beaten: {
+    lines: [
+      'Well.',
+      'Well, well, well.',
+      'Here. Take it — out of the till, and do not tell my grandson what I keep in there. You earned it off the three of them and there is not a person in this city who would believe me.',
+      'Come back and do it again, {name}. I would like to see whether that was you or whether that was the draw.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'I will spend this first.', to: 'greet', shop: true },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  /* The player lost. One thing to fix, said plainly, because the whole point of
+     this fixture is the next attempt. */
+  won: {
+    lines: [
+      'There it is.',
+      'You left something big out where I could reach it, and I thanked you for it. That is the whole trick, and knowing it is most of beating it.',
+      'Do not put your best monster down because you are proud of it. Put it down because I cannot answer it. Go on — again when you are ready.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'Let me think about that.', to: null },
     ],
   },
 };
@@ -885,6 +961,12 @@ export const WORLD_NPCS: WorldNpc[] = [
        customer would reasonably stand. */
     range: 3.4,
     start: 'greet',
+    /*
+     * The hardest fixture in the game, behind the shop counter from the first
+     * minute — and the only one that pays no cards. See `KEEPS_THEIR_CARDS` and
+     * `BOUNTY` in `story/shop.ts`: his deck is not a prize, his till is.
+     */
+    duel: { opponentId: 'solomon', won: 'beaten', lost: 'won' },
     script: GRANDPA_SCRIPT,
   },
   ...STREET,

@@ -12501,11 +12501,12 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
      land in the same place for the same reason.
 
      The list is hand-written and has to be added to when a Domino City NPC
-     gets a deck — Isha was the third, and this pin went red the moment she
-     landed, which is the pin doing its job rather than a fault in her. */
+     gets a deck — Isha was the third and Solomon the fourth, and this pin went
+     red the moment each of them landed, which is the pin doing its job rather
+     than a fault in them. */
   {
     const order = DUELISTS.map((x) => x.id);
-    const NPCS = ['tony', 'sarah', 'isha'];
+    const NPCS = ['tony', 'sarah', 'isha', 'solomon'];
     const npcAt = NPCS.map((id) => order.indexOf(id));
     ok(npcAt.every((i) => i >= 0), 'ROSTER: the city duelists are on it', npcAt.join(','));
     const firstNpc = Math.min(...npcAt);

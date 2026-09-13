@@ -1820,6 +1820,103 @@
           1
         ]
       ]
+    },
+    {
+      "id": "solomon",
+      "name": "Solomon Muto",
+      "epithet": "Borrowed Tributes",
+      "quote": "I have been doing this since before your father could hold a card.",
+      "accent": "#8a5a2b",
+      "accent2": "#e8dfc9",
+      "emblem": "Obelisk the Tormentor",
+      "strategy": "Takes your monsters and tributes them for a God. Very little of what he summons was ever his.",
+      "extra": [],
+      "deck": [
+        [
+          "Obelisk the Tormentor",
+          1
+        ],
+        [
+          "Slifer the Sky Dragon",
+          1
+        ],
+        [
+          "The Winged Dragon of Ra",
+          1
+        ],
+        [
+          "Millennium Seeker",
+          3
+        ],
+        [
+          "Viser Des",
+          3
+        ],
+        [
+          "Big Shield Gardna",
+          1
+        ],
+        [
+          "Brain Control",
+          1
+        ],
+        [
+          "Card of Sanctity",
+          1
+        ],
+        [
+          "Change of Heart",
+          1
+        ],
+        [
+          "Enemy Controller",
+          1
+        ],
+        [
+          "Harpie's Feather Duster",
+          1
+        ],
+        [
+          "Millennium Ankh",
+          1
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Multiply",
+          1
+        ],
+        [
+          "Pot of Greed",
+          1
+        ],
+        [
+          "Snatch Steal",
+          1
+        ],
+        [
+          "Soul Exchange",
+          1
+        ],
+        [
+          "Swords of Revealing Light",
+          1
+        ],
+        [
+          "Call of the Haunted",
+          1
+        ],
+        [
+          "Metal Reflect Slime",
+          1
+        ],
+        [
+          "Statue of the Wicked",
+          1
+        ]
+      ]
     }
   ]
 }

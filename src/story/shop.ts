@@ -36,11 +36,46 @@ import type { StoryProfile } from './profile';
 export const BOUNTY: Record<string, number> = {
   tony: 1,
   sarah: 1,
+  /*
+   * A hundred, against the one and two the street pays, and it is not a
+   * difficulty curve — it is the only money in the game that is not a share of
+   * somebody's cards.
+   *
+   * Beating Tony pays a dollar and his deck; beating Solomon pays a hundred and
+   * nothing else, because he keeps his cards (see `KEEPS_THEIR_CARDS`). The
+   * number is what makes the fixture worth walking back to when the prize is
+   * not a pack, and it is his money rather than his collection, which is the
+   * right way round for a man who owns a shop.
+   */
+  solomon: 100,
 };
 
 /** What beating this duelist pays. Zero for anyone not on the list. */
 export function bountyFor(duelistId: string): number {
   return BOUNTY[duelistId] ?? 0;
+}
+
+/**
+ * Who keeps their cards when they lose.
+ *
+ * Every other duelist in this game hands over a pack of their own deck when
+ * they are beaten, which is how a collection grows. Solomon does not, and it is
+ * a fact about the fixture rather than a balance lever: duelling him is
+ * *practice against the best*, and a practice partner who paid you in cards
+ * every time would be the shortest route to owning the game rather than a hard
+ * match you go back to. He pays in money instead, out of his own till.
+ *
+ * A set rather than a flag on the duelist record, and in this file rather than
+ * in `decklists.json`, for the same reason `BOUNTY` is here: what a win is
+ * *worth* is the shop's business, and the decklist should stay a list of cards
+ * that anybody can rewrite without changing what beating him does. Mike is
+ * going to change Solomon's deck entirely, more than once.
+ */
+export const KEEPS_THEIR_CARDS = new Set<string>(['solomon']);
+
+/** Does beating this duelist hand over a pack of their deck? */
+export function givesAPack(duelistId: string): boolean {
+  return !KEEPS_THEIR_CARDS.has(duelistId);
 }
 
 export interface ShopItem {

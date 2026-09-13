@@ -4,7 +4,7 @@ import { claimStoryPack } from '@/server/rooms';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 import { openPack } from '@/story/packs';
-import { bountyFor } from '@/story/shop';
+import { bountyFor, givesAPack } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -75,12 +75,27 @@ export async function POST(req: Request) {
        * room, right seat, duel actually finished, this seat actually won — and
        * cannot be minted by asking nicely.
        */
+      /*
+       * And one of them pays no cards at all.
+       *
+       * Solomon keeps his — see `KEEPS_THEIR_CARDS`. Decided on the server off
+       * the duelist the *room* recorded, with everything the claim has already
+       * proved behind it, rather than on the client: a reward the client can
+       * describe is a reward the client can ask for.
+       *
+       * The claim is still made and the room is still marked, so a win against
+       * him settles exactly once like any other and cannot be replayed for the
+       * money. What changes is only what goes into `packs`, and an empty hand
+       * needs no special case downstream: the effect that opens packs runs on
+       * whatever is there, and nothing is there.
+       */
       const paid = bountyFor(duelistId);
+      const pack = givesAPack(duelistId);
       const result = await updateProfile(canonical, (profile) => ({
         ok: true,
         profile: {
           ...profile,
-          packs: [...profile.packs, duelistId],
+          packs: pack ? [...profile.packs, duelistId] : profile.packs,
           money: (profile.money ?? 0) + paid,
         },
       }));
@@ -91,6 +106,7 @@ export async function POST(req: Request) {
         ok: true,
         awarded: true,
         duelistId,
+        pack,
         paid,
         profile: result.profile,
         stage: stageFor(result.profile),
