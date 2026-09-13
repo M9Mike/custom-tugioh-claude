@@ -195,6 +195,36 @@ the treads came up past four metres. `footing` is satisfied by *a* floor and
 both of these are floors. Cut a platform where the thing above it stops, and
 give a mass you can walk under a floor of its own or no floor at all.
 
+**The map is a projection, not a picture.** `Menu → Map` draws every area from
+its own `bounds` through its own `world` offset and every doorway from the
+doors' own `seam`, deduplicated across the two sides. So it gains the next area
+the day that area lands, with nobody remembering to redraw anything — and it
+disagrees *visibly* when the city does: two areas overlapping where they should
+not is a wrong rectangle, and a door whose two sides have stopped agreeing is
+two dots where there should be one. Open it after any area work. Tapping it to
+teleport is scaffolding and is one prop; the drawing does not depend on it.
+
+**A record is where somebody starts.** An NPC's `x`/`z` was read in three
+places — the turn-to-face, the talk range, and the cylinder you are pushed out
+of — and the moment one of them can walk, all three are reading the wrong
+thing. A roamer carries a live position; a route is there and back along a path
+of at least two points, because a loop's last leg is the jump from the end to
+the start and that jump is the character walking through everything between.
+They stop when you are close enough to be noticed, or you cannot talk to them.
+A `spirit` has no collision cylinder at all, which is the only reason a route
+may run down the middle of an avenue: a *moving* cylinder can shove the player
+off a terrace.
+
+**A model may be rigged and carry no animation.** A `sculpt` has no skeleton
+and can never move; the rest ship Idle, Walk and Run; a UniRig export has the
+bones and none of the clips. `premadeRig` needs no telling — it looks for an
+`Idle`, finds none, and gives the root the breath and step-rise the unrigged
+cast gets, which on a drifting spirit is the right motion rather than a
+fallback. `still: true` on the model record is for `npm run premade`, which
+otherwise reads one decision as three faults; the audit still demands the
+skeleton, and it checks a `still` model has *no* clips, so the word cannot rot.
+Put clips in the file and delete the word.
+
 **A floor nobody can reach is a floor nobody has looked at.** All twenty-two of
 Domino High's vantages were on the ground, because a save carries x, z and a
 facing but no floor and an upstairs vantage photographs the room underneath it.
@@ -347,7 +377,13 @@ fail. `npm run seams -- <area> --shots` and `npm run walls -- <area>
   one route that "never finished building" — a different route each time. A
   check that fails somewhere new every run is the instrument, not the world;
   each route gets its own context now. When a failure moves, suspect the
-  harness before the geometry.
+  harness before the geometry — and before the harness, suspect the *machine*.
+  `npm run soak` failed four runs running, at four different doors, while a
+  second session on this laptop held a headless Chromium at 900%; the tell was
+  that `grandpa-shop`, which nothing had touched, was sampling at 730 ms
+  against a 330 ms baseline. A world that got slower in an area you did not
+  edit is not your world getting slower. Check `uptime` and `ps` before you
+  read a fault list, and do not run two browser checks on one machine.
 
 ## Where things live
 
