@@ -36,6 +36,7 @@ import {
   standingOn,
   cameraReach,
 } from '@/story/areas';
+import WorldMap from './WorldMap';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
 import { setShadowQuality } from './world/sky';
@@ -152,6 +153,20 @@ async function copyText(text: string): Promise<boolean> {
 
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  /**
+   * Put the duelist anywhere in the city, including in another area.
+   *
+   * `window.__teleport` is the checks' hook and stays in one area on purpose;
+   * this is the app's, and it is the same thing a door does — swap the area,
+   * set the position, let the floor and the camera catch up on the next frame.
+   * Held in a ref because `enter` lives inside the effect that owns the scene
+   * and React cannot see in there.
+   */
+  const warpRef = useRef<((to: AreaId, x: number, z: number) => void) | null>(null);
+  /* Redrawn only while the map is open: this is where the marker comes from,
+     and a position that updates every frame would re-render the world. */
+  const [mapAt, setMapAt] = useState<{ area: AreaId; x: number; z: number } | null>(null);
   /*
    * Whether there is a keyboard to mention.
    *
@@ -782,6 +797,36 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          */
         groundY = floorNear(area, x, z, groundY);
       };
+    /*
+     * The map's way in: the same move a door makes, to anywhere in the city.
+     *
+     * Position first, `enter` second. `enter` budgets the lamps from where the
+     * duelist is standing as the area opens — fourteen of them, chosen by
+     * distance — so setting the position afterwards would light the fourteen
+     * nearest wherever she *was*, and the shader key is the count rather than
+     * the choice, so it would look wrong for a frame and cost nothing to get
+     * right.
+     *
+     * `standingOn` rather than `floorNear`: arriving somewhere is the question
+     * a spawn asks, not the one a step asks, and the height she was at in the
+     * area she has just left means nothing here.
+     */
+    warpRef.current = (to, x, z) => {
+      here.current.x = x;
+      here.current.z = z;
+      if (to !== areaRef.current) enter(to);
+      const fixed = settle(area, x, z, PLAYER_RADIUS);
+      here.current.x = fixed.x;
+      here.current.z = fixed.z;
+      groundY = standingOn(area, fixed.x, fixed.z);
+      /* Facing kept, camera put back behind it: arriving looking at the back
+         of your own head is what an unturned camera gives you. */
+      heading = here.current.facing;
+      camYaw = here.current.facing + Math.PI;
+      camPitch = 0.28;
+      crossing = null;
+    };
+
     /* 0 walking, 1 talking; eased, and read by the camera below. */
     let talkBlend = 0;
     let raf = 0;
@@ -1725,6 +1770,20 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             >
               Edit Deck
             </button>
+            {/* Read off the refs at the moment it opens, not subscribed to:
+                the duelist's position changes sixty times a second and the map
+                only needs to know where she was when you asked for it. */}
+            <button
+              className="btn mb-1.5 w-full rounded px-3 py-2 text-[11px]"
+              onClick={() => {
+                sfx.click();
+                setMapAt({ area: areaRef.current, x: here.current.x, z: here.current.z });
+                setMenuOpen(false);
+                setMapOpen(true);
+              }}
+            >
+              Map
+            </button>
             <button className="btn mb-1.5 w-full rounded px-3 py-2 text-[11px]" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -1754,6 +1813,21 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           </div>
         )}
       </div>
+
+      {mapOpen && mapAt && (
+        <WorldMap
+          at={mapAt}
+          onGo={(to, x, z) => {
+            sfx.click();
+            warpRef.current?.(to, x, z);
+            setMapOpen(false);
+          }}
+          onClose={() => {
+            sfx.click();
+            setMapOpen(false);
+          }}
+        />
+      )}
 
       {askingDelete === 'warn' && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-5">
