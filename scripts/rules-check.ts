@@ -13480,6 +13480,103 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     ok(!fell.players[ME].hand.some((c) => c.slug === 'winged-kuriboh'),
       'KURI: CONTROL: but a death on the field is a death',
       fell.players[ME].hand.map((c) => c.slug).join(',') || '(empty)');
+    /* And the blow that killed it is stopped by the wall that killing it
+       raised. The damage step runs before the destruction, so this swing was
+       billed in full and only the swings behind it were ever stopped —
+       reported as "even when it's destroyed the player should not take damage,
+       not just afterwards". 4000 against a 3000 into a 300. */
+    ok(fell.players[ME].lp === 4000,
+      'KURI: and the blow that killed it costs nothing', `LP ${fell.players[ME].lp}`);
+  }
+
+  /* --- The wall the little one's death raises stands over that blow too --- */
+  {
+    /* The swings behind it, which always worked, and the one through it, which
+       did not. One board, two attacks. */
+    const s = jaden();
+    s.phase = 'battle';
+    s.active = FOE;
+    const kuri = card(ME, 'winged-kuriboh'); // 300
+    kuri.summonedOnTurn = 0;
+    s.players[ME].monsters = [kuri, null, null];
+    const big = card(FOE, 'blue-eyes-white-dragon'); // 3000
+    big.summonedOnTurn = 0;
+    const ox = card(FOE, 'battle-ox'); // 1700
+    ox.summonedOnTurn = 0;
+    s.players[FOE].monsters = [big, ox, null];
+    let out = act(s, FOE, { type: 'attack', uid: big.uid, targetUid: kuri.uid });
+    ok(out.players[ME].lp === 4000, 'SHIELD: the swing that broke it is billed to nobody', `LP ${out.players[ME].lp}`);
+    ok(!out.players[ME].monsters.some((m) => m?.uid === kuri.uid),
+      'SHIELD: CONTROL: and it really did die for it',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    out = act(out, FOE, { type: 'attack', uid: ox.uid, targetUid: null });
+    ok(out.players[ME].lp === 4000, 'SHIELD: and the swing behind it as well', `LP ${out.players[ME].lp}`);
+
+    /* The case the card is held for: the blow that would have ended the duel.
+       A refund after the fact cannot save this one — the damage lands, the
+       Life Points hit nothing, and the duel is over before the death that was
+       supposed to stop it has fired. So the wall goes up first. */
+    const edge = jaden();
+    edge.phase = 'battle';
+    edge.active = FOE;
+    edge.players[ME].lp = 200;
+    const last = card(ME, 'winged-kuriboh');
+    last.summonedOnTurn = 0;
+    edge.players[ME].monsters = [last, null, null];
+    const killer2 = card(FOE, 'blue-eyes-white-dragon');
+    killer2.summonedOnTurn = 0;
+    edge.players[FOE].monsters = [killer2, null, null];
+    const saved = act(edge, FOE, { type: 'attack', uid: killer2.uid, targetUid: last.uid });
+    ok(saved.players[ME].lp === 200 && !saved.winner,
+      'SHIELD: it stands in front of the blow that would have ended the duel',
+      `LP ${saved.players[ME].lp}, winner ${saved.winner ?? '(none)'}`);
+
+    /* Set face-down and broken through: piercing damage is battle damage. */
+    const pierced = jaden();
+    pierced.phase = 'battle';
+    pierced.active = FOE;
+    const hidden = card(ME, 'winged-kuriboh');
+    hidden.summonedOnTurn = 0;
+    hidden.face = 'down';
+    hidden.position = 'def';
+    pierced.players[ME].monsters = [hidden, null, null];
+    const skull = card(FOE, 'summoned-skull'); // 2500, and it pierces
+    skull.summonedOnTurn = 0;
+    pierced.players[FOE].monsters = [skull, null, null];
+    const through = act(pierced, FOE, { type: 'attack', uid: skull.uid, targetUid: hidden.uid });
+    ok(through.players[ME].lp === 4000, 'SHIELD: a pierce through the card back costs nothing either',
+      `LP ${through.players[ME].lp}`);
+    ok(!through.players[ME].monsters.some((m) => m?.uid === hidden.uid),
+      'SHIELD: CONTROL: and that one died too');
+
+    /* And going forward: it runs into something bigger and dies to it, and the
+       difference it walked into is covered by the same wall. */
+    const forward = jaden();
+    forward.phase = 'battle';
+    forward.active = ME;
+    const brave = card(ME, 'winged-kuriboh');
+    brave.summonedOnTurn = 0;
+    forward.players[ME].monsters = [brave, null, null];
+    const wall = card(FOE, 'blue-eyes-white-dragon');
+    wall.summonedOnTurn = 0;
+    forward.players[FOE].monsters = [wall, null, null];
+    const ran = act(forward, ME, { type: 'attack', uid: brave.uid, targetUid: wall.uid });
+    ok(ran.players[ME].lp === 4000, 'SHIELD: and the one it runs into going forward', `LP ${ran.players[ME].lp}`);
+
+    /* CONTROL: an ordinary body raises nothing, and is billed in full. */
+    const plain = jaden();
+    plain.phase = 'battle';
+    plain.active = FOE;
+    const body = card(ME, 'elemental-hero-avian'); // 1000
+    body.summonedOnTurn = 0;
+    plain.players[ME].monsters = [body, null, null];
+    const killer3 = card(FOE, 'blue-eyes-white-dragon');
+    killer3.summonedOnTurn = 0;
+    plain.players[FOE].monsters = [killer3, null, null];
+    const billed = act(plain, FOE, { type: 'attack', uid: killer3.uid, targetUid: body.uid });
+    ok(billed.players[ME].lp === 4000 - 2000,
+      'SHIELD: CONTROL: a body with no such clause is billed for every point',
+      `LP ${billed.players[ME].lp}`);
   }
 
   {

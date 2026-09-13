@@ -3126,8 +3126,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         break;
       case 'preventBattleDamage':
         for (const pid of sideToPlayers(ctx, op.who)) {
+          /* Said once. Winged Kuriboh's wall goes up a moment before its own
+             death trigger runs it — see `shieldTheDoomed` — so announcing it
+             again here told the player the same thing twice, the second time
+             after the blow it had already stopped. */
+          const standing = state.ongoing.some((o) => o.kind === 'preventBattleDamage' && o.target === pid);
           addOngoing(state, 'preventBattleDamage', pid, op.duration === 'permanent' ? 99 : 1, ctx.source.slug);
-          log(state, `${state.players[pid].name} is shielded from battle damage.`, 'effect', pid);
+          if (!standing) log(state, `${state.players[pid].name} is shielded from battle damage.`, 'effect', pid);
         }
         break;
       case 'skipDraw':
@@ -4644,6 +4649,39 @@ function resolveBattleInner(state: DuelState) {
     fireTriggers(state, dealer, side, 'onDealBattleDamage', { attackerUid: dealer.uid });
   };
 
+  /**
+   * A wall that a death raises stands in time for the blow that raised it.
+   *
+   * Winged Kuriboh closes the turn to battle damage when it is destroyed in
+   * battle, and the damage step runs before the destruction does — so the swing
+   * that killed it was billed in full and only the swings behind it were
+   * stopped. Reported: "even when it's destroyed the player should not take
+   * damage, not just afterwards."
+   *
+   * Raised *before* the blow rather than refunded after it, because a refund
+   * arrives too late for the player the blow would have finished — and being
+   * finished by the swing the little one threw itself in front of is precisely
+   * the thing the card exists to stop. `addOngoing` folds this into the shield
+   * the death itself puts up a moment later, so the two are one wall.
+   *
+   * Asked of the card's own effects rather than by name, so a monster written
+   * later with the same clause inherits it — and only of a shield it raises
+   * over its *own* controller, because a card that shields the other player on
+   * its death is not standing between this blow and the player taking it.
+   * Asked of `shrugsOffDestruction` too: a monster that is not going to die
+   * raises nothing.
+   */
+  const shieldTheDoomed = (doomed: CardInstance, side: PlayerId) => {
+    const raises = (CARDS[doomed.slug]?.effects ?? []).some(
+      (e) =>
+        e.trigger === 'onDestroyedByBattle' &&
+        e.ops.some((o) => o.op === 'preventBattleDamage' && o.who === 'own')
+    );
+    if (!raises || shrugsOffDestruction(state, doomed, side, true)) return;
+    addOngoing(state, 'preventBattleDamage', side, 1, doomed.slug);
+    log(state, `${displayName(state, doomed)} throws itself in front of the blow.`, 'effect', side, logSlug(doomed));
+  };
+
   /* Whether the swing broke what it was aimed at. The Phoenix Enforcer grows
      off every wall it fails to break, so "did not kill" has to be one answer
      for all four branches rather than an absence in three of them. */
@@ -4657,6 +4695,7 @@ function resolveBattleInner(state: DuelState) {
     if (atk > tAtk) {
       // Same rule as the direct swing: the trigger is about damage that landed.
       const before = state.players[defender].lp;
+      shieldTheDoomed(target, defender);
       battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tAtk), target);
       const killed = strikeDown(target, attacker, controller);
       broke = killed;
@@ -4669,6 +4708,10 @@ function resolveBattleInner(state: DuelState) {
       /* The wall wins, and is owed for it on both counts — the damage it put
          through and the body it broke. Neither was paid before. */
       const before = state.players[controller].lp;
+      /* And the same rule going the other way: the little one that runs into
+         something bigger dies to it, and the wall it raises stands over the
+         difference it just walked into. */
+      shieldTheDoomed(attacker, controller);
       battleHit(controller, tAtk - atk, attacker);
       const killed = strikeDown(attacker, target, defender);
       if (killed) paidForTheKill(target, attacker, defender, attackerAtk);
@@ -4694,6 +4737,10 @@ function resolveBattleInner(state: DuelState) {
          the destroyed monster", not "the number it was defending with". */
       const tAtk = effAtk(state, target, defender);
       const before = state.players[defender].lp;
+      /* Piercing damage is battle damage, so the wall the death raises stands
+         over it too — a Kuriboh set face-down and broken through is the same
+         card as one standing up. */
+      shieldTheDoomed(target, defender);
       if (flags.pierce) battleHit(defender, battleDamageFrom(state, attacker, controller, atk - tDef), target);
       const killed = strikeDown(target, attacker, controller);
       broke = killed;

@@ -4825,8 +4825,16 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
        thrown in front of a blow, Winged Kuriboh dies to one and closes the
        rest of the turn. So it answers the swing that killed it *and* the two
        behind it, which is exactly the card in the anime. */
+    /* "The swing that killed it" was the half that did not work: the damage
+       step runs before the destruction, so the blow that broke the little one
+       was billed in full and only the blows behind it were stopped. Reported —
+       "even when it's destroyed the player should not take damage, not just
+       afterwards" — and spelled out in the text now, because it is the half of
+       the card anybody buying it is buying. The engine raises the wall before
+       the blow rather than after: see `shieldTheDoomed`. */
     text:
-      'When this monster is destroyed by battle: you take no battle damage for the rest of this turn. ' +
+      'When this monster is destroyed by battle: you take no battle damage for the rest of this turn, ' +
+      'including from the battle that destroyed it. ' +
       'If this monster is discarded from your hand: return it to your hand.',
     cry: 'Kuri!',
     effects: [
