@@ -975,6 +975,10 @@ function resetInstance(c: CardInstance) {
   c.position = 'atk';
   c.controlRevertsOnTurn = undefined;
   c.effectUsedOnTurn = -1;
+  /* The stamp above expires the list on its own, but a body coming back from
+     the Graveyard should carry nothing of its last life at all — and a field
+     left behind is a field the next reader has to remember to distrust. */
+  c.effectsUsedOnTurn = undefined;
   c.positionChangedOnTurn = undefined;
   c.equippedTo = undefined;
   /* Cleared here and set again by the Special Summon itself, so a card that
@@ -1361,6 +1365,11 @@ interface EffectCtx {
   summoned?: string[];
   /** ATK of whatever this effect's own cost tributed, read before it left. */
   tributedAtk?: number[];
+  /** And its DEF, read in the same breath — Ra eats the whole monster, not half
+   *  of it. Recorded by the ignition road only, like its twin above. */
+  tributedDef?: number[];
+  /** What they were called, so the beat that spends them has a face to show. */
+  tributedNames?: string[];
   /** Counters the source was carrying when the effect was activated, read
       before a `tributeSelf` cost sent it to the pile and blanked it. */
   counters?: number;
@@ -1505,7 +1514,15 @@ function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
     if (!c || !matchesFilter(c, s.filter)) return [];
     if (isProtectedTarget(state, c, ctx.controller, ctx, s.piercesProtection)) {
       const ctrl = controllerOf(state, c.uid);
-      if (ctrl) log(state, `${displayName(state, c)} stands beyond that effect's reach.`, 'effect', ctrl, logSlug(c));
+      /* Said once per refusal, not once per op. Slifer's second mouth is two
+         ops aimed at the same monster — drain, then destroy what the drain
+         emptied — so a card it cannot reach printed the identical line twice in
+         a row, and Ra is the first card in the game that line ever fires for.
+         Deduped here rather than in `log`, where two identical lines are often
+         two real events. */
+      const already = state.log[state.log.length - 1]?.text;
+      const line = `${displayName(state, c)} stands beyond that effect's reach.`;
+      if (ctrl && already !== line) log(state, line, 'effect', ctrl, logSlug(c));
       return [];
     }
     return [c];
@@ -1592,6 +1609,19 @@ function isDivine(slug: string): boolean {
 }
 
 /**
+ * The sun, named once.
+ *
+ * By slug rather than by a flag on the card, because the rule it carries is
+ * hidden from the card's text on purpose — a `aboveTheOtherGods: true` sitting
+ * in the card data is an easter egg anybody reading the file trips over, and
+ * `npm run text` would then quite rightly ask why the sentence is missing.
+ */
+const RA = 'the-winged-dragon-of-ra';
+function isRa(slug: string): boolean {
+  return slug === RA;
+}
+
+/**
  * GOD CARDS ARE ABOVE EVERYTHING — the owner's decree, verbatim.
  *
  * A protection is a claim between mortals: "cannot be destroyed by battle",
@@ -1608,6 +1638,22 @@ function divineSource(ctx?: EffectCtx): boolean {
 
 /** "Untargetable" only protects against the opponent's effects — and never against a God's. */
 function isProtectedTarget(state: DuelState, c: CardInstance, actor: PlayerId, ctx?: EffectCtx, pierces = false): boolean {
+  /* And above the Gods, the sun.
+   *
+   * The decree below voids every protection against a Divine-Beast, which
+   * makes the three Gods equals — Slifer's second mouth drains Ra on the way
+   * in, Ra's God Phoenix burns Slifer off the board, and whoever moves first
+   * wins. The owner's easter egg ranks them instead: nothing another God does
+   * reaches Ra, and everything Ra does reaches them.
+   *
+   * Written nowhere on any of the three cards, deliberately. It is the kind of
+   * thing a player finds out by trying it, which is what an easter egg is for —
+   * and unlike the Special Summon clause it takes nothing away, so nobody can
+   * lose a duel to a rule they were never told.
+   *
+   * Ra is excluded as the *source* so a Ra may still burn a Ra, which is the
+   * only way this can ever come up on both sides of one table. */
+  if (ctx && isRa(c.slug) && divineSource(ctx) && !isRa(ctx.source.slug)) return true;
   if (ctx && divineSource(ctx)) return false;
   /* NO EFFECTS ON THE GODS. The decree in full: a Divine-Beast is reached by
      no card effect whatsoever — not targeted, not destroyed, not bounced, not
@@ -2058,6 +2104,36 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           /* Its own beat on the field, so the number arriving on the God is
              shown rather than inferred from the Life Points that just left. */
           anim(state, { kind: 'note', uid: t.uid, slug: t.slug, player: ctx.controller, reports: true, text: `+${spend} ATK` });
+        }
+        break;
+      }
+      /* What the cost was standing at, poured into the thing that ate it.
+         Read off the ctx rather than off the board, because the body is in the
+         Graveyard by the time an op runs — which is the whole reason the cost
+         records both numbers on its way past. */
+      case 'gainTributedStats': {
+        const atk = (ctx.tributedAtk ?? []).reduce((a, b) => a + b, 0);
+        const def = (ctx.tributedDef ?? []).reduce((a, b) => a + b, 0);
+        const eaten = (ctx.tributedNames ?? []).join(', ');
+        /* A 0/0 tributed is still a monster tributed and still a real play —
+           it has left the board and it is in the Graveyard, which is worth 300
+           to Ra on its own. So this is not `emptyHanded`: nothing failed. */
+        for (const t of resolveTargets(ctx, op.target)) {
+          if (op.duration === 'permanent') {
+            t.atkMod += atk;
+            t.defMod += def;
+          } else {
+            t.turnAtkMod += atk;
+            t.turnDefMod += def;
+          }
+          log(
+            state,
+            `${displayName(state, t)} devours ${eaten || 'the offering'} — ${effAtk(state, t, ctx.controller)} ATK / ${effDef(state, t, ctx.controller)} DEF.`,
+            'effect',
+            ctx.controller,
+            logSlug(t)
+          );
+          anim(state, { kind: 'note', uid: t.uid, slug: t.slug, player: ctx.controller, reports: true, text: `+${atk} / +${def}` });
         }
         break;
       }
@@ -4690,7 +4766,23 @@ function resolveBattleInner(state: DuelState) {
      numbers the battle was fought with and one of these bodies is about to be
      in the Graveyard. */
   const attackerAtk = effAtk(state, attacker, controller);
-  if (target.position === 'atk') {
+  /* And the other half of the easter egg: a limitless swing does not break the
+     sun.
+
+     Obelisk's Fist of Fate eats two souls and stops being a number for the
+     turn, which beats anything on the table by construction — Ra included, and
+     with the pour spent that is the whole duel gone to one button. So Ra alone
+     shrugs it off: no destruction, and its controller is billed nothing for the
+     attack. The two souls are spent either way, which is what keeps this from
+     being a free refusal.
+     Read off the flag rather than off the number, because "limitless" is a
+     thing the attacker *is*, not a threshold it happens to clear: a Ra grown
+     past `INFINITE_ATK` by eating its own board would otherwise walk out of
+     this clause by arithmetic. Nothing on any of the three cards says it. */
+  if (flags.infiniteAtk && isRa(target.slug)) {
+    log(state, `${displayName(state, target)} burns on, untouched by a limitless blow.`, 'attack', defender, logSlug(target));
+    anim(state, { kind: 'note', uid: target.uid, slug: target.slug, player: defender, reports: true, text: 'THE SUN ENDURES' });
+  } else if (target.position === 'atk') {
     const tAtk = guardAtk();
     if (atk > tAtk) {
       // Same rule as the direct swing: the trigger is about damage that landed.
@@ -6025,7 +6117,21 @@ export function ignitionOptions(
        Dragon pays a card off the top of its Deck, so both count their uses in
        ammunition, which is a harder limit than a clock. Asked per effect
        rather than at the door, because a card may carry one of each. */
-    if (eff.oncePerTurn !== false && c.effectUsedOnTurn === state.turn) return;
+    /* Once a turn per *button*, not per card. The clock was kept on the card,
+       which for as long as Obelisk was the only monster with two of them looked
+       like the rule — and was wrong about Ra the moment Ra had three: pressing
+       the God Phoenix locked out the pour, and the pour locked out the Phoenix.
+       Reported. Two clauses that each say "Once per turn:" are two limits; the
+       card whose sentence really is "either … or …" says so — see
+       `oneIgnitionPerTurn`. */
+    if (eff.oncePerTurn !== false && c.effectUsedOnTurn === state.turn) {
+      const used = c.effectsUsedOnTurn;
+      /* A stamp with no list beside it means the card is spent outright — the
+         shape this record had before it kept indices, and the shape anything
+         that sets the stamp by hand still writes. The narrower reading only
+         applies where the engine has actually recorded which button went. */
+      if (def.oneIgnitionPerTurn || !used?.length || used.includes(index)) return;
+    }
     if (!canPayCost(state, pid, eff, c.uid)) return;
     /* A condition is as much a gate as a cost, and this never asked. No ignition
        carried one until the Ultimate Dragon — which spends a Blue-Eyes out of
@@ -6628,6 +6734,15 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
          *before* the tribute, because a card in the Graveyard has no
          effective stats to read. */
       const tributedAtk: number[] = [];
+      /* And what it was defending with. Ra swallows the whole monster, so both
+         halves are read in the same breath and from the same body — a second
+         pass a line later would be reading a card that is already in the
+         Graveyard, which is the fault the note above was written for. */
+      const tributedDef: number[] = [];
+      /* The names too, so the beat can say what was eaten. A log line that
+         reads "+2400 ATK" with no face on it is the thing this file keeps
+         paying for. */
+      const tributedNames: string[] = [];
       const sourceCounters = c.counters;
       if (eff.cost?.tribute || eff.cost?.tributeSelf) {
         const fodder = tributeFodder(state, pid, eff, c.uid);
@@ -6644,13 +6759,22 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, need);
         for (const m of paying) {
           tributedAtk.push(effAtk(state, m, pid));
+          tributedDef.push(effDef(state, m, pid));
+          tributedNames.push(displayName(state, m));
           toGrave(state, m.uid, true);
         }
       }
       /* An effect that opted out of the clock does not start it either — see
          `ignitionOptions`. A card carrying one limited and one unlimited
          ignition keeps the limit on the one that has it. */
-      if (eff.oncePerTurn !== false) c.effectUsedOnTurn = state.turn;
+      if (eff.oncePerTurn !== false) {
+        /* A stale stamp means a stale list. Cleared on the way in rather than
+           at end of turn, so a card that never presses a button again is never
+           visited for it. */
+        if (c.effectUsedOnTurn !== state.turn) c.effectsUsedOnTurn = [];
+        c.effectUsedOnTurn = state.turn;
+        c.effectsUsedOnTurn = [...(c.effectsUsedOnTurn ?? []), chosen.index];
+      }
       log(state, `${p.name} activates ${def.name}'s effect!`, 'effect', pid, logSlug(c));
       /* The card's cry speaks for a card with one button. A card with two has
          two things to say, and "Obelisk — Fist of Fate!" over the effect that
@@ -6664,7 +6788,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         player: pid,
         text: oneButton ? (def.cry ?? eff.label) : (eff.label ?? def.cry),
       });
-      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk, counters: sourceCounters };
+      const ctx: EffectCtx = { state, controller: pid, source: c, targets: action.targets ?? [], cursor: 0, trig: {}, tributedAtk, tributedDef, tributedNames, counters: sourceCounters };
       runOps(ctx, eff.ops);
       return { state };
     }

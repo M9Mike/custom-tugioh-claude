@@ -13,7 +13,8 @@
  * of them was red there. A regression written after a fix, green against the
  * fix, has proven nothing yet.
  */
-import { applyAction, canAttackWith, createDuel } from '../src/game/engine';
+import { applyAction, canAttackWith, createDuel, effAtk, effDef, ignitionOptions, tributeFodder } from '../src/game/engine';
+import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
 
 const ME: PlayerId = 'p1';
@@ -339,6 +340,251 @@ console.log('\nNor is a God stolen — by the road round the back either');
   ok(on(given, ME).some((m) => m.uid === myGod.uid),
     'and a God of my own is not handed across the table either',
     on(given, FOE).map((m) => m.slug).join(',') || '(empty)');
+}
+
+/* ------------------------------------------------------------------ */
+/* Ra eats                                                             */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nThe sun feeds on its own board');
+  const RA = 'the-winged-dragon-of-ra';
+  const ra = (s: DuelState, uid: string) => s.players[ME].monsters.find((m) => m?.uid === uid)!;
+  const button = (s: DuelState, uid: string, name: RegExp) =>
+    ignitionOptions(s, ME, ra(s, uid)).find((o) => name.test(o.label));
+
+  let s = fresh();
+  const god = card(ME, RA);
+  const bull = card(ME, 'battle-ox');     // 1700 / 1000
+  const elf = card(ME, 'mystical-elf');   //  800 / 2000
+  s.players[ME].monsters = [god, bull, elf];
+  ok(effAtk(s, god, ME) === 0 && effDef(s, god, ME) === 0,
+    'RA: a Ra put down by hand stands at nothing', `${effAtk(s, god, ME)}/${effDef(s, god, ME)}`);
+
+  s = act(s, ME, { type: 'ignition', uid: god.uid, effectIndex: button(s, god.uid, /Feed the sun/)!.index, targets: [bull.uid] });
+  /* 1700 + 1000 off the Ox, and the Ox is then a monster in the Graveyard,
+     which Ra's other aura pays 300 for. Both halves, measured. */
+  ok(effAtk(s, ra(s, god.uid), ME) === 1700 + 300,
+    'RA: it swallows the Ox and stands at what the Ox was worth', String(effAtk(s, ra(s, god.uid), ME)));
+  ok(effDef(s, ra(s, god.uid), ME) === 1000,
+    'RA: and defends with what the Ox was defending with', String(effDef(s, ra(s, god.uid), ME)));
+
+  /* Unlimited. The button is still there and it still works — this is the
+     clause the owner asked for by name. */
+  const again = button(s, god.uid, /Feed the sun/);
+  ok(!!again, 'RA: and the mouth is open again in the same turn');
+  s = act(s, ME, { type: 'ignition', uid: god.uid, effectIndex: again!.index, targets: [elf.uid] });
+  ok(effAtk(s, ra(s, god.uid), ME) === 1700 + 800 + 600,
+    'RA: twice in one turn', String(effAtk(s, ra(s, god.uid), ME)));
+  ok(effDef(s, ra(s, god.uid), ME) === 1000 + 2000,
+    'RA: and both mouthfuls of DEF with it', String(effDef(s, ra(s, god.uid), ME)));
+  ok(!button(s, god.uid, /Feed the sun/),
+    'RA: CONTROL: with nothing left beside it the button is gone');
+
+  /* The easter egg: no filter, so the other two Gods are food. Everything else
+     in this game that eats bodies writes `excludeType: 'Divine-Beast'`. */
+  let feast = fresh();
+  const sun = card(ME, RA);
+  const sky = card(ME, 'slifer-the-sky-dragon');
+  const earth = card(ME, 'obelisk-the-tormentor'); // 4000 / 4000
+  feast.players[ME].monsters = [sun, sky, earth];
+  feast.players[ME].hand = [card(ME, 'kuriboh'), card(ME, 'kuriboh')]; // Slifer is 2000/2000
+  ok(effAtk(feast, sky, ME) === 2000, 'RA: Slifer stands at 2000 on a hand of two', String(effAtk(feast, sky, ME)));
+  /* Asked before it is used, so a Ra that has been given the Divine-Beast
+     filter every other eater carries reports it here rather than throwing on
+     the line below — a check that dies says less than one that answers. */
+  const menu = () => tributeFodder(feast, ME, CARDS[RA].effects.find((e) => /Feed the sun/.test(e.label ?? ''))!, sun.uid);
+  ok(menu().some((m) => m.uid === sky.uid) && menu().some((m) => m.uid === earth.uid),
+    'RA: the other two Gods are on the menu',
+    menu().map((m) => m.slug).join(',') || '(nothing)');
+  feast = act(feast, ME, { type: 'ignition', uid: sun.uid, effectIndex: button(feast, sun.uid, /Feed the sun/)!.index, targets: [sky.uid] });
+  feast = act(feast, ME, { type: 'ignition', uid: sun.uid, effectIndex: button(feast, sun.uid, /Feed the sun/)!.index, targets: [earth.uid] });
+  ok(effAtk(feast, ra(feast, sun.uid), ME) === 2000 + 4000 + 600,
+    'RA: it swallows Slifer and Obelisk both', String(effAtk(feast, ra(feast, sun.uid), ME)));
+  ok(effDef(feast, ra(feast, sun.uid), ME) === 2000 + 4000,
+    'RA: and everything they were defending with', String(effDef(feast, ra(feast, sun.uid), ME)));
+  ok(!feast.players[ME].monsters.some((m) => m?.uid === sky.uid || m?.uid === earth.uid),
+    'RA: and they are gone from the board');
+
+  /* CONTROL: Obelisk, which does carry the filter, still cannot. */
+  const barred = fresh();
+  const ob = card(ME, 'obelisk-the-tormentor');
+  barred.players[ME].monsters = [ob, card(ME, 'slifer-the-sky-dragon'), card(ME, RA)];
+  ok(ignitionOptions(barred, ME, ob).length === 0,
+    'RA: CONTROL: Obelisk beside two Gods can feed on neither',
+    ignitionOptions(barred, ME, ob).map((o) => o.label).join(',') || '(none)');
+}
+
+/* ------------------------------------------------------------------ */
+/* One clock per button                                                */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nTwo "once per turn" clauses are two limits');
+  const RA = 'the-winged-dragon-of-ra';
+  const labels = (s: DuelState, c: CardInstance) => ignitionOptions(s, ME, c).map((o) => o.label);
+
+  /* Reported: "Ra now if it activates one effect can't activate another". The
+     clock lived on the card, so any one of its three buttons spent all of
+     them. */
+  let s = fresh();
+  const god = card(ME, RA);
+  const fodder = card(ME, 'battle-ox');
+  s.players[ME].monsters = [god, fodder, null];
+  s.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+  const live = () => s.players[ME].monsters.find((m) => m?.uid === god.uid)!;
+  ok(labels(s, live()).length === 3, 'CLOCK: Ra offers all three', labels(s, live()).join(' / '));
+
+  const at = (name: RegExp) => ignitionOptions(s, ME, live()).find((o) => name.test(o.label))!;
+  s = act(s, ME, { type: 'ignition', uid: god.uid, effectIndex: at(/God Phoenix/).index });
+  ok(s.players[FOE].monsters.every((m) => !m), 'CLOCK: the Phoenix burns their field');
+  ok(labels(s, live()).length === 2, 'CLOCK: and the other two are still there',
+    labels(s, live()).join(' / ') || '(none)');
+  ok(!labels(s, live()).some((l) => /God Phoenix/.test(l)),
+    'CLOCK: CONTROL: but the Phoenix itself is spent for the turn');
+
+  s = act(s, ME, { type: 'ignition', uid: god.uid, effectIndex: at(/Feed the sun/).index, targets: [fodder.uid] });
+  ok(labels(s, live()).some((l) => /Pour everything/.test(l)),
+    'CLOCK: a third button after the other two', labels(s, live()).join(' / ') || '(none)');
+  s = act(s, ME, { type: 'ignition', uid: god.uid, effectIndex: at(/Pour everything/).index });
+  ok(s.players[ME].lp === 1, 'CLOCK: and it pours', `LP ${s.players[ME].lp}`);
+
+  /* CONTROL: Obelisk's sentence really is "either … or …", and it keeps the
+     one clock its text asks for. */
+  let ob = fresh();
+  const tormentor = card(ME, 'obelisk-the-tormentor');
+  ob.players[ME].monsters = [tormentor, card(ME, 'battle-ox'), card(ME, 'mystical-elf')];
+  const obLive = () => ob.players[ME].monsters.find((m) => m?.uid === tormentor.uid)!;
+  ok(labels(ob, obLive()).length === 2, 'CLOCK: CONTROL: Obelisk offers both of his');
+  const soul = ignitionOptions(ob, ME, obLive()).find((o) => /Soul Energy/.test(o.label))!;
+  ob = act(ob, ME, { type: 'ignition', uid: tormentor.uid, effectIndex: soul.index, targets: [ob.players[ME].monsters[1]!.uid] });
+  /* The zone the soul left, filled again before the question is asked.
+     Without it this pin proved nothing: Soul Energy eats one of the two bodies
+     beside Obelisk, the Fist of Fate wants two, and a board of one refuses it
+     on the *cost* — so the count came back 0 whether the clock was shared or
+     not, and deleting the clock left this line green. Three zones means either
+     button starves the other by construction, so the fodder is put back and
+     the only thing left standing between Obelisk and his second button is the
+     clock itself. */
+  const freed = ob.players[ME].monsters.findIndex((m) => !m);
+  ob.players[ME].monsters[freed] = card(ME, 'battle-ox');
+  ok(ignitionOptions(ob, ME, obLive()).length === 0,
+    'CLOCK: CONTROL: and pressing either spends both — "once per turn, EITHER"',
+    labels(ob, obLive()).join(' / ') || '(none)');
+}
+
+/* ------------------------------------------------------------------ */
+/* The pecking order                                                   */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nAbove the Gods, the sun');
+  const RA = 'the-winged-dragon-of-ra';
+
+  /* Slifer's second mouth drains every monster the other player Summons and
+     destroys what it empties. It reaches Ra like anything else, because the
+     decree voids protection against a Divine-Beast and Slifer is one — which
+     made the three Gods equals and the duel a race. Ra outranks them now. */
+  let s = fresh();
+  s.players[FOE].monsters = [card(FOE, 'slifer-the-sky-dragon'), null, null];
+  s.players[FOE].hand = [card(FOE, 'kuriboh'), card(FOE, 'kuriboh'), card(FOE, 'kuriboh')];
+  const god = card(ME, RA);
+  s.players[ME].hand = [god];
+  /* Three Kuribohs on purpose, so the God this pays for is a *small* one:
+     900 off the Tributes and 900 off the pile they land in is 1800, and the
+     mouth's 2000 would take it under and destroy it outright. A Ra paid for
+     with a real board survives the drain by arithmetic, which would leave the
+     line below passing on a rule that had been deleted. */
+  s.players[ME].monsters = [card(ME, 'kuriboh'), card(ME, 'kuriboh'), card(ME, 'kuriboh')];
+  const paid = s.players[ME].monsters.map((m) => m!.uid);
+  s = act(s, ME, { type: 'normalSummon', uid: god.uid, zone: 0, position: 'atk', face: 'up', tributes: paid });
+  const stands = s.players[ME].monsters.find((m) => m?.uid === god.uid);
+  ok(!!stands, 'ORDER: Slifer\'s second mouth cannot reach Ra',
+    s.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  /* Not merely alive — untouched. A God that survived at 2000 less is a God
+     the mouth reached, and "alive" alone would pass on one that was simply too
+     big to kill. 300 × 3 off the Tributes, 300 × 3 off the pile. */
+  ok(!!stands && effAtk(s, stands, ME) === 900 + 900,
+    'ORDER: and does not take 2000 off it on the way past',
+    stands ? String(effAtk(s, stands, ME)) : '(gone)');
+
+  /* CONTROL: the mouth still works on everything else, which is the half that
+     proves the pin is reading the rule rather than a broken Slifer. */
+  let c = fresh();
+  c.players[FOE].monsters = [card(FOE, 'slifer-the-sky-dragon'), null, null];
+  c.players[FOE].hand = [card(FOE, 'kuriboh')];
+  const bull = card(ME, 'battle-ox'); // 1700, and 2000 takes it under
+  c.players[ME].hand = [bull];
+  c = act(c, ME, { type: 'normalSummon', uid: bull.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(!c.players[ME].monsters.some((m) => m?.uid === bull.uid),
+    'ORDER: CONTROL: an ordinary body is drained to nothing and destroyed',
+    c.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* And the other direction: Ra's own effect reaches both of them. */
+  let burn = fresh();
+  const sun = card(ME, RA);
+  burn.players[ME].monsters = [sun, null, null];
+  burn.players[FOE].monsters = [card(FOE, 'slifer-the-sky-dragon'), card(FOE, 'obelisk-the-tormentor'), null];
+  const phoenix = ignitionOptions(burn, ME, sun).find((o) => /God Phoenix/.test(o.label))!;
+  burn = act(burn, ME, { type: 'ignition', uid: sun.uid, effectIndex: phoenix.index });
+  ok(burn.players[FOE].monsters.every((m) => !m),
+    'ORDER: and the God Phoenix burns Slifer and Obelisk off the board',
+    burn.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+}
+
+/* ------------------------------------------------------------------ */
+/* A limitless blow does not break the sun                             */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nThe Fist of Fate against Ra');
+  const RA = 'the-winged-dragon-of-ra';
+  const fistInto = (victim: CardInstance) => {
+    let s = fresh('main');
+    s.active = FOE;
+    const ob = card(FOE, 'obelisk-the-tormentor');
+    s.players[FOE].monsters = [ob, card(FOE, 'kuriboh'), card(FOE, 'battle-ox')];
+    s.players[ME].monsters = [victim, null, null];
+    /* Read off the board rather than written down: this file's `fresh` does not
+       touch Life Points, so a number in the assertion would be a pin about the
+       starting total and not about the Fist. */
+    const before = s.players[ME].lp;
+    const fist = ignitionOptions(s, FOE, ob).find((o) => /Fist of Fate/.test(o.label))!;
+    s = act(s, FOE, {
+      type: 'ignition', uid: ob.uid, effectIndex: fist.index,
+      targets: [s.players[FOE].monsters[1]!.uid, s.players[FOE].monsters[2]!.uid],
+    });
+    s = act(s, FOE, { type: 'toPhase', phase: 'battle' });
+    return { before, after: act(s, FOE, { type: 'attack', uid: ob.uid, targetUid: victim.uid }) };
+  };
+
+  const sun = card(ME, RA);
+  sun.atkMod = 3000;
+  const { before: sunLp, after: held } = fistInto(sun);
+  ok(held.players[ME].monsters.some((m) => m?.uid === sun.uid),
+    'FIST: a limitless swing does not destroy Ra',
+    held.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(held.players[ME].lp === sunLp && !held.winner,
+    'FIST: and its controller is billed nothing for the attack',
+    `LP ${sunLp} -> ${held.players[ME].lp}, winner ${held.winner ?? '(none)'}`);
+
+  /* CONTROL: the Fist is still the Fist against anything else — and against a
+     body this size it is the duel, which is exactly why the sun needs the
+     clause. */
+  const mortal = card(ME, 'summoned-skull');
+  const { after: flat } = fistInto(mortal);
+  ok(!flat.players[ME].monsters.some((m) => m?.uid === mortal.uid),
+    'FIST: CONTROL: it still flattens anything that is not the sun');
+  ok(flat.winner === FOE, 'FIST: CONTROL: and takes the duel with it', flat.winner ?? '(none)');
+
+  /* CONTROL: an ordinary Obelisk swing — no Fist — kills Ra like any bigger
+     body, which is the one answer to a God the decree deliberately leaves. */
+  let plain = fresh('battle');
+  plain.active = FOE;
+  const ob2 = card(FOE, 'obelisk-the-tormentor'); // a flat 4000
+  plain.players[FOE].monsters = [ob2, null, null];
+  const small = card(ME, RA); // 0 ATK, nothing eaten
+  plain.players[ME].monsters = [small, null, null];
+  plain = act(plain, FOE, { type: 'attack', uid: ob2.uid, targetUid: small.uid });
+  ok(!plain.players[ME].monsters.some((m) => m?.uid === small.uid),
+    'FIST: CONTROL: and a bigger body with no Fist still breaks it',
+    plain.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
 }
 
 console.log(`\n${bad ? `${bad} of ${checks} FAILED` : `All ${checks} checks pass. ✅`}`);

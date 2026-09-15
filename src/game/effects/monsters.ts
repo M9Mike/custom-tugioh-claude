@@ -43,6 +43,9 @@ export interface EffectDef {
    * what `npm run text` looks for before it allows a one-shot.
    */
   statsFromTributes?: boolean;
+  /** "Once per turn, either … or …" — every ignition on this card shares one
+   *  clock. The default is one clock per button; see `CardDef`. */
+  oneIgnitionPerTurn?: boolean;
 }
 
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
@@ -3436,6 +3439,7 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     text:
       'Requires 3 Tributes. This monster\'s ATK and DEF become the combined ATK and DEF of the monsters Tributed to Summon it. ' +
       'This monster gains 300 ATK for each monster in your Graveyard. ' +
+      'Any number of times per turn: Tribute 1 other monster you control; this monster gains its ATK and DEF. ' +
       'Once per turn: pay 1000 Life Points; destroy every monster your opponent controls. ' +
       'Once per turn: pay Life Points until you have 1 left; this monster gains that much ATK. ' +
       "This monster cannot be targeted by your opponent's card effects. " +
@@ -3508,6 +3512,30 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
            `activationIsDead` applies to targets, asked about Life Points. */
         condition: { ownLpAtLeast: 2 },
         ops: [{ op: 'burnLifeForAtk', leave: 1, target: SELF, duration: 'permanent' }],
+      },
+      {
+        /* The sun eats. Ra's other two buttons both look outward — one burns
+           their field, one burns your own Life Points — and this one turns on
+           the board you built: every monster you control is fuel, worth exactly
+           what it was standing at when it went in.
+           No limit and no Life Point cost, because the cost is the board. Four
+           bodies poured into the God is four bodies not blocking anything, and
+           a Ra that has eaten its own field is a Ra with nothing left behind it
+           — which is the same trade the pour makes with Life Points instead.
+           And the Graveyard aura collects afterwards: every mouthful is another
+           300 on top of what it was worth, which is the one place all three of
+           Ra's clauses meet.
+           No `tributeFilter`, deliberately. Everything else that eats bodies in
+           this game writes `excludeType: 'Divine-Beast'` — Obelisk's two
+           buttons both do — and Ra does not, which is the whole easter egg:
+           the sun is above the sky and the earth, and it may swallow either of
+           them. `tributeFodder` already strikes the source off the list, so it
+           cannot eat itself. */
+        trigger: 'ignition',
+        label: 'Feed the sun — swallow a monster you control',
+        oncePerTurn: false,
+        cost: { tribute: 1 },
+        ops: [{ op: 'gainTributedStats', target: SELF, duration: 'permanent' }],
       },
     ],
   },
@@ -3776,6 +3804,11 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
      * around it therefore wants a wide, cheap board rather than a full hand or
      * a full Graveyard — a third shape for a third God.
      */
+    /* "Once per turn, EITHER" — one clock across both buttons, which is what
+       the sentence below says and no longer what the engine does by default:
+       a card's two "Once per turn" clauses are two limits, and Obelisk is the
+       one card here whose text really is either/or. See `oneIgnitionPerTurn`. */
+    oneIgnitionPerTurn: true,
     text:
       'Requires 3 Tributes. ' +
       'Once per turn, either: Tribute 2 monsters you control, except a Divine-Beast, ' +

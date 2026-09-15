@@ -3976,6 +3976,44 @@ console.log('\nRelinquished throws the blow back');
     `${b2 - plainHit.players[FOE].lp} came back`);
 }
 
+console.log('\nA card that spends what its cost ate must have a cost that eats');
+{
+  /* Two ops read the stats of whatever the effect's own Tribute cost took:
+     Catapult Turtle's damage and Ra's mouth. Both read `EffectCtx.tributedAtk`
+     and `tributedDef`, and only ONE road in the engine fills those in — the
+     ignition. A Spell or a Trap written with either op would get an empty list,
+     add nothing, and look exactly like a card that does nothing; so would an
+     ignition that forgot its own `cost.tribute`.
+
+     Neither of those throws and neither shows up as a failing check anywhere —
+     it is the shape of fault this repository keeps paying for, so it is refused
+     here instead. Wanting one of these from a Spell is the signal to record the
+     numbers on that road too, not to delete this sweep. */
+  const readsTheCost = (ops: readonly Op[]): boolean =>
+    ops.some(
+      (op) =>
+        op.op === 'gainTributedStats' ||
+        ('scale' in op && op.scale === 'tributedAtk') ||
+        (op.op === 'cascade' && op.branches.some((b) => readsTheCost(b.ops))) ||
+        (op.op === 'coinFlip' && (readsTheCost(op.heads) || readsTheCost(op.tails))) ||
+        (op.op === 'diceRoll' && readsTheCost(op.perPip))
+    );
+  const wrong: string[] = [];
+  for (const def of Object.values(CARDS)) {
+    for (const eff of def.effects) {
+      if (!readsTheCost(eff.ops)) continue;
+      if (eff.trigger !== 'ignition') wrong.push(`${def.name} [${eff.trigger}] — only an ignition records what it ate`);
+      else if (!eff.cost?.tribute && !eff.cost?.tributeSelf) wrong.push(`${def.name} [ignition] — no Tribute cost to read`);
+    }
+  }
+  ok(wrong.length === 0, 'TRIB: nothing spends a mouthful it never took', wrong.join(' · '));
+  /* And the two that legitimately do, by name, so the sweep cannot go quietly
+     green because a rename made it match nothing at all. */
+  const eaters = Object.values(CARDS).filter((d) => d.effects.some((e) => readsTheCost(e.ops))).map((d) => d.slug);
+  ok(eaters.includes('catapult-turtle') && eaters.includes('the-winged-dragon-of-ra'),
+    'TRIB: CONTROL: and the two cards that do are still found', eaters.join(',') || '(none)');
+}
+
 console.log('\nOnly a God is proof against both battle and card effects');
 {
   /* A monster that cannot be removed on either axis is not a wall, it is a

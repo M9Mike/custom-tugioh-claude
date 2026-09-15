@@ -638,17 +638,26 @@ const CASES: Case[] = [
   {
     name: 'CONTROL: does not burn itself to one Life Point with nothing to show for it',
     duelist: 'yamimarik',
-    because: 'a 3000 DEF wall means the swing lands on nothing, so the only thing the effect buys is a duel the next attack ends',
+    because: 'with the swing already spent the pour buys no damage at all, and leaves a player any burn finishes',
     /* The card is enormously strong and enormously stupid to press at the wrong
        moment, which is exactly the shape the search has to get right on its
        own — there is no gate on it beyond having the Life Points. */
+    /* The wall used to be the reason it bought nothing: a 2600 DEF Big Shield
+       Gardna, no pierce on a God, so the swing landed on nothing whatever Ra
+       was worth. That stopped being true the day Ra's three buttons stopped
+       sharing one clock — the God Phoenix clears the wall and the pour that
+       follows is lethal, which is a fine play and this pin was red for it. So
+       the reason is moved to the one place the multi-button change cannot
+       reach: the attack itself is already spent. The Phoenix is still worth
+       pressing here and the pin does not forbid it; only the pour, which now
+       has nothing at all to convert into. */
     build: (s) => {
       raUid = (s.players[ME].monsters[0] = card(ME, 'the-winged-dragon-of-ra')).uid;
       s.players[ME].monsters[0]!.atkMod = 2400;
       s.players[ME].monsters[0]!.summonedOnTurn = 0;
+      s.players[ME].monsters[0]!.attacksUsed = 1; // the swing is gone
       s.players[ME].normalSummonUsed = true;
       s.players[ME].hand = [];
-      // 2600 DEF, and no pierce on a God: the swing that follows lands on nothing.
       s.players[FOE].monsters[0] = card(FOE, 'big-shield-gardna', 'def');
       s.players[FOE].lp = 8000;
     },
@@ -1153,6 +1162,44 @@ const CASES: Case[] = [
        deck chose. */
     want: (_plan, end) =>
       end.players[ME].hand.some((h) => h.slug === 'nightmare-wheel') || end.players[ME].spellTrap?.slug === 'nightmare-wheel',
+  },
+  /* Appended rather than filed beside its sibling, and it has to stay last:
+     every case's build runs in order and salts the uid stream the ones after
+     it are dealt — see the note at CASE_FILTER — so a case inserted in the
+     middle re-rolls every probabilistic pin below it. Slipped one from 10/10
+     to 9/10 the first time, on a position about a Lady of Faith that has
+     nothing to do with Ra. New cases go on the end. */
+  {
+    name: 'burns their wall down and THEN pours, in one turn',
+    duelist: 'yamimarik',
+    because: "Ra's three clauses each say 'once per turn' and each means it — the Phoenix clears the blocker, the pour makes the swing lethal, and both fit in the same Main Phase",
+    /* The other half of the pin above, and the reason the clock had to move off
+       the card: "Ra now if it activates one effect can't activate another".
+       With one clock this position is unwinnable — clear the wall OR make the
+       swing big enough, never both — and the search correctly refused the burn.
+       With one clock per button it is a two-card kill the AI has to find. */
+    build: (s) => {
+      raUid = (s.players[ME].monsters[0] = card(ME, 'the-winged-dragon-of-ra')).uid;
+      s.players[ME].monsters[0]!.atkMod = 2400;
+      s.players[ME].monsters[0]!.summonedOnTurn = 0;
+      s.players[ME].normalSummonUsed = true;
+      s.players[ME].hand = [];
+      /* The arithmetic has to be lethal or the line is merely nice: 8000 pays
+         the Phoenix's 1000 and pours the remaining 6999 into a 2400, which is
+         9399 against their 8000. At this file's default 4000 it comes to 5399
+         and the search is right to refuse it. */
+      s.players[ME].lp = 8000;
+      s.players[FOE].monsters[0] = card(FOE, 'big-shield-gardna', 'def');
+      /* Nothing of theirs to answer with, so the pin is about the line and not
+         about the gamble — the "pours everything" case beside it is built the
+         same way and for the same reason. */
+      s.players[FOE].monsters[1] = null;
+      s.players[FOE].monsters[2] = null;
+      s.players[FOE].hand = [];
+      s.players[FOE].spellTrap = null;
+      s.players[FOE].lp = 8000;
+    },
+    want: (plan, end) => end.winner === ME,
   },
 ];
 

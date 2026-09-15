@@ -196,6 +196,7 @@ export const CARDS: Record<string, CardDef> = Object.fromEntries(
         mayForgoTributes: custom.mayForgoTributes,
         subKindOverride: custom.subKindOverride,
         statsFromTributes: custom.statsFromTributes,
+        oneIgnitionPerTurn: custom.oneIgnitionPerTurn,
       } satisfies CardDef,
     ];
   })

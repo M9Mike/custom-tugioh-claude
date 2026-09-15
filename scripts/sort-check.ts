@@ -201,11 +201,26 @@ console.log('\nthe trunk: filtering');
 console.log('\nsearch');
 {
   check(searchCards(everything, '').length === everything.length, 'an empty query matches everything');
+  /* Every hit has the word somewhere the search actually looks — which since
+     the search learned to read card *text* is five places, not one. Held to
+     "the type says Fiend" it went red on the Fiends that are merely *named* in
+     another card's sentence, which is the search doing its job: typing
+     "obelisk" is meant to find the Seeker that fetches one. */
   const fiends = searchCards(everything, 'fiend');
+  const mentionsFiend = (s: string) => {
+    const c = CARDS[s]!;
+    return [c.name, c.type, c.attribute, c.kind, c.text].some((f) => (f ?? '').toLowerCase().includes('fiend'));
+  };
   check(
-    fiends.length > 0 && fiends.every((s) => (CARDS[s]!.type ?? '').toLowerCase().includes('fiend')),
+    fiends.length > 0 && fiends.every(mentionsFiend),
     'a type finds cards of that type',
-    `${fiends.length} fiends`
+    `${fiends.length} fiends, ${fiends.filter((s) => !mentionsFiend(s)).join(',') || 'none stray'}`
+  );
+  /* And the type is still the bulk of them, so the pin cannot go green on a
+     search that has stopped reading the type at all. */
+  check(
+    fiends.some((s) => (CARDS[s]!.type ?? '').toLowerCase().includes('fiend')),
+    'and the type itself is still one of the things it reads'
   );
   check(searchCards(everything, 'dark').length > 0, 'an attribute finds cards too');
   check(searchCards(everything, 'feral').includes('feral-imp'), 'and a name finds the card');

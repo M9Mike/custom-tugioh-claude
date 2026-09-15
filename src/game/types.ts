@@ -90,6 +90,22 @@ export interface CardDef extends GeneratedCard {
    * needs no engine change.
    */
   statsFromTributes?: boolean;
+  /**
+   * "Once per turn, **either** … or …" — the card's ignitions share one clock,
+   * so spending any of them spends all of them for the turn.
+   *
+   * The default is the opposite, and it is the default because it is what a
+   * card's own text says: "Once per turn:" written on two separate clauses is
+   * two separate limits. The engine had one clock per *card*, which for as long
+   * as Obelisk was the only monster with two buttons looked like the rule —
+   * and was wrong about Ra the moment Ra had three, because pressing the God
+   * Phoenix locked out the pour and the pour locked out the Phoenix. Reported.
+   *
+   * Obelisk opts in, because the shared clock is what its printed sentence
+   * asks for: clearing their field and then swinging four times into the hole
+   * is not two plays, it is the duel.
+   */
+  oneIgnitionPerTurn?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -490,6 +506,20 @@ export type Op =
    * and it is not in this game.
    */
   | { op: 'burnLifeForAtk'; leave: number; target: Selector; duration: Duration }
+  /**
+   * Everything the effect's own Tribute cost was standing at, poured into the
+   * card that ate it — Ra's, and the reason the God grows off a board rather
+   * than only off a Graveyard.
+   *
+   * One op rather than a `gainAtk` beside a `gainDef`, because it is one
+   * mouthful: two ops would ask the numbers twice, log twice and pop two
+   * figures over the same monster for a single act.
+   *
+   * Reads `EffectCtx.tributedAtk`/`tributedDef`, which only the ignition road
+   * records — see the note there, and the sweep in `rules-check` that refuses a
+   * card wanting this from a road that records nothing.
+   */
+  | { op: 'gainTributedStats'; target: Selector; duration: Duration }
   | { op: 'setAtk'; value: number; target: Selector }
   | { op: 'halveAtk'; target: Selector }
   | { op: 'swapAtkDef'; target: Selector }
@@ -1679,7 +1709,18 @@ export interface CardInstance {
    * instances stay valid; the engine always reads it through `?? []`.
    */
   attacked?: string[];
+  /** The turn this card last spent an ignition. Self-expiring: the gate only
+   *  looks at it while it equals the turn counter. */
   effectUsedOnTurn: number;
+  /**
+   * Which of the card's ignitions were spent on `effectUsedOnTurn`, by index.
+   *
+   * One clock per button rather than one per card — see `oneIgnitionPerTurn`
+   * for the card that opts out. Stamped with the turn above rather than
+   * carrying its own, so there is one fact about when and nothing that can
+   * disagree with it, and so a turn rolling over expires both at once.
+   */
+  effectsUsedOnTurn?: number[];
   /**
    * Turn this monster last changed battle position. A monster may do so only
    * once per turn — without that limit it can be flipped between Attack and

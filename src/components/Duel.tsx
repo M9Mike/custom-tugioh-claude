@@ -2351,7 +2351,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
           onClick={() => setMode({ kind: 'idle' })}
         >
-          <div className="panel grain w-full max-w-md rounded p-3" onClick={(e) => e.stopPropagation()}>
+          {/* Scrolls, because this sheet grows with the card. Ra carries three
+              ignitions and an attack and a change of posture — five stacked
+              buttons under a card, a name, a stat line and a paragraph of text —
+              and a panel with no ceiling puts the last of them under the bottom
+              of a phone with no way to reach it. */}
+          <div className="panel grain thin-scroll max-h-full w-full max-w-md overflow-y-auto rounded p-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex gap-3">
               <div className="w-20 shrink-0">
                 <GameCard card={monsterCard} {...statsOf(monsterCard, me)} displayName={shownName(monsterCard)} />
