@@ -519,6 +519,49 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
+  {
+    /*
+     * Tina, who stands in Market Row, and the first of these to arrive clipless
+     * and *not* keep it that way.
+     *
+     * She is the same UniRig export Sky and Isha were — thirty-one bones fitted
+     * to her own body, weights that work, no animation of any kind — and the
+     * difference is what she is for. Isha is a spirit drifting over old ground,
+     * and the root-level breath a clipless model falls back to is the right
+     * motion for her rather than a shortfall. Tina is a courier standing in a
+     * covered market waiting for somebody to duel, at three metres, with the
+     * conversation camera on her face. A living person who stands in her bind
+     * pose with her arms held out at forty degrees is a mannequin, and no amount
+     * of root bob fixes the arms.
+     *
+     * So her Idle, Walk and Run are Sarah's, moved onto her own skeleton by
+     * `scripts/blender/retarget.py` — rotations only, her bind untouched (her
+     * rest pose out is her rest pose in to under a micron). Sarah is the donor
+     * because she is the nearest thing to Tina in the cast: an athletic woman in
+     * boots and hard kit, whose idle is alert and light rather than poised. They
+     * stand in different areas and can never be seen together, so sharing a
+     * period costs nothing.
+     *
+     * `still` is therefore absent, and absent rather than false: she has clips.
+     *
+     * 1.70 m, which is what she is modelled at, so nothing is rescaled and the
+     * two speeds below are the measurement itself.
+     */
+    id: 'tina',
+    label: 'Tina',
+    note: 'Long Odds, Market Row',
+    file: '/models/cast/tina.glb',
+    bytes: 9815468,
+    height: 1.7,
+    /* Measured on the shipped file by `scripts/blender/gait.py`. Her walk is the
+       slowest in the cast and her run is not: the clips are Sarah's, and Tina's
+       shin is shorter and her foot longer, which shortens a stroll and costs a
+       sprint nothing. */
+    walkSpeed: 1.96,
+    runSpeed: 4.57,
+    tintSlots: [],
+    npcOnly: true,
+  },
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */

@@ -37,6 +37,17 @@ export const BOUNTY: Record<string, number> = {
   tony: 1,
   sarah: 1,
   /*
+   * Two, which is the street's rate and a step up from it.
+   *
+   * She is a market over from the pair outside the shop and she is the first
+   * fixture you reach that is not on the road you started on, so a dollar would
+   * say the walk was worth nothing. She keeps her cards like everybody but
+   * Solomon — she is not in `KEEPS_THEIR_CARDS` — so beating her pays two and a
+   * pack of her own deck, which on a deck of twenty-five singles is the widest
+   * spread of cards anybody in the game hands out.
+   */
+  tina: 2,
+  /*
    * A hundred, against the one and two the street pays, and it is not a
    * difficulty curve — it is the only money in the game that is not a share of
    * somebody's cards.

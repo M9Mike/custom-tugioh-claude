@@ -1917,6 +1917,119 @@
           1
         ]
       ]
+    },
+    {
+      "id": "tina",
+      "name": "Tina",
+      "epithet": "Long Odds",
+      "quote": "Kill it and see what it does.",
+      "accent": "#4e3a5c",
+      "accent2": "#c69a3e",
+      "emblem": "Garoozis",
+      "strategy": "Nothing repeats and half of it pays out when it dies, with two dice for the fights that are close.",
+      "extra": [],
+      "deck": [
+        [
+          "Garoozis",
+          1
+        ],
+        [
+          "Headless Knight",
+          1
+        ],
+        [
+          "Blast Sphere",
+          1
+        ],
+        [
+          "Cannon Soldier",
+          1
+        ],
+        [
+          "Flying Kamakiri #1",
+          1
+        ],
+        [
+          "Mad Sword Beast",
+          1
+        ],
+        [
+          "Winged Dragon, Guardian of the Fortress #1",
+          1
+        ],
+        [
+          "Amazon of the Seas",
+          1
+        ],
+        [
+          "Bowganian",
+          1
+        ],
+        [
+          "Feral Imp",
+          1
+        ],
+        [
+          "Harpie Lady",
+          1
+        ],
+        [
+          "Tiger Axe",
+          1
+        ],
+        [
+          "Dark Jeroid",
+          1
+        ],
+        [
+          "Kappa Avenger",
+          1
+        ],
+        [
+          "Newdoria",
+          1
+        ],
+        [
+          "Anthrosaurus",
+          1
+        ],
+        [
+          "De-Spell",
+          1
+        ],
+        [
+          "Graceful Dice",
+          1
+        ],
+        [
+          "Scapegoat",
+          1
+        ],
+        [
+          "Shield & Sword",
+          1
+        ],
+        [
+          "Stop Defense",
+          1
+        ],
+        [
+          "Gift of The Mystical Elf",
+          1
+        ],
+        [
+          "Just Desserts",
+          1
+        ],
+        [
+          "Skull Dice",
+          1
+        ],
+        [
+          "Time Machine",
+          1
+        ]
+      ]
     }
   ]
 }

@@ -1917,6 +1917,119 @@
      1
     ]
    ]
+  },
+  {
+   "id": "tina",
+   "name": "Tina",
+   "epithet": "Long Odds",
+   "quote": "Kill it and see what it does.",
+   "accent": "#4e3a5c",
+   "accent2": "#c69a3e",
+   "emblem": "garoozis",
+   "strategy": "Nothing repeats and half of it pays out when it dies, with two dice for the fights that are close.",
+   "extra": [],
+   "deck": [
+    [
+     "garoozis",
+     1
+    ],
+    [
+     "headless-knight",
+     1
+    ],
+    [
+     "blast-sphere",
+     1
+    ],
+    [
+     "cannon-soldier",
+     1
+    ],
+    [
+     "flying-kamakiri-1",
+     1
+    ],
+    [
+     "mad-sword-beast",
+     1
+    ],
+    [
+     "winged-dragon-guardian-of-the-fortress-1",
+     1
+    ],
+    [
+     "amazon-of-the-seas",
+     1
+    ],
+    [
+     "bowganian",
+     1
+    ],
+    [
+     "feral-imp",
+     1
+    ],
+    [
+     "harpie-lady",
+     1
+    ],
+    [
+     "tiger-axe",
+     1
+    ],
+    [
+     "dark-jeroid",
+     1
+    ],
+    [
+     "kappa-avenger",
+     1
+    ],
+    [
+     "newdoria",
+     1
+    ],
+    [
+     "anthrosaurus",
+     1
+    ],
+    [
+     "de-spell",
+     1
+    ],
+    [
+     "graceful-dice",
+     1
+    ],
+    [
+     "scapegoat",
+     1
+    ],
+    [
+     "shield-sword",
+     1
+    ],
+    [
+     "stop-defense",
+     1
+    ],
+    [
+     "gift-of-the-mystical-elf",
+     1
+    ],
+    [
+     "just-desserts",
+     1
+    ],
+    [
+     "skull-dice",
+     1
+    ],
+    [
+     "time-machine",
+     1
+    ]
+   ]
   }
  ]
 }

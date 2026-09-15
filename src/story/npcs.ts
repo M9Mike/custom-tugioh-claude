@@ -918,6 +918,141 @@ const ISHA_SCRIPT: Record<string, DialogueNode> = {
  * cylinder you slide around, so anybody else up the +Z axis turns the one
  * direction a new player walks into a queue to squeeze past.
  */
+/* ------------------------------------------------------------------ */
+/* Tina                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What Tina is for, which is not the duel.
+ *
+ * Everybody else in the world so far talks about themselves — Sarah about her
+ * walls, Tony about his numbers, Solomon about the rules. Tina talks about
+ * something that has not happened yet, and she is the first person here who
+ * does. A world where every conversation is about the person in front of you is
+ * a world with no weather in it.
+ *
+ * So she carries a rumour: a tournament above the scale of anything the game
+ * has, run by nobody anyone can name, paid for by somebody with a great deal of
+ * money. It is told the way a rumour is actually told — she half believes it,
+ * she says which part she cannot explain away, and the evidence she offers is
+ * not a secret but an *expense*. Somebody spending is the only fact in it, and
+ * it is the one that makes the rest worth repeating.
+ *
+ * She is a courier, which is why it is her: she moves between the market and
+ * the station all day and hears the same thing from people who have not spoken
+ * to each other. That is also the only reason a rumour is ever worth believing,
+ * and she says so.
+ *
+ * Nothing here sets a flag or opens anything. When the tournament is built, this
+ * script is where it is announced from, and the day that happens these nodes
+ * change and nothing else does.
+ */
+const TINA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'You came up from the old man’s shop. {name}, is it — word gets about a metre a minute under this roof.',
+      'Tina. I run things between here and the station, which means I hear everything twice before lunch and half of it is worth hearing once.',
+    ],
+    choices: [
+      { label: 'What have you heard?', to: 'rumour' },
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  /* The rumour, and immediately the reason she gives it any weight: four
+     sources that are not each other's. A character who repeats a thing without
+     saying why they believe it is a noticeboard. */
+  rumour: {
+    lines: [
+      'There is a tournament coming. Not a shop ladder and not a city bracket — every duelist there is, wherever they are, and one table left at the end of it.',
+      'I have had that from four people this week and not one of them got it from the other three. That is the part I cannot explain away, and I have tried.',
+    ],
+    choices: [
+      { label: 'Who is running it?', to: 'who' },
+      { label: 'Sounds like talk.', to: 'doubt' },
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+    ],
+  },
+
+  /* The organiser is a hole in the story, and she treats it as the point rather
+     than as a gap. The evidence is money moving, because that is the only kind
+     a courier would actually have. */
+  who: {
+    lines: [
+      'Nobody has a name. Nobody has half a name. That is exactly why it is still going round — a rumour with a man in it gets argued about and dies.',
+      'Somebody is spending, though. Halls booked, screens, tables by the hundred, all of it paid before anybody thought to ask who by. Whoever that is has more money than every address on my round put together, and they are in no hurry to be thanked for it.',
+    ],
+    choices: [
+      { label: 'Why tell me?', to: 'why' },
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'I will keep an ear out.', to: null },
+    ],
+  },
+
+  why: {
+    lines: [
+      'Because you will be in it. Everyone will be — that is the whole shape of the thing, and it is the part that ought to worry you rather than the part that flatters you.',
+      'So find out what your deck actually does now, while being wrong about it costs you an afternoon.',
+    ],
+    choices: [
+      { label: 'Go on, then.', to: 'beaten', duel: true },
+      { label: 'I will think about it.', to: null },
+    ],
+  },
+
+  doubt: {
+    lines: [
+      'Probably. Most of what I carry is, and I would not argue with you for free.',
+      'But talk does not put a deposit on a hall, and it has not put one on three. Somebody is spending. Work backwards from that and tell me what else it could be.',
+    ],
+    choices: [
+      { label: 'Who is running it?', to: 'who' },
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  /* Same contract as Sarah's: she tells you exactly what the deck does, and it
+     is true. Twenty-five singles is a fact about the list you can check. */
+  style: {
+    lines: [
+      'Twenty-five cards and no two of them the same. Nothing in there is beating you on its own and I have never pretended otherwise.',
+      'What it does is charge you for every one you kill — they go off, or they take something with them, or they come back. And when it is close I have two dice, which do not care what either of us planned.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  /* The player won. She pays in cards and hands the rumour back on the way
+     out, because that is the thing she actually wanted to give you. */
+  beaten: {
+    lines: [
+      'Hah. You took the trades and did not flinch at any of them. Most people flinch at the second one.',
+      'Take a pack of it, you have earned that much. And when you hear about the tournament off somebody who is not me — and you will — remember where you had it first.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'I will leave it there.', to: null },
+    ],
+  },
+
+  /* The player lost. One thing to fix, stated as a habit rather than a mistake. */
+  won: {
+    lines: [
+      'You stopped swinging once you had worked out what everything did. Right instinct, about three turns late.',
+      'Read what is already face-up before you declare, not after it has gone off in your hand. Come back when that is a habit.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'Let me think.', to: null },
+    ],
+  },
+};
+
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
@@ -970,6 +1105,58 @@ export const WORLD_NPCS: WorldNpc[] = [
     script: GRANDPA_SCRIPT,
   },
   ...STREET,
+  {
+    /*
+     * Tina, in the middle of Market Row.
+     *
+     * ## The floor she is standing on
+     *
+     * The arcade is 44 m of walkable length and 9.1 m across: the two rows of
+     * units close it at z ±4.55, the arch piers take the west end at x −23..−21
+     * and the station gateway the east at 21..23. Everything left out on the
+     * floor — the crates, the bin, the sacks, the rack, the ice, the bicycles,
+     * the bench — hugs one shopfront or the other, so the middle of it is clear
+     * end to end. `MARKET_GOODS` in `areas.ts` is the list, read by the
+     * collision and by `world/market.ts` both.
+     *
+     * ## Why here
+     *
+     * Three ways in, and she is a real walk from all of them: the arch from
+     * Turtle Lane lands at (−15, 0), the station gateway at (15.5, 0), and the
+     * passage down to Black Crown at (16, 3.1). From (1.8, 2.7) those are 17.0,
+     * 14.0 and 14.2 m away. You cannot arrive on top of her from any direction,
+     * which is the thing that makes a placed character feel placed.
+     *
+     * She is off the centre line rather than on it, at 2.7. A market's middle is
+     * its thoroughfare and somebody standing in it is an obstacle; 1.85 m in
+     * front of the shopfront line is where you stand when you are waiting rather
+     * than passing. It also keeps her clear of the awnings, whose camera limit
+     * starts at 3.4 — a metre further back and the camera would clamp every time
+     * you turned to face her.
+     *
+     * The bench at (−1.5, 4.1) is the nearest thing to her and its closest
+     * corner is 2.4 m away, so she is beside the one piece of sit-down furniture
+     * in the arcade without standing in it.
+     *
+     * Range 3.2, the street pair's. She is the only person in Market Row, so
+     * unlike Sarah and Tony there is no second prompt to keep hers away from —
+     * but a player walking the centre line passes within 3.0 m of her, which
+     * means she is noticed without being unavoidable.
+     */
+    id: 'tina',
+    area: 'market-row',
+    character: { name: 'Tina', model: 'tina', tints: [], stature: 0.5 },
+    x: 1.8,
+    z: 2.7,
+    /* Looking at the middle of the arcade: atan2(0 − x, 0 − z). Not at either
+       gateway — facing a door you did not come through is how a character ends
+       up staring at the player's back. */
+    facing: -2.55,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'tina', won: 'beaten', lost: 'won' },
+    script: TINA_SCRIPT,
+  },
   {
     id: 'isha',
     area: 'old-cemetery',

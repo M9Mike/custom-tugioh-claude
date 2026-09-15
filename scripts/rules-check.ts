@@ -12539,19 +12539,24 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
      land in the same place for the same reason.
 
      The list is hand-written and has to be added to when a Domino City NPC
-     gets a deck — Isha was the third and Solomon the fourth, and this pin went
-     red the moment each of them landed, which is the pin doing its job rather
-     than a fault in them. */
+     gets a deck — Isha was the third, Solomon the fourth and Tina the fifth,
+     and this pin went red the moment each of them landed, which is the pin
+     doing its job rather than a fault in them.
+
+     The two reports slice by `NPCS.length` rather than by a number, because a
+     count written twice is a count that goes stale once: the failing line used
+     to print the last *five* ids against a list of four, so the first thing it
+     showed you when a fifth arrived was a row that looked correct. */
   {
     const order = DUELISTS.map((x) => x.id);
-    const NPCS = ['tony', 'sarah', 'isha', 'solomon'];
+    const NPCS = ['tony', 'sarah', 'isha', 'solomon', 'tina'];
     const npcAt = NPCS.map((id) => order.indexOf(id));
     ok(npcAt.every((i) => i >= 0), 'ROSTER: the city duelists are on it', npcAt.join(','));
     const firstNpc = Math.min(...npcAt);
     ok(npcAt.every((i) => i >= order.length - NPCS.length),
-      'ROSTER: and they sit at the very end of it', order.slice(-5).join(' → '));
+      'ROSTER: and they sit at the very end of it', order.slice(-NPCS.length).join(' → '));
     ok(order.indexOf('jaden') >= 0 && order.indexOf('jaden') < firstNpc,
-      'ROSTER: so Jaden comes before Tony', order.slice(-4).join(' → '));
+      'ROSTER: so Jaden comes before Tony', order.slice(-NPCS.length - 1).join(' → '));
   }
 
   /* --- The recycle engine: one of each only works if they come back --- */
