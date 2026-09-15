@@ -671,6 +671,13 @@ export function effFlags(state: DuelState, c: CardInstance, controller?: PlayerI
   if (state.ongoing.some((o) => o.kind === 'preventBattleDestruction' && o.target === ctrl)) {
     merged.indestructibleByBattle = true;
   }
+  /* The second half of the fusion, and the other thing written on no card: a
+     Ra that has swallowed something sweeps the whole of their board, one swing
+     per monster. `attackAll` is the rule Serpent Night Dragon already runs on,
+     and `maxAttacks` — which the board's own attack button and the AI both
+     read — is downstream of this merge, so saying it once here says it
+     everywhere. */
+  if (fusedWithRa(c)) merged.attackAll = true;
   return merged;
 }
 
@@ -979,6 +986,10 @@ function resetInstance(c: CardInstance) {
      the Graveyard should carry nothing of its last life at all — and a field
      left behind is a field the next reader has to remember to distrust. */
   c.effectsUsedOnTurn = undefined;
+  /* A Ra that died comes back hungry. The bodies it swallowed are no more in it
+     than the ATK they were worth is, and both go in the same breath — the
+     modifiers a few lines up, and what they were paid for here. */
+  c.swallowed = undefined;
   c.positionChangedOnTurn = undefined;
   c.equippedTo = undefined;
   /* Cleared here and set again by the Special Summon itself, so a card that
@@ -1274,6 +1285,19 @@ function dealDamage(state: DuelState, to: PlayerId, amount: number, battle = fal
   if (amount <= 0) return;
   if (battle && state.ongoing.some((o) => o.kind === 'preventBattleDamage' && o.target === to)) {
     log(state, `${state.players[to].name} takes no battle damage.`, 'effect', to);
+    return;
+  }
+  /* And the mirror of it, on none of the three God cards: a player who has fed
+     the sun can be reached by a blow and by nothing else. Every burn in the
+     game comes through here, and battle damage is the one kind that says so —
+     so the whole of the rule is the word `battle` read the other way round.
+
+     A cost is not damage and never was: Ra's own pour and every `cost.lp`
+     move the total directly, so the God can still be paid for from behind its
+     own shield. The line says something happened without saying what raised
+     it, which is the point of an easter egg. */
+  if (!battle && standsFusedWithRa(state, to)) {
+    log(state, `The sun burns it away — ${state.players[to].name} takes no effect damage.`, 'effect', to, RA);
     return;
   }
   // What the attack was worth, and what the total could actually pay. The board
@@ -1619,6 +1643,28 @@ function isDivine(slug: string): boolean {
 const RA = 'the-winged-dragon-of-ra';
 function isRa(slug: string): boolean {
   return slug === RA;
+}
+
+/**
+ * Fused with Ra: the God is standing face-up and has taken something into
+ * itself.
+ *
+ * "Fusing with Ra" is what the mouth is — there is no Fusion card in this game
+ * with a Divine-Beast anywhere in its recipe, and the only way anything joins
+ * the sun is by being swallowed by it. So the two clauses below hang off the
+ * meal rather than off Ra merely being on the table: a Ra nobody has fed is a
+ * God, and a Ra that has eaten is something else.
+ *
+ * Face-up, like every other aura in this engine — a card lying under its own
+ * back is doing nothing.
+ */
+function fusedWithRa(c: CardInstance | null | undefined): boolean {
+  return !!c && isRa(c.slug) && c.face === 'up' && !!c.swallowed;
+}
+
+/** Whether this player has one standing. */
+function standsFusedWithRa(state: DuelState, pid: PlayerId): boolean {
+  return state.players[pid].monsters.some(fusedWithRa);
 }
 
 /**
@@ -2118,6 +2164,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         /* A 0/0 tributed is still a monster tributed and still a real play —
            it has left the board and it is in the Graveyard, which is worth 300
            to Ra on its own. So this is not `emptyHanded`: nothing failed. */
+        const meals = (ctx.tributedAtk ?? []).length;
         for (const t of resolveTargets(ctx, op.target)) {
           if (op.duration === 'permanent') {
             t.atkMod += atk;
@@ -2126,6 +2173,10 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             t.turnAtkMod += atk;
             t.turnDefMod += def;
           }
+          /* What it has taken into itself, counted rather than merely flagged —
+             see `CardInstance.swallowed`, and `fusedWithRa`, which is the whole
+             of what "fused with Ra" means in this game. */
+          t.swallowed = (t.swallowed ?? 0) + meals;
           log(
             state,
             `${displayName(state, t)} devours ${eaten || 'the offering'} — ${effAtk(state, t, ctx.controller)} ATK / ${effDef(state, t, ctx.controller)} DEF.`,

@@ -1709,6 +1709,18 @@ export interface CardInstance {
    * instances stay valid; the engine always reads it through `?? []`.
    */
   attacked?: string[];
+  /**
+   * How many monsters this card's own mouth has taken — `gainTributedStats`.
+   *
+   * Deliberately not `absorbed`, which looks like the right list and is not:
+   * that one is added to a monster's stats at its *printed* value by `effAtk`,
+   * and this mouth has already banked what its meal was standing at. Putting a
+   * Tribute in both would pay for it twice.
+   *
+   * Cleared with everything else by `resetInstance`, so a body that goes to the
+   * Graveyard and comes back is hungry again.
+   */
+  swallowed?: number;
   /** The turn this card last spent an ignition. Self-expiring: the gate only
    *  looks at it while it equals the turn counter. */
   effectUsedOnTurn: number;

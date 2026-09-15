@@ -13,7 +13,7 @@
  * of them was red there. A regression written after a fix, green against the
  * fix, has proven nothing yet.
  */
-import { applyAction, canAttackWith, createDuel, effAtk, effDef, ignitionOptions, tributeFodder } from '../src/game/engine';
+import { applyAction, canAttackWith, createDuel, effAtk, effDef, ignitionOptions, maxAttacks, tributeFodder } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
 import type { CardInstance, DuelState, PlayerId } from '../src/game/types';
 
@@ -585,6 +585,131 @@ console.log('\nNor is a God stolen — by the road round the back either');
   ok(!plain.players[ME].monsters.some((m) => m?.uid === small.uid),
     'FIST: CONTROL: and a bigger body with no Fist still breaks it',
     plain.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+}
+
+/* ------------------------------------------------------------------ */
+/* Fused with Ra                                                       */
+/* ------------------------------------------------------------------ */
+{
+  console.log('\nWhat the sun becomes once it has eaten');
+  const RA = 'the-winged-dragon-of-ra';
+  const live = (s: DuelState, uid: string) => s.players[ME].monsters.find((m) => m?.uid === uid)!;
+  /* "Fused with Ra" is the mouth: nothing in this game fuses with a God any
+     other way, and the two clauses below hang off a meal rather than off the
+     God being on the table at all. */
+  const feed = (s: DuelState, raUid: string, foodUid: string) => {
+    const b = ignitionOptions(s, ME, live(s, raUid)).find((o) => /Feed the sun/.test(o.label))!;
+    return act(s, ME, { type: 'ignition', uid: raUid, effectIndex: b.index, targets: [foodUid] });
+  };
+
+  /* One swing per monster across the table. */
+  let s = fresh();
+  const god = card(ME, RA);
+  const food = card(ME, 'battle-ox'); // 1700 / 1000
+  s.players[ME].monsters = [god, food, null];
+  s.players[FOE].monsters = [card(FOE, 'battle-ox'), card(FOE, 'kuriboh'), card(FOE, 'mystical-elf')];
+  ok(maxAttacks(s, live(s, god.uid), ME) === 1,
+    'FUSED: CONTROL: a Ra nobody has fed gets one swing like anything else',
+    String(maxAttacks(s, live(s, god.uid), ME)));
+  s = feed(s, god.uid, food.uid);
+  ok(live(s, god.uid).swallowed === 1, 'FUSED: the Ox goes into it', String(live(s, god.uid).swallowed ?? 0));
+  ok(maxAttacks(s, live(s, god.uid), ME) === 3,
+    'FUSED: and it swings once at each of their three',
+    String(maxAttacks(s, live(s, god.uid), ME)));
+
+  /* And really takes all three, rather than merely being allowed to. */
+  s.phase = 'battle';
+  for (const t of s.players[FOE].monsters.filter(Boolean).map((m) => m!.uid)) {
+    if (!s.players[FOE].monsters.some((m) => m?.uid === t)) continue;
+    /* Asked rather than assumed. `act` throws on a refusal, which with the
+       sweep deleted takes the whole battery down on the second swing and
+       reports one crash instead of a fault list — and this file's rule is that
+       a fault can be looked at rather than reasoned about. */
+    const body = live(s, god.uid);
+    if (body.attacksUsed >= maxAttacks(s, body, ME)) break;
+    s = act(s, ME, { type: 'attack', uid: god.uid, targetUid: t });
+  }
+  ok(s.players[FOE].monsters.every((m) => !m),
+    'FUSED: their whole board goes in one Battle Phase',
+    s.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+
+  /* The other clause: nothing but a blow reaches its owner. */
+  let burn = fresh();
+  const sun = card(ME, RA);
+  const meal = card(ME, 'battle-ox');
+  burn.players[ME].monsters = [sun, meal, null];
+  const witch = card(FOE, 'dunames-dark-witch'); // 400 to the other player on arrival
+  burn.players[FOE].hand = [witch];
+
+  /* Read off the board rather than written down — this file's `fresh` does not
+     touch Life Points, and a number in the assertion would be a pin about the
+     starting total instead of about the shield. */
+  const full = burn.players[ME].lp;
+
+  /* CONTROL first, on a Ra that has not eaten — so the pin proves the meal is
+     what raises the shield and not the God standing there. */
+  const cold = act({ ...burn, active: FOE }, FOE, { type: 'normalSummon', uid: witch.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(cold.players[ME].lp < full,
+    'FUSED: CONTROL: an unfed Ra shields nothing — the burn lands',
+    `LP ${full} -> ${cold.players[ME].lp}`);
+
+  burn = feed(burn, sun.uid, meal.uid);
+  burn.active = FOE;
+  const shielded = act(burn, FOE, { type: 'normalSummon', uid: witch.uid, zone: 0, position: 'atk', face: 'up' });
+  ok(shielded.players[ME].lp === full,
+    'FUSED: once it has eaten, no effect damage reaches its owner',
+    `LP ${full} -> ${shielded.players[ME].lp}`);
+
+  /* CONTROL: a blow still lands, which is the whole of what the clause leaves
+     open — and the reason a fed Ra is not simply unbeatable. */
+  let blow = fresh();
+  const sun2 = card(ME, RA);
+  const meal2 = card(ME, 'battle-ox');
+  blow.players[ME].monsters = [sun2, meal2, null];
+  blow = feed(blow, sun2.uid, meal2.uid);
+  blow.phase = 'battle';
+  blow.active = FOE;
+  blow.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), null, null]; // 3000 into its 2000
+  const before = blow.players[ME].lp;
+  const hit = act(blow, FOE, { type: 'attack', uid: blow.players[FOE].monsters[0]!.uid, targetUid: sun2.uid });
+  ok(hit.players[ME].lp < before,
+    'FUSED: CONTROL: a blow is the one thing that still reaches',
+    `LP ${before} -> ${hit.players[ME].lp}`);
+
+  /* And the shield is not a wall around the God's own price: a cost is not
+     damage, so the pour still empties its owner from behind it. */
+  let pourable = fresh();
+  const sun3 = card(ME, RA);
+  const meal3 = card(ME, 'battle-ox');
+  pourable.players[ME].monsters = [sun3, meal3, null];
+  pourable = feed(pourable, sun3.uid, meal3.uid);
+  const pour = ignitionOptions(pourable, ME, live(pourable, sun3.uid)).find((o) => /Pour everything/.test(o.label))!;
+  pourable = act(pourable, ME, { type: 'ignition', uid: sun3.uid, effectIndex: pour.index });
+  ok(pourable.players[ME].lp === 1,
+    'FUSED: and its own price is still payable from behind the shield',
+    `LP ${pourable.players[ME].lp}`);
+
+  /* A Ra that died comes back hungry — `resetInstance` clears the meal with
+     the ATK it was worth, and a God revived out of the pile must not arrive
+     already fused. */
+  let died = fresh();
+  const sun4 = card(ME, RA);
+  const meal4 = card(ME, 'battle-ox');
+  died.players[ME].monsters = [sun4, meal4, null];
+  died = feed(died, sun4.uid, meal4.uid);
+  const body = live(died, sun4.uid);
+  ok(body.swallowed === 1, 'FUSED: fed', String(body.swallowed ?? 0));
+  died.players[ME].monsters = [null, null, null];
+  died.players[ME].grave = [body];
+  const reborn = card(ME, 'monster-reborn');
+  died.players[ME].hand = [reborn];
+  died.active = ME;
+  died.phase = 'main';
+  const back = act(died, ME, { type: 'activateSpell', uid: reborn.uid, targets: [body.uid] });
+  const risen = back.players[ME].monsters.find((m) => m?.uid === body.uid);
+  ok(!!risen && !risen.swallowed,
+    'FUSED: CONTROL: and one that died comes back hungry',
+    risen ? String(risen.swallowed ?? 0) : '(never came back)');
 }
 
 console.log(`\n${bad ? `${bad} of ${checks} FAILED` : `All ${checks} checks pass. ✅`}`);
