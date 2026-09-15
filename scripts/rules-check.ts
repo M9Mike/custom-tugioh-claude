@@ -11899,6 +11899,151 @@ console.log('\nA card lying face-down is not named until it turns over');
   ok(said(open, fromC).includes('attacks Mystical Elf'), 'CONTROL: a face-up defender is named as it always was', said(open, fromC));
 }
 
+console.log('\nA FLIP effect answers being flipped, by whatever turned it over');
+{
+  /* Reported: "When Tiger Axe flipped Jellyfish the effect of Jellyfish did not
+     activate, it should've since it's a Flip effect (flipping by any means),
+     not a Flip Summon effect."
+
+     Tiger Axe forces their whole board into face-up Defence, and `forceDefense`
+     set the face and fired nothing. Its twin `forceAttackPosition` — eight
+     lines below it in the same switch — did the whole job and carried a comment
+     saying why. One word of this file's own law: when you fix a predicate, grep
+     for its twin. There is one door now, and these pins hold every road to it. */
+  const table = () => {
+    const s = fresh();
+    s.turn = 6;
+    s.phase = 'main';
+    s.active = ME;
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      const p = s.players[pid];
+      p.monsters = [null, null, null];
+      p.spellTrap = null;
+      p.field = null;
+      p.hand = [];
+      p.grave = [];
+      p.normalSummonUsed = false;
+    }
+    return s;
+  };
+  const down = (owner: PlayerId, slug: string) => {
+    const c = card(owner, slug);
+    c.face = 'down';
+    c.position = 'def';
+    c.summonedOnTurn = 0;
+    return c;
+  };
+
+  /* The report itself. Jellyfish bounces a monster its controller's opponent
+     has, so the Ox standing beside Tiger Axe is what goes. */
+  {
+    const s = table();
+    const axe = card(ME, 'tiger-axe');
+    s.players[ME].hand = [axe];
+    const ox = card(ME, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[ME].monsters = [ox, null, null];
+    const jelly = down(FOE, 'jellyfish');
+    s.players[FOE].monsters = [jelly, null, null];
+    const asked = act(s, ME, { type: 'normalSummon', uid: axe.uid, zone: 1, position: 'atk', face: 'up' });
+    const turned = asked.players[FOE].monsters.find((m) => m?.uid === jelly.uid);
+    ok(turned?.face === 'up' && turned?.position === 'def',
+      'FLIP: Tiger Axe kneels their Set Jellyfish face-up',
+      `${turned?.face}/${turned?.position}`);
+    /* Two of my monsters are standing by then — the Ox and the Axe itself — so
+       the bounce is a real choice and the duel stops to ask it. Answering is
+       part of the pin: a flip that fires and then picks for you is not the
+       card either. */
+    ok(asked.pending?.kind === 'choose' && asked.pending.player === FOE,
+      'FLIP: and the bounce is put to the Jellyfish\'s own controller',
+      asked.pending ? `${asked.pending.kind}/${asked.pending.player}` : '(nothing asked)');
+    const out = answer(asked, 'battle-ox');
+    ok(!out.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'FLIP: and the Jellyfish bounces the Ox — the FLIP effect answered',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(asked.log.some((l) => l.text.includes('Jellyfish is flipped face-up')),
+      'FLIP: with a beat on screen saying it turned over',
+      asked.log.slice(-3).map((l) => l.text).join(' | '));
+  }
+
+  /* The twin, which always worked — kept so a fix to one cannot silently
+     become a break in the other. */
+  {
+    const s = table();
+    const stop = card(ME, 'stop-defense');
+    s.players[ME].hand = [stop];
+    const ox = card(ME, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[ME].monsters = [ox, null, null];
+    const jelly = down(FOE, 'jellyfish');
+    s.players[FOE].monsters = [jelly, null, null];
+    const out = act(s, ME, { type: 'activateSpell', uid: stop.uid, targets: [jelly.uid] });
+    ok(!out.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'FLIP: Stop Defense drags it up and the same effect answers',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* And the third road, which had the same hole: a stolen monster arrives
+     face-up in this engine, so taking a Set one turns it over. */
+  {
+    const s = table();
+    const heart = card(ME, 'change-of-heart');
+    s.players[ME].hand = [heart];
+    const bug = down(FOE, 'man-eater-bug');
+    const prey = card(FOE, 'battle-ox');
+    prey.summonedOnTurn = 0;
+    s.players[FOE].monsters = [bug, prey, null];
+    const out = act(s, ME, { type: 'activateSpell', uid: heart.uid, targets: [bug.uid] });
+    ok(out.players[ME].monsters.some((m) => m?.uid === bug.uid && m.face === 'up'),
+      'FLIP: a stolen Set monster arrives face-up',
+      out.players[ME].monsters.map((m) => `${m?.slug ?? '-'}(${m?.face ?? '-'})`).join(','));
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === prey.uid),
+      'FLIP: and remembers what it is for — the Bug eats something on the way up',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* CONTROL: a monster already looking at the board is not flipped by being
+     moved, or Tiger Axe would re-fire every FLIP effect on the table every
+     time anything knelt. */
+  {
+    const s = table();
+    const axe = card(ME, 'tiger-axe');
+    s.players[ME].hand = [axe];
+    const ox = card(ME, 'battle-ox');
+    ox.summonedOnTurn = 0;
+    s.players[ME].monsters = [ox, null, null];
+    const jelly = card(FOE, 'jellyfish'); // face-up already
+    jelly.summonedOnTurn = 0;
+    s.players[FOE].monsters = [jelly, null, null];
+    const out = act(s, ME, { type: 'normalSummon', uid: axe.uid, zone: 1, position: 'atk', face: 'up' });
+    ok(out.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'FLIP: CONTROL: a face-up Jellyfish forced to kneel flips nothing',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(out.players[FOE].monsters.find((m) => m?.uid === jelly.uid)?.position === 'def',
+      'FLIP: CONTROL: and it really did kneel');
+  }
+
+  /* CONTROL: the battle flip is the one road that turns the card over BEFORE
+     the damage step and asks its effect AFTER it — Man-Eater Bug has to eat
+     its attacker rather than remove it before anybody works out who wins. */
+  {
+    const s = table();
+    s.phase = 'battle';
+    const ox = card(ME, 'battle-ox'); // 1700 into 450 DEF
+    ox.summonedOnTurn = 0;
+    s.players[ME].monsters = [ox, null, null];
+    const bug = down(FOE, 'man-eater-bug');
+    s.players[FOE].monsters = [bug, null, null];
+    const out = act(s, ME, { type: 'attack', uid: ox.uid, targetUid: bug.uid });
+    ok(!out.players[ME].monsters.some((m) => m?.uid === ox.uid),
+      'FLIP: CONTROL: the Bug still eats the attacker that turned it over',
+      out.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(!out.players[FOE].monsters.some((m) => m?.uid === bug.uid),
+      'FLIP: CONTROL: and dies to the blow it answered — a one-for-one trade',
+      out.players[FOE].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+}
+
 console.log('\nRa pours everything it has into the sun');
 {
   /* Asked for by the owner: "Ra should have another effect ... so all the

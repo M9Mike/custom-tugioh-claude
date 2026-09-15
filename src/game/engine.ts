@@ -1267,6 +1267,44 @@ function landSpecialSummon(
   anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: controller });
 }
 
+/**
+ * A card turns face-up. The one door, because there were five.
+ *
+ * A FLIP effect answers *being flipped*, by any means — not a Flip Summon,
+ * which is one of the means. The engine had that written out longhand at every
+ * place a card could turn over, and each copy knew a different amount:
+ * `forceAttackPosition` did the whole thing and even carried a comment saying
+ * why ("Man-Eater Bug pulled up by Stop Defense still eats something"), while
+ * its twin `forceDefense` — eight lines above it — set the face and fired
+ * nothing at all. Reported: Tiger Axe forces their whole board into face-up
+ * Defence, and the Jellyfish it turned over bounced nobody.
+ *
+ * `takeControl` had the same hole: a stolen monster arrives face-up in this
+ * engine, and that is a flip whoever is now holding it.
+ *
+ * `flipFaceUp` fired the trigger and said nothing on screen, so a Man-Eater Bug
+ * eaten something with no beat explaining where the monster went.
+ *
+ * Two roads stay outside this door on purpose. A Flip Summon is *more* than a
+ * flip — it is a Summon as well, it has its own line, and it carries the
+ * player's answer down to the FLIP effect. And the battle flip has to turn the
+ * card over *before* the damage step and ask its effect *after* it, or
+ * Man-Eater Bug removes the attacker before anybody works out who wins; that
+ * one passes `defer` and fires the trigger itself.
+ *
+ * Returns whether anything happened, so a caller can tell a flip from a card
+ * that was already looking at the board.
+ */
+function turnFaceUp(state: DuelState, c: CardInstance, opts: { defer?: boolean } = {}): boolean {
+  if (c.face !== 'down') return false;
+  c.face = 'up';
+  const ctrl = controllerOf(state, c.uid);
+  log(state, `${displayName(state, c)} is flipped face-up!`, 'effect', ctrl ?? undefined, logSlug(c));
+  anim(state, { kind: 'flip', uid: c.uid, slug: c.slug, player: ctrl ?? c.owner });
+  if (!opts.defer && ctrl) fireTriggers(state, c, ctrl, 'onFlip', {});
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Life points                                                         */
 /* ------------------------------------------------------------------ */
@@ -2495,7 +2533,6 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (dest < 0) continue;
           removeFromAnywhere(state, t.uid);
           t.position = 'atk';
-          t.face = 'up';
           t.attacksUsed = 0;
           t.attacked = [];
           /* One turn is the default and the old behaviour; Dragon Piper asks
@@ -2504,6 +2541,14 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           if (op.rent) t.rentPerTurn = op.rent;
           state.players[ctx.controller].monsters[dest] = t;
           log(state, `${state.players[ctx.controller].name} takes control of ${displayName(state, t)}!`, 'effect', ctx.controller, logSlug(t));
+          /* A stolen monster arrives face-up in this engine, and turning it
+             over is a flip whoever is holding it now — so its FLIP effect
+             answers, fired after the body is in its new zone so the effect
+             reads the board it is actually standing on. This road set the face
+             and said nothing, which is how a Change of Heart on a Set
+             Man-Eater Bug handed you a monster that had quietly forgotten what
+             it was for. */
+          turnFaceUp(state, t);
         }
         break;
       }
@@ -3543,26 +3588,19 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
       case 'forceDefense':
         for (const t of resolveTargets(ctx, op.target)) {
           t.position = 'def';
-          t.face = 'up';
+          /* Kneeling a Set monster turns it face-up, and that is a flip — the
+             thing its twin below has said in a comment since the day it was
+             written, while this one quietly set the face and moved on. */
+          turnFaceUp(state, t);
         }
         break;
       case 'forceAttackPosition':
         for (const t of resolveTargets(ctx, op.target)) {
           // Dragging a set monster into Attack Position turns it face-up, and
           // that is a flip like any other: Man-Eater Bug pulled up by Stop
-          // Defense still eats something. Capture it before the position
-          // changes, since `wasDown` is what decides whether this is a flip.
-          const wasDown = t.face === 'down';
+          // Defense still eats something.
           t.position = 'atk';
-          t.face = 'up';
-          if (wasDown) {
-            const ctrl = controllerOf(state, t.uid);
-            if (ctrl) {
-              log(state, `${displayName(state, t)} is flipped face-up!`, 'effect', ctrl, logSlug(t));
-              anim(state, { kind: 'flip', uid: t.uid, slug: t.slug, player: ctrl });
-              fireTriggers(state, t, ctrl, 'onFlip', {});
-            }
-          }
+          turnFaceUp(state, t);
         }
         break;
       case 'destroyIfNoAtk':
@@ -3575,13 +3613,11 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       case 'flipFaceUp':
-        for (const t of resolveTargets(ctx, op.target)) {
-          if (t.face === 'down') {
-            t.face = 'up';
-            const ctrl = controllerOf(state, t.uid);
-            if (ctrl) fireTriggers(state, t, ctrl, 'onFlip', {});
-          }
-        }
+        /* Through the one door, which is also where the beat comes from: this
+           fired the FLIP effect and put nothing on screen, so a Man-Eater Bug
+           turned over by a card ate a monster with no line saying it had been
+           turned over at all. */
+        for (const t of resolveTargets(ctx, op.target)) turnFaceUp(state, t);
         break;
       case 'win':
         state.winner = ctx.controller;
@@ -4579,12 +4615,11 @@ function resolveBattleInner(state: DuelState) {
      itself walked away untouched. Resolving it after the damage step means a
      set monster attacked and destroyed still gets its effect, and still dies:
      a one-for-one trade, which is both the real rule and what anyone expects. */
-  const flipped = target.face === 'down';
-  if (flipped) {
-    target.face = 'up';
-    log(state, `${displayName(state, target)} is flipped face-up!`, 'effect', defender, logSlug(target));
-    anim(state, { kind: 'flip', uid: target.uid, slug: target.slug, player: defender });
-  }
+  /* Through the one door for the face and the beat, and `defer` for the
+     trigger: this road has to turn the card over before the damage step and
+     ask its effect after it — see `resolveFlip` below, and the note on
+     `turnFaceUp` for why that is the one exception worth keeping. */
+  const flipped = turnFaceUp(state, target, { defer: true });
 
   /** Runs after the damage step, whether or not the monster survived it. */
   const resolveFlip = () => {
