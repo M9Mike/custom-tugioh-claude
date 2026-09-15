@@ -57,6 +57,18 @@ export interface Room {
   /** Entered from a conversation in Story Mode, so the way out is back to it. */
   story?: boolean;
   /**
+   * What the player put on the table to sit down, in dollars.
+   *
+   * On the room rather than on the profile because the room is what the payout
+   * is already decided from — `claimStoryPack` has proved the seat, the token
+   * and the winner off this record, and the stake inherits all of it. A figure
+   * kept anywhere the client can reach is a figure the client can raise.
+   *
+   * Absent for everybody who does not play for money, which is everybody but
+   * Tina.
+   */
+  stake?: number;
+  /**
    * Set once the winner has taken the pack this duel owed them.
    *
    * On the room rather than the profile because the room is the thing that can
@@ -153,7 +165,7 @@ export async function claimStoryPack(
   code: string,
   token: string
 ): Promise<
-  | { ok: true; duelistId: string }
+  | { ok: true; duelistId: string; stake: number }
   | { ok: false; already: true }
   | { ok: false; lost: true }
   | { ok: false; status: number; error: string }
@@ -175,7 +187,7 @@ export async function claimStoryPack(
     room.packClaimed = true;
     try {
       await saveRoom(room);
-      return { ok: true, duelistId };
+      return { ok: true, duelistId, stake: room.stake ?? 0 };
     } catch (err) {
       if (!(err instanceof StaleRoom)) throw err;
       /* Somebody else moved the room; read it again and re-decide. */
@@ -283,7 +295,8 @@ export async function createStoryRoom(
   name: string,
   deck: string[],
   opponentId: string,
-  dress = 'yugi'
+  dress = 'yugi',
+  stake = 0
 ): Promise<{ room: Room; token: string; pid: PlayerId }> {
   const { room, token, pid } = await createRoom(name);
   const foe = DUELIST_BY_ID[opponentId] ? opponentId : 'mai';
@@ -302,6 +315,7 @@ export async function createStoryRoom(
     seat.deck = deck;
   }
   room.story = true;
+  if (stake > 0) room.stake = stake;
   room.seats.p2 = {
     token: randomToken(),
     name: DUELIST_BY_ID[foe]?.name ?? 'Opponent',

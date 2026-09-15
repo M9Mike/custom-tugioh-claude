@@ -37,16 +37,14 @@ export const BOUNTY: Record<string, number> = {
   tony: 1,
   sarah: 1,
   /*
-   * Two, which is the street's rate and a step up from it.
+   * Tina is not here, and her absence is the point.
    *
-   * She is a market over from the pair outside the shop and she is the first
-   * fixture you reach that is not on the road you started on, so a dollar would
-   * say the walk was worth nothing. She keeps her cards like everybody but
-   * Solomon — she is not in `KEEPS_THEIR_CARDS` — so beating her pays two and a
-   * pack of her own deck, which on a deck of twenty-five singles is the widest
-   * spread of cards anybody in the game hands out.
+   * She is the one duelist who does not pay a bounty, because she plays for
+   * money on the table instead — see `WAGER`. Her winnings come out of the pot
+   * and the pot is the two stakes, so a line in this table would be a second
+   * source of money for the same win. She still hands over a pack like everyone
+   * but Solomon; it is only the coin that changed hands differently.
    */
-  tina: 2,
   /*
    * A hundred, against the one and two the street pays, and it is not a
    * difficulty curve — it is the only money in the game that is not a share of
@@ -87,6 +85,67 @@ export const KEEPS_THEIR_CARDS = new Set<string>(['solomon']);
 /** Does beating this duelist hand over a pack of their deck? */
 export function givesAPack(duelistId: string): boolean {
   return !KEEPS_THEIR_CARDS.has(duelistId);
+}
+
+/* ------------------------------------------------------------------ */
+/* Duelists who play for money on the table                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Who will not sit down without a stake, and what they will sit down for.
+ *
+ * A bounty is the house paying you for a win. A wager is two people putting the
+ * same money up and one of them walking off with all of it — so unlike `BOUNTY`
+ * it can take money as well as give it, which makes *when* it moves the whole
+ * question.
+ *
+ * It moves at the table. The stake leaves the player's money the moment the
+ * duel is seated and the pot comes back doubled if they win, which settles
+ * three things a payout-on-result could not:
+ *
+ * - **A loss costs, without the client admitting anything.** Winning is claimed
+ *   through `/api/story/pack`; losing is not claimed at all, because there is
+ *   nothing to collect. Deducting on a reported loss would be asking the loser
+ *   to report it, and nobody would.
+ * - **You cannot bet what you have not got.** The check happens where the money
+ *   is, before the room exists, so there is no path to a negative balance and
+ *   `npm run shop`'s rule about that still holds.
+ * - **Walking out costs the stake.** Seating a duel, seeing the opening hand and
+ *   closing the tab is a loss she has already been paid for. That is the right
+ *   answer and it is a property of escrow rather than a rule anybody wrote.
+ *
+ * Both sides stake the same amount, so a win is +stake and a loss is −stake. The
+ * player picks the figure, which is why the range is here and the choice is four
+ * replies in her script rather than a slider: `npm run rules` can read a table,
+ * and a conversation you can read top to bottom is the house style.
+ */
+export const WAGER: Record<string, { min: number; max: number }> = {
+  /* Two to five. Two because that is what beating the street pair twice buys,
+     so she is reachable from the shop door without being free; five because a
+     new player's whole purse is a few dollars and a bet that can take all of it
+     is a bet nobody takes twice. */
+  tina: { min: 2, max: 5 },
+};
+
+/** What this duelist will play for, or `null` if they do not play for money. */
+export function wagerFor(duelistId: string): { min: number; max: number } | null {
+  return WAGER[duelistId] ?? null;
+}
+
+/**
+ * What the player is actually staking, whatever they asked for.
+ *
+ * Zero for a duelist who does not wager, so every caller can ask unconditionally
+ * and the arithmetic stays the same shape for everybody. Anything that is not a
+ * whole number of dollars inside the range becomes the minimum rather than an
+ * error: this is money, the client chose it, and the server is the only opinion
+ * that counts.
+ */
+export function stakeFor(duelistId: string, asked: unknown): number {
+  const range = wagerFor(duelistId);
+  if (!range) return 0;
+  const n = typeof asked === 'number' && Number.isInteger(asked) ? asked : range.min;
+  return Math.max(range.min, Math.min(range.max, n));
 }
 
 export interface ShopItem {

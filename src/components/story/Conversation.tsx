@@ -37,8 +37,8 @@ interface Props {
    * handed a node and carries on.
    */
   openAt?: string;
-  /** Leave the conversation and duel this character. */
-  onDuel?: () => void;
+  /** Leave the conversation and duel this character, for this much money. */
+  onDuel?: (stake?: number) => void;
   /** Open this character's shop, and come back to the conversation after. */
   onShop?: () => void;
 }
@@ -73,7 +73,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
     if (node.choices.length === 0) onClose();
   };
 
-  const choose = (to: string | null, duel?: boolean, shop?: boolean) => {
+  const choose = (to: string | null, duel?: boolean, shop?: boolean, stake?: number) => {
     sfx.click();
     /* A duel leaves the conversation rather than advancing it. The node named
        by the choice is where it will resume, and the caller records that — the
@@ -85,7 +85,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
       return;
     }
     if (duel && onDuel) {
-      onDuel();
+      onDuel(stake);
       return;
     }
     if (to === null) {
@@ -159,7 +159,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
                    afterwards. */
                 data-ends={c.to === null && !c.duel && !c.shop ? '' : undefined}
                 className="btn rounded px-3 py-2 text-left text-[11px]"
-                onClick={() => choose(c.to, c.duel, c.shop)}
+                onClick={() => choose(c.to, c.duel, c.shop, c.stake)}
               >
                 {c.label}
               </button>

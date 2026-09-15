@@ -107,7 +107,7 @@ interface Props {
    * A character has been taken up on a duel. The caller opens the room and
    * navigates; this screen is about to be unmounted either way.
    */
-  onDuel?: (npc: WorldNpc) => void;
+  onDuel?: (npc: WorldNpc, stake?: number) => void;
   /** A character has been asked what they have for sale. */
   onShop?: (npc: WorldNpc) => void;
   /**
@@ -1986,7 +1986,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           npc={talkingTo}
           openAt={resumeAt ?? undefined}
           onShop={() => onShop?.(talkingTo)}
-          onDuel={() => {
+          onDuel={(stake) => {
             /*
              * Where you are standing is written down before the duel, not after.
              *
@@ -2012,7 +2012,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              */
             void (async () => {
               await persist();
-              onDuel?.(talkingTo);
+              onDuel?.(talkingTo, stake);
             })();
           }}
           playerName={character.name}

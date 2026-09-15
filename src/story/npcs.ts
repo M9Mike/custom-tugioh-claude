@@ -49,6 +49,17 @@ export interface DialogueChoice {
    * where the conversation picks up when the player is done buying.
    */
   shop?: boolean;
+  /**
+   * What the player is putting on the table, for a duel that is played for
+   * money — see `WAGER` in `story/shop.ts`.
+   *
+   * Only ever read alongside `duel`, and it is here rather than in a picker
+   * because the amounts are a *conversation*: she asks what you are putting up
+   * and you answer, which is one screen fewer and reads like the thing it is.
+   * The server clamps whatever arrives into her range, so this is what the
+   * player meant and not what they are charged.
+   */
+  stake?: number;
   /** The node it leads to, or `null` to end the conversation. */
   to: string | null;
 }
@@ -955,7 +966,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
     ],
     choices: [
       { label: 'What have you heard?', to: 'rumour' },
-      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Let’s duel.', to: 'wager' },
       { label: 'What do you play?', to: 'style' },
       { label: 'Another time.', to: null },
     ],
@@ -972,7 +983,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
     choices: [
       { label: 'Who is running it?', to: 'who' },
       { label: 'Sounds like talk.', to: 'doubt' },
-      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Let’s duel.', to: 'wager' },
     ],
   },
 
@@ -986,7 +997,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
     ],
     choices: [
       { label: 'Why tell me?', to: 'why' },
-      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Let’s duel.', to: 'wager' },
       { label: 'I will keep an ear out.', to: null },
     ],
   },
@@ -997,7 +1008,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
       'So find out what your deck actually does now, while being wrong about it costs you an afternoon.',
     ],
     choices: [
-      { label: 'Go on, then.', to: 'beaten', duel: true },
+      { label: 'Go on, then.', to: 'wager' },
       { label: 'I will think about it.', to: null },
     ],
   },
@@ -1009,8 +1020,35 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
     ],
     choices: [
       { label: 'Who is running it?', to: 'who' },
-      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Let’s duel.', to: 'wager' },
       { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  /*
+   * The table. Every road to a duel with her comes through here.
+   *
+   * Four replies rather than a slider, and they are four replies rather than one
+   * because the amount is the only decision in the exchange and a conversation
+   * is where decisions in this game are made. The panel greys out anything the
+   * player cannot cover, so the choice on screen is always a choice they can
+   * make — and `stakeFor` clamps whatever arrives anyway, because the client
+   * picking its own number is the client picking its own number.
+   *
+   * She names the range out loud. A player who cannot afford the two has been
+   * told why the reply is dim rather than left to work it out.
+   */
+  wager: {
+    lines: [
+      'Not for nothing, though. I do not play for nothing — you put money on the table and I put the same money next to it, and whoever is still standing picks the lot up.',
+      'Anything from two to five. Your call, and it wants to be money you actually have on you.',
+    ],
+    choices: [
+      { label: 'Two dollars.', to: 'beaten', duel: true, stake: 2 },
+      { label: 'Three.', to: 'beaten', duel: true, stake: 3 },
+      { label: 'Four.', to: 'beaten', duel: true, stake: 4 },
+      { label: 'Five — all of it.', to: 'beaten', duel: true, stake: 5 },
+      { label: 'Not today.', to: null },
     ],
   },
 
@@ -1022,7 +1060,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
       'What it does is charge you for every one you kill — they go off, or they take something with them, or they come back. And when it is close I have two dice, which do not care what either of us planned.',
     ],
     choices: [
-      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Let’s duel.', to: 'wager' },
       { label: 'Noted.', to: null },
     ],
   },
@@ -1032,10 +1070,10 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
   beaten: {
     lines: [
       'Hah. You took the trades and did not flinch at any of them. Most people flinch at the second one.',
-      'Take a pack of it, you have earned that much. And when you hear about the tournament off somebody who is not me — and you will — remember where you had it first.',
+      'Pick it up, then — yours and mine both, and a pack of the deck on top of it. And when you hear about the tournament off somebody who is not me — and you will — remember where you had it first.',
     ],
     choices: [
-      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Again?', to: 'wager' },
       { label: 'I will leave it there.', to: null },
     ],
   },
@@ -1044,10 +1082,10 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
   won: {
     lines: [
       'You stopped swinging once you had worked out what everything did. Right instinct, about three turns late.',
-      'Read what is already face-up before you declare, not after it has gone off in your hand. Come back when that is a habit.',
+      'I will take that, then. Read what is already face-up before you declare, not after it has gone off in your hand — and come back when that is a habit. I am not going anywhere and neither is the money.',
     ],
     choices: [
-      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'Run it back.', to: 'wager' },
       { label: 'Let me think.', to: null },
     ],
   },

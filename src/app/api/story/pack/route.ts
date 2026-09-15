@@ -89,7 +89,23 @@ export async function POST(req: Request) {
        * needs no special case downstream: the effect that opens packs runs on
        * whatever is there, and nothing is there.
        */
-      const paid = bountyFor(duelistId);
+      /*
+       * A bounty, or a pot, and never both.
+       *
+       * Most duelists pay a bounty out of nowhere — the house rewarding a win.
+       * One plays for money instead: her stake was matched by the player's at
+       * the table and left the player's purse there, so what comes back on a
+       * win is *twice* it, which is their own money returned plus hers won. She
+       * has no `BOUNTY` line, so the two never add up on the same win.
+       *
+       * The figure is `room.stake`, handed back by the claim that already
+       * proved the room, the seat and the winner. Nothing the client says about
+       * money is read here or anywhere else.
+       *
+       * Losing needs no branch at all. The stake is already gone, taken when the
+       * duel was seated, and a loss simply never reaches this line.
+       */
+      const paid = bountyFor(duelistId) + verdict.stake * 2;
       const pack = givesAPack(duelistId);
       const result = await updateProfile(canonical, (profile) => ({
         ok: true,

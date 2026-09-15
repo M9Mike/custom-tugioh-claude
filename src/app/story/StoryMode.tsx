@@ -425,7 +425,7 @@ export default function StoryMode() {
    * owns. The note is written *before* navigating, so the win screen can find it
    * however the player gets there.
    */
-  const startDuel = async (npc: WorldNpc) => {
+  const startDuel = async (npc: WorldNpc, stake?: number) => {
     if (!npc.duel || busy) return;
     setBusy(true);
     sfx.click();
@@ -436,6 +436,10 @@ export default function StoryMode() {
         body: JSON.stringify({
           storyUser: name,
           opponentId: npc.duel.opponentId,
+          /* What the player said they were putting up. The server clamps it
+             into the character's own range and takes it from the save before
+             the room exists; this is a request, not a figure. */
+          stake,
           npcId: npc.id,
           won: npc.duel.won,
           lost: npc.duel.lost,

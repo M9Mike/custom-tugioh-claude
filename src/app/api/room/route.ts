@@ -1,6 +1,7 @@
 import { createExhibitionRoom, createRoom, createSoloRoom, createStoryRoom, createTournamentRoom, viewOf } from '@/server/rooms';
 import { canonicalUsername, loadProfile, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
+import { stakeFor } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
     won?: string;
     lost?: string;
     dress?: string;
+    /** What the player is putting up, for a duelist who plays for money. */
+    stake?: number;
     tournament?: boolean;
     spectate?: boolean;
     duelistId?: string;
@@ -50,12 +53,55 @@ export async function POST(req: Request) {
           { status: 409 }
         );
       }
-      const { room, token, pid } = await createStoryRoom(
-        profile.character?.name ?? canonical,
-        profile.deck,
-        body.opponentId ?? 'mai',
-        body.dress
-      );
+      /*
+       * Money on the table, before there is a table.
+       *
+       * One duelist plays for a stake (`WAGER` in `story/shop.ts`) and the
+       * stake is taken here, at the moment the duel is seated, rather than
+       * settled when it ends. A win is claimed through `/api/story/pack`; a
+       * loss is claimed by nobody, because there is nothing to collect — so
+       * charging for a loss on the way out would be asking the loser to own up.
+       * Escrow asks nobody anything.
+       *
+       * Taken *before* `createStoryRoom` and refunded if that throws, which is
+       * the right way round to fail: a player charged for a duel that never
+       * opened is a bug report, and a duel that opened without charging is free
+       * money for anybody who makes the room creation fail on purpose.
+       */
+      const opponentId = body.opponentId ?? 'mai';
+      const stake = stakeFor(opponentId, body.stake);
+      if (stake > 0) {
+        const purse = await updateProfile(canonical, (p) => {
+          const held = p.money ?? 0;
+          if (held < stake) {
+            return { ok: false, status: 409, error: `You need $${stake} on you to play for $${stake}.` };
+          }
+          return { ok: true, profile: { ...p, money: held - stake } };
+        });
+        if (!purse.ok) {
+          return Response.json({ ok: false, error: purse.error }, { status: purse.status });
+        }
+      }
+
+      let seated;
+      try {
+        seated = await createStoryRoom(
+          profile.character?.name ?? canonical,
+          profile.deck,
+          opponentId,
+          body.dress,
+          stake
+        );
+      } catch (err) {
+        if (stake > 0) {
+          await updateProfile(canonical, (p) => ({
+            ok: true,
+            profile: { ...p, money: (p.money ?? 0) + stake },
+          })).catch(() => null);
+        }
+        throw err;
+      }
+      const { room, token, pid } = seated;
       /* Written on the save as well as handed back — see `DuelInProgress`. Best
          effort: a save that is busy does not stop a duel that is ready. */
       if (typeof body.npcId === 'string' && typeof body.won === 'string' && typeof body.lost === 'string') {
