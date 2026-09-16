@@ -114,6 +114,30 @@ export interface RoamRoute {
   speed: number;
   /** Seconds spent standing at each point before moving on. */
   dwell: number;
+  /**
+   * Roughly how many seconds of walking there are between unplanned stops.
+   *
+   * A route on its own is a patrol: the same legs, the same pauses, at the same
+   * two places, and the eye has it in about ten seconds. This is the number
+   * that stops it being one — she halts somewhere along a leg, does something,
+   * and goes on. Jittered either side by half again, so two laps never line up.
+   *
+   * Absent means she only ever stops where the path says, which is right for
+   * somebody pacing a beat and wrong for somebody killing an afternoon.
+   */
+  restEvery?: number;
+  /**
+   * Clips she may play while stopped, by name, chosen at random.
+   *
+   * Authored by `scripts/blender/make-gesture.py` and additive over whatever
+   * the body is already doing, so a character who has none simply stands —
+   * naming one a model has not got costs nothing and does nothing.
+   *
+   * The stop lasts as long as the clip does. A gesture cut off half way by the
+   * route moving on is worse than no gesture, and the rig returns the length
+   * for exactly this.
+   */
+  gestures?: string[];
 }
 
 export interface WorldNpc {
@@ -1177,15 +1201,54 @@ export const WORLD_NPCS: WorldNpc[] = [
      * in the arcade without standing in it.
      *
      * Range 3.2, the street pair's. She is the only person in Market Row, so
-     * unlike Sarah and Tony there is no second prompt to keep hers away from —
-     * but a player walking the centre line passes within 3.0 m of her, which
-     * means she is noticed without being unavoidable.
+     * unlike Sarah and Tony there is no second prompt to keep hers away from.
+     *
+     * ## And she does not stay there
+     *
+     * She walks the arcade. The route below is where she goes; the rule that
+     * makes it talkable is in `OpenWorld` and is worth knowing here: she stops
+     * the moment the player is inside `range * 1.6` and turns to face them, so
+     * by the time the prompt appears at `range` she has been still for a step
+     * and a half. Walk away and she picks the route up where she left it.
      */
     id: 'tina',
     area: 'market-row',
     character: { name: 'Tina', model: 'tina', tints: [], stature: 0.5 },
-    x: 1.8,
-    z: 2.7,
+    /* Where the route starts, and so where she is standing the moment the area
+       is built. The first point of `roam.path` and this are the same place,
+       written once. */
+    x: -9.5,
+    z: 2.2,
+    roam: {
+      /*
+       * Three points rather than two, and not in a straight line.
+       *
+       * Two points on one z is a sentry: the same twenty metres, out and back,
+       * for ever. Drifting across the arcade between them — 2.2 out, 1.3 in the
+       * middle, 2.6 at the far end — is the difference between somebody walking
+       * a beat and somebody with an afternoon to kill, and it costs one number.
+       *
+       * Every point and every leg sits between z 1.2 and 2.6, which is clear of
+       * the lot: the goods hug the shopfronts at |z| 2.9 and beyond, the awnings'
+       * camera limit starts at 3.4, and the two end doors and the Black Crown
+       * passage are all outside x ±12. She cannot walk into the furniture, she
+       * cannot stand on a door trigger, and the camera never clamps on her.
+       */
+      path: [
+        { x: -9.5, z: 2.2 },
+        { x: 0.6, z: 1.3 },
+        { x: 10.0, z: 2.6 },
+      ],
+      /* An amble. Her Walk is rated at 1.96 m/s, so this plays the clip at
+         about three fifths — an unhurried walk rather than a march, which is
+         what somebody waiting for a duel looks like. */
+      speed: 1.15,
+      dwell: 3.5,
+      /* About a quarter of a minute of walking between unplanned stops, give or
+         take half again. Over a twenty metre leg that is one or two. */
+      restEvery: 14,
+      gestures: ['Stretch', 'LookAround', 'Settle'],
+    },
     /* Looking at the middle of the arcade: atan2(0 − x, 0 − z). Not at either
        gateway — facing a door you did not come through is how a character ends
        up staring at the player's back. */

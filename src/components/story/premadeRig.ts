@@ -77,6 +77,16 @@ export interface PremadeRig {
    *                    metres a second — what keeps the clip's feet honest
    */
   update(dt: number, stride: number, groundSpeed: number): void;
+  /**
+   * Plays one of this character's gestures over whatever they are doing, once.
+   *
+   * Returns how long it will take, in seconds, so a caller that is standing
+   * somebody still can stand them still for exactly that long — or 0 if this
+   * model has no such clip, which is most of them.
+   */
+  gesture(name: string): number;
+  /** The gestures this model actually carries. Empty for most of the cast. */
+  gestures: string[];
   dispose(): void;
 }
 
@@ -86,6 +96,15 @@ export interface PremadeRig {
 
 interface Template {
   gltf: GLTF;
+  /**
+   * Which of this model's clips have already been turned additive.
+   *
+   * `makeClipAdditive` rewrites the clip object in place and the clips belong
+   * to the *template*, which is shared by every rig built from it. Without a
+   * ledger the second Tina in a scene subtracts the reference pose a second
+   * time and every gesture she has goes flat.
+   */
+  additive: Set<string>;
   /** Height of the unscaled rest pose, measured once. */
   rawHeight: number;
   /**
@@ -190,7 +209,7 @@ export function loadDuelistTemplate(
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const rawHeight = Math.max(0.01, box.max.y - box.min.y);
-    return { gltf, rawHeight, floor: restingFloor(gltf) };
+    return { gltf, rawHeight, floor: restingFloor(gltf), additive: new Set<string>() };
   });
   templates.set(model.id, promise);
   /* A failed fetch must not poison the cache for the retry. */
@@ -498,6 +517,44 @@ export async function buildPremadeRig(
   const walk = action('Walk');
   const run = action('Run');
 
+  /* ---- gestures ----
+   *
+   * The small things somebody does while they are waiting — a stretch, a look
+   * up the street, a shift of weight (`scripts/blender/make-gesture.py`). They
+   * are not a fourth state alongside idle, walk and run: they play *over*
+   * whatever those are already doing, once, and stop.
+   *
+   * **Additive, and that is not a preference.** The glTF exporter bakes every
+   * bone into every action, so a gesture clip is a full-skeleton pose in which
+   * the bones it does not move sit at the rest pose — which on these models is
+   * the A-pose. Blended normally it drags the arms back out to the bind, and a
+   * look around arrives with a shrug attached. `makeClipAdditive` subtracts
+   * frame 0, and because every one of these clips *starts* at the rest pose
+   * that leaves a bone it never moves as a zero delta and a bone it does move
+   * as a pure offset. Idle plus gesture is then literally idle plus gesture.
+   *
+   * Built once per template and cached on it, because `makeClipAdditive`
+   * rewrites the clip in place: run twice on the same object it subtracts its
+   * own reference a second time and every gesture goes flat.
+   */
+  const gestures = new Map<string, THREE.AnimationAction>();
+  for (const clip of template.gltf.animations) {
+    if (clip.name === 'Idle' || clip.name === 'Walk' || clip.name === 'Run') continue;
+    if (!template.additive.has(clip.name)) {
+      THREE.AnimationUtils.makeClipAdditive(clip);
+      template.additive.add(clip.name);
+    }
+    const a = mixer.clipAction(clip);
+    a.blendMode = THREE.AdditiveAnimationBlendMode;
+    a.setLoop(THREE.LoopOnce, 1);
+    a.clampWhenFinished = false;
+    a.enabled = false;
+    gestures.set(clip.name, a);
+  }
+
+  /** The names this character has, for whoever is choosing one. */
+  const gestureNames = [...gestures.keys()];
+
   /* ---- what a model with no skeleton does instead ----
    *
    * **This is a mitigation, not an animation system, and it is worth being
@@ -602,9 +659,31 @@ export async function buildPremadeRig(
      frame of T-pose while the first `update` is still a frame away. */
   update(0, 0, 0);
 
+  /**
+   * Starts a gesture, or does nothing if this model has not got it.
+   *
+   * Restarted from zero every time rather than resumed: these are one-shots
+   * and the only thing worse than a stretch that does not play is half of one.
+   * The fade is short because the clip already opens and closes at rest — it
+   * is there to cover a gesture being cut off by the player walking up, not to
+   * ease into the motion.
+   */
+  const gesture = (name: string): number => {
+    const a = gestures.get(name);
+    if (!a) return 0;
+    a.reset();
+    a.enabled = true;
+    a.setEffectiveWeight(1);
+    a.fadeIn(0.25);
+    a.play();
+    return a.getClip().duration;
+  };
+
   return {
     root,
     height,
+    gesture,
+    gestures: gestureNames,
     update,
     dispose() {
       mixer.stopAllAction();

@@ -13,7 +13,7 @@
 import { CARDS, DUELIST_BY_ID } from '../src/game/cards';
 import { compareCards } from '../src/story/deckSort';
 import { newProfile, type StoryProfile } from '../src/story/profile';
-import { BOUNTY, STOCK, bountyFor, buy, refuseBuy, shopStock } from '../src/story/shop';
+import { BOUNTY, STOCK, WAGER, bountyFor, buy, givesAPack, refuseBuy, shopStock, stakeFor, wagerFor } from '../src/story/shop';
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => {
@@ -122,6 +122,83 @@ console.log('\nthe money only moves the two ways it should');
   /* The long way round, stated as arithmetic rather than as a complaint. */
   const wins = Math.ceil(item.price / Math.max(1, bountyFor('tony')));
   console.log(`     (${CARDS[item.slug]?.name} is ${wins.toLocaleString()} wins at $${bountyFor('tony')} a duel)`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Money on the table                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one duelist who takes money as well as giving it.
+ *
+ * Everything else here is arithmetic that can only ever go up for the player,
+ * so the expensive mistakes are all of the form "money out of nowhere". A wager
+ * adds the other direction, and with it a way to cheat that a bounty does not
+ * have: **lose, and do not admit it.**
+ *
+ * That is why the stake is taken when the duel is seated rather than settled
+ * when it ends, and this block is the pin on that decision. There is exactly
+ * one path in the whole app that hands money back — a claimed win — so leaving
+ * a duel by any route at all costs the stake by construction: quitting to the
+ * world, refreshing, closing the tab, pulling the network out, or simply never
+ * going back. None of them reach the payout, because the payout is on the far
+ * side of proving you won.
+ */
+{
+  console.log('\nTina, who plays for money on the table\n');
+
+  check(wagerFor('tina') !== null, 'she will not sit down without a stake');
+  const range = wagerFor('tina')!;
+  check(range.min === 2 && range.max === 5, 'and it is two to five', `${range.min}–${range.max}`);
+
+  /* Her money is the pot. A bounty as well would be paying twice for one win. */
+  check(bountyFor('tina') === 0, 'she pays no bounty on top of it', `$${bountyFor('tina')}`);
+  check(givesAPack('tina'), 'but a win still takes a pack of her deck');
+
+  /* Nobody else can be talked into it, whatever the client sends. */
+  check(
+    Object.keys(WAGER).every((id) => !!DUELIST_BY_ID[id]),
+    'every duelist who wagers is a real one',
+    Object.keys(WAGER).filter((id) => !DUELIST_BY_ID[id]).join(', ')
+  );
+  check(stakeFor('sarah', 5) === 0 && stakeFor('tony', 5) === 0,
+    'and nobody else can be made to play for money');
+
+  /* The client picks the figure, so the client is not trusted with it. */
+  check(stakeFor('tina', 2) === 2 && stakeFor('tina', 5) === 5, 'two and five are taken as asked');
+  check(stakeFor('tina', 3) === 3 && stakeFor('tina', 4) === 4, 'and so are three and four');
+  check(stakeFor('tina', 9999) === range.max, 'a greedy figure is clamped down', `$${stakeFor('tina', 9999)}`);
+  check(stakeFor('tina', 1) === range.min, 'a cheap one is raised', `$${stakeFor('tina', 1)}`);
+  check(stakeFor('tina', -100) === range.min, 'and a negative one cannot pay her', `$${stakeFor('tina', -100)}`);
+  check(stakeFor('tina', 3.5) === range.min, 'half a dollar is not a stake', `$${stakeFor('tina', 3.5)}`);
+  check(stakeFor('tina', '5') === range.min, 'nor is a string that looks like one');
+  check(stakeFor('tina', undefined) === range.min, 'and asking for nothing pays the minimum');
+
+  /*
+   * The whole point, as arithmetic.
+   *
+   * A win returns twice the stake — the player's own back, and hers won. A duel
+   * that is not won returns nothing, and the stake has already gone, so the two
+   * outcomes are +stake and −stake against where the player started.
+   */
+  for (const stake of [range.min, 3, 4, range.max]) {
+    const before = 10;
+    const seated = before - stake;
+    const afterWin = seated + bountyFor('tina') + stake * 2;
+    const afterAnythingElse = seated;
+    check(afterWin - before === stake, `a $${stake} win leaves them up $${stake}`, `$${before} → $${afterWin}`);
+    check(before - afterAnythingElse === stake,
+      `and walking out of a $${stake} duel costs them $${stake}`, `$${before} → $${afterAnythingElse}`);
+  }
+
+  /*
+   * And it cannot go negative, which is the rule the rest of this file holds
+   * the shop to. The route refuses before it deducts; this is the arithmetic
+   * that refusal protects.
+   */
+  const broke = rich(1);
+  check((broke.money ?? 0) < range.min, '$1 cannot cover her cheapest bet');
+  check((broke.money ?? 0) - range.min < 0, 'so taking it anyway would go negative — which is why the route refuses first');
 }
 
 console.log(

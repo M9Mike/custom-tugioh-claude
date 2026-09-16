@@ -581,6 +581,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       leg: number;
       dir: 1 | -1;
       hold: number;
+      /** Seconds of walking left before the next unplanned stop. */
+      rest: number;
     }[] = [];
 
     /**
@@ -629,6 +631,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               leg: 1,
               dir: 1,
               hold: 0,
+              /* Staggered on arrival rather than started at the full interval,
+                 so two people in one area do not stop together on the first
+                 lap and then for ever after. */
+              rest: npc.roam?.restEvery ? npc.roam.restEvery * (0.3 + Math.random()) : Infinity,
             });
           })
           .catch((err) => {
@@ -1130,6 +1136,29 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           const route = npc.roam;
           if (them.hold > 0) {
             them.hold -= dt;
+          } else if (them.rest <= 0) {
+            /*
+             * Stopping for no reason, which is the reason.
+             *
+             * A route on its own is a patrol — two end points, the same pause
+             * at each, and the eye has the whole loop inside ten seconds.
+             * Halting part way along a leg to stretch or look up the arcade is
+             * what turns a patrol into somebody waiting, and it is deliberately
+             * *not* tied to the path: the stop happens wherever she happens to
+             * be when the clock runs out.
+             *
+             * The pause lasts exactly as long as the clip, because a stretch
+             * cut off half way by the route moving on is worse than no stretch
+             * at all — `gesture` hands back the length for this. A character
+             * with no such clip stands for a moment instead, which is still
+             * better than a body that only ever stops at two marks.
+             */
+            const pick = route.gestures?.length
+              ? route.gestures[Math.floor(Math.random() * route.gestures.length)]
+              : null;
+            const played = pick ? theirs.gesture(pick) : 0;
+            them.hold = played > 0 ? played : route.dwell * 0.6;
+            them.rest = (route.restEvery ?? Infinity) * (0.5 + Math.random());
           } else {
             const to = route.path[them.leg];
             const tx = to.x - at.x;
@@ -1140,6 +1169,13 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               at.x = to.x;
               at.z = to.z;
               them.hold = route.dwell;
+              /* The turn at the end of a leg is a natural place to look back
+                 down it, so about a third of them carry a gesture. Held for
+                 the longer of the dwell and the clip, so neither is cut. */
+              if (route.gestures?.length && Math.random() < 0.34) {
+                const pick = route.gestures[Math.floor(Math.random() * route.gestures.length)];
+                them.hold = Math.max(them.hold, theirs.gesture(pick));
+              }
               /* There and back: turn round at either end rather than jumping
                  to the far one, which would be a walk through everything in
                  between. */
@@ -1154,6 +1190,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               at.x += (tx / left) * step;
               at.z += (tz / left) * step;
               speed = route.speed;
+              /* Ticked by walking rather than by the clock: somebody held up
+                 talking to the player has not been strolling, and should not
+                 come out of the conversation owing a stretch. */
+              them.rest -= dt;
             }
           }
           theirs.root.position.x = at.x;

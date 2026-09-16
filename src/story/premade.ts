@@ -542,7 +542,11 @@ export const DUELIST_MODELS: DuelistModel[] = [
      * stand in different areas and can never be seen together, so sharing a
      * period costs nothing.
      *
-     * `still` is therefore absent, and absent rather than false: she has clips.
+     * `still` is therefore absent, and absent rather than false: she has clips
+     * — six of them. Idle, Walk and Run are Sarah's; Stretch, LookAround and
+     * Settle are her own, authored by `scripts/blender/make-gesture.py` and
+     * played additively over whatever she is already doing while she is
+     * waiting about in the arcade. She is the first character here with any.
      *
      * 1.70 m, which is what she is modelled at, so nothing is rescaled and the
      * two speeds below are the measurement itself.
@@ -551,7 +555,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Tina',
     note: 'Long Odds, Market Row',
     file: '/models/cast/tina.glb',
-    bytes: 9815468,
+    bytes: 9764996,
     height: 1.7,
     /* Measured on the shipped file by `scripts/blender/gait.py`. Her walk is the
        slowest in the cast and her run is not: the clips are Sarah's, and Tina's
