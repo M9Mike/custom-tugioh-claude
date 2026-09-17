@@ -64,13 +64,13 @@ type Builder = (anisotropy: number) => { root: THREE.Group; dispose(): void };
 
 async function builderOf(area: string): Promise<Builder> {
   switch (area) {
-    case 'black-crown': return (await import('../../src/components/story/world/blackcrown')).buildBlackCrown;
-    case 'crown-shop': return (await import('../../src/components/story/world/crownshop')).buildCrownShop;
-    case 'old-cemetery': return (await import('../../src/components/story/world/cemetery')).buildCemetery;
-    case 'domino-station': return (await import('../../src/components/story/world/station')).buildStation;
-    case 'station-plaza': return (await import('../../src/components/story/world/plaza')).buildPlaza;
-    case 'domino-high': return (await import('../../src/components/story/world/high')).buildHigh;
-    case 'central-towers': return (await import('../../src/components/story/world/towers')).buildTowers;
+    case 'black-crown': return (await import('./legacy/blackcrown')).buildBlackCrown;
+    case 'crown-shop': return (await import('./legacy/crownshop')).buildCrownShop;
+    case 'old-cemetery': return (await import('./legacy/cemetery')).buildCemetery;
+    case 'domino-station': return (await import('./legacy/station')).buildStation;
+    case 'station-plaza': return (await import('./legacy/plaza')).buildPlaza;
+    case 'domino-high': return (await import('./legacy/high')).buildHigh;
+    case 'central-towers': return (await import('./legacy/towers')).buildTowers;
     default: throw new Error(`no old builder to capture for ${area}`);
   }
 }
@@ -113,6 +113,55 @@ interface Captured {
 }
 
 const round = (v: number) => Math.round(v * 1e4) / 1e4;
+
+/**
+ * The boxes a merge was made of, worked out from the geometry when the
+ * builder did not say: `mergeGeometries` keeps every box's vertices to
+ * itself, so the connected pieces of the index are the boxes. Each becomes
+ * a part for the checks — an axis-aligned one, flagged `turned` when its
+ * corners do not sit on its own bounding box.
+ */
+function partsOf(pos: number[], idx: number[]): number[][] | undefined {
+  const n = pos.length / 3;
+  /* A merged box keeps its 24 vertices and 36 indices together; a merged
+     plane its 4 and 6. Read the pieces off that; fall back to the connected
+     pieces of the index when the merge is neither. */
+  let groups: number[][];
+  if (n >= 48 && n % 24 === 0 && idx.length === n * 1.5) {
+    groups = Array.from({ length: n / 24 }, (_, b) => Array.from({ length: 24 }, (_, v) => b * 24 + v));
+  } else if (n >= 8 && n % 4 === 0 && idx.length === n * 1.5) {
+    groups = Array.from({ length: n / 4 }, (_, b) => Array.from({ length: 4 }, (_, v) => b * 4 + v));
+  } else {
+    if (n < 16) return undefined;
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const find = (a: number): number => {
+      while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
+      return a;
+    };
+    const unite = (a: number, b: number) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+    for (let i = 0; i < idx.length; i += 3) { unite(idx[i], idx[i + 1]); unite(idx[i + 1], idx[i + 2]); }
+    const byRoot = new Map<number, number[]>();
+    for (let i = 0; i < n; i++) { const r = find(i); const g = byRoot.get(r); if (g) g.push(i); else byRoot.set(r, [i]); }
+    groups = [...byRoot.values()];
+  }
+  if (groups.length < 2) return undefined;
+  const parts: number[][] = [];
+  for (const g of groups) {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (const v of g) {
+      const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2];
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+    }
+    /* Axis-aligned when every vertex sits on a face of its own box in both x and z. */
+    const eps = 1e-3;
+    const turned = g.some((v) => {
+      const x = pos[v * 3], z = pos[v * 3 + 2];
+      return (Math.abs(x - x0) > eps && Math.abs(x - x1) > eps) || (Math.abs(z - z0) > eps && Math.abs(z - z1) > eps);
+    }) ? 1 : 0;
+    parts.push([round(x0), round(y0), round(z0), round(x1), round(y1), round(z1), turned]);
+  }
+  return parts;
+}
 
 async function main() {
   const [area, out] = process.argv.slice(2);
@@ -181,7 +230,7 @@ async function main() {
       },
       cast: m.castShadow,
       receive: m.receiveShadow,
-      parts: (m.userData?.parts as number[][] | undefined),
+      parts: (m.userData?.parts as number[][] | undefined) ?? (kind === 'raw' ? partsOf(pos, idx) : undefined),
     });
     cap.counts.tris += idx.length / 3;
   });

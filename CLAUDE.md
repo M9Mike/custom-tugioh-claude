@@ -316,44 +316,61 @@ pixel ratio.
 stairs. The ease that keeps feet on a step is clamped on the way up
 (`groundY ≥ wantY − 0.02`) and free on the way down.
 
-**An area can be built in Blender, and then it is a file.** Grandpa's shop
-and Turtle Lane are the first two: `npm run world -- <area>` writes the
-collision truth out of `areas.ts` (`scripts/world/layout.ts`), draws the
+**Every area is a file, built in Blender.** `npm run world -- <area>` writes
+the collision truth out of `areas.ts` (`scripts/world/layout.ts`), draws the
 pictures the room hangs from the game's own card art, builds the area
 headless in Blender (`scripts/blender/world`, one `recipe` per kind of place
-— `shop`, `street`), and compresses it into `public/models/world/<area>.glb`,
-which `world/glb.ts` loads. Three rules
-hold it to the laws above. The drawing is made *from* the collision: the
-walls are the tall solids, the counter and the shelving are built to the
-footprint of the solid that stops you (`draw: 'counter'` on the solid says
-what to draw there), so the drawn thing is the colliding thing by
-construction — and a solid you move without rebuilding is caught by
-`npm run drawn`, which refuses a GLB whose layout hash is not the room's.
-Every box the kit bakes into a mesh is written into that mesh's `parts`, so
-the four gates that read boxes read the same boxes. And nothing in the file
-lights anything: the lamps and the sky stay in the area's own TypeScript
-(`world/shop.ts`), placed off the same dressing file Blender hangs the
-fittings from, so the lamp budget is counted before a byte of the file has
-landed; the probe says `ready` when it has, and `enterStory` waits for it.
-What it looks like lives in `data/world/<area>.dressing.json`; what it is
-made of is Poly Haven, CC0, listed in `data/world/assets.json` and fetched
-into `.cache` by `npm run world:fetch`. Textures tile in metres there too —
-every face the kit makes carries its own world coordinates as UVs. What bit
-on the way in, each written down where it was fixed: a fresh BMesh vertex
-carries index −1 until the table is renumbered (every un-bevelled box
-vanished, silently); meshopt stores positions as normalised integers with the
-scale on the node, so a matrix applied to that attribute clamps a room to a
-unit cube; the optimiser deduplicates identical geometry, so fifteen bills of
-one size are one geometry under fifteen nodes and each must bake on its own
-copy; the exporter wrote `metallicFactor: 1` for a metal channel linked from
-a photograph, and a metal with no environment map is black under the sun;
+— `shop`, `street`, `arcade`, `lane`, `shrine`, and `port`), and compresses
+it into `public/models/world/<area>.glb`, which `world/glb.ts` loads;
+`world/files.ts` lists every one, and the door sheet prefetches the areas
+behind every door of the one you stand in off that list. A `port` is an area
+whose old three.js builder still exists, under `scripts/world/legacy/`:
+`scripts/world/capture.ts` runs it in Node with a canvas that draws nothing
+and writes down every box and plane it made, and Blender puts them back with
+photographed materials — the same boxes that passed the gates, dressed. The
+drawer a canvas texture came from, and the tint it was handed, are read off
+the stack and the source line (`surfaces.ts`, `tagged`), so a port's brick
+that was redder stays redder. Three rules hold it all to the laws above. The
+drawing is made *from* the collision: the walls are the tall solids, the
+counter and the shelving are built to the footprint of the solid that stops
+you (`draw: 'counter'` on the solid says what to draw there), so the drawn
+thing is the colliding thing by construction — and a solid you move without
+rebuilding is caught by `npm run drawn`, which refuses a GLB whose layout
+hash is not the room's. Every box the kit bakes into a mesh is written into
+that mesh's `parts`, so the four gates that read boxes read the same boxes.
+And nothing in the file lights anything: the lamps and the sky stay in the
+area's own TypeScript (`world/shop.ts`, `world/ported.ts`), placed off the
+same dressing file Blender hangs the fittings from, so the lamp budget is
+counted before a byte of the file has landed; the probe says `ready` when it
+has, `enterStory` waits for it, and so does the sheet a door brings down —
+with the name of the place on it, for at least half a second and for as long
+as the file takes, because the one thing a door must never show is the
+duelist standing in a room that is not there yet. What it looks like lives
+in `data/world/<area>.dressing.json`; what it is made of is Poly Haven, CC0,
+listed in `data/world/assets.json` and fetched into `.cache` by
+`npm run world:fetch`. Textures tile in metres there too — every face the
+kit makes carries its own world coordinates as UVs. What bit on the way in,
+each written down where it was fixed: a fresh BMesh vertex carries index −1
+until the table is renumbered (every un-bevelled box vanished, silently);
+meshopt stores positions as normalised integers with the scale on the node,
+so a matrix applied to that attribute clamps a room to a unit cube; the
+optimiser deduplicates identical geometry, so fifteen bills of one size are
+one geometry under fifteen nodes and each must bake on its own copy; the
+exporter wrote `metallicFactor: 1` for a metal channel linked from a
+photograph, and a metal with no environment map is black under the sun;
 Poly Haven's photographs are true albedo — asphalt is 0.10, table wood
 0.017 — and a tint multiplies, so a dark texture is lifted with
 `blend: SCREEN` in the dressing, never darkened further; a Poly Haven tree
 is 317k triangles and is drawn as a picture on two crossed planes
-(`Kit.billboard`); headless Blender exits 0 after a traceback unless it is
-told `--python-exit-code 1`; and walls are grids with a column at every
-opening edge, because pieces that meet at a T-junction crack.
+(`Kit.billboard`), and the kit *measures* a model by importing it, so it
+remembers the answer beside the picture — a fir is half a gigabyte and a
+build that measured it once per tree ran for an hour; a billboard is sized
+to where it stands, because a nine-metre island tree is eleven wide and
+puts a stretched face against the camera in a grove you can walk; nothing
+may stand inside a door's closed box, not even a hillside; headless Blender
+exits 0 after a traceback unless it is told `--python-exit-code 1`; and
+walls are grids with a column at every opening edge, because pieces that
+meet at a T-junction crack.
 
 ## How the world is put together
 
@@ -377,10 +394,16 @@ opening edge, because pieces that meet at a T-junction crack.
   a row, not a renderer change.
 - `scripts/world/` and `scripts/blender/world/` — the Blender pipeline for an
   area that is a file: `layout.ts` (the collision, written out), `build.mjs`
-  (the whole run), `kit.py` (boxes with UVs in metres, Poly Haven materials,
-  bakes that say what they baked), `fixtures.py` (walls with openings,
-  trims, counters, shelving, cases, doors, windows, posters, pendants, the
-  street beyond the window), `optimize.mjs` (simplify, WebP, meshopt).
+  (the whole run), `capture.ts` (an old builder from `legacy/`, run in Node
+  and written down), `kit.py` (boxes with UVs in metres, raw triangles from
+  a capture, Poly Haven materials and models, billboards, bakes that say
+  what they baked), `fixtures.py` (walls with openings, trims, counters,
+  shelving, cases, doors, windows, posters, pendants, the street beyond the
+  window), `street.py`/`arcade.py`/`lane.py`/`shrine.py`/`port.py` (the
+  recipes), `optimize.mjs` (simplify, WebP, meshopt).
+- `src/components/story/world/<area>.ts` is a thin builder now: lamps and sky
+  off the dressing, then `loadArea`. The seven ported areas share
+  `ported.ts`. `StoryMenu.tsx` is the pause sheet; `WorldMap.tsx` the plan.
 
 ### Adding an area
 

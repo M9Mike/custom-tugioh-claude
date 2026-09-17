@@ -16,8 +16,11 @@ What the dressing can say, beyond `surfaces`:
   "drawers":  { "<drawer name>": "<surface key>" } — which surface an old
               canvas texture becomes; a drawer not named keeps its colour and
               gets no texture.
-  "drop":     [ "#rrggbb", ... ] — meshes of these plain colours are left out
-              (box-drawn foliage that a billboard tree replaces, say).
+  "drop":     [ "#rrggbb" | { "colour": "#rrggbb", "above": y }, ... ] —
+              meshes of these plain colours are left out (box-drawn foliage
+              that a billboard tree replaces, say); with `above`, only the
+              triangles whose middle is higher than y go, so a hedge in the
+              same green as a canopy stays.
   "trees":    { "trunk": "#rrggbb", "model": "...", "height": h, "lift": 0 }
               — a billboard tree stood on every mesh of the trunk's colour,
               at its foot, as tall as the trunk was plus `height`.
@@ -103,7 +106,12 @@ def _is_turned(box):
 
 
 def build_port(k, layout, dressing, art, mats, capture):
-    drop = set(c.lower() for c in dressing.get('drop', []))
+    drop = {}
+    for d in dressing.get('drop', []):
+        if isinstance(d, str):
+            drop[d.lower()] = None
+        else:
+            drop[d['colour'].lower()] = d.get('above')
     trees = dressing.get('trees')
     trunk = trees['trunk'].lower() if trees else None
     made = {}
@@ -112,12 +120,32 @@ def build_port(k, layout, dressing, art, mats, capture):
     for m in capture['meshes']:
         colour = m['mat']['color'].lower()
         if m['mat']['map'] is None and colour in drop:
-            continue
+            above = drop[colour]
+            if above is None:
+                continue
+            # only what stands higher than `above` goes: the canopies, not the hedges
+            pos, idx = m['pos'], m['idx']
+            kept_idx = []
+            for i in range(0, len(idx), 3):
+                mid = (pos[idx[i] * 3 + 1] + pos[idx[i + 1] * 3 + 1] + pos[idx[i + 2] * 3 + 1]) / 3
+                if mid <= above:
+                    kept_idx.extend(idx[i:i + 3])
+            if not kept_idx:
+                continue
+            m = dict(m, idx=kept_idx, parts=[pp for pp in (m.get('parts') or []) if pp[1] <= above] or None)
         if trunk and m['mat']['map'] is None and colour == trunk:
-            a = _aabb(m['pos'])
-            h = (a[4] - a[1]) + trees.get('height', 2.0)
-            tree(k, art, (a[0] + a[3]) / 2, a[1] + trees.get('lift', 0.0), (a[2] + a[5]) / 2, h, f'port-tree-{stood}', rot_y=stood * 0.7, model=trees.get('model', 'island_tree_02'))
-            stood += 1
+            # every upright of the trunk's colour gets a tree stood on it — a merge
+            # of trunks says what it was made of, so each part is one; a branch
+            # (wider than it is tall) is left out with the canopy it held up
+            boxes = m['parts'] if m.get('parts') else [_aabb(m['pos'])]
+            models = trees.get('models') or [trees.get('model', 'island_tree_02')]
+            for a in boxes:
+                up = a[4] - a[1]
+                if up < 1.4 * max(a[3] - a[0], a[5] - a[2]):
+                    continue
+                h = up + trees.get('height', 2.0)
+                tree(k, art, (a[0] + a[3]) / 2, a[1] + trees.get('lift', 0.0), (a[2] + a[5]) / 2, h, f'port-tree-{stood}', rot_y=stood * 0.7, model=models[stood % len(models)])
+                stood += 1
             continue
         key = _key_for(m)
         if key not in made:

@@ -68,15 +68,17 @@ export default function StoryMenu(p: StoryMenuProps) {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-center overflow-y-auto bg-ink/70 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-40 overflow-y-auto bg-ink/70 p-4 backdrop-blur-[2px]"
       style={{ paddingTop: 'calc(var(--safe-top) + 16px)', paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}
       onClick={p.onClose}
       role="dialog"
       aria-modal
       aria-label="Pause menu"
     >
+      {/* Centred when it fits, scrolled from the top when it does not. */}
+      <div className="flex min-h-full w-full items-center justify-center">
       <div
-        className="panel grain relative my-auto flex w-full max-w-md flex-col overflow-hidden rounded sm:max-w-2xl sm:flex-row"
+        className="panel grain relative flex w-full max-w-md flex-col overflow-hidden rounded sm:max-w-2xl sm:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         {/* the plaque */}
@@ -191,6 +193,7 @@ export default function StoryMenu(p: StoryMenuProps) {
             </>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

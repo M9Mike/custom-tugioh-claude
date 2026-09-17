@@ -63,18 +63,18 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ballast, brick, concrete, darkWood, paving, render, signBoard } from './surfaces';
+import { ballast, brick, concrete, darkWood, paving, render, signBoard } from '../../../src/components/story/world/surfaces';
 import {
   Owned, bakedFrom, basePlate, decal, glow, lit, matt, scaleBoxUVs, surfaceOf, tiled,
   type BakedPart, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, DS_ARCH, DS_ARCH_AT, DS_ARCH_COLUMNS, DS_BARRIER, DS_BUFF, DS_COLUMNS, DS_CROSS,
   DS_EAST, DS_EAST_HALF, DS_EAST_PIERS, DS_EAVES, DS_FLIGHT_HALF, DS_GATE, DS_GATES, DS_GATE_HALF, DS_HALL_COLUMNS, DS_HALL_ROWS,
   DS_NORTH, DS_PLAT, DS_PLATFORMS, DS_RANGE, DS_RIDGE, DS_ROAD, DS_ROADS, DS_SOUTH, DS_SPAN,
   DS_FRONT, DS_TERRACE, DS_THINGS, DS_TRACK, DS_TRAIN_TAIL, DS_WALL, type StationThing,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['domino-station'];
 /** The outer limit of the building: where the walls' outer faces are. */

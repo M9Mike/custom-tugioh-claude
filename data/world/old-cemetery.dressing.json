@@ -258,5 +258,17 @@
     "normalBias": 0.069,
     "gain": 1.05,
     "fill": 1
-  }
+  },
+  "trees": {
+    "trunk": "#4a3d30",
+    "models": [
+      "fir_a",
+      "tree_small_02",
+      "fir_b"
+    ],
+    "height": 2.6
+  },
+  "drop": [
+    "#465836"
+  ]
 }

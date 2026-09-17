@@ -36,12 +36,12 @@
 import * as THREE from 'three';
 import {
   woodFloor, darkWood, plaster, brick, concrete, paving, signBoard,
-} from './surfaces';
+} from '../../../src/components/story/world/surfaces';
 import {
   Owned, box, matt, tiled, glow, surfaceOf, seeded, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
-import { AREAS, CS_G1, CS_G2, CS_TOP, CS_GROUND, groundAt } from '@/story/areas';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
+import { AREAS, CS_G1, CS_G2, CS_TOP, CS_GROUND, groundAt } from '../../../src/story/areas';
 
 const AREA = AREAS['crown-shop'];
 const at = (x: number, z: number, near?: number) => groundAt(AREA, x, z, near);

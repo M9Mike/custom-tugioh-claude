@@ -32,19 +32,19 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   asphalt, concrete, darkWood, paving, render, signBoard, woodFloor,
-} from './surfaces';
+} from '../../../src/components/story/world/surfaces';
 import {
   Owned, bakedFrom, basePlate, decal, glow, lit, matt, scaleBoxUVs, seeded, surfaceOf, tiled,
   type BakedPart, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, CT_ALLEY, CT_ARCADE, CT_ARM, CT_ARM_E, CT_ARM_W, CT_DECK, CT_DECK_AT, CT_DOOR_HALF,
   CT_DROP, CT_DROP_N, CT_DROP_S, CT_EAST, CT_EAST_SHAFT, CT_EDOOR, CT_ELOBBY, CT_GALLERY,
   CT_GATE, CT_GATE_HALF, CT_IN, CT_LOBBY, CT_LOW, CT_MEZZ, CT_RISE, CT_ROAD, CT_STAIR,
   CT_ARM_FLAT, CT_SLOT, CT_UP, CT_UP_AT, CT_WALK, CT_WDOOR, CT_WELL, CT_WEST, CT_WEST_SHAFT,
   CT_WLOBBY, pavingPieces,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['central-towers'];
 const OUT_X = AREA.bounds.hw + 1;   // 120

@@ -38,17 +38,17 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { asphalt, brick, concrete, darkWood, paving, render, shutter, signBoard, soil, turf } from './surfaces';
+import { asphalt, brick, concrete, darkWood, paving, render, shutter, signBoard, soil, turf } from '../../../src/components/story/world/surfaces';
 import {
   Owned, bakedFrom, basePlate, decal, glow, lit, matt, scaleBoxUVs, seeded, surfaceOf, tiled,
   type BakedPart, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, DS_EAVES, DS_RIDGE, DS_SPAN, groundAt, PZ_CLOCK, PZ_DOOR, PZ_DOOR_HALF, PZ_FACE, PZ_FLIGHT,
   PZ_CROSS_HALF, PZ_FLIGHT_STEPS, PZ_IN, PZ_ISLAND, PZ_KERB, PZ_RAILS, PZ_ROAD, PZ_TERRACE,
   PZ_HIGH, PZ_THINGS, PZ_TOW, PZ_WAYS, type PlazaThing, type PlazaWay,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['station-plaza'];
 /**

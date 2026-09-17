@@ -36,14 +36,14 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { turf, concrete, paving, darkWood } from './surfaces';
+import { turf, concrete, paving, darkWood } from '../../../src/components/story/world/surfaces';
 import {
   Owned, basePlate, box, matt, tiled, glow, surfaceOf, seeded, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, CM_MARKERS, CM_THINGS, CM_WALK, CM_WALKS, CM_MID, CM_HIGH, groundAt, type Marker,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['old-cemetery'];
 const W = AREA.bounds.hw;

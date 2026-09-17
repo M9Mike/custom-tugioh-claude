@@ -33,15 +33,15 @@
 import * as THREE from 'three';
 import {
   asphalt, paving, brick, render, plaster, darkWood, concrete, shutter, signBoard,
-} from './surfaces';
+} from '../../../src/components/story/world/surfaces';
 import {
   basePlate,
   Owned, box, matt, tiled, glow, surfaceOf, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, BC_PODIUM, BC_COURT, BC_STEPS, BC_PAVEMENTS, CROWN_THINGS, groundAt,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['black-crown'];
 

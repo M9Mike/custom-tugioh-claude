@@ -36,18 +36,18 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   asphalt, brick, concrete, darkWood, paving, render, shutter, signBoard, soil, turf, woodFloor,
-} from './surfaces';
+} from '../../../src/components/story/world/surfaces';
 import {
   Owned, bakedFrom, basePlate, decal, glow, lit, matt, scaleBoxUVs, seeded, surfaceOf, tiled,
   type BakedPart, type BuiltArea,
-} from './kit';
-import { Sky, ownSky } from './sky';
+} from '../../../src/components/story/world/kit';
+import { Sky, ownSky } from '../../../src/components/story/world/sky';
 import {
   AREAS, dhBay, DH_BAY, DH_BAYS, DH_CORR, DH_EAVES, DH_FIELD, DH_FLIGHT, DH_FLIGHT_STEPS,
   DH_FLOOR, DH_GATE, DH_GATE_HALF, DH_GYM, DH_GYM_DOOR, DH_HALL, DH_IN, DH_INNER, DH_LIBRARY, DH_MAIN,
   DH_DESKS, DH_OPEN, DH_OPEN_UP, DH_POOL, DH_ROOM, DH_SPECIAL, DH_THINGS, DH_TOWER, DH_TOWERS, DH_TRACK,
   DH_UPPER, DH_WALKS, groundAt, type HighThing,
-} from '@/story/areas';
+} from '../../../src/story/areas';
 
 const AREA = AREAS['domino-high'];
 /** How high the ground is under a point — asked, never assumed. */

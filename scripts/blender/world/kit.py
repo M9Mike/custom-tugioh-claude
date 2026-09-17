@@ -375,6 +375,10 @@ class Kit:
                 continue  # a duplicate face; the old builders drew a few
             made += 1
             f.smooth = False
+            # a face fresh from bmesh has no normal until the mesh is told to
+            # work them out; with (0, 0, 0) every wall projected like a floor
+            # and the textures ran down the stone in streaks
+            f.normal_update()
             n = f.normal
             for loop, vi in zip(f.loops, (a, b, c)):
                 if uv is not None and len(uv) >= (vi + 1) * 2:
