@@ -281,6 +281,19 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     try { return window.localStorage.getItem('story-hints') !== '0'; } catch { return true; }
   });
   /**
+   * Whether where she stands is written in the corner — an Options switch,
+   * off unless asked for. Mike asked for it so a place he sees something
+   * wrong can be named ("the lamp at −26, 48"); it is not part of the game.
+   */
+  const [showWhere, setShowWhere] = useState(() => {
+    try { return window.localStorage.getItem('story-where') === '1'; } catch { return false; }
+  });
+  const [where, setWhere] = useState('');
+  const showWhereRef = useRef(showWhere);
+  useEffect(() => {
+    showWhereRef.current = showWhere;
+  }, [showWhere]);
+  /**
    * The black sheet a door transition plays behind.
    *
    * A plain div rather than anything in the scene, and driven by writing to its
@@ -907,6 +920,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * and a couple of shadow maps, which is a visible hitch on a phone, and a
      * hitch that happens behind a black screen is a load rather than a stutter.
      */
+    let whereAt = 0;
     let crossing: { door: Door; t: number; swapped: boolean; held: number } | null = null;
     /**
      * How long the sheet stays down after the swap, at least.
@@ -1263,6 +1277,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            to a stand instead of marching on the spot. */
         const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
         rig.update(dt, Math.min(stride, covered / TOP_SPEED), covered);
+      }
+
+      /* Where she is, four times a second rather than sixty — React does not
+         need to hear about a tenth of a metre. Only while it is asked for. */
+      if (showWhereRef.current && performance.now() - whereAt > 250) {
+        whereAt = performance.now();
+        const deg = Math.round(((p.facing * 180) / Math.PI + 360)) % 360;
+        setWhere(`${areaRef.current}  x ${p.x.toFixed(1)}  z ${p.z.toFixed(1)}  y ${groundY.toFixed(2)}  facing ${deg}°`);
       }
 
       /**
@@ -2117,6 +2139,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             setHints(on);
             try { window.localStorage.setItem('story-hints', on ? '1' : '0'); } catch { /* ignore */ }
           }}
+          where={showWhere}
+          onWhere={(on) => {
+            setShowWhere(on);
+            if (!on) setWhere('');
+            try { window.localStorage.setItem('story-where', on ? '1' : '0'); } catch { /* ignore */ }
+          }}
           onEditDeck={onEditDeck}
           onMap={() => {
             /* Read off the refs at the moment it opens, not subscribed to:
@@ -2259,6 +2287,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           className="pointer-events-none h-[52px] w-[52px] rounded-full border border-brassdim bg-[#1c222b]/85"
         />
       </div>
+
+      {showWhere && !talkingTo && where && (
+        <p
+          data-where-readout
+          className="pointer-events-none absolute bottom-0 right-0 select-text rounded border border-amber-200/20 bg-black/40 px-2 py-1 font-mono text-[10px] leading-none text-amber-200/80"
+          style={{ marginBottom: 'calc(var(--safe-bottom) + 44px)', marginRight: 'calc(var(--safe-right) + 16px)', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
+        >
+          {where}
+        </p>
+      )}
 
       {!talkingTo && hints && (
         <p

@@ -28,6 +28,9 @@ export interface StoryMenuProps {
   savedNote?: string | null;
   hints: boolean;
   onHints: (on: boolean) => void;
+  /** The position readout in the corner, for naming a place to me. */
+  where: boolean;
+  onWhere: (on: boolean) => void;
   onEditDeck: () => void;
   onMap: () => void;
   onSave: () => void;
@@ -51,6 +54,7 @@ const ICON = {
   back: 'M15 5l-7 7 7 7',
   sound: 'M4 10v4h3l5 4V6L7 10H4zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12',
   hints: 'M12 3a6 6 0 0 0-3 11.2V17h6v-2.8A6 6 0 0 0 12 3zM10 21h4',
+  where: 'M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10zM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
 };
 
 export default function StoryMenu(p: StoryMenuProps) {
@@ -185,6 +189,7 @@ export default function StoryMenu(p: StoryMenuProps) {
                   }}
                 />
                 <Toggle icon={ICON.hints} title="Control hints" sub="The line under the stick that says how to walk" on={p.hints} onChange={p.onHints} />
+                <Toggle icon={ICON.where} title="Where I stand" sub="The area and the metres, in the corner, for naming a place" on={p.where} onChange={p.onWhere} />
               </div>
               <p className="mt-4 text-[10px] leading-relaxed text-ptextdim">
                 The picture sets its own quality: it gives up pixels before it gives up frames, and there is nothing to

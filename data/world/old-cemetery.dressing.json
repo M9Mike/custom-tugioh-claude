@@ -270,5 +270,18 @@
   },
   "drop": [
     "#465836"
+  ],
+  "stand": [
+    {
+      "colour": "#46543a",
+      "models": [
+        "fir_a",
+        "fir_b",
+        "tree_small_02"
+      ],
+      "every": 4,
+      "sink": 3.0,
+      "extra": 4.8
+    }
   ]
 }

@@ -24,6 +24,12 @@ What the dressing can say, beyond `surfaces`:
   "trees":    { "trunk": "#rrggbb", "model": "...", "height": h, "lift": 0 }
               — a billboard tree stood on every mesh of the trunk's colour,
               at its foot, as tall as the trunk was plus `height`.
+  "stand":    [ { "colour": "#rrggbb", "models": [...], "every": 4, "sink": 3,
+                "extra": 4.8 } ] — box-drawn canopy masses of this colour go,
+              and a billboard tree stands where every `every`th of them was:
+              its foot `sink` metres under the mass, its top `extra` metres
+              over it. For the woods beyond a wall that were drawn as
+              floating blocks of leaf.
   "props":    [ { "model": "...", "x", "y", "z", "rotY", "scale" } ] — models
               added on top of what was captured.
 """
@@ -114,11 +120,25 @@ def build_port(k, layout, dressing, art, mats, capture):
             drop[d['colour'].lower()] = d.get('above')
     trees = dressing.get('trees')
     trunk = trees['trunk'].lower() if trees else None
+    stands = {st['colour'].lower(): st for st in dressing.get('stand', [])}
     made = {}
     kept = 0
     stood = 0
     for m in capture['meshes']:
         colour = m['mat']['color'].lower()
+        if m['mat']['map'] is None and colour in stands:
+            st = stands[colour]
+            boxes = m['parts'] if m.get('parts') else [_aabb(m['pos'])]
+            models = st.get('models') or ['fir_a']
+            every = max(1, int(st.get('every', 1)))
+            for n, a in enumerate(boxes):
+                if n % every:
+                    continue
+                foot = a[1] - st.get('sink', 3.0)
+                top = a[4] + st.get('extra', 4.8)
+                tree(k, art, (a[0] + a[3]) / 2, foot, (a[2] + a[5]) / 2, top - foot, f'port-wood-{stood}', rot_y=stood * 0.7, model=models[stood % len(models)])
+                stood += 1
+            continue
         if m['mat']['map'] is None and colour in drop:
             above = drop[colour]
             if above is None:

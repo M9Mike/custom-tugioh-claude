@@ -514,7 +514,11 @@ fail. `npm run seams -- <area> --shots` and `npm run walls -- <area>
   metre, not per second), and a dev server that has hot-reloaded for hours
   wedges long-lived pages — a `page.evaluate` that never returns and a race
   that never fires. Restart the dev server before `npm run soak`, and never
-  edit `src/` while it runs. And a fifth: **a page wears out**. `npm run walk`
+  edit `src/` while it runs — nor `data/world/*.dressing.json`, which the
+  thin builders import, nor `public/models/world/*.glb`, which the page
+  fetches: a recompile changes the build id, the page reloads itself into
+  the "current" build, and a corner shot comes back as the sign-in card.
+  And a fifth: **a page wears out**. `npm run walk`
   built two dozen areas on one page and reported, three runs running, exactly
   one route that "never finished building" — a different route each time. A
   check that fails somewhere new every run is the instrument, not the world;

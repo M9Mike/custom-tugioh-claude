@@ -36,6 +36,16 @@ const trisOf = (d) => d.getRoot().listMeshes().reduce((n, m) => n + m.listPrimit
   return k + (idx ? idx.getCount() : p.getAttribute('POSITION')?.getCount() ?? 0) / 3;
 }, 0), 0);
 const trisBefore = Math.round(trisOf(doc));
+/* A picture with holes in it — a tree on two crossed planes — is a mask, not
+   a blend: Blender 4.2 exports its clip as BLEND, and a blended plane sorts
+   against everything behind it and casts no shadow. Cut at half. */
+for (const m of doc.getRoot().listMaterials()) {
+  if (m.getAlphaMode() === 'BLEND' && m.getBaseColorTexture()) {
+    m.setAlphaMode('MASK');
+    m.setAlphaCutoff(0.5);
+  }
+}
+
 await doc.transform(
   dedup(),
   prune(),

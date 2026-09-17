@@ -479,8 +479,10 @@ class Kit:
         return out_png, aspect, size
 
     def cutout(self, key, png_path, x, y, z, width, height, rot_y=0.0):
-        """Two crossed vertical planes carrying a cutout picture, base at y."""
-        mat = self.picture(key, png_path, rough=0.9, cutout=True)
+        """Two crossed vertical planes carrying a cutout picture, base at y.
+        One material per picture, whatever the key: a hundred trees of one
+        kind bake into one mesh, not a hundred."""
+        mat = self.picture(f'cutout:{os.path.basename(png_path)}', png_path, rough=0.9, cutout=True)
         for turn in (0.0, math.pi / 2):
             self.box(mat, x, y + height / 2, z, width, height, 0.002, rot_y=rot_y + turn, uv='fit', uv_face='front', turned=1, faces={'front', 'back'})
 
