@@ -215,7 +215,14 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
                         : ''
                 }`}
               >
-                <div className="relative min-h-[92px] w-full flex-1 overflow-hidden">
+                {/* Square by declaration, not by the picture in it. The box
+                    used to take its height from the artwork, which held while
+                    every artwork was square — Ash's are the shape of a card,
+                    so his tile stood a third taller and Tina's, in his row of
+                    the grid, was stretched to match. `object-cover` crops
+                    whatever shape arrives; `npm run layout` measures every
+                    tile against the first. */}
+                <div className="relative aspect-square w-full flex-1 overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={artUrl(d.emblem)}

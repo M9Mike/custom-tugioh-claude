@@ -221,7 +221,9 @@ export default function Home() {
                 pickedId === d.id ? 'ring-2 ring-brass' : ''
               }`}
             >
-              <div className="relative min-h-[86px] w-full flex-1 overflow-hidden">
+              {/* Square by declaration, whatever shape the artwork is — the
+                  same tile as the lobby's, for the same reason (see there). */}
+              <div className="relative aspect-square w-full flex-1 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={artUrl(d.emblem)}

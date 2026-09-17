@@ -15,6 +15,7 @@
  * positions rather than looking for mode-specific markup: the next thing to
  * shift the board will not be a button either.
  */
+import { readFile } from 'node:fs/promises';
 import { webkit, devices } from 'playwright';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3100').replace(/\/$/, '');
@@ -125,6 +126,85 @@ const rows = [];
   await ctx.close();
 }
 
+/* The duelist tiles.
+ *
+ * Reported as "Tina and Ash's deck are taller than the rest". A tile's artwork
+ * box took its height from the picture in it, which held while every picture
+ * was square: Ash's are the shape of a card, so his tile stood a third taller
+ * and Tina's, sharing his row of the grid, was stretched to match. The box is
+ * square by its own declaration now, whatever the picture, and this measures
+ * every tile against the first — with the pictures decoded, since a tile is
+ * only the wrong height once its picture is in it — on the phone and at five
+ * across, in both places the grid is drawn. */
+const ROSTER = JSON.parse(await readFile(new URL('../src/game/generated/decklists.json', import.meta.url), 'utf8'))
+  .duelists.length;
+
+async function tiles(ctx, label, open) {
+  const page = await ctx.newPage();
+  await open(page);
+  const grid = '.md\\:grid-cols-5';
+  await page.waitForSelector(grid, { timeout: 20000 }).catch(async () => {
+    const seen = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 200));
+    throw new Error(`${label}: never reached the duelists. On screen: ${seen}`);
+  });
+  await page.waitForFunction(
+    (sel) => {
+      const imgs = [...document.querySelectorAll(`${sel} img`)];
+      return imgs.length > 0 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+    },
+    grid,
+    { timeout: 20000 }
+  );
+  const seen = await page.evaluate(
+    (sel) =>
+      [...document.querySelector(sel).children].map((b) => ({
+        name: b.querySelector('p')?.textContent ?? '?',
+        h: Math.round(b.getBoundingClientRect().height),
+      })),
+    grid
+  );
+  await page.close();
+  return { label, tiles: seen };
+}
+
+const lobby = (code, token) => async (page) => {
+  await page.context().addInitScript(
+    ([k, id]) => {
+      try {
+        localStorage.setItem(k, JSON.stringify(id));
+      } catch {
+        /* reported as "never reached the duelists" below */
+      }
+    },
+    [`duel-identity:${code.toUpperCase()}`, { code, token }]
+  );
+  await page.goto(`${BASE}/duel/${code}`, { waitUntil: 'domcontentloaded' });
+};
+
+const bracket = async (page) => {
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.getByLabel(/your name/i).fill('Mihail');
+  await page.getByRole('button', { name: /enter the tournament/i }).click();
+};
+
+const grids = [];
+for (const [where, make] of [
+  ['phone', () => browser.newContext({ ...devices['iPhone 11'] })],
+  ['desktop', () => browser.newContext({ viewport: { width: 1280, height: 900 } })],
+]) {
+  {
+    const r = await post('/api/room', { name: 'Mihail', vsAi: true });
+    const ctx = await make();
+    grids.push(await tiles(ctx, `lobby, ${where}`, lobby(r.code, r.token)));
+    await ctx.close();
+  }
+  {
+    const ctx = await make();
+    grids.push(await tiles(ctx, `tournament, ${where}`, bracket));
+    await ctx.close();
+  }
+}
+
 await browser.close();
 
 const keys = ['foeHand', 'foeZone', 'myZone', 'hand'];
@@ -153,4 +233,29 @@ if (missing.length) {
   } else {
     console.log('\n✅ the board is in the same place in all four modes.');
   }
+}
+
+/* The tiles: one height, every one of them, or the row somebody is in is the
+   wrong shape. */
+const uneven = [];
+for (const g of grids) {
+  if (g.tiles.length !== ROSTER) {
+    uneven.push(`${g.label}: ${g.tiles.length} tiles for ${ROSTER} duelists — this proves nothing`);
+    continue;
+  }
+  const ref = g.tiles[0].h;
+  const off = g.tiles.filter((t) => Math.abs(t.h - ref) > TOLERANCE);
+  if (off.length) uneven.push(`${g.label}: ${off.map((t) => `${t.name} at ${t.h}`).join(', ')}; ${g.tiles[0].name} at ${ref}`);
+}
+console.log('\n  tiles                     shortest  tallest');
+for (const g of grids) {
+  const hs = g.tiles.map((t) => t.h);
+  console.log(`  ${g.label.padEnd(25)} ${String(Math.min(...hs)).padStart(8)} ${String(Math.max(...hs)).padStart(8)}`);
+}
+if (uneven.length) {
+  console.log(`\n❌ a duelist stands taller than the rest:`);
+  for (const line of uneven) console.log(`     ${line}`);
+  process.exitCode = 1;
+} else {
+  console.log('\n✅ every duelist tile is the same height, on the phone and at five across.');
 }
