@@ -215,6 +215,35 @@ A `spirit` has no collision cylinder at all, which is the only reason a route
 may run down the middle of an avenue: a *moving* cylinder can shove the player
 off a terrace.
 
+**A gait is a fraction of `TOP_SPEED`, and there is only one of them.** The rig
+picks its clip off `stride`, blending to Run across 0.62–0.92 — numbers tuned
+against what a full stick covers. An NPC's speed was divided by "a nominal
+walk" of 1.4 instead, so Tina's 1.15 m/s amble came out at 0.82 and ran her
+three quarters into the Run clip: sprinting arms and legs, with the ground going
+past at half the speed her feet were selling. Two scales for one number is how
+that happens. Below the run threshold a *walking* NPC still has to read as
+walking, so the fraction has a floor (0.32) and how fast they are going is the
+clip's own playback rate, off the real ground speed. Set a route's speed to what
+the model's Walk is *rated* at — `npm run gait` measures it — and the feet are
+honest by construction; three fifths of it is a walk played in slow motion.
+
+**A stop belongs where the route turns round.** The dwell used to be charged at
+every point, and a path bent through the middle of an arcade so it would not
+read as a sentry beat then bought a three-second stop in the middle of a
+straight walk. Mike's words were "few steps stop few steps stop". A point in
+the middle of a path is a corner; only the ends are somewhere to arrive at.
+
+**A note nobody clears is a conversation that never ends.** The world is
+unmounted by every other screen — the deck builder, the collection, the map —
+and it reads the resume note in a `useState` initialiser, which means on *every*
+mount. So a note left in place reopened the conversation you had just ended,
+every time you came back from sleeving a card. Whoever hands a note over has to
+be told it was taken (`onResumed`), and a roamer named by one is put back in
+front of the player rather than at the top of her route: a rig's live position
+dies with the field, and the fiction is that you never stopped talking. While
+somebody is being spoken to they hold still — being talked to, not being stood
+next to, which is a proximity test and the player has been away for a duel.
+
 **A model may be rigged and carry no animation.** A `sculpt` has no skeleton
 and can never move; the rest ship Idle, Walk and Run; a UniRig export has the
 bones and none of the clips. `premadeRig` needs no telling — it looks for an

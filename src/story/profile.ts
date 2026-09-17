@@ -88,6 +88,16 @@ export interface StoryProfile {
    */
   fresh?: string[];
   /**
+   * How much money each duelist who plays for money has left, keyed by their id.
+   *
+   * Only the ones with a line in `PURSE` ever appear here, and only once the
+   * player has taken something off them — an absent entry is somebody who still
+   * has everything they came with, which is the right reading for a save written
+   * before any of this existed. `purseOf` in `story/shop.ts` is the only thing
+   * that should read it, because it is also what applies the floor.
+   */
+  purse?: Record<string, number>;
+  /**
    * Which cards have already been pulled from each duelist, keyed by duelist id.
    *
    * The values are `slug#copy` entries — see `packs.ts` for why they are keyed

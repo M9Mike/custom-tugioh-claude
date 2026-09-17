@@ -684,6 +684,11 @@ export default function StoryMode() {
       onDuel={startDuel}
       onShop={() => setShopping(true)}
       resume={resume}
+      /* Read exactly once. The comment above this state says "cleared once
+         used" and for months nothing cleared it, which is why a conversation
+         you had ended came back every time you closed the deck builder: the
+         world is unmounted by every other screen and rebuilt from this note. */
+      onResumed={() => setResume(null)}
     />
     </>
   );

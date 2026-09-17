@@ -171,6 +171,47 @@ async function main() {
   else check(Math.hypot(after[0] - before[0], after[1] - before[1]) < 1.5, `standing where the duel began (${before[0].toFixed(1)}, ${before[1].toFixed(1)} → ${after[0].toFixed(1)}, ${after[1].toFixed(1)})`);
   await page.screenshot({ path: '/tmp/duel-return.png' }).catch(() => {});
 
+  /*
+   * ---- leg one and a half: a screen over the world must not replay it ----
+   *
+   * Mike: "when I've closed the conversation with Tina it's still lingering —
+   * I open the Menu to edit my deck, close that, and the conversation carries
+   * on." The resume note is read in a `useState` initialiser, so it is read on
+   * every *mount* of the world — and the deck builder, the collection and the
+   * map all replace the world rather than sitting over it. A note that nothing
+   * clears is therefore a conversation that reopens for the rest of the
+   * session, however many times you say goodbye.
+   *
+   * Leg three below looks like this check and is not: it clears the browser
+   * and signs in cold, which tests the note *on the save*. This one never
+   * leaves the session.
+   */
+  console.log('\n  — and the deck builder does not bring it back —');
+  await page.locator('[aria-label="End the conversation"]').first().dispatchEvent('click').catch(() => {});
+  await page.waitForTimeout(600);
+  const closed = !(await page.locator('[data-conversation]').first().isVisible().catch(() => false));
+  check(closed, 'saying goodbye closes the conversation');
+  await page.locator('button[aria-label="Menu"]').first().dispatchEvent('click').catch(() => {});
+  await page.waitForTimeout(400);
+  await page.locator('button:has-text("Edit Deck")').first().dispatchEvent('click').catch(() => {});
+  await page.locator('[data-save-deck]').first().waitFor({ timeout: 25000 }).catch(() => {});
+  const builder = await page.locator('[data-save-deck]').first().isVisible().catch(() => false);
+  check(builder, 'Edit Deck opens over the world');
+  await page.locator('button:has-text("Discard")').first().dispatchEvent('click').catch(() => {});
+  /* The world is built from scratch on the way back, which is the whole
+     point: give it long enough to have reopened the panel if it were going to. */
+  let rebuiltWorld = false;
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(500);
+    if (await page.evaluate(() => !!(window as unknown as { __probe?: unknown }).__probe).catch(() => false)) {
+      rebuiltWorld = true;
+      if (i > 12) break;
+    }
+  }
+  check(rebuiltWorld, 'and closing it comes back to the world');
+  const lingering = await page.locator('[data-conversation]').first().isVisible().catch(() => false);
+  check(!lingering, 'and the conversation you ended stays ended');
+
   /* ---- leg two: the browser forgets, the save does not ---- */
   console.log('\n  — and again, with the browser wiped on the way back —');
   await page.locator('[aria-label="End the conversation"]').first().dispatchEvent('click').catch(() => {});

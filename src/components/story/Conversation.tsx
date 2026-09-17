@@ -41,11 +41,32 @@ interface Props {
   onDuel?: (stake?: number) => void;
   /** Open this character's shop, and come back to the conversation after. */
   onShop?: () => void;
+  /**
+   * What the player has on them, and the most this character can be played
+   * for — their range capped by what is left of their own purse.
+   *
+   * Both are here so a wager can be *answered* rather than silently dropped.
+   * The replies that name a figure stay on offer whatever either side can
+   * afford: a reply the player cannot press is a reply that has left the
+   * conversation, and they are left guessing why. Press it and the character
+   * says which of the two of you is short — see `DuelOffer.short`.
+   */
+  money?: number;
+  ceiling?: number;
 }
 
-export default function Conversation({ npc, playerName, onClose, openAt, onDuel, onShop }: Props) {
+export default function Conversation({ npc, playerName, onClose, openAt, onDuel, onShop, money, ceiling }: Props) {
   const [nodeId, setNodeId] = useState(openAt ?? npc.start);
   const [page, setPage] = useState(0);
+  /**
+   * A stake that could not be covered, and by whom.
+   *
+   * Held instead of the node's own line, because the conversation has not gone
+   * anywhere: she is answering the figure you just named and the same replies
+   * are still the right ones to offer. Cleared by anything that moves the
+   * script on.
+   */
+  const [refused, setRefused] = useState<string | null>(null);
 
   /* A script that names a node it does not have is an authoring mistake, and
      the panel is the wrong place to die of one: say so in the console, close
@@ -61,10 +82,16 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
   if (!node) return null;
 
   const lastPage = page >= node.lines.length - 1;
-  const line = sayLine(node.lines[page] ?? '', playerName);
+  const line = refused ?? sayLine(node.lines[page] ?? '', playerName);
 
   const advance = () => {
     sfx.click();
+    if (refused) {
+      /* A tap on her refusal puts her own line back rather than paging past
+         it: nothing was answered, so there is nothing to advance to. */
+      setRefused(null);
+      return;
+    }
     if (!lastPage) {
       setPage((p) => p + 1);
       return;
@@ -75,6 +102,34 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
 
   const choose = (to: string | null, duel?: boolean, shop?: boolean, stake?: number) => {
     sfx.click();
+    setRefused(null);
+    /**
+     * Money before anything moves.
+     *
+     * The stake is taken by `/api/room` the moment the duel is seated, and
+     * when the player cannot cover it that route refuses with a sentence
+     * nobody ever saw: the world has no place to show it, so the reply simply
+     * did nothing and the button read as broken. Asked here, the answer is a
+     * line from the person who wants the money — and the round trip that would
+     * have failed never happens.
+     *
+     * `money` is what the save says and it is still the server that decides;
+     * this is the same figure arriving a second earlier and in her voice.
+     */
+    if (duel && stake !== undefined) {
+      const held = money ?? 0;
+      const cash = (n: number) => `$${n}`;
+      if (stake > held && npc.duel?.short) {
+        sfx.error();
+        setRefused(sayLine(npc.duel.short, playerName, { stake: cash(stake), money: cash(held) }));
+        return;
+      }
+      if (ceiling !== undefined && stake > ceiling && npc.duel?.spent) {
+        sfx.error();
+        setRefused(sayLine(npc.duel.spent, playerName, { stake: cash(stake), purse: cash(ceiling) }));
+        return;
+      }
+    }
     /* A duel leaves the conversation rather than advancing it. The node named
        by the choice is where it will resume, and the caller records that — the
        panel is about to be unmounted and cannot remember anything. */

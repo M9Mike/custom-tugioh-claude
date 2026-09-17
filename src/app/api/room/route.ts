@@ -69,17 +69,20 @@ export async function POST(req: Request) {
        * money for anybody who makes the room creation fail on purpose.
        */
       const opponentId = body.opponentId ?? 'mai';
-      const stake = stakeFor(opponentId, body.stake);
+      /* Capped by *her* purse as well as by her range — she cannot match a bet
+         she has not got. See `PURSE` in `story/shop.ts`; the figure is read off
+         the save and never off the request. */
+      const stake = stakeFor(opponentId, body.stake, profile.purse);
       if (stake > 0) {
-        const purse = await updateProfile(canonical, (p) => {
+        const paid = await updateProfile(canonical, (p) => {
           const held = p.money ?? 0;
           if (held < stake) {
             return { ok: false, status: 409, error: `You need $${stake} on you to play for $${stake}.` };
           }
           return { ok: true, profile: { ...p, money: held - stake } };
         });
-        if (!purse.ok) {
-          return Response.json({ ok: false, error: purse.error }, { status: purse.status });
+        if (!paid.ok) {
+          return Response.json({ ok: false, error: paid.error }, { status: paid.status });
         }
       }
 

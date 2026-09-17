@@ -13,7 +13,24 @@
 import { CARDS, DUELIST_BY_ID } from '../src/game/cards';
 import { compareCards } from '../src/story/deckSort';
 import { newProfile, type StoryProfile } from '../src/story/profile';
-import { BOUNTY, STOCK, WAGER, bountyFor, buy, givesAPack, refuseBuy, shopStock, stakeFor, wagerFor } from '../src/story/shop';
+import {
+  BOUNTY,
+  PURSE,
+  STOCK,
+  WAGER,
+  bountyFor,
+  buy,
+  ceilingFor,
+  givesAPack,
+  purseAfterLosing,
+  purseAfterWin,
+  purseFor,
+  purseOf,
+  refuseBuy,
+  shopStock,
+  stakeFor,
+  wagerFor,
+} from '../src/story/shop';
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => {
@@ -199,6 +216,95 @@ console.log('\nthe money only moves the two ways it should');
   const broke = rich(1);
   check((broke.money ?? 0) < range.min, '$1 cannot cover her cheapest bet');
   check((broke.money ?? 0) - range.min < 0, 'so taking it anyway would go negative — which is why the route refuses first');
+}
+
+console.log('\nand what she brought with her\n');
+{
+  /*
+   * Her purse is the anti-farm rule, so it is the one worth measuring.
+   *
+   * A wager she matches out of nowhere is a hundred dollars every twenty duels
+   * for anybody with an afternoon. A purse makes each win *spend* something of
+   * hers, and the floor keeps her playable at the bottom of it — which is two
+   * separate claims and both of them are arithmetic.
+   */
+  const range = wagerFor('tina')!;
+  const held = purseFor('tina');
+  check(held !== null, 'she brought money of her own');
+  const { start, floor } = held!;
+  check(start === 100, 'a hundred dollars of it', `$${start}`);
+  check(floor === wagerFor('tina')!.min, 'and the floor is her own smallest game', `$${floor}`);
+
+  /* Everybody who wagers needs one, or the table is a faucet again. */
+  check(
+    Object.keys(WAGER).every((id) => !!purseFor(id)),
+    'everybody who plays for money has a purse to play out of',
+    Object.keys(WAGER).filter((id) => !purseFor(id)).join(', ')
+  );
+  check(purseFor('sarah') === null && purseOf(undefined, 'sarah') === 0,
+    'and nobody who does not is carrying one');
+
+  /* A save that has never beaten her has never taken anything off her. */
+  check(purseOf(undefined, 'tina') === start, 'an untouched save leaves her with all of it', `$${purseOf(undefined, 'tina')}`);
+  check(purseOf({}, 'tina') === start, 'and so does an empty ledger');
+  check(purseOf({ tina: 7 }, 'tina') === 7, 'a stored figure is what she has left', '$7');
+
+  /* Read as well as written through the floor: a bad figure from an older
+     build cannot put her under it or over what she came with. */
+  check(purseOf({ tina: 0 }, 'tina') === floor, 'nothing can put her under the floor', `$${purseOf({ tina: 0 }, 'tina')}`);
+  check(purseOf({ tina: -50 }, 'tina') === floor, 'not even a negative one');
+  check(purseOf({ tina: 9999 }, 'tina') === start, 'and she never has more than she came with');
+  check(purseOf({ tina: Number.NaN }, 'tina') === start, 'a figure that is not a number is no figure at all');
+
+  /* The ceiling is what the conversation may offer, and what the route allows. */
+  check(ceilingFor('tina', undefined) === range.max, 'at full purse she will play for anything in her range', `$${ceilingFor('tina', undefined)}`);
+  check(ceilingFor('tina', { tina: 3 }) === 3, 'down to $3 she will play for three', `$${ceilingFor('tina', { tina: 3 })}`);
+  check(ceilingFor('tina', { tina: floor }) === floor, 'and at the floor only for the minimum', `$${ceilingFor('tina', { tina: floor })}`);
+  check(stakeFor('tina', 5, { tina: 3 }) === 3, 'a $5 bet against $3 of hers is clamped to $3');
+  check(stakeFor('tina', 5, { tina: floor }) === floor, 'and against the floor, to the floor');
+  check(stakeFor('tina', 5, undefined) === range.max, 'while an unknown purse is her range alone');
+
+  /*
+   * Twenty wins at five dollars, which is the farm this exists to stop.
+   *
+   * Her hundred pays out and then stops paying out: what is left is the floor,
+   * and the biggest game she can still offer is the smallest one there is.
+   */
+  let purse: Record<string, number> = {};
+  let taken = 0;
+  for (let duel = 0; duel < 30; duel++) {
+    const stake = stakeFor('tina', range.max, purse);
+    taken += stake;
+    purse = { tina: purseAfterLosing('tina', purse, stake) };
+  }
+  check(purseOf(purse, 'tina') === floor, 'thirty straight wins leave her at the floor', `$${purseOf(purse, 'tina')}`);
+  check(taken <= start + 30 * floor, 'and she never pays out more than she had, bar the floor she keeps', `$${taken} off $${start}`);
+  check(ceilingFor('tina', purse) === range.min, 'the fives are gone; only the minimum is left', `$${ceilingFor('tina', purse)}`);
+  check(stakeFor('tina', range.max, purse) === range.min, 'so asking for five at that point gets you two');
+
+  /*
+   * And the ledger the route actually writes.
+   *
+   * `purseAfterWin` is the expression inside `/api/story/pack`'s
+   * `updateProfile`, lifted out so it can be checked without a finished duel:
+   * a win against her writes her new figure and leaves everybody else's alone,
+   * a win against somebody with no purse writes nothing at all, and a duel with
+   * nothing on the table changes nothing.
+   */
+  const ledger = purseAfterWin({ tina: 9, sarah: 4 }, 'tina', 5);
+  check(ledger?.tina === 4, "a $5 win takes $5 off her", `$${ledger?.tina}`);
+  check(ledger?.sarah === 4, 'and leaves a figure that is not hers untouched');
+  check(purseAfterWin(undefined, 'tina', 5)?.tina === start - 5, 'a first win writes her down from the hundred', `$${purseAfterWin(undefined, 'tina', 5)?.tina}`);
+  check(purseAfterWin({ tina: floor }, 'tina', 5)?.tina === floor, 'and a win at the floor leaves her on it');
+  check(purseAfterWin(undefined, 'sarah', 5) === undefined, 'beating somebody with no purse writes no purse');
+  check(purseAfterWin({ tina: 9 }, 'tina', 0)?.tina === 9, 'and a duel with nothing on the table costs her nothing');
+
+  /* Every purse in the table names a duelist who exists, like every bounty. */
+  check(
+    Object.keys(PURSE).every((id) => !!DUELIST_BY_ID[id]),
+    'every purse belongs to a real duelist',
+    Object.keys(PURSE).filter((id) => !DUELIST_BY_ID[id]).join(', ')
+  );
 }
 
 console.log(

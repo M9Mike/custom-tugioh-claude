@@ -39,6 +39,7 @@ import {
 import WorldMap from './WorldMap';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
+import { ceilingFor } from '@/story/shop';
 import { setShadowQuality } from './world/sky';
 import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
@@ -115,6 +116,17 @@ interface Props {
    * it up — set when returning from a duel they sent the player to.
    */
   resume?: { npcId: string; node: string } | null;
+  /**
+   * The resume has been taken up, and must not be handed over again.
+   *
+   * It is read in a `useState` initialiser, so it is read on *every* mount of
+   * this screen — and this screen is unmounted by the deck builder, the
+   * collection and the map. A note left in place therefore reopened the
+   * conversation every time the player came back from editing a deck: you say
+   * goodbye to Tina, go and sleeve a card, close the panel, and she is talking
+   * to you again. Which she was, for as long as the note sat there.
+   */
+  onResumed?: () => void;
 }
 
 /** SCAFFOLDING: show the coordinate readout. Set to false to hide it. */
@@ -151,7 +163,7 @@ async function copyText(text: string): Promise<boolean> {
   return ok;
 }
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   /**
@@ -214,9 +226,36 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   /* Read by the render loop, which must not re-run when a conversation opens:
      rebuilding the field to show a panel would drop the player at spawn. */
   const talkingRef = useRef<WorldNpc | null>(null);
+  /**
+   * Somebody who is mid-conversation with you before they have been built.
+   *
+   * A roamer's live position lives in the field, and the field is thrown away
+   * and rebuilt by a duel — so coming back to a resumed conversation stood
+   * Tina at the first point of her route, which is twenty metres from where
+   * the two of you were standing when you agreed to play. She would then walk
+   * off, because a route runs on whoever is talking.
+   *
+   * Consumed once, in `populate`: the fiction is that you never stopped
+   * talking, so she is put back in front of you *this* time and not every time
+   * the area is entered for the rest of the session.
+   */
+  const rejoinRef = useRef<string | null>(resume?.npcId ?? null);
   useEffect(() => {
     talkingRef.current = talkingTo;
   }, [talkingTo]);
+  /**
+   * Tell the caller the note has been read — once, on the way in.
+   *
+   * The conversation it named is already open in this screen's own state by
+   * the time this runs, so clearing it upstream costs nothing now and is the
+   * whole of what stops it reopening later. See `onResumed`.
+   */
+  const tookResume = useRef(false);
+  useEffect(() => {
+    if (!resume || tookResume.current) return;
+    tookResume.current = true;
+    onResumed?.();
+  }, [resume, onResumed]);
 
 
   const holder = useRef<HTMLDivElement>(null);
@@ -618,17 +657,53 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               fresh.dispose();
               return;
             }
-            fresh.root.position.set(npc.x, groundAt(areaById(npc.area), npc.x, npc.z), npc.z);
-            fresh.root.rotation.y = npc.facing;
-            scene.add(fresh.root);
             /* A roamer starts at the first point of its own path and walks to
                the second; `npc.x`/`npc.z` are that first point, so there is
-               one place the route is written and it is the route. */
+               one place the route is written and it is the route.
+
+               Unless the two of you were already talking when the duel took
+               them out of the world — then they are standing where the
+               conversation is, which is in front of the player. Far enough out
+               to be clear of `NPC_RADIUS`, so putting them there cannot shove
+               the player, and `settle` keeps them out of a wall if the
+               conversation happened against one. */
+            const rejoining = rejoinRef.current === npc.id;
+            let start = { x: npc.x, z: npc.z };
+            let leg = 1;
+            if (rejoining) {
+              rejoinRef.current = null;
+              const ahead = settle(
+                areaById(npc.area),
+                here.current.x + Math.sin(here.current.facing) * 1.8,
+                here.current.z + Math.cos(here.current.facing) * 1.8,
+                0.4
+              );
+              start = { x: ahead.x, z: ahead.z };
+              /* Carry on to whichever point of the route is nearest, rather
+                 than back to the leg they were on before the duel: from here
+                 that one can be behind them. */
+              const path = npc.roam?.path;
+              if (path) {
+                let best = 0;
+                let bestD = Infinity;
+                path.forEach((point, i) => {
+                  const away = Math.hypot(point.x - start.x, point.z - start.z);
+                  if (away < bestD) {
+                    bestD = away;
+                    best = i;
+                  }
+                });
+                leg = best;
+              }
+            }
+            fresh.root.position.set(start.x, groundAt(areaById(npc.area), start.x, start.z), start.z);
+            fresh.root.rotation.y = npc.facing;
+            scene.add(fresh.root);
             npcs.push({
               npc,
               rig: fresh,
-              at: { x: npc.x, z: npc.z },
-              leg: 1,
+              at: start,
+              leg,
               dir: 1,
               hold: 0,
               /* Staggered on arrival rather than started at the full interval,
@@ -1113,14 +1188,34 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        */
       let closest: WorldNpc | null = null;
       let closestD = Infinity;
+      /**
+       * Where the person you are talking to actually is.
+       *
+       * The camera below needs it, and it must be this and not `npc.x` — a
+       * record is where somebody *starts*. Tina's is the west end of the
+       * arcade, so the two-shot swung round to look at a patch of pavement
+       * twenty metres from the conversation it was framing.
+       */
+      let talkAt: { x: number; z: number } | null = null;
       for (const them of npcs) {
         const { npc, rig: theirs, at } = them;
         const dx = p.x - at.x;
         const dz = p.z - at.z;
         const d = Math.hypot(dx, dz);
-        /* Notice a little before the talk range, so they are already looking
-           at you by the time the prompt appears. */
-        const noticed = d < npc.range * 1.6;
+        /**
+         * Noticed a little before the talk range, so they are already looking
+         * at you by the time the prompt appears — and for as long as the
+         * conversation lasts, whatever the distance.
+         *
+         * The conversation is the part that was missing. Coming back from a
+         * duel resumes the talk, and a roamer resumed it by walking off down
+         * the arcade while her own words were still on screen: `range * 1.6`
+         * is a *proximity* test and the player had been away for a duel. Being
+         * spoken to holds somebody still as surely as being stood next to.
+         */
+        const toMe = talkingRef.current?.id === npc.id;
+        const noticed = toMe || d < npc.range * 1.6;
+        if (toMe) talkAt = at;
         /*
          * Walking a route, when there is one and nobody is standing in front
          * of them.
@@ -1168,23 +1263,38 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             if (left <= step || left < 1e-4) {
               at.x = to.x;
               at.z = to.z;
-              them.hold = route.dwell;
-              /* The turn at the end of a leg is a natural place to look back
-                 down it, so about a third of them carry a gesture. Held for
-                 the longer of the dwell and the clip, so neither is cut. */
-              if (route.gestures?.length && Math.random() < 0.34) {
-                const pick = route.gestures[Math.floor(Math.random() * route.gestures.length)];
-                them.hold = Math.max(them.hold, theirs.gesture(pick));
-              }
               /* There and back: turn round at either end rather than jumping
                  to the far one, which would be a walk through everything in
                  between. */
               const next = them.leg + them.dir;
-              if (next < 0 || next >= route.path.length) {
+              const turning = next < 0 || next >= route.path.length;
+              if (turning) {
                 them.dir = them.dir === 1 ? -1 : 1;
                 them.leg = them.leg + them.dir;
               } else {
                 them.leg = next;
+              }
+              /**
+               * A pause where the route turns round, and nowhere else.
+               *
+               * The dwell used to be charged at *every* point, which on a path
+               * bent through the middle of an arcade to stop it being a sentry
+               * beat meant a stop in the middle of a straight walk for no
+               * reason anybody could see — three and a half seconds of standing
+               * every ten metres, and Mike's word for it was "few steps stop
+               * few steps stop". A point in the middle of a path is a corner;
+               * only the ends are somewhere to arrive at.
+               *
+               * The turn is also a natural place to look back down the way you
+               * came, so some of them carry a gesture. Held for the longer of
+               * the dwell and the clip, so neither is cut.
+               */
+              if (turning) {
+                them.hold = route.dwell;
+                if (route.gestures?.length && Math.random() < 0.22) {
+                  const pick = route.gestures[Math.floor(Math.random() * route.gestures.length)];
+                  them.hold = Math.max(them.hold, theirs.gesture(pick));
+                }
               }
             } else {
               at.x += (tx / left) * step;
@@ -1213,14 +1323,53 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         let turn = want - theirs.root.rotation.y;
         turn = Math.atan2(Math.sin(turn), Math.cos(turn));
         theirs.root.rotation.y += turn * Math.min(1, dt * 3.2);
-        /* `stride` against a nominal walk rather than against their own top
-           speed: a drift at 0.6 m/s is a slow walk, not a tenth of a run. */
-        theirs.update(dt, Math.min(1, speed / 1.4), speed);
+        /**
+         * The same scale the player's legs are read on, and it has to be.
+         *
+         * `stride` is what picks the clip: the rig blends to Run across
+         * 0.62–0.92 of it, and those numbers were tuned against `TOP_SPEED` —
+         * which is what a full stick covers. Dividing an NPC's speed by "a
+         * nominal walk" of 1.4 instead put Tina's 1.15 m/s amble at 0.82 and
+         * ran her three quarters into the Run clip: she sprinted the arcade at
+         * walking pace, arms and all, while the ground went past at half the
+         * speed her feet were selling. Two scales for one number is how that
+         * happens, so there is one now.
+         *
+         * The floor is the other half. A drift of 0.6 m/s divided by 3.3 is
+         * 0.18, and `moving` ramps over 0.03–0.3 — so a spirit gliding down an
+         * avenue would get a half-weight walk blended over a half-weight idle,
+         * which is legs that move at half amplitude and feet that slide.
+         * Anybody actually walking reads as walking; how *fast* they are
+         * walking is the clip's own playback rate, off the real ground speed.
+         */
+        const gait = speed > 0.01 ? Math.max(0.32, Math.min(1, speed / TOP_SPEED)) : 0;
+        theirs.update(dt, gait, speed);
         if (d < npc.range && d < closestD) {
           closest = npc;
           closestD = d;
         }
       }
+      /**
+       * You turn to face them, the way they turn to face you.
+       *
+       * Both halves of a conversation were never both true: they pivot towards
+       * whoever walks up, and the player stayed pointing whichever way they
+       * happened to arrive — so half the conversations in the game were held
+       * over a shoulder, with the camera dutifully framing the back of a head
+       * talking to a profile.
+       *
+       * Eased at the same rate they use, over the shortest arc, and written to
+       * `facing` rather than to the rig: `facing` is what the rig reads, what
+       * the save records and what the camera's own heading comes off, so
+       * turning the person turns all three and the panel closes with the player
+       * still looking at the person they were talking to.
+       */
+      if (talkAt) {
+        let d = Math.atan2(talkAt.x - p.x, talkAt.z - p.z) - p.facing;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        p.facing += d * Math.min(1, dt * 3.6);
+      }
+
       /* Only on a change: this runs sixty times a second, and setting state
          with the same value every frame is a re-render per frame. */
       if (closest?.id !== nearRef.current?.id) {
@@ -1312,7 +1461,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         /* Behind the duelist (`+ π`) and a third of a radian to the side —
            enough to clear their head, little enough that the person they are
            talking to stays inside the lens. */
-        const axis = Math.atan2(near.x - p.x, near.z - p.z);
+        /* Where they *are*, which for a roamer is not where their record says.
+           `talkAt` is carried out of the loop above for this. Read as two
+           numbers rather than an object, because this is sixty times a second
+           and the only thing worse than a wrong camera is a camera that
+           allocates. */
+        const themX = talkAt ? talkAt.x : near.x;
+        const themZ = talkAt ? talkAt.z : near.z;
+        const axis = Math.atan2(themX - p.x, themZ - p.z);
         /*
          * A third of a radian was not enough once the cast had real heights.
          *
@@ -1330,13 +1486,26 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            walking camera's eyeline, and looking slightly down at them is both
            how you would actually stand and what keeps them in frame. */
         camPitch += (0.17 - camPitch) * talkBlend * Math.min(1, dt * 3);
-        /* All the way to the speaker, not half way: they are the subject. */
-        lookX = p.x + (near.x - p.x) * talkBlend;
-        lookZ = p.z + (near.z - p.z) * talkBlend;
-        /* Their head, and above the panel that covers the bottom third. Off the
+        /**
+         * Half way, and further back: a conversation is a two-shot.
+         *
+         * It used to look all the way at the speaker from 2.9 m — the subject
+         * dead centre, the player shoved to the edge or out of frame, and
+         * because the camera comes *in* as it swings, the whole move read as a
+         * zoom onto a spot slightly ahead of you rather than as the shot
+         * changing. Aiming at the ground between the two and standing a little
+         * further off puts both of them in the picture, which is the thing the
+         * camera is being asked to say: these two are talking to each other.
+         */
+        lookX = p.x + (themX - p.x) * 0.5 * talkBlend;
+        lookZ = p.z + (themZ - p.z) * 0.5 * talkBlend;
+        /* Their heads, and above the panel that covers the bottom third. Off the
            ground they are standing on, not off zero — see the camera below. */
-        lookY = groundY + 1.15 + 0.05 * talkBlend;
-        dist = 4.6 - 1.7 * talkBlend;
+        lookY = groundY + 1.15 + 0.1 * talkBlend;
+        /* Enough room for two people and the metre and a half between them.
+           Held off the *player*, so the gap the pair needs comes out of the
+           distance rather than out of the framing. */
+        dist = 4.6 - 0.9 * talkBlend;
       }
 
       /**
@@ -2025,6 +2194,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         <Conversation
           npc={talkingTo}
           openAt={resumeAt ?? undefined}
+          /* So a wager can be answered in her own voice instead of by a dead
+             button — see the panel's `money`. The save is the figure; the
+             server is still the decision. */
+          money={profile.money ?? 0}
+          ceiling={talkingTo.duel ? ceilingFor(talkingTo.duel.opponentId, profile.purse) : undefined}
           onShop={() => onShop?.(talkingTo)}
           onDuel={(stake) => {
             /*

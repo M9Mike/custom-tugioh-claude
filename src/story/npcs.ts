@@ -86,6 +86,21 @@ export interface DuelOffer {
   won: string;
   /** The node to resume on when they did not. */
   lost: string;
+  /**
+   * What they say when the player names a stake they have not got the money
+   * for, and what they say when it is *their* purse that cannot cover it.
+   *
+   * Only meaningful for somebody who plays for money. The amounts are on offer
+   * whether or not either side can afford them, deliberately: a greyed-out
+   * reply is a reply that has stopped being part of the conversation, and the
+   * player is left to work out why on their own. Answered in her own words it
+   * is still a conversation, and it says which of the two of you is short.
+   *
+   * `{stake}` is the figure asked for, `{money}` what the player is holding and
+   * `{purse}` what she has left.
+   */
+  short?: string;
+  spent?: string;
 }
 
 /**
@@ -1183,33 +1198,30 @@ export const WORLD_NPCS: WorldNpc[] = [
      *
      * ## Why here
      *
-     * Three ways in, and she is a real walk from all of them: the arch from
-     * Turtle Lane lands at (−15, 0), the station gateway at (15.5, 0), and the
-     * passage down to Black Crown at (16, 3.1). From (1.8, 2.7) those are 17.0,
-     * 14.0 and 14.2 m away. You cannot arrive on top of her from any direction,
-     * which is the thing that makes a placed character feel placed.
+     * Three ways in, and none of them lands on top of her: the arch from Turtle
+     * Lane at (−15, 0), the station gateway at (15.5, 0), and the passage down
+     * to Black Crown at (16, 3.1). Her route runs between x ±11.5, so the
+     * closest she ever comes to a way in is three and a half metres and she is
+     * usually most of the arcade away from all three.
      *
-     * She is off the centre line rather than on it, at 2.7. A market's middle is
-     * its thoroughfare and somebody standing in it is an obstacle; 1.85 m in
-     * front of the shopfront line is where you stand when you are waiting rather
-     * than passing. It also keeps her clear of the awnings, whose camera limit
-     * starts at 3.4 — a metre further back and the camera would clamp every time
-     * you turned to face her.
-     *
-     * The bench at (−1.5, 4.1) is the nearest thing to her and its closest
-     * corner is 2.4 m away, so she is beside the one piece of sit-down furniture
-     * in the arcade without standing in it.
+     * She keeps off the centre line, between z 1.2 and 2.5. A market's middle
+     * is its thoroughfare and somebody walking down the crown of it is an
+     * obstacle; this is the side you use when you are waiting rather than
+     * passing, and it stays clear of the awnings, whose camera limit starts at
+     * 3.4 — a metre further back and the camera would clamp every time you
+     * turned to face her.
      *
      * Range 3.2, the street pair's. She is the only person in Market Row, so
      * unlike Sarah and Tony there is no second prompt to keep hers away from.
      *
      * ## And she does not stay there
      *
-     * She walks the arcade. The route below is where she goes; the rule that
-     * makes it talkable is in `OpenWorld` and is worth knowing here: she stops
-     * the moment the player is inside `range * 1.6` and turns to face them, so
-     * by the time the prompt appears at `range` she has been still for a step
-     * and a half. Walk away and she picks the route up where she left it.
+     * She walks the arcade, and the rules that make that talkable live in
+     * `OpenWorld`: she stops the moment the player is inside `range * 1.6` and
+     * turns to face them, so by the time the prompt appears at `range` she has
+     * been still for a step and a half — and she stays stopped for as long as
+     * the conversation lasts, however far away the duel it sent you to left
+     * you standing. Walk off and she picks the route up where she left it.
      */
     id: 'tina',
     area: 'market-row',
@@ -1217,36 +1229,55 @@ export const WORLD_NPCS: WorldNpc[] = [
     /* Where the route starts, and so where she is standing the moment the area
        is built. The first point of `roam.path` and this are the same place,
        written once. */
-    x: -9.5,
-    z: 2.2,
+    x: -11.5,
+    z: 2.4,
     roam: {
       /*
        * Three points rather than two, and not in a straight line.
        *
-       * Two points on one z is a sentry: the same twenty metres, out and back,
-       * for ever. Drifting across the arcade between them — 2.2 out, 1.3 in the
-       * middle, 2.6 at the far end — is the difference between somebody walking
-       * a beat and somebody with an afternoon to kill, and it costs one number.
+       * Two points on one z is a sentry: the same length of pavement, out and
+       * back, for ever. Drifting across the arcade between them — 2.4 out, 1.3
+       * through the middle, 2.5 at the far end — is the difference between
+       * somebody walking a beat and somebody with an afternoon to kill, and it
+       * costs one number. The middle point is a *corner* and not a stop: the
+       * dwell is charged where the route reverses, so this is 23.1 m of
+       * continuous walking each way rather than two ten-metre hops.
        *
-       * Every point and every leg sits between z 1.2 and 2.6, which is clear of
+       * Every point and every leg sits between z 1.2 and 2.5, which is clear of
        * the lot: the goods hug the shopfronts at |z| 2.9 and beyond, the awnings'
        * camera limit starts at 3.4, and the two end doors and the Black Crown
        * passage are all outside x ±12. She cannot walk into the furniture, she
        * cannot stand on a door trigger, and the camera never clamps on her.
+       * `standable` agrees at every point and at forty samples along every leg.
        */
       path: [
-        { x: -9.5, z: 2.2 },
-        { x: 0.6, z: 1.3 },
-        { x: 10.0, z: 2.6 },
+        { x: -11.5, z: 2.4 },
+        { x: 0.0, z: 1.3 },
+        { x: 11.5, z: 2.5 },
       ],
-      /* An amble. Her Walk is rated at 1.96 m/s, so this plays the clip at
-         about three fifths — an unhurried walk rather than a march, which is
-         what somebody waiting for a duel looks like. */
-      speed: 1.15,
-      dwell: 3.5,
-      /* About a quarter of a minute of walking between unplanned stops, give or
-         take half again. Over a twenty metre leg that is one or two. */
-      restEvery: 14,
+      /**
+       * Her own walk, near enough exactly.
+       *
+       * Her Walk clip is rated at 1.96 m/s of ground coverage, and the rig
+       * plays a clip at ground speed over its rating — so this is 0.94× and
+       * her feet are honest. The 1.15 that stood here was three fifths of the
+       * clip, which is a walk played in slow motion: every step longer than the
+       * ground it covered, which is the exact look of somebody sliding.
+       *
+       * It is also below the run threshold with room to spare. `OpenWorld`
+       * reads a roamer's gait as a fraction of `TOP_SPEED` (3.3), so this is
+       * 0.56 against a Run blend that starts at 0.62.
+       */
+      speed: 1.85,
+      /* Long enough to turn round in, and no longer: the pause is charged only
+         where the route reverses — a point in the middle of a path is a corner,
+         not somewhere to arrive at. Twenty-three metres of walking between the
+         two of them. */
+      dwell: 1.2,
+      /* Getting on for half a minute of walking between unplanned stops, give
+         or take half again — so about one on a lap of the arcade rather than
+         one every ten metres. The stop itself lasts as long as the clip. */
+      restEvery: 26,
       gestures: ['Stretch', 'LookAround', 'Settle'],
     },
     /* Looking at the middle of the arcade: atan2(0 − x, 0 − z). Not at either
@@ -1255,7 +1286,18 @@ export const WORLD_NPCS: WorldNpc[] = [
     facing: -2.55,
     range: 3.2,
     start: 'greet',
-    duel: { opponentId: 'tina', won: 'beaten', lost: 'won' },
+    duel: {
+      opponentId: 'tina',
+      won: 'beaten',
+      lost: 'won',
+      /* Her side of "you cannot cover that". Names both figures, because the
+         player's own purse is not on screen while the panel is up. The tokens
+         arrive already carrying their dollar sign — see `sayLine`. */
+      short: 'You have {money} on you and you just said {stake}. Come back with it and I will still be here.',
+      /* And the other way round, once she has been beaten enough times to feel
+         it. Two dollars is the bottom of her range, so she is never out. */
+      spent: 'I have {purse} left, love — you have had the rest of it off me. Say {purse} or less and we will play.',
+    },
     script: TINA_SCRIPT,
   },
   {
@@ -1286,7 +1328,21 @@ export const WORLD_NPCS: WorldNpc[] = [
 /** Nobody is placed outside `WORLD_NPCS`; `WAITING` is the bench. */
 export const WAITING_CAST: WorldNpc[] = WAITING;
 
-/** Fills the one token a line may carry. */
-export function sayLine(line: string, playerName: string): string {
-  return line.replace(/\{name\}/g, playerName);
+/**
+ * Fills the tokens a line may carry.
+ *
+ * `{name}` is the player's own duelist and is the only one a *script* uses —
+ * the grammar of a conversation is deliberately that small. The rest are for
+ * the lines that answer a number the player just named, where the sentence has
+ * to say which figure it is talking about: see `DuelOffer.short`. Money arrives
+ * already written as money (`$4`), so a line can read "you said {stake}" and
+ * the file is not full of dollar signs standing next to braces — which in a
+ * TypeScript file is a template literal waiting to happen.
+ */
+export function sayLine(line: string, playerName: string, fill?: Record<string, number | string>): string {
+  let out = line.replace(/\{name\}/g, playerName);
+  for (const [token, value] of Object.entries(fill ?? {})) {
+    out = out.split(`{${token}}`).join(String(value));
+  }
+  return out;
 }

@@ -133,6 +133,111 @@ export function wagerFor(duelistId: string): { min: number; max: number } | null
 }
 
 /**
+ * What a duelist who plays for money has in their pocket, and the floor it
+ * never goes under.
+ *
+ * ## Why they have a balance at all
+ *
+ * Because a wager without one is a faucet. She matches your stake out of
+ * nowhere and loses it back to you for ever, so twenty duels at five dollars is
+ * a hundred dollars minted by patience — which is not a difficulty curve, it is
+ * a job. A purse makes beating her *spend* something of hers: a hundred dollars
+ * is what she brought, and when it is gone the size of the game she can offer
+ * has gone with it.
+ *
+ * ## Why the floor
+ *
+ * So she is never a character you cannot play. A duelist with nothing in her
+ * pocket would be a duel prompt that refuses every answer, which reads as a
+ * bug however correct it is. Two dollars is the bottom of her range, so at the
+ * floor she can still always take you on for the smallest game — and *only*
+ * the smallest, which is the point: the last of her money buys a two dollar
+ * duel and never a five dollar one.
+ *
+ * ## Which way it moves
+ *
+ * Down, on a win the server has already proved — see `/api/story/pack`. It does
+ * not climb back when she wins, and that is a decision rather than an
+ * oversight: crediting her would mean trusting somebody's word for a loss
+ * nobody has to report, and a purse that only falls is a budget the player can
+ * empty exactly once. Mike asked for a hundred dollars that cannot be farmed
+ * for fives, and this is that number and nothing more clever.
+ *
+ * Keyed by duelist id like everything else here, and the table is the whole
+ * feature: the next character who plays for money is a line in it.
+ */
+export const PURSE: Record<string, { start: number; floor: number }> = {
+  tina: { start: 100, floor: 2 },
+};
+
+/** What this duelist brought, or `null` if they do not play for money. */
+export function purseFor(duelistId: string): { start: number; floor: number } | null {
+  return PURSE[duelistId] ?? null;
+}
+
+/**
+ * How much they have left against this player.
+ *
+ * A save with nothing written down has never beaten them, so they still have
+ * everything they came with. Clamped on read as well as on write, so a stored
+ * figure from a bad write or an older build cannot put them under the floor.
+ */
+export function purseOf(purse: Record<string, number> | undefined, duelistId: string): number {
+  const held = purseFor(duelistId);
+  if (!held) return 0;
+  const stored = purse?.[duelistId];
+  if (typeof stored !== 'number' || !Number.isFinite(stored)) return held.start;
+  return Math.max(held.floor, Math.min(held.start, Math.floor(stored)));
+}
+
+/**
+ * The most they can be played for right now: their range, capped by what they
+ * have actually got left.
+ *
+ * Never below the minimum, because of the floor — at the bottom of her purse
+ * the smallest game is still on. Zero for anybody who does not wager.
+ */
+export function ceilingFor(duelistId: string, purse: Record<string, number> | undefined): number {
+  const range = wagerFor(duelistId);
+  if (!range) return 0;
+  return Math.max(range.min, Math.min(range.max, purseOf(purse, duelistId)));
+}
+
+/**
+ * What they have left after losing a duel for this much.
+ *
+ * The floor is applied here and not by the caller: this is the one line that
+ * decides how poor she can get, and it should be readable in one place.
+ */
+export function purseAfterLosing(duelistId: string, purse: Record<string, number> | undefined, stake: number): number {
+  const held = purseFor(duelistId);
+  if (!held) return 0;
+  return Math.max(held.floor, purseOf(purse, duelistId) - Math.max(0, stake));
+}
+
+/**
+ * The whole ledger after a win, ready to be written to the save.
+ *
+ * The route that pays a win is the only writer, and what it wrote used to be
+ * spelled out there: a spread, a computed key and two conditions, inside the
+ * object literal of an `updateProfile`. None of that could be checked without
+ * a finished duel, so the arithmetic that *can* be checked lived in this file
+ * and the arithmetic that actually ran lived in the route. This is the same
+ * expression with a name, so `npm run shop` exercises the thing that runs.
+ *
+ * Handed back unchanged for a duelist with no purse and for a duel with
+ * nothing on the table, so the caller needs no conditions of its own.
+ */
+export function purseAfterWin(
+  purse: Record<string, number> | undefined,
+  duelistId: string,
+  stake: number
+): Record<string, number> | undefined {
+  if (!purseFor(duelistId) || stake <= 0) return purse;
+  return { ...(purse ?? {}), [duelistId]: purseAfterLosing(duelistId, purse, stake) };
+}
+
+/**
  * What the player is actually staking, whatever they asked for.
  *
  * Zero for a duelist who does not wager, so every caller can ask unconditionally
@@ -140,12 +245,18 @@ export function wagerFor(duelistId: string): { min: number; max: number } | null
  * whole number of dollars inside the range becomes the minimum rather than an
  * error: this is money, the client chose it, and the server is the only opinion
  * that counts.
+ *
+ * `purse` is the other half of that opinion — she cannot match a bet she has
+ * not got, so the ask is capped by what is left of hers as well as by her
+ * range. Omitted, it is the range alone, which is what every caller who is not
+ * seating a duel wants.
  */
-export function stakeFor(duelistId: string, asked: unknown): number {
+export function stakeFor(duelistId: string, asked: unknown, purse?: Record<string, number>): number {
   const range = wagerFor(duelistId);
   if (!range) return 0;
   const n = typeof asked === 'number' && Number.isInteger(asked) ? asked : range.min;
-  return Math.max(range.min, Math.min(range.max, n));
+  const top = purse ? ceilingFor(duelistId, purse) : range.max;
+  return Math.max(range.min, Math.min(top, n));
 }
 
 export interface ShopItem {

@@ -4,7 +4,7 @@ import { claimStoryPack } from '@/server/rooms';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 import { openPack } from '@/story/packs';
-import { bountyFor, givesAPack } from '@/story/shop';
+import { bountyFor, givesAPack, purseAfterWin } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -113,6 +113,21 @@ export async function POST(req: Request) {
           ...profile,
           packs: pack ? [...profile.packs, duelistId] : profile.packs,
           money: (profile.money ?? 0) + paid,
+          /*
+           * And it came out of her pocket.
+           *
+           * The pot was two stakes and one of them was hers, so a win that pays
+           * the player twice their bet has to take the other half off somebody.
+           * `PURSE` is where she keeps it and `purseAfterLosing` is what applies
+           * the floor — she is never left unable to play for the minimum, and
+           * she is never a hundred dollars deep again either.
+           *
+           * Inside the same `updateProfile` as the money and the pack, so the
+           * three cannot come apart, and behind everything the claim has already
+           * proved: right room, right seat, duel over, this seat won. A player
+           * who never wins never touches this line.
+           */
+          purse: purseAfterWin(profile.purse, duelistId, verdict.stake),
         },
       }));
       if (!result.ok) {
