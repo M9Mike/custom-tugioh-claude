@@ -198,6 +198,38 @@ for (const [key, spec] of Object.entries(signSpecs)) {
   });
 }
 index.tree = path.join(ART, 'billboard-island_tree_02.png');
+/* The small tree's picture has the model's grey reference block standing
+   round the foot of its trunk. A tree of its own is the picture above the
+   block, and it stands with its foot where the block's top was. */
+const small = path.join(ART, 'billboard-tree_small_02.png');
+const smallOut = path.join(ART, 'billboard-tree_small.png');
+if ((await exists(small)) && !(await exists(smallOut))) {
+  const note = JSON.parse(await readFile(small + '.json', 'utf8').catch(() => '{"size":[2.92,4.56,4.29]}'));
+  const { data, info } = await sharp(small).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  /* Scan up from the bottom for the first row that is not mostly block:
+     a block row is opaque and grey across most of its width. */
+  let top = h;
+  for (let y = h - 1; y >= 0; y--) {
+    let grey = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const [r, g, b, a] = [data[i], data[i + 1], data[i + 2], data[i + 3]];
+      if (a > 200 && Math.abs(r - g) < 14 && Math.abs(g - b) < 18 && r > 110 && r < 215) grey++;
+    }
+    if (grey < w * 0.25) { top = y + 1; break; }
+  }
+  if (top < h * 0.9 && top > h * 0.4) {
+    await sharp(small).extract({ left: 0, top: 0, width: w, height: top }).png().toFile(smallOut);
+    const up = note.size[1] * (top / h);
+    await writeFile(smallOut + '.json', JSON.stringify({ aspect: up / note.size[0], size: [note.size[0], up, note.size[2]] }));
+    console.log(`• small tree cropped above its block: ${top}/${h} rows kept`);
+  } else {
+    console.log(`  ! small tree: no block found (top ${top} of ${h}); using it whole`);
+    await sharp(small).png().toFile(smallOut);
+    await writeFile(smallOut + '.json', JSON.stringify(note));
+  }
+}
 /* The fir picture is three trees in a row with a reference cube by the first;
    a tree of its own is a crop of it, with the note the kit reads its size from. */
 const fir = path.join(ART, 'billboard-fir_tree_01.png');

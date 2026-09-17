@@ -263,7 +263,7 @@
     "trunk": "#4a3d30",
     "models": [
       "fir_a",
-      "tree_small_02",
+      "tree_small",
       "fir_b"
     ],
     "height": 2.6
@@ -277,7 +277,7 @@
       "models": [
         "fir_a",
         "fir_b",
-        "tree_small_02"
+        "tree_small"
       ],
       "every": 4,
       "sink": 3.0,

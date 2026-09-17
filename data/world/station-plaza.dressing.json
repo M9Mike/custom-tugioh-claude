@@ -588,7 +588,7 @@
   "trees": {
     "trunk": "#4e4034",
     "models": [
-      "tree_small_02",
+      "tree_small",
       "island_tree_02",
       "fir_a"
     ],

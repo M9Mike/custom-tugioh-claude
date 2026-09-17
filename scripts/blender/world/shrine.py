@@ -149,7 +149,7 @@ def planter_tree(k, mats, art, t, y, i):
     k.box(mats['soil'], x, y + RIM / 2 + 0.02, z, (bed - WALL) * 2 - 0.04, RIM, (bed - WALL) * 2 - 0.04)
     # a tree that fits its planter: four to five and a half metres, with a trunk you can see
     h = 4.2 + ((i * 0.73) % 1.4)
-    tree(k, art, x, y + RIM - 0.02, z, h, f'shrine-tree-{i}', rot_y=i * 0.9, model='tree_small_02')
+    tree(k, art, x, y + RIM - 0.02, z, h, f'shrine-tree-{i}', rot_y=i * 0.9, model='tree_small')
 
 
 def fence(k, mats, cx, cz, w, d, along, y):
@@ -287,7 +287,7 @@ def build_shrine(k, layout, dressing, art, mats):
         by = bank_at(bx, bz, floor)
         if by is None:
             continue
-        model = ('fir_a', 'fir_b', 'tree_small_02', 'fir_a')[i % 4]
+        model = ('fir_a', 'fir_b', 'tree_small', 'fir_a')[i % 4]
         tree(k, art, bx, by - 0.05, bz, 7.6 + ((i * 0.53) % 3.0), f'hill-{i}', rot_y=i * 0.7, model=model)
         hill += 1
     # what stands in the grounds

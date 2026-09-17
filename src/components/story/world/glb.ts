@@ -65,9 +65,22 @@ export async function loadArea(own: Owned, root: THREE.Group, url: string, aniso
     meshes += 1;
     users.set(mesh.geometry, (users.get(mesh.geometry) ?? 0) + 1);
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    /* A picture with holes in it — a tree on two crossed planes — is a mask in
+       the file, and a mask alone left the holes filled with the picture's
+       background in the software renderer the checks draw with. So it is
+       blended *and* cut: blended, the empty texels vanish whatever the
+       renderer; cut at half, the depth and shadow passes still see a tree
+       and not a card. */
+    for (const m of mats) {
+      if (m.alphaTest > 0) {
+        m.transparent = true;
+        m.depthWrite = true;
+      }
+    }
     /* A shadow map is opaque: a pane of glass that casts one is a wall to the
-       daylight, and the shop's window let nothing in at noon. */
-    mesh.castShadow = !mats.some((m) => m.transparent);
+       daylight, and the shop's window let nothing in at noon. A cut picture
+       casts the shadow of what is left of it. */
+    mesh.castShadow = !mats.some((m) => m.transparent && !(m.alphaTest > 0));
     mesh.receiveShadow = true;
     own.keep(mesh.geometry);
     for (const m of mats) {
