@@ -1181,91 +1181,115 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
  * Ash Ketchum, who is ten, is not from this cartoon, and is not on any map.
  *
  * He is the one person in Domino City who does not belong to it, and the
- * script says so without explaining it: he is looking for a Pokémon Center,
- * he thinks a card shop is a strange kind of gym, and he has not worked out
- * why nobody has heard of the Indigo League. He never says how he got here
- * and neither does anybody else — an easter egg that explains itself is a
- * feature.
+ * script has to make that make sense *inside the game* — and keep him
+ * mysterious, which is the owner's word. So he explains nothing he does not
+ * have to: he knows what a duel is, because everyone here duels; his Pokémon
+ * are cards now, special ones — not drawn by him, not printed by anybody,
+ * in his bag the morning he arrived — which is why they play on this
+ * world's tables and why they will never be traded; and how he got here is
+ * a question he has stopped asking out loud. Short lines, no chatter, and a
+ * boy who knows a little more than he says. An easter egg that explains
+ * itself is a feature.
  *
- * The terms are his, in his own words, and they are the owner's rules: his
- * Pokémon are not for trade, so a win pays money rather than a pack; a duel
- * costs one of *your* cards on the table, and if he wins it is his. `wager:
- * 'card'` on the offer is what opens the picker, and `few` is what he says to
- * somebody whose collection is exactly a deck.
+ * The terms are his, in his own words, and they are the owner's rules with
+ * a reason each: his team is not for trade, so a win pays money, and he has
+ * more of it than this city gives him a use for; a duel costs one of *your*
+ * cards, because where he is from you take a badge off the trainer you beat
+ * and here a card is the nearest thing. `wager: 'card'` on the offer is what
+ * opens the picker, and `few` is what he says to somebody whose collection
+ * is exactly a deck.
  *
- * `{card}` in the two aftermath nodes is the card that was on the table, filled
- * by the panel from the duel's own note — the one token in this file that is
- * not the player's name, and it is here so the loss is named rather than
- * implied: "that Pidgeot is mine" is a thing a boy would say.
+ * `{card}` in the two aftermath nodes is the card that was on the table,
+ * filled by the panel from the duel's own note — the one token in this file
+ * that is not the player's name, and it is here so the loss is named rather
+ * than implied.
  */
 const ASH_SCRIPT: Record<string, DialogueNode> = {
   greet: {
     lines: [
-      'Oh! Hi! Sorry — is this a Pokémon Center? It has the look of one but nobody in here has a Chansey.',
-      'I am Ash. Ash Ketchum, from Pallet Town. This is Pikachu. We have been walking around your city all day and every gym is a card shop, {name}, which is a weird kind of gym.',
+      'You are {name}. The old man said you would come through.',
+      'I am Ash. I am not from here. I am not sure I am from anywhere you have heard of.',
     ],
     choices: [
-      { label: 'Pokémon? Never heard of them.', to: 'pokemon' },
-      { label: 'Do you battle?', to: 'offer' },
-      { label: 'Good luck finding it.', to: null },
+      { label: 'Where are you from?', to: 'from' },
+      { label: 'What is that deck?', to: 'cards' },
+      { label: 'Do you duel?', to: 'offer' },
+      { label: 'Right.', to: null },
     ],
   },
 
-  pokemon: {
+  /* Where he is from, and no answer to how he got here — he has none, and
+     he has stopped asking. */
+  from: {
     lines: [
-      'Never — okay. Okay. That explains the last three people.',
-      'They are like your monsters, except they are not cards, they are my friends. Charizard flew me here from — well. From somewhere. Pikachu says it was a very long way.',
-      'The cards I have got, I drew myself, so I would have something to battle with. Everyone here battles with cards. When in Rome.',
+      'A long way off. Further than the station goes.',
+      'One morning I was there, and the next I was standing in your street with a deck I never packed. Nobody here knows why. I have stopped asking out loud.',
     ],
     choices: [
-      { label: 'Do you battle?', to: 'offer' },
-      { label: 'What do you play?', to: 'style' },
-      { label: 'Right. Good luck.', to: null },
+      { label: 'What is that deck?', to: 'cards' },
+      { label: 'Do you duel?', to: 'offer' },
+      { label: 'I will leave you to it.', to: null },
     ],
   },
 
-  /* The terms, all of them, before anybody can say yes: no cards of his ever,
-     three thousand if you win, one of yours on the table if you want to play
-     at all. He does not soften any of it. */
+  /* The cards, and the two facts the game needs said out loud: they are real
+     cards that work here, and they are never his stake. */
+  cards: {
+    lines: [
+      'Cards I did not draw and nobody printed. They were in my bag the morning I arrived — one for every friend I ever had, and I had a lot of them.',
+      'You will not find them in the old man\'s stock, and no pack in this city pulls one. They play, though. Your tables do not seem to know the difference.',
+      'They are not for trade. Do not ask twice — the first time was fine.',
+    ],
+    choices: [
+      { label: 'Do you duel?', to: 'offer' },
+      { label: 'How do they play?', to: 'style' },
+      { label: 'I will not ask.', to: null },
+    ],
+  },
+
+  /* The terms, all of them, before anybody can say yes, each with its reason
+     and none of them softened. */
   offer: {
     lines: [
-      'Always! But you should know the deal first, because it is not the deal everyone else here offers.',
-      'You are not getting my Pokémon. Not one card, not ever — they are not for trading, they are my team. If you beat me I will give you money instead. Three thousand — I have League prize money and nobody here takes it, so.',
-      'And I do not battle for nothing. You put one of your cards on the table. You win, you get it straight back with the money. I win, it is mine. I will look after it, but it is mine.',
+      'I do. Sit down and I will tell you the terms, because they are not the terms you get anywhere else in this city.',
+      'Win, and you get nothing from my deck. Not one card, whatever you offer. You get money — I have more of it than I can use here. Three thousand.',
+      'Lose, and I keep one of yours. One card, any card, chosen before we start. Where I am from you take a badge off the trainer you beat. Here, I take a card.',
     ],
     choices: [
       { label: 'Deal. Pick a card, then.', to: 'beaten', duel: true },
-      { label: 'What do you play?', to: 'style' },
+      { label: 'How do they play?', to: 'style' },
       { label: 'Not for my cards.', to: 'later' },
     ],
   },
 
-  /* Sarah's contract: he tells you exactly what the deck does, and it is true. */
+  /* Sarah's contract: he tells you exactly what the deck does, and it is true
+     — a Pokémon that has stood a turn evolves, and the evolved one does it
+     again. */
   style: {
     lines: [
-      'Pokémon. Fifteen of them, and every one evolves. Pikachu comes out, Pikachu finds a friend, the friend evolves, and if you have not dealt with it by then you are dealing with the thing it turned into.',
-      'They do not stay down, either. And if you ever see three of them evolved at once — I would not let it get to that. Just saying.',
+      'They start small and they do not stay small. Leave one on the field through your turn and it evolves. Leave that one, and it evolves again.',
+      'Most people spend their answers on the first shape. That is why I have a bag full of cards.',
     ],
     choices: [
       { label: 'Deal. Pick a card, then.', to: 'beaten', duel: true },
-      { label: 'Let me think about it.', to: null },
+      { label: 'Let me think.', to: null },
     ],
   },
 
   later: {
     lines: [
-      'That is fair. It is a big ask. Pikachu says we will be around — we still have not found the Pokémon Center.',
+      'Sensible. I will be around — one of the shops, some part of the day. I do not keep hours anyone could write down.',
     ],
     choices: [],
   },
 
-  /* The player won. He pays up and hands the card back, and he is a good
-     loser because he is Ash. */
+  /* The player won. He pays and hands the card back, and says less than he
+     is thinking. */
   beaten: {
     lines: [
-      'Whoa. WHOA. Okay. Pikachu, did you see — you saw.',
-      'Here — your {card}, and the three thousand, all of it. I said I would. You did not just beat my Pokémon, {name}, you beat them evolved, and nobody does that.',
-      'Next time I am starting with Charizard.',
+      'Huh.',
+      'Here — your {card}, and the three thousand. You beat them evolved, {name}. I have not had to say that in this city before.',
+      'Do not get used to it. Next time I do not wait.',
     ],
     choices: [
       { label: 'Again.', to: 'offer' },
@@ -1273,11 +1297,11 @@ const ASH_SCRIPT: Record<string, DialogueNode> = {
     ],
   },
 
-  /* The player lost. He keeps the card and says so, kindly. */
+  /* The player lost. He keeps the card, names it, and says how it comes back. */
   won: {
     lines: [
-      'That was close! It was not close. But it felt close, right at the start.',
-      'So — the {card} is mine now. I will look after it, I promise; it goes in the bag with the badges. You want it back, you know where to find me. Sort of. We move around.',
+      'That was quick. It usually is.',
+      'The {card} is mine now. It goes in the bag with the others. You know how to get it back — the same way I got it. Find me.',
     ],
     choices: [
       { label: 'I will be back for it.', to: null },
@@ -1483,7 +1507,7 @@ export const WORLD_NPCS: WorldNpc[] = [
       wager: 'card',
       /* A collection that is exactly a deck has nothing to put on the table —
          the owner's rule, in his voice. */
-      few: 'You have got exactly a deck and nothing else. I am not taking a card out of the deck you need to play with — come back when you have a spare one.',
+      few: 'You have got a deck and nothing else. I do not take cards out of the deck a person plays with — that is not a bet. Come back when you have a spare.',
     },
     script: ASH_SCRIPT,
   },
