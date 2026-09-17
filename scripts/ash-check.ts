@@ -13,9 +13,9 @@
  *    leg, is somewhere a person can stand — not inside a shelf, a table, a
  *    rail or a wall — and the Crown route really does climb: the floor under
  *    his feet rises to the second gallery and comes back down.
- * 3. **The roster.** He is a duelist the engine knows and a duelist no screen
- *    lists; his deck is a pack pool of twenty-five like everybody's; a win
- *    pays three thousand and no cards.
+ * 3. **The roster.** He is a duelist like everybody else — on the Home page,
+ *    in the Lobby and in the bracket; his deck is a pack pool of twenty-five
+ *    like everybody's; a win in the world pays three thousand and no cards.
  * 4. **The card on the table**, end to end through the real routes on the
  *    in-process store: a bet is refused from a collection of exactly a deck
  *    and for a card not owned; a seated bet leaves the collection and rides on
@@ -31,7 +31,7 @@ import fs from 'node:fs/promises';
 import { ASH_HAUNTS, ashVisits, ashWhereabouts, dayFrom } from '../src/story/ash';
 import { WORLD_NPCS, whereabouts } from '../src/story/npcs';
 import { areaById, groundAt, settle, standingOn, CS_G1, CS_G2 } from '../src/story/areas';
-import { DUELISTS, DUELIST_BY_ID, ROSTER } from '../src/game/cards';
+import { DUELISTS, DUELIST_BY_ID } from '../src/game/cards';
 import { packPool } from '../src/story/packs';
 import { DECK_SIZE, STARTER_POOL } from '../src/story/roster';
 import { newProfile, type StoryProfile } from '../src/story/profile';
@@ -155,9 +155,8 @@ console.log('\nthe routes');
 console.log('\nthe roster');
 {
   check(!!DUELIST_BY_ID.ash, 'the engine knows him');
-  check(DUELISTS.some((d) => d.id === 'ash'), 'he is in the full list');
-  check(!ROSTER.some((d) => d.id === 'ash'), 'and on no list a player is shown');
-  check(ROSTER.length === DUELISTS.length - 1, 'he is the only secret', `${DUELISTS.length - ROSTER.length}`);
+  check(DUELISTS.some((d) => d.id === 'ash'), 'he is on the roster like everybody — the Home page, the Lobby and the bracket all list him');
+  check(DUELISTS[DUELISTS.length - 1].id === 'ash', 'at the end of it, after the city duelists', DUELISTS.map((d) => d.id).slice(-3).join(' → '));
   check(packPool('ash').length === 25, 'his deck is twenty-five entries like everybody\'s', `${packPool('ash').length}`);
   check(DUELIST_BY_ID.ash.extra.length === 21, 'and twenty-one wait in the Extra Deck', `${DUELIST_BY_ID.ash.extra.length}`);
   check(bountyFor('ash') === 3000, 'a win pays three thousand', `$${bountyFor('ash')}`);

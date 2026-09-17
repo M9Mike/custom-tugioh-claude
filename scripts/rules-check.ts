@@ -29,7 +29,7 @@ import type { LogEntry } from '../src/game/types';
 import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits, isExtraDeckCard } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
-import { CARDS, DUELISTS, ROSTER, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
+import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
@@ -15833,7 +15833,7 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
   /* --- The deck itself --- */
   {
     const d = DUELISTS.find((x) => x.id === 'ash');
-    ok(!!d && d.secret === true, 'ASH: he is a duelist, and a secret one');
+    ok(!!d, 'ASH: he is a duelist like everybody else — on the Home page, in the Lobby, in the bracket');
     ok(d!.deck.length === 25 && d!.deck.every(([, n]) => n === 1), 'ASH: twenty-five singles');
     ok(d!.extra.length === 21 && d!.extra.every((e) => isExtraDeckCard(e)), 'ASH: twenty-one in the Extra Deck, all of them Extra Deck cards');
     ok(d!.deck.every(([sl]) => CARDS[sl]?.kind !== 'monster' || (CARDS[sl].level ?? 0) <= 4),
@@ -15963,11 +15963,6 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       'MEWTWO: tributing the Master opens nothing', paid.error);
   }
 
-  /* --- The roster --- */
-  {
-    ok(!ROSTER.some((d) => d.id === 'ash') && DUELISTS.some((d) => d.id === 'ash'),
-      'ASH: on the full list and off the shown one');
-  }
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

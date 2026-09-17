@@ -11,7 +11,7 @@ import { AI_LEVELS, aiNext, chooseCardResponse, chooseTrapResponse, createAiRunt
 import { loadBrain, loadExperience, recordDuel, recordGame } from './learning';
 import { deckKeyFor } from '@/game/experience';
 import { GAME_AI } from '@/game/ai-levels';
-import { DUELIST_BY_ID, ROSTER } from '@/game/cards';
+import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
 import {
   advanceRound,
   createSideDuel,
@@ -281,7 +281,7 @@ export async function createSoloRoom(
   duelistId?: string
 ): Promise<{ room: Room; token: string; pid: PlayerId }> {
   const { room, token, pid } = await createRoom(name);
-  const pick = duelistId && DUELIST_BY_ID[duelistId] ? duelistId : ROSTER[Math.floor(Math.random() * ROSTER.length)].id;
+  const pick = duelistId && DUELIST_BY_ID[duelistId] ? duelistId : DUELISTS[Math.floor(Math.random() * DUELISTS.length)].id;
   room.seats.p2 = {
     token: randomToken(),
     name: DUELIST_BY_ID[pick]?.name ?? 'Opponent',
@@ -355,7 +355,7 @@ export async function createStoryRoom(
  */
 export async function createExhibitionRoom(a: string, b: string): Promise<{ room: Room }> {
   const { room } = await createRoom('');
-  const pick = (id: string) => (DUELIST_BY_ID[id] ? id : ROSTER[Math.floor(Math.random() * ROSTER.length)].id);
+  const pick = (id: string) => (DUELIST_BY_ID[id] ? id : DUELISTS[Math.floor(Math.random() * DUELISTS.length)].id);
   const first = pick(a);
   const second = pick(b);
   room.spectate = true;
@@ -389,7 +389,7 @@ export async function createTournamentRoom(
   // No opponent is named here: who the computer holds is the bracket's decision,
   // and `seatOpponent` applies it as each round is drawn.
   const { room, token, pid } = await createSoloRoom(name);
-  const human = DUELIST_BY_ID[duelistId] ? duelistId : ROSTER[0].id;
+  const human = DUELIST_BY_ID[duelistId] ? duelistId : DUELISTS[0].id;
   room.tournament = createTournament(human, (Math.random() * 0xffffffff) >>> 0);
   room.seats.p1!.duelistId = human;
   seatOpponent(room);
@@ -861,7 +861,7 @@ export async function leaveToLobby(room: Room): Promise<void> {
     if (!seat) continue;
     // The computer keeps a deck — otherwise the lobby would wait forever for a
     // choice nobody is there to make.
-    seat.duelistId = seat.ai ? ROSTER[Math.floor(Math.random() * ROSTER.length)].id : null;
+    seat.duelistId = seat.ai ? DUELISTS[Math.floor(Math.random() * DUELISTS.length)].id : null;
     if (seat.ai) seat.name = DUELIST_BY_ID[seat.duelistId!]?.name ?? seat.name;
   }
   await saveRoom(room);

@@ -233,17 +233,18 @@ read as a sentry beat then bought a three-second stop in the middle of a
 straight walk. Mike's words were "few steps stop few steps stop". A point in
 the middle of a path is a corner; only the ends are somewhere to arrive at.
 
-**A secret is kept by the list, not by the record.** Ash Ketchum is a duelist
-the engine knows and no screen shows: `DUELISTS` is the whole roster and
-`ROSTER` is the shown one, and the Home page, the Lobby, the bracket and a
-random computer opponent all read `ROSTER`. His cards are Mike's own art in
-`data/art/` (tracked, artIds `900000001` up, copied into `public/art` by
-`prepare-art.mjs` before anything is downloaded), his deck is one file
-(`effects/pokemon.ts`), and he is in the world only when `story/ash.ts` says
-so — a seeded schedule per seventy-two-minute day, two shops, three visits,
-never at three in the morning. Nothing explains him: no line in Grandpa's, no
-hint, no entry. `?t=` pins his day as well as his hour; `?day=` names one.
-The brief was "an easter egg", and an easter egg with a signpost is a feature.
+**The secret is where he is, not what he plays.** Ash Ketchum's deck sits on
+the Home page beside every other deck — playable as, playable against, drawn
+into the bracket, dealt to a random computer opponent — by Mike's own ruling,
+and the first version that hid it from those lists was wrong. What is hidden
+is *him*: he is in the world only when `story/ash.ts` says so — a seeded
+schedule per seventy-two-minute day, two shops, three visits, never at three
+in the morning — and nothing in the world explains it: no line in Grandpa's,
+no hint, no map marker. `?t=` pins his day as well as his hour; `?day=` names
+one. His cards are Mike's own art in `data/art/` (tracked, artIds
+`900000001` up, copied into `public/art` by `prepare-art.mjs` before anything
+is downloaded), his deck is one file (`effects/pokemon.ts`), and in Story
+Mode his cards are never handed over (`KEEPS_THEIR_CARDS`).
 
 **A card on the table is escrow, like the money.** Ash duels for one of your
 cards (`CARD_WAGER`): it leaves the collection in the same write as the duel's

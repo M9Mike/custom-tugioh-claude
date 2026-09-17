@@ -244,17 +244,6 @@ export interface Duelist {
   strategy: string;
   deck: [string, number][];
   extra: string[];
-  /**
-   * Not on any list a player is shown.
-   *
-   * Ash Ketchum is an easter egg: he is met in the world or not at all, and a
-   * portrait on the Home page, a row in the Lobby's picker or a seat in the
-   * bracket would each be the game telling you he exists. So the screens that
-   * lay the roster out read `ROSTER`, which leaves him off, and the room
-   * seating and the duel itself read `DUELIST_BY_ID`, which does not — a
-   * secret duelist still has to be a duelist once you have found him.
-   */
-  secret?: boolean;
 }
 
 const slugify = (name: string) =>
@@ -276,19 +265,7 @@ export const DUELISTS: Duelist[] = (decklistsJson.duelists as RawDuelist[]).map(
   strategy: d.strategy,
   deck: d.deck.map(([name, count]) => [slugify(name), count] as [string, number]),
   extra: (d.extra ?? []).map(slugify),
-  ...(d.secret ? { secret: true } : {}),
 }));
-
-/**
- * The duelists a player may be shown: every one that is not a secret.
- *
- * `DUELISTS` is the whole list and stays the whole list — the engine's Extra
- * Deck census, the learning store and the benches all need every deck there
- * is. This is what the Home page, the Lobby, the bracket and a random computer
- * opponent draw from, and the difference between the two is exactly the cast
- * you are meant to *find*.
- */
-export const ROSTER: Duelist[] = DUELISTS.filter((d) => !d.secret);
 
 interface RawDuelist {
   id: string;
@@ -301,7 +278,6 @@ interface RawDuelist {
   strategy: string;
   deck: [string, number][];
   extra?: string[];
-  secret?: boolean;
 }
 
 export const DUELIST_BY_ID = Object.fromEntries(DUELISTS.map((d) => [d.id, d]));

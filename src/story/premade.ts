@@ -568,7 +568,7 @@ export const DUELIST_MODELS: DuelistModel[] = [
   },
   {
     /*
-     * Ash Ketchum, who is not from this cartoon and is not on any list.
+     * Ash Ketchum, who is not from this cartoon and is met by luck.
      *
      * Mike's own sculpt, and it arrived the way Tina did: a UniRig export,
      * sixty-nine bones fitted to his own body, weights that work, no clips.

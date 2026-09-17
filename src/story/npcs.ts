@@ -1178,7 +1178,7 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Ash Ketchum, who is ten, is not from this cartoon, and is not on any list.
+ * Ash Ketchum, who is ten, is not from this cartoon, and is not on any map.
  *
  * He is the one person in Domino City who does not belong to it, and the
  * script says so without explaining it: he is looking for a Pokémon Center,

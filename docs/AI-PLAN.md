@@ -564,7 +564,8 @@ twice, and that can tell you which turn it lost on.
 ## The deck from another cartoon (2026-09-17)
 
 Mike sent forty-six cards of his own art and a boy in a red cap, and asked for
-a secret duelist stronger than Jaden whose hands are never dead. The deck is
+a duelist stronger than Jaden whose hands are never dead, met in the world
+only by luck and on the Home page like anyone. The deck is
 `src/game/effects/pokemon.ts`, and its shape is a ladder: fifteen Level 4 or
 under Pokémon that each do one small thing on arrival and carry one button —
 **evolve**, a `tributeSelf` ignition that Special Summons the next form out of
