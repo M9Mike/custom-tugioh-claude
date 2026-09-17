@@ -12226,6 +12226,41 @@ console.log('\nA door judges the number it just made, and a die speaks once');
   ok(effAtk(big, bews, ME) === 2700, 'CONTROL: a Blue-Eyes is drained to 2700', String(effAtk(big, bews, ME)));
   ok(!canAttackWith(big, ME, bews), 'CONTROL: and 2700 is still too big for the door', 'it walked');
 
+  /* The same door, with a second card's weather over the field — reported from
+     a real duel: Luster Dragon #2 is printed 2400, the door takes 300 and Dark
+     Sanctuary takes 400, the board showed 1700 and the gate still read 2100.
+     The gate judges what the board shows, not the door's own half of it. */
+  const both = fresh('battle');
+  const luster = card(ME, 'luster-dragon-2');
+  both.players[ME].monsters = [luster, null, null];
+  both.players[FOE].spellTrap = card(FOE, 'the-dark-door');
+  both.players[FOE].field = card(FOE, 'dark-sanctuary');
+  ok(effAtk(both, luster, ME) === 1700, 'the door and the sanctuary stand Luster Dragon #2 at 1700',
+    String(effAtk(both, luster, ME)));
+  ok(canAttackWith(both, ME, luster), 'and 1700 walks through the gate, whoever drained him', 'he was held');
+
+  const bigBoth = fresh('battle');
+  const beast = card(ME, 'blue-eyes-white-dragon');
+  bigBoth.players[ME].monsters = [beast, null, null];
+  bigBoth.players[FOE].spellTrap = card(FOE, 'the-dark-door');
+  bigBoth.players[FOE].field = card(FOE, 'dark-sanctuary');
+  ok(effAtk(bigBoth, beast, ME) === 2300, 'CONTROL: both drains leave a Blue-Eyes at 2300',
+    String(effAtk(bigBoth, beast, ME)));
+  ok(!canAttackWith(bigBoth, ME, beast), 'CONTROL: and 2300 is still held', 'it walked');
+
+  /* And the other way round, which the old reading could never have caught:
+     the sanctuary is Bakura's own, so it feeds his Battle Ox 600 on top of
+     1700 while the door takes 300 — the board says 2000 and the gate must
+     hold him. A reading that saw only the door's drain made that 1400. */
+  const fed = fresh('battle');
+  fed.active = FOE;
+  const ox = card(FOE, 'battle-ox');
+  fed.players[FOE].monsters = [ox, null, null];
+  fed.players[FOE].field = card(FOE, 'dark-sanctuary');
+  fed.players[ME].spellTrap = card(ME, 'the-dark-door');
+  ok(effAtk(fed, ox, FOE) === 2000, 'a fed Battle Ox stands at exactly 2000', String(effAtk(fed, ox, FOE)));
+  ok(!canAttackWith(fed, FOE, ox), 'and the door holds him there, buffed by somebody else', 'he walked');
+
   /* Garoozis rolls once and the table should hear one number, not six. */
   const g = fresh('battle');
   const zis = card(ME, 'garoozis');

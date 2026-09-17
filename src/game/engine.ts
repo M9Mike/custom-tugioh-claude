@@ -409,72 +409,59 @@ function auraCount(
 }
 
 /**
- * A monster's ATK as it itself carries it: printed stats, its permanent and
- * turn modifiers, everything it has absorbed, its own continuous auras (a
- * Two-Headed King Rex counting its Graveyard) and the Equips bolted onto it —
- * but no OTHER card's weather.
+ * A monster's ATK as everything but an ATK-bounded aura makes it: printed
+ * stats, its permanent and turn modifiers, everything it has absorbed, its
+ * Equips, and every plain-arithmetic aura on the field, whoever is casting it.
  *
- * This is what an ATK bound in an aura's filter means, and the only reading
- * that terminates. The Dark Door says monsters with 2000 or more ATK cannot
- * attack, and it also drains 300: a filter reading fully-effective ATK would
- * need the door's auras to decide whether the door's aura applies, and one
- * reading printed data let a King Rex standing at 2500 walk through a gate
- * his card face says holds him — reported from a real duel as "monsters with
- * 2000 or more attack could still attack". Nothing here reads another card's
- * aura, so nothing here can recurse.
- */
-/**
- * What ONE source is already adding to (or taking off) a monster, for the
- * benefit of that same source's ATK-bounded auras.
+ * This is what an ATK bound in an aura's filter means, and it is the number
+ * the board is showing, minus only the bonuses that would need this answer to
+ * decide whether they apply. Auras that carry an ATK bound of their own are
+ * the one thing left out — a bonus that depends on ATK cannot help decide that
+ * ATK — and nothing else here reads another card's effective stats, so nothing
+ * here can recurse.
  *
- * A card that drains and then judges — The Dark Door — has to judge the number
- * it made, or its two halves contradict each other in public. Only auras with
- * no ATK bound of their own are counted: those are plain arithmetic, so no
- * bonus is ever asked to decide whether it applies to itself, and nothing here
- * reads another card's aura, so nothing here can recurse.
+ * Three duels paid for this line. Reading printed data let a King Rex standing
+ * at 2500 walk through a gate his card face says holds him ("monsters with
+ * 2000 or more attack could still attack"). Reading it without the judging
+ * card's own drain held a Lord of D. at a gate for being 2000 while the same
+ * card had just pushed him to 1700. And reading only the judging card's drain
+ * — every other card's weather still missing — barred Mike's Luster Dragon #2,
+ * printed at 2400, standing at 1700 under The Dark Door's 300 and Dark
+ * Sanctuary's 400: the board said 1700 and the gate said 2100. A card that
+ * drains and then judges must judge the board, not its own half of it.
  */
-function sameSourceAtk(state: DuelState, source: CardInstance, ctrl: PlayerId, target: CardInstance, targetCtrl: PlayerId): number {
-  const def = CARDS[source.slug];
-  if (!def) return 0;
-  let sum = 0;
-  for (const eff of def.effects) {
-    if (eff.trigger !== 'continuous' || !eff.aura || !eff.aura.atk) continue;
-    const s = eff.aura.target;
-    if (s.filter?.minAtk != null || s.filter?.maxAtk != null) continue;
-    if (eff.condition && !conditionMet(state, eff, source, ctrl)) continue;
-    const sameSide = ctrl === targetCtrl;
-    if (s.side === 'own' && !sameSide) continue;
-    if (s.side === 'opp' && sameSide) continue;
-    if (s.pick === 'self' && source.uid !== target.uid) continue;
-    if (s.excludeSelf && source.uid === target.uid) continue;
-    if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
-    sum += eff.aura.atk;
-  }
-  return sum;
-}
-
-function selfAtk(state: DuelState, target: CardInstance, ctrl: PlayerId): number {
+function unboundedAtk(
+  state: DuelState,
+  target: CardInstance,
+  targetCtrl: PlayerId,
+  casters: { c: CardInstance; controller: PlayerId }[],
+): number {
   if (target.flags.infiniteAtk || target.turnFlags.infiniteAtk) return INFINITE_ATK;
   const base = target.isToken ? (target.tokenAtk ?? 0) : baseAtk(target.slug);
   const rate = target.flags.absorbHalved || target.turnFlags.absorbHalved ? 0.5 : 1;
   const absorbed = Math.floor(target.absorbed.reduce((sum, a) => sum + baseAtk(a.slug), 0) * rate);
-  let bonus = tokenScaleOf(state, target, ctrl).atk;
-  if (!target.isToken && !target.flags.negated) {
-    for (const eff of CARDS[target.slug]?.effects ?? []) {
+  let bonus = tokenScaleOf(state, target, targetCtrl).atk;
+  for (const { c: source, controller } of casters) {
+    if (source.isToken || source.flags.negated) continue;
+    const def = CARDS[source.slug];
+    if (!def) continue;
+    if (source.equippedTo === target.uid) bonus += equipOpOf(source.slug)?.atk ?? 0;
+    const hidden = source.face === 'down';
+    for (const eff of def.effects) {
       if (eff.trigger !== 'continuous' || !eff.aura) continue;
-      if (eff.condition && !conditionMet(state, eff, target, ctrl)) continue;
+      if (hidden && !eff.aura.evenFaceDown) continue;
       const s = eff.aura.target;
-      if (s.side !== 'own' || s.excludeSelf) continue;
+      if (s.filter?.minAtk != null || s.filter?.maxAtk != null) continue;
+      if (eff.condition && !conditionMet(state, eff, source, controller)) continue;
+      const sameSide = controller === targetCtrl;
+      if (s.side === 'own' && !sameSide) continue;
+      if (s.side === 'opp' && sameSide) continue;
+      if (s.pick === 'self' && source.uid !== target.uid) continue;
+      if (s.excludeSelf && source.uid === target.uid) continue;
       if (s.pick !== 'self' && !matchesFilter(target, s.filter)) continue;
       bonus += eff.aura.atk ?? 0;
       if (eff.aura.perCounter) bonus += (eff.aura.perCounter.atk ?? 0) * target.counters;
-      if (eff.aura.per) bonus += auraCount(state, ctrl, eff.aura.per, target.uid) * (eff.aura.per.atk ?? 0);
-    }
-  }
-  for (const { c: source } of fieldCards(state)) {
-    if (source.equippedTo === target.uid) {
-      const eq = equipOpOf(source.slug);
-      if (eq) bonus += eq.atk;
+      if (eff.aura.per) bonus += auraCount(state, controller, eff.aura.per, source.uid) * (eff.aura.per.atk ?? 0);
     }
   }
   return Math.max(0, base + absorbed + target.atkMod + target.turnAtkMod + (target.battleAtkMod ?? 0) + bonus);
@@ -502,6 +489,7 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
         .map((c) => ({ c, controller: pid }))
     ),
   ];
+  let asItStands: number | undefined;
   for (const { c: source, controller } of casters) {
     if (source.isToken || source.flags.negated) continue;
     const def = CARDS[source.slug];
@@ -539,20 +527,17 @@ function aurasFor(state: DuelState, target: CardInstance, targetController: Play
       if (wantSide === 'opp' && sameSide) continue;
       if (s.pick === 'self' && source.uid !== target.uid) continue;
       if (s.excludeSelf && source.uid === target.uid) continue;
-      /* ATK bounds in an aura's filter ask about the monster as IT stands —
-         see `selfAtk` above — PLUS whatever this same card is already doing to
-         it. The Dark Door drains 300 and bars everything at 2000 or more, and
-         the two halves were not talking to each other: a Lord of D. standing
-         at 2000 was pushed to 1700 by the door and then held at the gate by
-         the same door for being 2000. Reported. Only this source's own
-         unbounded auras count — a bonus that itself depends on ATK cannot
-         help decide that ATK, which is what keeps this from chasing its own
-         tail. */
+      /* ATK bounds in an aura's filter ask about the monster as it stands on
+         the board — every drain and every buff already on it, whoever cast
+         them; see `unboundedAtk` above, which is that number minus only the
+         ATK-bounded auras themselves, because a bonus that depends on ATK
+         cannot help decide that ATK. Worked out once per target and kept: the
+         casters do not change while this loop runs. */
       if (s.pick !== 'self') {
         if (!matchesFilter(target, stripAtkBounds(s.filter))) continue;
         const f = s.filter;
         if (f?.minAtk != null || f?.maxAtk != null) {
-          const asItStands = selfAtk(state, target, targetController) + sameSourceAtk(state, source, controller, target, targetController);
+          asItStands ??= unboundedAtk(state, target, targetController, casters);
           if (f.minAtk != null && asItStands < f.minAtk) continue;
           if (f.maxAtk != null && asItStands > f.maxAtk) continue;
         }
