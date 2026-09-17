@@ -410,9 +410,12 @@ meet at a T-junction crack.
 1. Constants and collision in `areas.ts`: `AreaId`, bounds, solids, platforms,
    doors (both sides), spawn, `world` offset. Big solid counts get the grid
    broad phase for free (`solidsNear`, from 96 solids).
-2. A builder in `world/`, registered in `OpenWorld`'s `BUILDERS`.
+2. A recipe (or a dressing for one that exists) in `scripts/blender/world`
+   and `data/world/<area>.dressing.json`, `npm run world -- <area>`, the file
+   named in `world/files.ts`, and a thin builder in `world/` (lamps and sky
+   off the dressing, then `loadArea`) registered in `OpenWorld`'s `BUILDERS`.
 3. A `Sky` with a shadow camera that covers the whole area *and* whatever
-   stands outside its walls to close the horizon.
+   stands outside its walls to close the horizon — in the dressing's `sky`.
 4. Vantages in `scripts/corner-shots.ts` — including one standing in front of
    every way out, which is the only thing that ever looks at whether a door
    reads as a door — flights in `scripts/stairs-check.ts`,

@@ -173,6 +173,32 @@ def build_port(k, layout, dressing, art, mats, capture):
         mat = made[key]
         picture = m['mat'].get('sign') is not None
         uv = m['uv'] if picture else None
+        # a surface that is one thing lying down and another standing up — turf
+        # on the ground, a clipped hedge on a wall — is split by the way its
+        # faces look
+        surface = dressing.get('drawers', {}).get(m['mat']['map']) if m['mat']['map'] else None
+        upright = dressing['surfaces'].get(surface, {}).get('vertical') if surface else None
+        if upright and upright in mats and not picture:
+            pos, idx = m['pos'], m['idx']
+            flat, walls = [], []
+            for i in range(0, len(idx), 3):
+                a, b, c = idx[i] * 3, idx[i + 1] * 3, idx[i + 2] * 3
+                ux, uy, uz = pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]
+                vx, vy, vz = pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]
+                ny = uz * vx - ux * vz
+                nx = uy * vz - uz * vy
+                nz = ux * vy - uy * vx
+                length = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
+                (flat if abs(ny) / length > 0.5 else walls).extend(idx[i:i + 3])
+            if walls:
+                k.mesh(mats[upright], pos, walls, uv=None, part=None)
+            if not flat:
+                bm_parts = k._bake_for(mats[upright])[1]
+                for pp in (m.get('parts') or [_aabb(pos) + [0]]):
+                    bm_parts.append([round(v, 4) for v in pp[:6]] + [int(pp[6]) if len(pp) > 6 else 0])
+                kept += 1
+                continue
+            m = dict(m, idx=flat)
         if m.get('parts'):
             # a merge says what it was made of; put the parts through as they were
             bm_parts = k._bake_for(mat)[1]

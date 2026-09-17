@@ -227,7 +227,8 @@ const SHOTS: Shot[] = [
   { name: 'Market Row, east to the crown arch', area: 'market-row', x: 6, z: 0, facing: E },
   { name: 'the shrine, in at the gate', area: 'domino-shrine', x: 0, z: -22, facing: S },
   { name: 'the shrine, the hall', area: 'domino-shrine', x: 0, z: 5, facing: S },
-  { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 0, z: 14, facing: N },
+  /* On the platform in front of the hall's body (which starts at z 10.5), looking back down the yard. */
+  { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 0, z: 9.6, facing: N },
   { name: 'the starting area, from the spawn', area: 'starting-area', x: 0, z: 0, facing: N },
   { name: 'the starting area, looking south', area: 'starting-area', x: 0, z: -4, facing: S },
   /* Straight into each way out from a few metres off, which is where a

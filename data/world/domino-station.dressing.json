@@ -62,7 +62,8 @@
     },
     "turf": {
       "tex": "leafy_grass",
-      "rough": 1
+      "rough": 1.0,
+      "vertical": "hedge"
     },
     "soil": {
       "tex": "brown_mud_leaves_01",
@@ -88,6 +89,11 @@
       "tex": "floor_tiles_06",
       "tint": "#a89c8a",
       "rough": 0.6
+    },
+    "hedge": {
+      "tex": "leafy_grass",
+      "rough": 1.0,
+      "size": 0.55
     }
   },
   "drawers": {
