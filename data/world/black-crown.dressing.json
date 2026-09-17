@@ -1,0 +1,308 @@
+{
+  "_": "Black Crown Games, the podium and the atrium — what its old builder drew, as a file. Its lamps and sky were captured from the builder the first time it was built; its materials are here.",
+  "recipe": "port",
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1,
+      "size": 2.5
+    },
+    "plaster": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c4b9a4",
+      "rough": 1,
+      "size": 2.5
+    },
+    "concrete": {
+      "tex": "concrete_wall_007",
+      "tint": "#b9b3a8",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "asphalt": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "darkWood": {
+      "tex": "dark_wooden_planks",
+      "tint": "#8a6e56",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.5
+    },
+    "woodFloor": {
+      "tex": "wood_floor_worn",
+      "tint": "#d2b88f",
+      "blend": "OVERLAY",
+      "rough": 0.7
+    },
+    "shutter": {
+      "tex": "painted_concrete",
+      "tint": "#8a8580",
+      "rough": 0.6,
+      "size": 1
+    },
+    "turf": {
+      "tex": "leafy_grass",
+      "rough": 1
+    },
+    "soil": {
+      "tex": "brown_mud_leaves_01",
+      "rough": 1
+    },
+    "ballast": {
+      "tex": "gravel_stones",
+      "tint": "#8a847a",
+      "rough": 1
+    },
+    "gravel": {
+      "tex": "gravel_floor_02",
+      "tint": "#ded6c8",
+      "rough": 1
+    },
+    "ceiling": {
+      "tex": "painted_plaster_wall",
+      "tint": "#efe7d8",
+      "rough": 1,
+      "normal": 0.35
+    },
+    "arcadeFloor": {
+      "tex": "floor_tiles_06",
+      "tint": "#a89c8a",
+      "rough": 0.6
+    }
+  },
+  "drawers": {
+    "brick": "brick",
+    "render": "render",
+    "plaster": "plaster",
+    "concrete": "concrete",
+    "paving": "paving",
+    "asphalt": "asphalt",
+    "darkWood": "darkWood",
+    "woodFloor": "woodFloor",
+    "shutter": "shutter",
+    "turf": "turf",
+    "soil": "soil",
+    "ballast": "ballast",
+    "gravel": "gravel",
+    "ceiling": "ceiling",
+    "arcadeFloor": "arcadeFloor"
+  },
+  "glow_strength": 2.2,
+  "lights": [
+    {
+      "x": -17.5,
+      "y": 5.6,
+      "z": -36,
+      "colour": "#ffc186",
+      "intensity": 24,
+      "distance": 17
+    },
+    {
+      "x": -19,
+      "y": 3.4,
+      "z": -50.7,
+      "colour": "#ffc186",
+      "intensity": 26,
+      "distance": 14
+    },
+    {
+      "x": 17,
+      "y": 3.82,
+      "z": -5.4,
+      "colour": "#ffcf96",
+      "intensity": 14,
+      "distance": 7
+    },
+    {
+      "x": 17,
+      "y": 3.82,
+      "z": 11.4,
+      "colour": "#ffcf96",
+      "intensity": 14,
+      "distance": 7
+    },
+    {
+      "x": 15.4,
+      "y": 5.57,
+      "z": -0.6,
+      "colour": "#ffbe78",
+      "intensity": 26,
+      "distance": 13
+    },
+    {
+      "x": 15.4,
+      "y": 5.57,
+      "z": 6.6,
+      "colour": "#ffbe78",
+      "intensity": 26,
+      "distance": 13
+    },
+    {
+      "x": 18.4,
+      "y": 3.76,
+      "z": -13.8,
+      "colour": "#ffcf96",
+      "intensity": 26,
+      "distance": 12
+    },
+    {
+      "x": -22.6,
+      "y": 4.2,
+      "z": -44,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -22.6,
+      "y": 4.2,
+      "z": -34,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -22.6,
+      "y": 4.2,
+      "z": -26,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -18.6,
+      "y": 4.2,
+      "z": -17,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -18.6,
+      "y": 4.2,
+      "z": -2,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 5.5,
+      "y": 4.2,
+      "z": 12,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 13.4,
+      "y": 5.82,
+      "z": -6.5,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 13.4,
+      "y": 5.82,
+      "z": 12.5,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 14.4,
+      "y": 4.56,
+      "z": -20.6,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 14.4,
+      "y": 4.56,
+      "z": -11.4,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -12.6,
+      "y": 4.33,
+      "z": 18,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -3.4,
+      "y": 4.33,
+      "z": 36,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -12.6,
+      "y": 4.33,
+      "z": 39.5,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -22.5,
+      "y": 4.2,
+      "z": -4.6,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": -42.5,
+      "y": 4.2,
+      "z": -4.6,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 15
+    },
+    {
+      "x": 7,
+      "y": 9.12,
+      "z": 3,
+      "colour": "#ffc98c",
+      "intensity": 40,
+      "distance": 38
+    }
+  ],
+  "sky": {
+    "reach": 52,
+    "half": 46,
+    "deep": 40,
+    "target": [
+      -6,
+      0,
+      0
+    ],
+    "normalBias": 0.032
+  }
+}

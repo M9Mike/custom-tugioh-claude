@@ -30,6 +30,43 @@ import * as THREE from 'three';
 
 type Ctx = CanvasRenderingContext2D;
 
+/**
+ * Which drawer made a texture, for the world pipeline and nothing else.
+ *
+ * `npm run world` captures an area's old builder in Node to port it into
+ * Blender, and there the only thing it needs from a canvas texture is which
+ * surface it was — the name of the exported drawer that made it, read off the
+ * stack. In the browser this is never asked and costs nothing.
+ */
+function madeBy(): { drawer: string; at: string } {
+  const lines = (new Error().stack ?? '').split('\n');
+  let drawer = '';
+  let at = '';
+  for (const line of lines.slice(1)) {
+    /* `at name (file:line:col)`, `at <anonymous> (file:line:col)` or `at file:line:col`. */
+    const m = /at (?:(.+?) )?\(?((?:file:\/\/)?\/[^()]*?:\d+:\d+)\)?\s*$/.exec(line);
+    if (!m) continue;
+    const name = (m[1] ?? '').replace(/^Object\./, '');
+    const where = m[2];
+    if (where.includes('surfaces.ts')) {
+      if (!drawer && /^[A-Za-z_]\w*$/.test(name) && !['madeBy', 'surface', 'surfaceRect', 'soften', 'tagged'].includes(name)) drawer = name;
+    } else if (!at) {
+      at = where;
+    }
+    if (drawer && at) break;
+  }
+  return { drawer, at };
+}
+
+function tagged(tex: THREE.CanvasTexture): THREE.CanvasTexture {
+  if (typeof window === 'undefined') {
+    const made = madeBy();
+    tex.name = made.drawer;
+    tex.userData = { ...tex.userData, at: made.at };
+  }
+  return tex;
+}
+
 function surfaceRect(
   w: number,
   h: number,
@@ -44,7 +81,7 @@ function surfaceRect(
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
+  return tagged(tex);
 }
 
 function surface(size: number, draw: (ctx: Ctx, s: number) => void): THREE.CanvasTexture | null {
@@ -57,7 +94,7 @@ function surface(size: number, draw: (ctx: Ctx, s: number) => void): THREE.Canva
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
+  return tagged(tex);
 }
 
 /**
@@ -1036,7 +1073,7 @@ export function signBoard(
    */
   aspect = 1
 ): THREE.CanvasTexture | null {
-  return surfaceRect(1024, Math.max(64, Math.round(1024 / aspect)), (ctx, s, h) => {
+  const made = surfaceRect(1024, Math.max(64, Math.round(1024 / aspect)), (ctx, s, h) => {
     const rnd = seeded(0x516e);
     ctx.fillStyle = ground;
     ctx.fillRect(0, 0, s, h);
@@ -1105,4 +1142,7 @@ export function signBoard(
       ctx.fillRect(rnd() * s, rnd() * h, 2 + rnd() * 7, 2 + rnd() * 5);
     }
   });
+  /* What it says, for the world pipeline: a captured sign is drawn again in Blender. */
+  if (made && typeof window === 'undefined') made.userData = { sign: { text, ink, ground, sub } };
+  return made;
 }

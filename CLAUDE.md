@@ -316,6 +316,45 @@ pixel ratio.
 stairs. The ease that keeps feet on a step is clamped on the way up
 (`groundY ≥ wantY − 0.02`) and free on the way down.
 
+**An area can be built in Blender, and then it is a file.** Grandpa's shop
+and Turtle Lane are the first two: `npm run world -- <area>` writes the
+collision truth out of `areas.ts` (`scripts/world/layout.ts`), draws the
+pictures the room hangs from the game's own card art, builds the area
+headless in Blender (`scripts/blender/world`, one `recipe` per kind of place
+— `shop`, `street`), and compresses it into `public/models/world/<area>.glb`,
+which `world/glb.ts` loads. Three rules
+hold it to the laws above. The drawing is made *from* the collision: the
+walls are the tall solids, the counter and the shelving are built to the
+footprint of the solid that stops you (`draw: 'counter'` on the solid says
+what to draw there), so the drawn thing is the colliding thing by
+construction — and a solid you move without rebuilding is caught by
+`npm run drawn`, which refuses a GLB whose layout hash is not the room's.
+Every box the kit bakes into a mesh is written into that mesh's `parts`, so
+the four gates that read boxes read the same boxes. And nothing in the file
+lights anything: the lamps and the sky stay in the area's own TypeScript
+(`world/shop.ts`), placed off the same dressing file Blender hangs the
+fittings from, so the lamp budget is counted before a byte of the file has
+landed; the probe says `ready` when it has, and `enterStory` waits for it.
+What it looks like lives in `data/world/<area>.dressing.json`; what it is
+made of is Poly Haven, CC0, listed in `data/world/assets.json` and fetched
+into `.cache` by `npm run world:fetch`. Textures tile in metres there too —
+every face the kit makes carries its own world coordinates as UVs. What bit
+on the way in, each written down where it was fixed: a fresh BMesh vertex
+carries index −1 until the table is renumbered (every un-bevelled box
+vanished, silently); meshopt stores positions as normalised integers with the
+scale on the node, so a matrix applied to that attribute clamps a room to a
+unit cube; the optimiser deduplicates identical geometry, so fifteen bills of
+one size are one geometry under fifteen nodes and each must bake on its own
+copy; the exporter wrote `metallicFactor: 1` for a metal channel linked from
+a photograph, and a metal with no environment map is black under the sun;
+Poly Haven's photographs are true albedo — asphalt is 0.10, table wood
+0.017 — and a tint multiplies, so a dark texture is lifted with
+`blend: SCREEN` in the dressing, never darkened further; a Poly Haven tree
+is 317k triangles and is drawn as a picture on two crossed planes
+(`Kit.billboard`); headless Blender exits 0 after a traceback unless it is
+told `--python-exit-code 1`; and walls are grids with a column at every
+opening edge, because pieces that meet at a T-junction crack.
+
 ## How the world is put together
 
 - `src/story/areas.ts` — what every area *is*: bounds, `solids`, `platforms`,
@@ -336,6 +375,12 @@ stairs. The ease that keeps feet on a step is clamped on the way up
   `__camera`, `__THREE`, `__teleport`) that every check reads.
 - `src/story/npcs.ts` — who stands where and what they say. Adding somebody is
   a row, not a renderer change.
+- `scripts/world/` and `scripts/blender/world/` — the Blender pipeline for an
+  area that is a file: `layout.ts` (the collision, written out), `build.mjs`
+  (the whole run), `kit.py` (boxes with UVs in metres, Poly Haven materials,
+  bakes that say what they baked), `fixtures.py` (walls with openings,
+  trims, counters, shelving, cases, doors, windows, posters, pendants, the
+  street beyond the window), `optimize.mjs` (simplify, WebP, meshopt).
 
 ### Adding an area
 
@@ -397,6 +442,7 @@ npm run soak       # one page, six laps of every door: nothing only goes up
 npm run linger     # one page, six minutes in one area with the clock running: nothing only goes up
 npm run duelreturn # into a duel from a conversation and back: no sign-in, same spot, conversation resumed
 npm run ash        # Ash's schedule, both routes, the roster, and the card wager end to end
+npm run drawn      # every area built in Blender is the room that stands: hash, parts, budget, manifest
 npm run models     # every model the size it says
 npm run stale      # the guard that puts you back where you were
 npm run story      # the whole flow, tapped, at both phone sizes

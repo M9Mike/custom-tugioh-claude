@@ -27,6 +27,16 @@ export interface BuiltArea {
    * converted without breaking the others — every one of them implements it.
    */
   setTime?(hour: number): void;
+  /**
+   * Settled when everything the area draws is in the scene.
+   *
+   * A procedural area is whole the moment its builder returns and leaves this
+   * unset. An area built in Blender arrives as a file — its lights and its
+   * sky are made at once, its geometry lands when the fetch does — and this
+   * is how `OpenWorld` knows to report `ready` on the probe, which is what
+   * every check waits for before it looks at a room.
+   */
+  ready?: Promise<void>;
   /** Lights belong to the area and are torn down with it. */
   dispose(): void;
 }
@@ -52,6 +62,14 @@ export class Owned {
    * across six areas and they are written in ones and twos, forty lines apart.
    */
   readonly glows: THREE.MeshBasicMaterial[] = [];
+  /**
+   * Every lit material that came in from a file, with the strength it was
+   * authored at. A window in a Blender-built terrace glows by `emissive`
+   * rather than by being unlit, and the sky dims these the way it dims
+   * `glows`: a window burning at noon is the same fault whichever way it is
+   * drawn.
+   */
+  readonly emissives: { material: THREE.MeshStandardMaterial; full: number }[] = [];
   keep<T extends { dispose(): void }>(x: T): T {
     this.items.push(x);
     return x;

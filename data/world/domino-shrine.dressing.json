@@ -1,0 +1,376 @@
+{
+  "_": "Domino Shrine, the precinct above the south side of Turtle Lane. The floor, the flights, the hall's platform and everything that stands in the grounds are areas.ts; this is what they are made of.",
+  "recipe": "shrine",
+  "seed": 334654,
+  "floor": 2.16,
+  "platform": 3.24,
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1.0
+    },
+    "gravel": {
+      "tex": "gravel_floor_02",
+      "tint": "#ded6c8",
+      "rough": 1.0
+    },
+    "sando": {
+      "tex": "herringbone_pavement",
+      "tint": "#8a7a68",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "road": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "stone": {
+      "tex": "concrete_wall_007",
+      "tint": "#c4bdb0",
+      "rough": 0.9
+    },
+    "stone_dark": {
+      "colour": "#6f6a60",
+      "rough": 0.9
+    },
+    "nosing": {
+      "colour": "#6f6a60",
+      "rough": 0.8
+    },
+    "plaster": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1.0,
+      "size": 2.5
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "roof_tile": {
+      "tex": "roof_slates_02",
+      "tint": "#7a808a",
+      "blend": "SCREEN",
+      "rough": 0.9
+    },
+    "timber": {
+      "tex": "wood_table_001",
+      "tint": "#8a6a4c",
+      "blend": "SCREEN",
+      "rough": 0.6,
+      "size": 1.0
+    },
+    "hall_wood": {
+      "tex": "dark_wooden_planks",
+      "tint": "#8a6e56",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.5
+    },
+    "dark_wood": {
+      "colour": "#3a2f26",
+      "rough": 0.7
+    },
+    "post": {
+      "colour": "#6a5442",
+      "rough": 0.8
+    },
+    "rail_wood": {
+      "colour": "#57453a",
+      "rough": 0.8
+    },
+    "vermilion": {
+      "colour": "#9c4433",
+      "rough": 0.55
+    },
+    "rope": {
+      "colour": "#c9bda0",
+      "rough": 1.0
+    },
+    "paper": {
+      "colour": "#e4dcc6",
+      "rough": 0.9
+    },
+    "flame": {
+      "colour": "#d9a25e",
+      "rough": 0.5,
+      "emissive": "#d9a25e",
+      "emissive_strength": 2.4
+    },
+    "soot": {
+      "colour": "#2b2723",
+      "rough": 0.9
+    },
+    "water": {
+      "colour": "#16232b",
+      "rough": 0.11,
+      "metal": 0.12
+    },
+    "bamboo": {
+      "colour": "#9aa36a",
+      "rough": 0.6
+    },
+    "dipper": {
+      "colour": "#8a7248",
+      "rough": 0.7
+    },
+    "dipper_cup": {
+      "colour": "#6f5a3a",
+      "rough": 0.7
+    },
+    "offering": {
+      "colour": "#cfc4a6",
+      "rough": 0.7
+    },
+    "votive": {
+      "colour": "#c98f4e",
+      "rough": 0.5,
+      "emissive": "#c98f4e",
+      "emissive_strength": 2.0
+    },
+    "soil": {
+      "colour": "#3a2f22",
+      "rough": 1.0
+    },
+    "beyond": {
+      "colour": "#2b2f28",
+      "rough": 1.0
+    },
+    "moss": {
+      "colour": "#3a4032",
+      "rough": 1.0
+    },
+    "path": {
+      "colour": "#9a9382",
+      "rough": 0.9
+    },
+    "grave": {
+      "colour": "#4a4b45",
+      "rough": 0.85
+    },
+    "lamp_glow": {
+      "colour": "#d9a25e",
+      "rough": 0.5,
+      "emissive": "#d9a25e",
+      "emissive_strength": 2.6
+    },
+    "pane_lit": {
+      "colour": "#5a3d1c",
+      "rough": 0.3,
+      "emissive": "#c9a05c",
+      "emissive_strength": 1.6
+    },
+    "ridge_end": {
+      "colour": "#5a5148",
+      "rough": 0.8
+    },
+    "bell": {
+      "colour": "#6b5a3a",
+      "rough": 0.5
+    },
+    "bell_gold": {
+      "colour": "#8a7448",
+      "rough": 0.45,
+      "metal": 0.2
+    },
+    "hall_lantern": {
+      "colour": "#c99a52",
+      "rough": 0.6,
+      "emissive": "#c99a52",
+      "emissive_strength": 2.2
+    },
+    "bank": {
+      "tex": "forest_floor",
+      "rough": 1.0
+    }
+  },
+  "signs": {
+    "notice": {
+      "text": "DOMINO",
+      "sub": "SHRINE",
+      "w": 800,
+      "h": 400,
+      "fg": "#e6dcc2",
+      "bg": "#2f3a33"
+    }
+  },
+  "lights": [
+    {
+      "x": 0,
+      "z": -33.6,
+      "y": 4.4,
+      "colour": "#ffd0a0",
+      "intensity": 30,
+      "distance": 20,
+      "_": "the street beyond the way out"
+    },
+    {
+      "x": 0,
+      "z": -26.6,
+      "y": 3.5,
+      "colour": "#ffbc78",
+      "intensity": 34,
+      "distance": 15,
+      "_": "the lamp in the way out"
+    },
+    {
+      "x": 0,
+      "z": -19,
+      "y": 5.36,
+      "colour": "#ffb469",
+      "intensity": 40,
+      "distance": 14,
+      "_": "a wash at the top of the steps"
+    },
+    {
+      "x": -3.6,
+      "z": -21.4,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": 3.6,
+      "z": -21.4,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": -5.6,
+      "z": -12,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": 5.6,
+      "z": -6.5,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": -5.6,
+      "z": -1,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": -8.4,
+      "z": 4.6,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": 8.4,
+      "z": 4.6,
+      "above": 1.8,
+      "colour": "#ffb063",
+      "intensity": 34,
+      "distance": 9.5
+    },
+    {
+      "x": -16,
+      "z": -6.5,
+      "above": 2.1,
+      "colour": "#ffbe78",
+      "intensity": 22,
+      "distance": 8,
+      "_": "the basin"
+    },
+    {
+      "x": 22.95,
+      "z": 11.31,
+      "above": 0.75,
+      "colour": "#ffab5c",
+      "intensity": 16,
+      "distance": 6.5,
+      "_": "the small shrine's votive"
+    },
+    {
+      "x": 1.5,
+      "z": 20.2,
+      "above": 1.5,
+      "colour": "#ffb469",
+      "intensity": 30,
+      "distance": 13,
+      "_": "the stone behind the hall"
+    },
+    {
+      "x": -5.4,
+      "z": 10.2,
+      "above": 3.2,
+      "colour": "#ffbc72",
+      "intensity": 38,
+      "distance": 16,
+      "_": "under the eaves"
+    },
+    {
+      "x": 5.4,
+      "z": 10.2,
+      "above": 3.2,
+      "colour": "#ffbc72",
+      "intensity": 38,
+      "distance": 16
+    },
+    {
+      "x": 0,
+      "z": 8.6,
+      "y": 7.64,
+      "colour": "#ffc98c",
+      "intensity": 46,
+      "distance": 24,
+      "_": "a wash across the front of the hall"
+    },
+    {
+      "x": -17.2,
+      "z": 22.5,
+      "y": 4.76,
+      "colour": "#ffb469",
+      "intensity": 20,
+      "distance": 9,
+      "_": "the back gate"
+    },
+    {
+      "x": -15.8,
+      "z": 25.2,
+      "y": 3.52,
+      "colour": "#ffb469",
+      "intensity": 14,
+      "distance": 6,
+      "_": "the lantern beyond it"
+    }
+  ],
+  "sky": {
+    "reach": 46,
+    "half": 34,
+    "deep": 30,
+    "target": [
+      0,
+      2.16,
+      0
+    ],
+    "normalBias": 0.026,
+    "gain": 1.1,
+    "fill": 1.05
+  }
+}

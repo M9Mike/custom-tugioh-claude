@@ -1,0 +1,346 @@
+{
+  "_": "Domino Station — what its old builder drew, as a file. Its lamps and sky were captured from the builder the first time it was built; its materials are here.",
+  "recipe": "port",
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1,
+      "size": 2.5
+    },
+    "plaster": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c4b9a4",
+      "rough": 1,
+      "size": 2.5
+    },
+    "concrete": {
+      "tex": "concrete_wall_007",
+      "tint": "#b9b3a8",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "asphalt": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "darkWood": {
+      "tex": "dark_wooden_planks",
+      "tint": "#8a6e56",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.5
+    },
+    "woodFloor": {
+      "tex": "wood_floor_worn",
+      "tint": "#d2b88f",
+      "blend": "OVERLAY",
+      "rough": 0.7
+    },
+    "shutter": {
+      "tex": "painted_concrete",
+      "tint": "#8a8580",
+      "rough": 0.6,
+      "size": 1
+    },
+    "turf": {
+      "tex": "leafy_grass",
+      "rough": 1
+    },
+    "soil": {
+      "tex": "brown_mud_leaves_01",
+      "rough": 1
+    },
+    "ballast": {
+      "tex": "gravel_stones",
+      "tint": "#8a847a",
+      "rough": 1
+    },
+    "gravel": {
+      "tex": "gravel_floor_02",
+      "tint": "#ded6c8",
+      "rough": 1
+    },
+    "ceiling": {
+      "tex": "painted_plaster_wall",
+      "tint": "#efe7d8",
+      "rough": 1,
+      "normal": 0.35
+    },
+    "arcadeFloor": {
+      "tex": "floor_tiles_06",
+      "tint": "#a89c8a",
+      "rough": 0.6
+    }
+  },
+  "drawers": {
+    "brick": "brick",
+    "render": "render",
+    "plaster": "plaster",
+    "concrete": "concrete",
+    "paving": "paving",
+    "asphalt": "asphalt",
+    "darkWood": "darkWood",
+    "woodFloor": "woodFloor",
+    "shutter": "shutter",
+    "turf": "turf",
+    "soil": "soil",
+    "ballast": "ballast",
+    "gravel": "gravel",
+    "ceiling": "ceiling",
+    "arcadeFloor": "arcadeFloor"
+  },
+  "glow_strength": 2.2,
+  "lights": [
+    {
+      "x": -45.7,
+      "y": 3.5,
+      "z": 43.5,
+      "colour": "#ffbe78",
+      "intensity": 44,
+      "distance": 15
+    },
+    {
+      "x": -3,
+      "y": 1.5,
+      "z": 35.3,
+      "colour": "#ffca8a",
+      "intensity": 30,
+      "distance": 12
+    },
+    {
+      "x": 44.16,
+      "y": 4.6,
+      "z": 26,
+      "colour": "#ffbe78",
+      "intensity": 60,
+      "distance": 14
+    },
+    {
+      "x": -24,
+      "y": 4,
+      "z": 44.6,
+      "colour": "#ffbe78",
+      "intensity": 130,
+      "distance": 20
+    },
+    {
+      "x": -8,
+      "y": 4,
+      "z": 44.6,
+      "colour": "#ffbe78",
+      "intensity": 130,
+      "distance": 20
+    },
+    {
+      "x": 8,
+      "y": 4,
+      "z": 44.6,
+      "colour": "#ffbe78",
+      "intensity": 130,
+      "distance": 20
+    },
+    {
+      "x": 24,
+      "y": 4,
+      "z": 44.6,
+      "colour": "#ffbe78",
+      "intensity": 130,
+      "distance": 20
+    },
+    {
+      "x": -33.6,
+      "y": 5.7,
+      "z": 24,
+      "colour": "#ffbe78",
+      "intensity": 200,
+      "distance": 32
+    },
+    {
+      "x": -14.4,
+      "y": 5.7,
+      "z": 24,
+      "colour": "#ffbe78",
+      "intensity": 200,
+      "distance": 32
+    },
+    {
+      "x": 4.8,
+      "y": 5.7,
+      "z": 24,
+      "colour": "#ffbe78",
+      "intensity": 200,
+      "distance": 32
+    },
+    {
+      "x": 24,
+      "y": 5.7,
+      "z": 24,
+      "colour": "#ffbe78",
+      "intensity": 200,
+      "distance": 32
+    },
+    {
+      "x": -34,
+      "y": 2.2,
+      "z": 25.2,
+      "colour": "#ffc186",
+      "intensity": 52,
+      "distance": 14
+    },
+    {
+      "x": -40,
+      "y": 4.4,
+      "z": 42,
+      "colour": "#ffc186",
+      "intensity": 70,
+      "distance": 18
+    },
+    {
+      "x": -38.4,
+      "y": 8.1,
+      "z": -32,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": -38.4,
+      "y": 8.1,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": -19.2,
+      "y": 8.1,
+      "z": -32,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": -19.2,
+      "y": 8.1,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 0,
+      "y": 8.1,
+      "z": -32,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 0,
+      "y": 8.1,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 19.2,
+      "y": 8.1,
+      "z": -32,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 19.2,
+      "y": 8.1,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 38.4,
+      "y": 8.1,
+      "z": -32,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": 38.4,
+      "y": 8.1,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 30
+    },
+    {
+      "x": -19.2,
+      "y": 4.55,
+      "z": -51.5,
+      "colour": "#ffbe78",
+      "intensity": 260,
+      "distance": 34
+    },
+    {
+      "x": 19.2,
+      "y": 4.55,
+      "z": -51.5,
+      "colour": "#ffbe78",
+      "intensity": 260,
+      "distance": 34
+    },
+    {
+      "x": -51.2,
+      "y": 4.6,
+      "z": 43.5,
+      "colour": "#ffbe78",
+      "intensity": 120,
+      "distance": 20
+    },
+    {
+      "x": 51.4,
+      "y": 4.4,
+      "z": 26,
+      "colour": "#ffbe78",
+      "intensity": 170,
+      "distance": 24
+    }
+  ],
+  "sky": {
+    "reach": 98,
+    "half": 76,
+    "deep": 76,
+    "target": [
+      0,
+      1.5,
+      -6
+    ],
+    "normalBias": 0.075,
+    "hemi": {
+      "sky": "#a3a79f",
+      "ground": "#7c6f5c"
+    },
+    "gain": 1.05,
+    "fill": 1.3
+  }
+}

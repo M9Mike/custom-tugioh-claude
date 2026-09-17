@@ -1,0 +1,276 @@
+{
+  "_": "What Grandpa's shop looks like. Where things are that stop you is areas.ts; this is what they look like and what stands about that you can walk past. Textures are Poly Haven ids from assets.json; sizes are metres.",
+  "recipe": "shop",
+  "height": 3.6,
+  "dado": 1.02,
+  "cornice": 0.12,
+  "surfaces": {
+    "floor": {
+      "tex": "wood_floor_worn",
+      "tint": "#d2b88f",
+      "blend": "OVERLAY",
+      "rough": 0.9,
+      "normal": 1.0
+    },
+    "wall": {
+      "tex": "beige_wall_001",
+      "tint": "#e6d6b8",
+      "rough": 1.0
+    },
+    "ceiling": {
+      "tex": "painted_plaster_wall",
+      "tint": "#efe7d8",
+      "rough": 1.0,
+      "normal": 0.35,
+      "size": 2.5
+    },
+    "wainscot": {
+      "tex": "dark_paneled_wood",
+      "tint": "#8a6a4a",
+      "blend": "SCREEN",
+      "rough": 0.7
+    },
+    "trim": {
+      "colour": "#4a3320",
+      "rough": 0.55
+    },
+    "frame": {
+      "colour": "#3a2a1a",
+      "rough": 0.5
+    },
+    "door": {
+      "tex": "wood_table_001",
+      "tint": "#7a5640",
+      "blend": "SCREEN",
+      "rough": 0.55,
+      "size": 1.2
+    },
+    "door_panel": {
+      "colour": "#4c3521",
+      "rough": 0.5
+    },
+    "sill": {
+      "colour": "#4a3320",
+      "rough": 0.5
+    },
+    "glass": {
+      "colour": "#9fc4d8",
+      "rough": 0.08,
+      "alpha": 0.22
+    },
+    "brass": {
+      "colour": "#b08d57",
+      "rough": 0.32,
+      "metal": 0.2
+    },
+    "counter_body": {
+      "tex": "wood_table_001",
+      "tint": "#6a4634",
+      "blend": "SCREEN",
+      "rough": 0.55,
+      "size": 1.6
+    },
+    "counter_panel": {
+      "tex": "wood_table_001",
+      "tint": "#a88664",
+      "blend": "SCREEN",
+      "rough": 0.6,
+      "size": 0.9
+    },
+    "counter_top": {
+      "tex": "wood_table_001",
+      "tint": "#8a6244",
+      "blend": "SCREEN",
+      "rough": 0.5,
+      "size": 1.6
+    },
+    "shelf": {
+      "tex": "wood_table_001",
+      "tint": "#7a5640",
+      "blend": "SCREEN",
+      "rough": 0.6,
+      "size": 1.6
+    },
+    "pegboard": {
+      "colour": "#8a7a5c",
+      "rough": 0.9
+    },
+    "singles": {
+      "colour": "#b4462f",
+      "rough": 0.7
+    },
+    "mug": {
+      "colour": "#e4e0d6",
+      "rough": 0.35
+    },
+    "bulb": {
+      "colour": "#fff2d8",
+      "rough": 0.4,
+      "emissive": "#ffe6b8",
+      "emissive_strength": 6.0
+    },
+    "rug": {
+      "tex": "quatrefoil_jacquard_fabric",
+      "tint": "#6a3030",
+      "blend": "SCREEN",
+      "rough": 1.0,
+      "size": 0.6
+    },
+    "pavement": {
+      "colour": "#6b6a66",
+      "rough": 0.95
+    },
+    "road": {
+      "colour": "#33322f",
+      "rough": 0.95
+    },
+    "brick": {
+      "tex": "red_brick_03",
+      "tint": "#a98a78",
+      "rough": 0.95
+    }
+  },
+  "door": {
+    "w": 1.5,
+    "h": 2.35
+  },
+  "windows": [
+    {
+      "wall": "south",
+      "x": -1.6,
+      "w": 4.2,
+      "sill": 1.0,
+      "top": 2.5
+    }
+  ],
+  "pegboards": [
+    {
+      "x": -1.1,
+      "y": 1.75,
+      "w": 6.2,
+      "h": 1.9
+    }
+  ],
+  "posters": [
+    {
+      "wall": "west",
+      "along": -2.9,
+      "y": 2.15,
+      "w": 0.9,
+      "h": 1.25,
+      "art": 0
+    },
+    {
+      "wall": "east",
+      "along": 2.1,
+      "y": 2.1,
+      "w": 0.7,
+      "h": 0.98,
+      "art": 1
+    },
+    {
+      "wall": "north",
+      "along": 4.6,
+      "y": 1.9,
+      "w": 0.8,
+      "h": 1.1,
+      "art": 2
+    }
+  ],
+  "rugs": [
+    {
+      "x": -0.6,
+      "z": -0.4,
+      "w": 3.2,
+      "d": 1.8
+    }
+  ],
+  "lamps": [
+    {
+      "x": -4.2,
+      "y": 3.05,
+      "z": -0.2,
+      "colour": "#ffd8a0",
+      "intensity": 58,
+      "distance": 14,
+      "fixture": "hanging_industrial_lamp",
+      "watts": 60
+    },
+    {
+      "x": 0.0,
+      "y": 3.05,
+      "z": -0.2,
+      "colour": "#ffd8a0",
+      "intensity": 58,
+      "distance": 14,
+      "fixture": "hanging_industrial_lamp",
+      "watts": 60
+    },
+    {
+      "x": 4.2,
+      "y": 3.05,
+      "z": -0.2,
+      "colour": "#ffd8a0",
+      "intensity": 58,
+      "distance": 14,
+      "fixture": "hanging_industrial_lamp",
+      "watts": 60
+    },
+    {
+      "x": 4.2,
+      "y": 2.45,
+      "z": 5.2,
+      "colour": "#ffcf90",
+      "intensity": 9,
+      "distance": 6,
+      "fixture": null,
+      "shadow": false,
+      "watts": 12
+    }
+  ],
+  "props": [
+    {
+      "model": "CashRegister_01",
+      "x": 2.45,
+      "y": 0.9,
+      "z": -2.7,
+      "rotY": 0.0
+    },
+    {
+      "model": "wall_clock",
+      "x": 5.7,
+      "y": 2.6,
+      "z": -5.475,
+      "rotY": 0.0,
+      "base": "centre"
+    },
+    {
+      "model": "industrial_wall_lamp",
+      "x": 4.2,
+      "y": 2.55,
+      "z": 5.44,
+      "rotY": 3.14159,
+      "base": "centre"
+    },
+    {
+      "model": "book_encyclopedia_set_01",
+      "x": 2.3,
+      "y": 0.0,
+      "z": -5.2,
+      "rotY": 0.0
+    }
+  ],
+  "look": {
+    "eye": [
+      2.6,
+      1.55,
+      3.2
+    ],
+    "at": [
+      -1.2,
+      1.0,
+      -2.6
+    ]
+  },
+  "chalkboardRotY": 0.55
+}

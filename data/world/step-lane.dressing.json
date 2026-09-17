@@ -1,0 +1,292 @@
+{
+  "_": "Step Lane, the residential hill above Turtle Lane. The climb, the things left out along it and the poles are areas.ts; this is what the houses look like and where they stand.",
+  "recipe": "lane",
+  "seed": 360090,
+  "house_face": 2.9,
+  "house_w_north": 4.7,
+  "house_w_south": 4.6,
+  "north": [
+    15.2,
+    10.1,
+    5.0,
+    -0.2,
+    -5.4,
+    -10.4,
+    -15.2
+  ],
+  "south": [
+    16.6,
+    11.4,
+    6.2,
+    1.0,
+    -4.2,
+    -9.4,
+    -14.4
+  ],
+  "rise": 0.18,
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1.0
+    },
+    "stone": {
+      "tex": "concrete_wall_007",
+      "tint": "#c4bdb0",
+      "rough": 0.9
+    },
+    "lane_floor": {
+      "tex": "concrete_wall_007",
+      "tint": "#b9b3a8",
+      "rough": 0.95
+    },
+    "nosing": {
+      "colour": "#76746e",
+      "rough": 0.8
+    },
+    "retaining": {
+      "tex": "concrete_wall_007",
+      "tint": "#a9a397",
+      "rough": 0.95
+    },
+    "cap": {
+      "colour": "#6c6a64",
+      "rough": 0.85
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1.0,
+      "size": 2.5
+    },
+    "render_alt": {
+      "tex": "painted_plaster_wall",
+      "tint": "#b6b6ad",
+      "rough": 1.0,
+      "size": 2.5
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "steel": {
+      "colour": "#3f4348",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "timber": {
+      "tex": "wood_table_001",
+      "tint": "#8a6a4c",
+      "blend": "SCREEN",
+      "rough": 0.6,
+      "size": 1.0
+    },
+    "roof": {
+      "colour": "#4a453e",
+      "rough": 0.85
+    },
+    "pitch": {
+      "tex": "roof_slates_02",
+      "tint": "#8a8580",
+      "blend": "SCREEN",
+      "rough": 0.9
+    },
+    "reveal": {
+      "colour": "#4a453e",
+      "rough": 0.9
+    },
+    "sill": {
+      "colour": "#57524a",
+      "rough": 0.85
+    },
+    "pane_lit": {
+      "colour": "#4a3218",
+      "rough": 0.3,
+      "emissive": "#a8783c",
+      "emissive_strength": 1.0
+    },
+    "pane_cool": {
+      "colour": "#26303a",
+      "rough": 0.3,
+      "emissive": "#5a6a7a",
+      "emissive_strength": 0.7
+    },
+    "pane_dark": {
+      "colour": "#20252c",
+      "rough": 0.4
+    },
+    "porch": {
+      "colour": "#d8a763",
+      "rough": 0.5,
+      "emissive": "#d8a763",
+      "emissive_strength": 3.0
+    },
+    "meter": {
+      "colour": "#9aa0a2",
+      "rough": 0.6
+    },
+    "postbox": {
+      "colour": "#5a6b5f",
+      "rough": 0.7
+    },
+    "plate": {
+      "colour": "#d9d3c4",
+      "rough": 0.5
+    },
+    "washing_pole": {
+      "colour": "#b8b2a4",
+      "rough": 0.6
+    },
+    "pipe": {
+      "colour": "#5a554d",
+      "rough": 0.7
+    },
+    "insulator": {
+      "colour": "#4f5257",
+      "rough": 0.5
+    },
+    "transformer": {
+      "colour": "#6a6357",
+      "rough": 0.7
+    },
+    "wire": {
+      "colour": "#2f3134",
+      "rough": 0.6
+    },
+    "planter": {
+      "colour": "#8a7f6e",
+      "rough": 0.9
+    },
+    "soil": {
+      "colour": "#3a2f22",
+      "rough": 1.0
+    },
+    "tyre": {
+      "colour": "#2a2c2e",
+      "rough": 0.7
+    },
+    "saddle": {
+      "colour": "#26282a",
+      "rough": 0.6
+    },
+    "basket": {
+      "colour": "#5a5347",
+      "rough": 0.9
+    },
+    "bin": {
+      "colour": "#4a5348",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "bin_lid": {
+      "colour": "#39412f",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "bin_dark": {
+      "colour": "#2a2f26",
+      "rough": 0.6
+    },
+    "niche": {
+      "colour": "#6f6c66",
+      "rough": 0.9
+    },
+    "niche_dark": {
+      "colour": "#3a3833",
+      "rough": 0.9
+    },
+    "figure": {
+      "colour": "#a8a49b",
+      "rough": 0.8
+    },
+    "bib": {
+      "colour": "#a83f42",
+      "rough": 0.9
+    },
+    "offering": {
+      "colour": "#c9c2b0",
+      "rough": 0.7
+    },
+    "bulb": {
+      "colour": "#fff2d8",
+      "rough": 0.4,
+      "emissive": "#f0c98a",
+      "emissive_strength": 4.0
+    },
+    "frame": {
+      "colour": "#e2dccd",
+      "rough": 0.6
+    }
+  },
+  "signs": {
+    "steplane": {
+      "text": "STEP LANE",
+      "w": 1080,
+      "h": 200,
+      "fg": "#e6dcc2",
+      "bg": "#2f3a33"
+    }
+  },
+  "lights": [
+    {
+      "x": 13.4,
+      "z": -2.4,
+      "above": 2.6,
+      "colour": "#ffbc72",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 4.2,
+      "z": 2.4,
+      "above": 2.6,
+      "colour": "#ffbc72",
+      "intensity": 36,
+      "distance": 11
+    },
+    {
+      "x": -3.6,
+      "z": -2.4,
+      "above": 2.6,
+      "colour": "#ffbc72",
+      "intensity": 36,
+      "distance": 11
+    },
+    {
+      "x": -12.2,
+      "z": 2.4,
+      "above": 2.6,
+      "colour": "#ffbc72",
+      "intensity": 34,
+      "distance": 11
+    },
+    {
+      "x": -16.4,
+      "z": 0,
+      "above": 3.2,
+      "colour": "#ffd08a",
+      "intensity": 58,
+      "distance": 13
+    }
+  ],
+  "sky": {
+    "reach": 34,
+    "half": 22,
+    "deep": 18,
+    "target": [
+      0,
+      2,
+      0
+    ],
+    "normalBias": 0.024,
+    "gain": 0.75,
+    "fill": 0.68
+  }
+}

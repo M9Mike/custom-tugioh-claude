@@ -242,8 +242,11 @@ export async function enterStory(page: Page, area?: string, hour: number | null 
   for (let i = 0; i < 250; i++) {
     const there = await page
       .evaluate((want) => {
-        const w = window as unknown as { __scene?: unknown; __probe?: { area: string } };
-        if (w.__scene) return !want || w.__probe?.area === want;
+        const w = window as unknown as { __scene?: unknown; __probe?: { area: string; ready?: boolean } };
+        /* An area built in Blender is a file, and the probe says `ready`
+           only once it has landed — a room audited while its walls are still
+           downloading is a room with no walls. */
+        if (w.__scene) return (!want || w.__probe?.area === want) && w.__probe?.ready !== false;
         /* No probe — a production build. The stick on screen, or a
            conversation open over the world, is the world. Which area cannot
            be told, and the checks that need to know say so themselves.

@@ -1,0 +1,549 @@
+{
+  "_": "Domino High — what its old builder drew, as a file. Its lamps and sky were captured from the builder the first time it was built; its materials are here.",
+  "recipe": "port",
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1,
+      "size": 2.5
+    },
+    "plaster": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c4b9a4",
+      "rough": 1,
+      "size": 2.5
+    },
+    "concrete": {
+      "tex": "concrete_wall_007",
+      "tint": "#b9b3a8",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "asphalt": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "darkWood": {
+      "tex": "dark_wooden_planks",
+      "tint": "#8a6e56",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.5
+    },
+    "woodFloor": {
+      "tex": "wood_floor_worn",
+      "tint": "#d2b88f",
+      "blend": "OVERLAY",
+      "rough": 0.7
+    },
+    "shutter": {
+      "tex": "painted_concrete",
+      "tint": "#8a8580",
+      "rough": 0.6,
+      "size": 1
+    },
+    "turf": {
+      "tex": "leafy_grass",
+      "rough": 1
+    },
+    "soil": {
+      "tex": "brown_mud_leaves_01",
+      "rough": 1
+    },
+    "ballast": {
+      "tex": "gravel_stones",
+      "tint": "#8a847a",
+      "rough": 1
+    },
+    "gravel": {
+      "tex": "gravel_floor_02",
+      "tint": "#ded6c8",
+      "rough": 1
+    },
+    "ceiling": {
+      "tex": "painted_plaster_wall",
+      "tint": "#efe7d8",
+      "rough": 1,
+      "normal": 0.35
+    },
+    "arcadeFloor": {
+      "tex": "floor_tiles_06",
+      "tint": "#a89c8a",
+      "rough": 0.6
+    }
+  },
+  "drawers": {
+    "brick": "brick",
+    "render": "render",
+    "plaster": "plaster",
+    "concrete": "concrete",
+    "paving": "paving",
+    "asphalt": "asphalt",
+    "darkWood": "darkWood",
+    "woodFloor": "woodFloor",
+    "shutter": "shutter",
+    "turf": "turf",
+    "soil": "soil",
+    "ballast": "ballast",
+    "gravel": "gravel",
+    "ceiling": "ceiling",
+    "arcadeFloor": "arcadeFloor"
+  },
+  "glow_strength": 2.2,
+  "lights": [
+    {
+      "x": 0,
+      "y": 3.4,
+      "z": -82,
+      "colour": "#ffbe78",
+      "intensity": 90,
+      "distance": 16
+    },
+    {
+      "x": -66.2667,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -47.3333,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -28.4,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -9.4667,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 9.4667,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 28.4,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 47.3333,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 66.2667,
+      "y": 3.6,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -66.2667,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -47.3333,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -28.4,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -9.4667,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 9.4667,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 28.4,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 47.3333,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": 66.2667,
+      "y": 7.8,
+      "z": -49.2,
+      "colour": "#ffdca8",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -56.8,
+      "y": 3.5,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": -28.4,
+      "y": 3.5,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": 28.4,
+      "y": 3.5,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": 56.8,
+      "y": 3.5,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": -37.8667,
+      "y": 7.7,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": 37.8667,
+      "y": 7.7,
+      "z": -43.2,
+      "colour": "#ffe0b0",
+      "intensity": 90,
+      "distance": 13
+    },
+    {
+      "x": -36,
+      "y": 4.9,
+      "z": -53.3,
+      "colour": "#ffbe78",
+      "intensity": 150,
+      "distance": 20
+    },
+    {
+      "x": -36,
+      "y": 4.9,
+      "z": -36.7,
+      "colour": "#ffbe78",
+      "intensity": 150,
+      "distance": 20
+    },
+    {
+      "x": 36,
+      "y": 4.9,
+      "z": -53.3,
+      "colour": "#ffbe78",
+      "intensity": 150,
+      "distance": 20
+    },
+    {
+      "x": 36,
+      "y": 4.9,
+      "z": -36.7,
+      "colour": "#ffbe78",
+      "intensity": 150,
+      "distance": 20
+    },
+    {
+      "x": 0,
+      "y": 3.5,
+      "z": -45,
+      "colour": "#ffdca8",
+      "intensity": 110,
+      "distance": 15
+    },
+    {
+      "x": -48,
+      "y": 7.5,
+      "z": -56,
+      "colour": "#ffdca8",
+      "intensity": 60,
+      "distance": 12
+    },
+    {
+      "x": 48,
+      "y": 7.5,
+      "z": -56,
+      "colour": "#ffdca8",
+      "intensity": 60,
+      "distance": 12
+    },
+    {
+      "x": 0,
+      "y": 3.7,
+      "z": -1,
+      "colour": "#ffdca8",
+      "intensity": 130,
+      "distance": 18
+    },
+    {
+      "x": 46,
+      "y": 9.1,
+      "z": 26,
+      "colour": "#ffe4bc",
+      "intensity": 220,
+      "distance": 26
+    },
+    {
+      "x": 46,
+      "y": 9.1,
+      "z": 42,
+      "colour": "#ffe4bc",
+      "intensity": 220,
+      "distance": 26
+    },
+    {
+      "x": 70,
+      "y": 9.1,
+      "z": 26,
+      "colour": "#ffe4bc",
+      "intensity": 220,
+      "distance": 26
+    },
+    {
+      "x": 70,
+      "y": 9.1,
+      "z": 42,
+      "colour": "#ffe4bc",
+      "intensity": 220,
+      "distance": 26
+    },
+    {
+      "x": 11,
+      "y": 2.2,
+      "z": -76.5,
+      "colour": "#ffdca8",
+      "intensity": 55,
+      "distance": 11
+    },
+    {
+      "x": -12,
+      "y": 1.4,
+      "z": -54.4,
+      "colour": "#ffd9a0",
+      "intensity": 26,
+      "distance": 7
+    },
+    {
+      "x": -9.4,
+      "y": 1.4,
+      "z": -54.4,
+      "colour": "#ffd9a0",
+      "intensity": 26,
+      "distance": 7
+    },
+    {
+      "x": -30,
+      "y": 5.6,
+      "z": -74,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": 30,
+      "y": 5.6,
+      "z": -74,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": -30,
+      "y": 5.6,
+      "z": -62,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": 30,
+      "y": 5.6,
+      "z": -62,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": -58,
+      "y": 5.6,
+      "z": -30,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": 58,
+      "y": 5.6,
+      "z": -30,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": -58,
+      "y": 5.6,
+      "z": -16,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": 58,
+      "y": 5.6,
+      "z": -16,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": -58,
+      "y": 5.6,
+      "z": -2,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": 58,
+      "y": 5.6,
+      "z": -2,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 24
+    },
+    {
+      "x": -88,
+      "y": 11.2,
+      "z": 23,
+      "colour": "#ffd7a2",
+      "intensity": 320,
+      "distance": 42
+    },
+    {
+      "x": 12,
+      "y": 11.2,
+      "z": 23,
+      "colour": "#ffd7a2",
+      "intensity": 320,
+      "distance": 42
+    },
+    {
+      "x": -88,
+      "y": 11.2,
+      "z": 65,
+      "colour": "#ffd7a2",
+      "intensity": 320,
+      "distance": 42
+    },
+    {
+      "x": 12,
+      "y": 11.2,
+      "z": 65,
+      "colour": "#ffd7a2",
+      "intensity": 320,
+      "distance": 42
+    },
+    {
+      "x": -5.6,
+      "y": 4.7,
+      "z": -90,
+      "colour": "#ffbe78",
+      "intensity": 220,
+      "distance": 26
+    }
+  ],
+  "sky": {
+    "reach": 150,
+    "half": 118,
+    "deep": 112,
+    "target": [
+      0,
+      2,
+      -20
+    ],
+    "fill": 1.35,
+    "normalBias": 0.115
+  }
+}

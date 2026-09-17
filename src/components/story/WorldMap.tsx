@@ -236,109 +236,158 @@ export default function WorldMap({ at, onGo, onClose }: WorldMapProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-ink/95 p-3">
-      <div className="mx-auto flex w-full max-w-3xl items-baseline justify-between gap-3 px-1 pb-2">
-        <div className="min-w-0">
-          <h2 className="font-display text-lg leading-none text-brassbright">Domino City</h2>
-          <p className="mt-1 text-[10px] uppercase tracking-widest text-brass">
-            {PLACES.length} areas · {Math.round(W)} × {Math.round(H)} m
-          </p>
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-ink/80 p-3 backdrop-blur-[2px]"
+      style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="panel grain flex h-full w-full max-w-3xl flex-col overflow-hidden rounded"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal
+        aria-label="The plan of Domino City"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-stoneline bg-black/25 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.32em] text-brass">The plan</p>
+            <h2 className="font-display text-xl leading-none text-brassbright">Domino City</h2>
+          </div>
+          <div className="hidden text-right text-[10px] uppercase tracking-widest text-ptextdim sm:block">
+            {PLACES.length} places · {Math.round(W)} × {Math.round(H)} m
+            <br />
+            standing in <span className="text-parchment">{areaById(at.area).name}</span>
+          </div>
+          <button className="btn shrink-0 rounded px-3 py-2 text-[11px]" onClick={onClose}>
+            ✕ Close
+          </button>
         </div>
-        <button className="btn shrink-0 rounded px-3 py-2 text-[11px]" onClick={onClose}>
-          ✕ Close
-        </button>
-      </div>
 
-      <div className="min-h-0 flex-1">
-        <svg
-          ref={svg}
-          viewBox={`${VIEW.x0} ${VIEW.z0} ${W} ${H}`}
-          className="h-full w-full cursor-crosshair touch-none"
-          onPointerDown={pick}
-          role="img"
-          aria-label="Plan of Domino City — tap anywhere to go there"
-        >
-          {/* A hundred-metre grid, so the scale is readable without the bar. */}
-          <defs>
-            <pattern id="map-grid" width="100" height="100" patternUnits="userSpaceOnUse">
-              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#3a4351" strokeWidth="1" opacity="0.5" />
-            </pattern>
-          </defs>
-          <rect x={VIEW.x0} y={VIEW.z0} width={W} height={H} fill="#0a0c11" />
-          <rect x={VIEW.x0} y={VIEW.z0} width={W} height={H} fill="url(#map-grid)" />
+        <div className="relative min-h-0 flex-1 bg-[#0a0c11]">
+          <svg
+            ref={svg}
+            viewBox={`${VIEW.x0} ${VIEW.z0} ${W} ${H}`}
+            className="h-full w-full cursor-crosshair touch-none"
+            onPointerDown={pick}
+            role="img"
+            aria-label="Plan of Domino City — tap anywhere to go there"
+          >
+            <defs>
+              {/* A hundred-metre grid, so the scale is readable without the bar. */}
+              <pattern id="map-grid" width="100" height="100" patternUnits="userSpaceOnUse">
+                <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#3a4351" strokeWidth="1" opacity="0.5" />
+              </pattern>
+              {/* Hatching for the places with a roof over them. */}
+              <pattern id="map-roof" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="6" stroke="#4a5364" strokeWidth="1" opacity="0.5" />
+              </pattern>
+              <filter id="map-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="b" />
+                <feMerge>
+                  <feMergeNode in="b" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <rect x={VIEW.x0} y={VIEW.z0} width={W} height={H} fill="#0a0c11" />
+            <rect x={VIEW.x0} y={VIEW.z0} width={W} height={H} fill="url(#map-grid)" />
 
-          {/* Rectangles first, every one of them, then every label — or a
-              later area's fill paints over an earlier one's leader line. */}
-          {LABELLED.map((p) => (
-            <rect
-              key={p.id}
-              x={p.x0}
-              y={p.z0}
-              width={p.x1 - p.x0}
-              height={p.z1 - p.z0}
-              fill={p.kind === 'interior' ? '#2a313d' : '#1c222b'}
-              fillOpacity={p.id === at.area ? 1 : 0.85}
-              stroke={p.id === at.area ? '#e6c980' : '#8a723d'}
-              strokeWidth={p.id === at.area ? 3 : 1.6}
-            />
-          ))}
-
-          {LABELLED.map((p) => {
-            const here = p.id === at.area;
-            return (
-              <g key={p.id} style={{ pointerEvents: 'none' }}>
-                {p.lead && (
-                  <line
-                    x1={p.lx}
-                    y1={p.lz + 2}
-                    x2={(p.x0 + p.x1) / 2}
-                    y2={(p.z0 + p.z1) / 2}
-                    stroke={here ? '#e6c980' : '#8a723d'}
-                    strokeWidth={1}
-                    opacity={0.65}
-                  />
+            {/* Rectangles first, every one of them, then every label — or a
+                later area's fill paints over an earlier one's leader line. */}
+            {LABELLED.map((p) => (
+              <g key={p.id}>
+                <rect
+                  x={p.x0}
+                  y={p.z0}
+                  width={p.x1 - p.x0}
+                  height={p.z1 - p.z0}
+                  fill={p.kind === 'interior' ? '#2a313d' : '#1c222b'}
+                  fillOpacity={p.id === at.area ? 1 : 0.85}
+                  stroke={p.id === at.area ? '#e6c980' : '#8a723d'}
+                  strokeWidth={p.id === at.area ? 3 : 1.6}
+                  filter={p.id === at.area ? 'url(#map-glow)' : undefined}
+                />
+                {p.kind === 'interior' && (
+                  <rect x={p.x0} y={p.z0} width={p.x1 - p.x0} height={p.z1 - p.z0} fill="url(#map-roof)" pointerEvents="none" />
                 )}
-                <text
-                  x={p.lx}
-                  y={p.lz}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={LABEL}
-                  fill={here ? '#e8dfc9' : '#938d80'}
-                  stroke="#0a0c11"
-                  strokeWidth={3}
-                  paintOrder="stroke"
-                >
-                  {p.name}
-                </text>
               </g>
-            );
-          })}
+            ))}
 
-          {/* The doorways. */}
-          {SEAMS.map((s, i) => (
-            <circle key={i} cx={s.x} cy={s.z} r={4} fill="#c2a15a" opacity={0.9} />
-          ))}
+            {LABELLED.map((p) => {
+              const here = p.id === at.area;
+              return (
+                <g key={p.id} style={{ pointerEvents: 'none' }}>
+                  {p.lead && (
+                    <line
+                      x1={p.lx}
+                      y1={p.lz + 2}
+                      x2={(p.x0 + p.x1) / 2}
+                      y2={(p.z0 + p.z1) / 2}
+                      stroke={here ? '#e6c980' : '#8a723d'}
+                      strokeWidth={1}
+                      opacity={0.65}
+                    />
+                  )}
+                  <text
+                    x={p.lx}
+                    y={p.lz}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={LABEL}
+                    fontFamily="var(--font-display), Georgia, serif"
+                    letterSpacing={0.6}
+                    fill={here ? '#e8dfc9' : '#a39c8c'}
+                    stroke="#0a0c11"
+                    strokeWidth={3}
+                    paintOrder="stroke"
+                  >
+                    {p.name}
+                  </text>
+                </g>
+              );
+            })}
 
-          {/* You. Two rings rather than a dot, so it reads on top of a name. */}
-          <circle cx={you.x} cy={you.z} r={11} fill="none" stroke="#e6c980" strokeWidth={2.5} opacity={0.75} />
-          <circle cx={you.x} cy={you.z} r={4.5} fill="#e6c980" />
+            {/* The doorways: a brass diamond on every seam. */}
+            {SEAMS.map((s, i) => (
+              <rect key={i} x={s.x - 3.2} y={s.z - 3.2} width={6.4} height={6.4} transform={`rotate(45 ${s.x} ${s.z})`} fill="#c2a15a" opacity={0.95} />
+            ))}
 
-          {/* Scale bar, bottom left. */}
-          <g transform={`translate(${VIEW.x0 + 16} ${VIEW.z1 - 20})`}>
-            <line x1={0} y1={0} x2={BAR} y2={0} stroke="#8a723d" strokeWidth={2.5} />
-            <line x1={0} y1={-5} x2={0} y2={5} stroke="#8a723d" strokeWidth={2.5} />
-            <line x1={BAR} y1={-5} x2={BAR} y2={5} stroke="#8a723d" strokeWidth={2.5} />
-            <text x={BAR / 2} y={-9} textAnchor="middle" fontSize={12} fill="#8a723d">
-              {BAR} m
-            </text>
-          </g>
-        </svg>
+            {/* You. Two rings rather than a dot, so it reads on top of a name. */}
+            <circle cx={you.x} cy={you.z} r={11} fill="none" stroke="#e6c980" strokeWidth={2.5} opacity={0.75}>
+              <animate attributeName="r" values="9;13;9" dur="2.4s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={you.x} cy={you.z} r={4.5} fill="#e6c980" />
+
+            {/* Scale bar, bottom left. */}
+            <g transform={`translate(${VIEW.x0 + 16} ${VIEW.z1 - 20})`}>
+              <line x1={0} y1={0} x2={BAR} y2={0} stroke="#8a723d" strokeWidth={2.5} />
+              <line x1={0} y1={-5} x2={0} y2={5} stroke="#8a723d" strokeWidth={2.5} />
+              <line x1={BAR} y1={-5} x2={BAR} y2={5} stroke="#8a723d" strokeWidth={2.5} />
+              <text x={BAR / 2} y={-9} textAnchor="middle" fontSize={12} fill="#8a723d" fontFamily="var(--font-display), Georgia, serif">
+                {BAR} m
+              </text>
+            </g>
+
+            {/* The compass, top right: north is up. */}
+            <g transform={`translate(${VIEW.x1 - 28} ${VIEW.z0 + 34})`} opacity={0.9}>
+              <circle r={16} fill="#0a0c11" stroke="#8a723d" strokeWidth={1.2} />
+              <path d="M0 -13 L4 0 L0 -3 L-4 0 Z" fill="#e6c980" />
+              <path d="M0 13 L4 0 L0 3 L-4 0 Z" fill="#4a5364" />
+              <text y={-18} textAnchor="middle" fontSize={9} fill="#e6c980" fontFamily="var(--font-display), Georgia, serif">N</text>
+            </g>
+          </svg>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-stoneline bg-black/25 px-4 py-2 text-[10px] text-ptextdim">
+          <span className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 border border-[#8a723d] bg-[#1c222b]" />outdoors</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 border border-[#8a723d] bg-[#2a313d]" />under a roof</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rotate-45 bg-[#c2a15a]" />a door</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-[#e6c980]" />you</span>
+          </span>
+          <span>Tap anywhere on the plan to go there. North is up.</span>
+        </div>
       </div>
-
-      <p className="mx-auto w-full max-w-3xl px-1 pt-2 text-center text-[10px] leading-relaxed text-ptextdim">
-        Tap anywhere on the plan to go there. North is up.
-      </p>
     </div>
   );
 }

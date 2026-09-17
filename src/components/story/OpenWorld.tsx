@@ -39,6 +39,7 @@ import {
   cameraReach,
 } from '@/story/areas';
 import WorldMap from './WorldMap';
+import StoryMenu from './StoryMenu';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
 import { ceilingFor, deckIsShort } from '@/story/shop';
@@ -48,13 +49,10 @@ import { buildStreet } from './world/street';
 import { buildMarket } from './world/market';
 import { buildStepLane } from './world/steplane';
 import { buildShrine } from './world/shrine';
-import { buildBlackCrown } from './world/blackcrown';
-import { buildCrownShop } from './world/crownshop';
-import { buildCemetery } from './world/cemetery';
-import { buildStation } from './world/station';
-import { buildPlaza } from './world/plaza';
-import { buildTowers } from './world/towers';
-import { buildHigh } from './world/high';
+import { prefetchAround } from './world/files';
+import {
+  buildBlackCrown, buildCrownShop, buildCemetery, buildStation, buildPlaza, buildTowers, buildHigh,
+} from './world/ported';
 import { buildPremadeRig, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
@@ -131,42 +129,11 @@ interface Props {
   onResumed?: () => void;
 }
 
-/** SCAFFOLDING: show the coordinate readout. Set to false to hide it. */
-const SHOW_WHERE = true;
-
-/**
- * SCAFFOLDING: on to the clipboard, however this browser will have it.
- *
- * `navigator.clipboard` wants a secure context and a focused document — https
- * and localhost are secure, a phone reading this over a LAN address is not,
- * and that is exactly the case this readout exists for. So the old textarea
- * trick underneath it, tried whenever the first way throws rather than only
- * when the API is missing.
- *
- * And it answers whether it worked, because a button that says "copied" when
- * nothing was copied is worse than one that says nothing.
- */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch { /* the old way, then */ }
-  const box = document.createElement('textarea');
-  box.value = text;
-  box.style.position = 'fixed';
-  box.style.top = '-1000px';
-  document.body.appendChild(box);
-  box.select();
-  let ok = false;
-  try { ok = document.execCommand('copy'); } catch { ok = false; }
-  document.body.removeChild(box);
-  return ok;
-}
 
 export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The name of the place on the pause menu's plaque, read as it opens. */
+  const [menuPlace, setMenuPlace] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
   /**
    * Put the duelist anywhere in the city, including in another area.
@@ -309,18 +276,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   const areaRef = useRef<AreaId>(start.area);
   /** The name of the place just entered, shown briefly and then faded out. */
   const [entered, setEntered] = useState<string | null>(null);
-  /*
-   * ---- SCAFFOLDING: the coordinate readout ----------------------------
-   *
-   * Where you are, in the corner, so a thing you can see can be named: "the
-   * lamp at −26, 48", "there is nothing under me at 12, −40". It is not part
-   * of the game and it comes out again — delete this state, the `setWhere`
-   * call in the frame loop, and the block at the bottom of the markup, and
-   * nothing else refers to it. `SHOW_WHERE` turns it off without deleting it.
-   */
-  const [where, setWhere] = useState('');
-  /* SCAFFOLDING: what the tap has to say for itself, if anything. */
-  const [copied, setCopied] = useState<string | null>(null);
+  /** Whether the line under the stick that says how to walk is shown. */
+  const [hints, setHints] = useState(() => {
+    try { return window.localStorage.getItem('story-hints') !== '0'; } catch { return true; }
+  });
   /**
    * The black sheet a door transition plays behind.
    *
@@ -330,6 +289,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * cost more than the world it is covering up.
    */
   const fade = useRef<HTMLDivElement>(null);
+  /** The name on the sheet while it is down: written straight from the loop, like the sheet. */
+  const card = useRef<HTMLSpanElement>(null);
 
   /* The area card says its piece and goes. Cleared rather than left mounted so
      re-entering the same area re-triggers the animation. */
@@ -547,7 +508,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     const lampOrder: number[] = [];
     let lampTick = 0;
     /* SCAFFOLDING: when the coordinate readout last spoke. */
-    let whereAt = 0;
 
     /**
      * The nearest `LAMP_BUDGET` lamps on, the rest off.
@@ -575,6 +535,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       for (let i = 0; i < lampOrder.length; i++) lamps[lampOrder[i]].visible = i < LAMP_BUDGET;
     };
 
+    /* Whether the area on screen is all there. A procedural area is the
+       moment it is built; one loaded from a file is when the file lands. The
+       probe reports it and every check waits on it. */
+    let areaReady = true;
     const enter = (id: AreaId) => {
       if (built) {
         scene.remove(built.root);
@@ -584,6 +548,23 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       area = areaById(id);
       areaRef.current = area.id;
       built = BUILDERS[area.id](anisotropy);
+      const mine = built;
+      areaReady = !mine.ready;
+      if (!mine.ready) prefetchAround(area.id);
+      mine.ready?.then(
+        () => {
+          if (built === mine) {
+            areaReady = true;
+            prefetchAround(id);
+          }
+        },
+        (err: unknown) => {
+          /* A room whose file never came is a room with nothing in it. Say
+             so; the lights and the floor collision still stand. */
+          console.error('open world: the area failed to load', err);
+          if (built === mine) areaReady = true;
+        }
+      );
       lamps = [];
       built.root.traverse((o) => {
         if ((o as THREE.PointLight).isPointLight) lamps.push(o as THREE.PointLight);
@@ -926,7 +907,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * and a couple of shadow maps, which is a visible hitch on a phone, and a
      * hitch that happens behind a black screen is a load rather than a stutter.
      */
-    let crossing: { door: Door; t: number; swapped: boolean } | null = null;
+    let crossing: { door: Door; t: number; swapped: boolean; held: number } | null = null;
+    /**
+     * How long the sheet stays down after the swap, at least.
+     *
+     * Long enough to read the name of the place on it — and it stays down
+     * past that for as long as the area's file takes to land, because the one
+     * thing a door must never show is the duelist standing in a room that is
+     * not there yet. A file already in the cache lands inside this.
+     */
+    const CARD_HOLD = 0.55;
     let stride = 0;
     /**
      * How high the ground is under the duelist right now.
@@ -1232,7 +1222,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          */
         if (!crossing) {
           const door = doorAt(area, p.x, p.z, groundY);
-          if (door) crossing = { door, t: 0, swapped: false };
+          if (door) crossing = { door, t: 0, swapped: false, held: 0 };
         }
       }
 
@@ -1273,15 +1263,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            to a stand instead of marching on the spot. */
         const covered = dt > 0 ? Math.hypot(p.x - fromX, p.z - fromZ) / dt : 0;
         rig.update(dt, Math.min(stride, covered / TOP_SPEED), covered);
-      }
-
-      /* SCAFFOLDING: the coordinate readout, four times a second rather than
-         sixty — React does not need to hear about a tenth of a metre. */
-      if (SHOW_WHERE && performance.now() - whereAt > 250) {
-        whereAt = performance.now();
-        const deg = Math.round(((p.facing * 180) / Math.PI + 360)) % 360;
-        setWhere(`${areaRef.current}  x ${p.x.toFixed(1)}  z ${p.z.toFixed(1)}`
-                 + `  y ${groundY.toFixed(2)}  facing ${deg}°`);
       }
 
       /**
@@ -1532,6 +1513,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            * one.
            */
           const to = arrivalThrough(door, area.id);
+          if (card.current) card.current.textContent = areaById(door.to).name;
           enter(door.to);
           p.x = to.x;
           p.z = to.z;
@@ -1555,6 +1537,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             rig.root.position.set(p.x, groundY, p.z);
             rig.root.rotation.y = p.facing;
           }
+        }
+        if (crossing.swapped && crossing.t > 1) {
+          crossing.held += dt;
+          if (!areaReady || crossing.held < CARD_HOLD) crossing.t = 1;
         }
         const shade = crossing.t <= 1 ? crossing.t : 2 - crossing.t;
         if (fade.current) fade.current.style.opacity = String(Math.max(0, Math.min(1, shade)));
@@ -1821,6 +1807,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           near: nearRef.current?.id ?? null,
           lights: scene.children.length,
           built: built ? built.root.children.length : 0,
+          /* False while an area built in Blender is still arriving. */
+          ready: areaReady,
           quality: { level: quality.level, ratio: +renderer.getPixelRatio().toFixed(2), ms: +(quality.ema * 1000).toFixed(1) },
         };
       }
@@ -2065,7 +2053,15 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-black"
         style={{ opacity: 0 }}
-      />
+      >
+        {/* The name of the place you are walking into, while nothing else can
+            be seen. The sheet's opacity carries it in and out. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <span className="text-[11px] tracking-[0.42em] text-amber-100/55 uppercase">Domino City</span>
+          <span ref={card} className="font-serif text-2xl tracking-[0.22em] text-amber-100/90 uppercase" />
+          <span className="mt-1 h-px w-24 bg-amber-100/30" />
+        </div>
+      </div>
 
       {/* Where you are, said once on arrival and then got out of the way. The
           areas have names because we are going to be referring to them for the
@@ -2083,85 +2079,67 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         </div>
       )}
 
-      {/* corner menu */}
-      {/* `items-end` is load-bearing. The box is only as wide as its widest
-          child, so opening the panel widened it to 14rem and left the button —
-          now a narrow ✕ rather than ☰ Menu — sitting against the box's left
-          edge, a third of the way across the screen. The button you press to
-          close a menu cannot walk out of the corner you pressed to open it. */}
+      {/* the corner button, and the sheet it brings down */}
       <div
-        className="absolute right-0 top-0 flex flex-col items-end p-3"
+        className="absolute right-0 top-0 z-30 p-3"
         style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingRight: 'calc(var(--safe-right) + 12px)' }}
       >
         <button
-          className="btn rounded px-3 py-2 text-[11px]"
+          className="btn flex items-center gap-2 rounded px-3 py-2 text-[11px]"
           onClick={() => {
             sfx.click();
+            /* Read off the ref as the menu opens: what it says on the plaque
+               is where she was when you pressed it. */
+            setMenuPlace(areaById(areaRef.current).name);
             setMenuOpen((o) => !o);
           }}
           aria-expanded={menuOpen}
           aria-label="Menu"
         >
-          {menuOpen ? '✕' : '☰ Menu'}
+          <span aria-hidden className="flex flex-col gap-[3px]">
+            <span className="block h-px w-3.5 bg-current" />
+            <span className="block h-px w-3.5 bg-current" />
+            <span className="block h-px w-3.5 bg-current" />
+          </span>
+          Menu
         </button>
-
-        {menuOpen && (
-          <div className="panel grain mt-2 w-56 rounded p-3">
-            <p className="truncate font-display text-base leading-tight text-parchment">{character.name}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-widest text-brass">Level {profile.level}</p>
-            <div className="brass-rule my-2.5" />
-            <button
-              className="btn mb-1.5 w-full rounded px-3 py-2 text-[11px]"
-              onClick={() => {
-                sfx.click();
-                onEditDeck();
-              }}
-            >
-              Edit Deck
-            </button>
-            {/* Read off the refs at the moment it opens, not subscribed to:
-                the duelist's position changes sixty times a second and the map
-                only needs to know where she was when you asked for it. */}
-            <button
-              className="btn mb-1.5 w-full rounded px-3 py-2 text-[11px]"
-              onClick={() => {
-                sfx.click();
-                setMapAt({ area: areaRef.current, x: here.current.x, z: here.current.z });
-                setMenuOpen(false);
-                setMapOpen(true);
-              }}
-            >
-              Map
-            </button>
-            <button className="btn mb-1.5 w-full rounded px-3 py-2 text-[11px]" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              className="btn w-full rounded px-3 py-2 text-[11px]"
-              onClick={() => {
-                sfx.click();
-                /* The way out writes where you were standing. Leaving by the
-                   menu used to write nothing, so coming back in put you at the
-                   last save rather than at the door you left by. */
-                void persist().then(onExit);
-              }}
-            >
-              Return to the Main Menu
-            </button>
-            <div className="brass-rule my-2.5" />
-            <button
-              className="btn btn-danger w-full rounded px-3 py-2 text-[11px]"
-              onClick={() => {
-                sfx.click();
-                setMenuOpen(false);
-                setAskingDelete('warn');
-              }}
-            >
-              Delete Character
-            </button>
-          </div>
-        )}
       </div>
+
+      {menuOpen && (
+        <StoryMenu
+          name={character.name}
+          level={profile.level}
+          money={profile.money ?? 0}
+          place={menuPlace}
+          saving={saving}
+          hints={hints}
+          onHints={(on) => {
+            setHints(on);
+            try { window.localStorage.setItem('story-hints', on ? '1' : '0'); } catch { /* ignore */ }
+          }}
+          onEditDeck={onEditDeck}
+          onMap={() => {
+            /* Read off the refs at the moment it opens, not subscribed to:
+               the duelist's position changes sixty times a second and the map
+               only needs to know where she was when you asked for it. */
+            setMapAt({ area: areaRef.current, x: here.current.x, z: here.current.z });
+            setMenuOpen(false);
+            setMapOpen(true);
+          }}
+          onSave={() => void save()}
+          onExit={() => {
+            /* The way out writes where you were standing. Leaving by the
+               menu used to write nothing, so coming back in put you at the
+               last save rather than at the door you left by. */
+            void persist().then(onExit);
+          }}
+          onDelete={() => {
+            setMenuOpen(false);
+            setAskingDelete('warn');
+          }}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
 
       {mapOpen && mapAt && (
         <WorldMap
@@ -2254,13 +2232,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center" style={{ marginBottom: 'calc(var(--safe-bottom) + 156px)' }}>
           <button
             data-talk={nearNpc.id}
-            className="btn btn-primary rounded px-4 py-2 text-[11px]"
+            className="btn btn-primary flex items-center gap-2 rounded-full px-5 py-2 text-[11px]"
             onClick={() => {
               sfx.click();
               setTalkingTo(nearNpc);
             }}
           >
-            Talk to {nearNpc.character.name}
+            <span className="text-[9px] tracking-[0.2em] text-parchment/70">Talk to</span>
+            <span className="font-display text-[12px] tracking-[0.1em]">{nearNpc.character.name}</span>
           </button>
         </div>
       )}
@@ -2281,44 +2260,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         />
       </div>
 
-      {/* ---- SCAFFOLDING: the coordinate readout. Delete this block, the
-              `where`/`copied` state, and the `setWhere` call in the frame
-              loop, and it is gone without a trace.
-
-              A button rather than a line of text, because the point of it is
-              to be pasted into a message: tap it and it is on the clipboard.
-              `pointer-events-auto` over a canvas that is otherwise listening
-              for drags — the look handler is on the canvas itself, so a tap
-              that lands here never reaches it — and `tabIndex={-1}` with a
-              blur after, so a focused button cannot start eating the space
-              bar in a game played on WASD. ---- */}
-      {SHOW_WHERE && !talkingTo && where && (
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={(e) => {
-            e.currentTarget.blur();
-            void copyText(where).then((ok) => {
-              setCopied(ok ? 'copied — paste it to me' : 'hold to select and copy');
-              window.setTimeout(() => setCopied(null), 1600);
-            });
-          }}
-          className="pointer-events-auto absolute bottom-0 right-0 cursor-pointer select-text rounded border border-amber-200/20 bg-black/35 px-2 py-1 font-mono text-[10px] leading-none text-amber-200/75 active:bg-black/60"
-          style={{
-            marginBottom: 'calc(var(--safe-bottom) + 42px)',
-            marginRight: 'calc(var(--safe-right) + 14px)',
-            textShadow: '0 1px 3px rgba(0,0,0,0.9)',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          {copied ?? where}
-        </button>
-      )}
-
-      {!talkingTo && (
+      {!talkingTo && hints && (
         <p
-          className="pointer-events-none absolute bottom-0 right-0 m-4 text-right text-[9px] leading-relaxed text-white/45"
-          style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)' }}
+          className="pointer-events-none absolute bottom-0 right-0 m-4 text-right text-[9px] leading-relaxed tracking-wide text-white/45 animate-[fadeaway_2.6s_ease-out_forwards]"
+          style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)', animationDelay: '9s' }}
         >
           Drag to look · stick to walk
           {hasKeyboard && (

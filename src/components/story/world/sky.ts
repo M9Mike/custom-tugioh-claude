@@ -89,6 +89,13 @@ export interface SkyOptions {
   indoor?: boolean;
 }
 
+/**
+ * Every set of options a `Sky` was made with, in Node only — read by
+ * `npm run world`'s capture of an old builder, so the sky an area was tuned
+ * for goes into its dressing with the rest of it. Empty in the browser.
+ */
+export const SKIES_MADE: SkyOptions[] = [];
+
 export class Sky {
   readonly key: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
@@ -106,6 +113,7 @@ export class Sky {
   private readonly glows: { at: THREE.Color; was: THREE.Color }[] = [];
 
   constructor(own: Owned, root: THREE.Group, o: SkyOptions) {
+    if (typeof window === 'undefined') SKIES_MADE.push(o);
     LIVE.add(this);
     this.own = own;
     this.reach = o.reach;
@@ -231,6 +239,7 @@ export class Sky {
     }
     const k = 0.2 + 0.8 * p.lamps;
     for (const g of this.glows) g.at.copy(g.was).multiplyScalar(k);
+    for (const e of this.own.emissives) e.material.emissiveIntensity = e.full * k;
     return p;
   }
 

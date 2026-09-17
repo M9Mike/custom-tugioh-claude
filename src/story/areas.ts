@@ -80,6 +80,18 @@ export interface Rect {
    * bench, which is worse than the problem it fixes.
    */
   tall?: boolean;
+  /**
+   * What is drawn in this box, for an area built in Blender.
+   *
+   * The collision is the truth and the drawing is made *from* it — `npm run
+   * world` hands `scripts/blender/world` this list, and a solid that names
+   * what it is (`counter`, `shelf`, `case`, `boxes`) gets that thing built to
+   * exactly this footprint, so the drawn thing is the colliding thing by
+   * construction rather than by two people agreeing. A solid with no name is
+   * a wall or a block and is drawn as one. Nothing in the procedural builders
+   * reads it.
+   */
+  draw?: string;
 }
 
 /**
@@ -289,7 +301,7 @@ const GRANDPA_SHOP: Area = {
      * wall to within a metre of the right, and the gap at that end is where he
      * stands, not where you go.
      */
-    { x: -1.1, z: -2.6, hw: 3.9, hd: 0.55 },
+    { x: -1.1, z: -2.6, hw: 3.9, hd: 0.55, draw: 'counter' },
 
     /*
      * The stack of cardboard boxes behind the counter.
@@ -301,12 +313,21 @@ const GRANDPA_SHOP: Area = {
      * started sampling where a wall actually stops you rather than where the
      * grid happened to land.
      */
-    { x: -4.4, z: -3.2, hw: 0.46, hd: 0.4 },
+    { x: -4.4, z: -3.2, hw: 0.46, hd: 0.4, draw: 'boxes' },
 
     /* Shelf units down both side walls, and the display case by the window. */
-    { x: -SHOP_W + 0.67, z: 0.6, hw: 0.55, hd: 2.4 },
-    { x: SHOP_W - 0.67, z: -0.9, hw: 0.55, hd: 2.8 },
-    { x: SHOP_W - 0.7, z: 3.0, hw: 0.7, hd: 0.6 },
+    { x: -SHOP_W + 0.67, z: 0.6, hw: 0.55, hd: 2.4, draw: 'shelf' },
+    { x: SHOP_W - 0.67, z: -0.9, hw: 0.55, hd: 2.8, draw: 'shelf' },
+    { x: SHOP_W - 0.7, z: 3.0, hw: 0.7, hd: 0.6, draw: 'case' },
+
+    /* The chalkboard on its easel by the window's left end, and the crate of
+       stock under the sill. Both stand where you can walk into them, so both
+       are solids; the drawing stands them here (`draw`). */
+    { x: -5.3, z: 3.9, hw: 0.46, hd: 0.4, draw: 'chalkboard' },
+    { x: -2.6, z: 4.78, hw: 0.42, hd: 0.21, draw: 'crate' },
+    /* Grandpa's stool, behind the counter where you can walk: `npm run
+       footing` found five cells with feet inside it. */
+    { x: -3.7, z: -3.75, hw: 0.23, hd: 0.23, draw: 'stool' },
   ],
   doors: [
     {
@@ -465,27 +486,29 @@ const STARTING_AREA: Area = {
     { x: ST_W - 2, z: 9.85, hw: 2, hd: 7.15, tall: true },
 
     /* Bollards across the arch: the road stops here, the arcade does not. */
-    { x: 17.0, z: -1.2, hw: 0.16, hd: 0.16 },
-    { x: 17.0, z: 2.2, hw: 0.16, hd: 0.16 },
+    { x: 17.0, z: -1.2, hw: 0.16, hd: 0.16, draw: 'bollard' },
+    { x: 17.0, z: 2.2, hw: 0.16, hd: 0.16, draw: 'bollard' },
 
     /* Street furniture, which is what stops the middle being an empty car park. */
-    { x: -9.5, z: -6.9, hw: 0.28, hd: 0.28 },   // lamp post, north pavement
-    { x: 9.5, z: -6.9, hw: 0.28, hd: 0.28 },    // lamp post, north pavement
-    { x: -9.5, z: 7.9, hw: 0.28, hd: 0.28 },    // lamp post, south pavement
-    { x: 9.5, z: 7.9, hw: 0.28, hd: 0.28 },     // lamp post, south pavement
-    { x: -4.2, z: 8.6, hw: 1.0, hd: 0.42 },     // bench
-    { x: 13.5, z: 8.6, hw: 1.0, hd: 0.42 },     // bench
-    { x: -14.5, z: -7.5, hw: 0.9, hd: 0.9 },    // planter
-    { x: 15.5, z: -7.5, hw: 0.9, hd: 0.9 },     // planter
-    { x: 17.62, z: -4.0, hw: 0.42, hd: 0.62 },  // vending machine, facing the road
-    { x: -17.4, z: -7.3, hw: 0.55, hd: 0.55 },  // post box, on the north pavement
-    { x: -11.5, z: -7.6, hw: 0.34, hd: 0.34 },  // litter bin, north pavement
-    { x: 6.0, z: 8.4, hw: 0.34, hd: 0.34 },     // litter bin, south pavement
+    { x: -9.5, z: -6.9, hw: 0.28, hd: 0.28, draw: 'lamp' },   // lamp post, north pavement
+    { x: 9.5, z: -6.9, hw: 0.28, hd: 0.28, draw: 'lamp' },    // lamp post, north pavement
+    { x: -9.5, z: 7.9, hw: 0.28, hd: 0.28, draw: 'lamp' },    // lamp post, south pavement
+    { x: 9.5, z: 7.9, hw: 0.28, hd: 0.28, draw: 'lamp' },     // lamp post, south pavement
+    { x: -4.2, z: 8.6, hw: 1.0, hd: 0.42, draw: 'bench' },     // bench
+    { x: 13.5, z: 8.6, hw: 1.0, hd: 0.42, draw: 'bench' },     // bench
+    { x: -14.5, z: -7.5, hw: 0.9, hd: 0.9, draw: 'planter' },    // planter
+    { x: 15.5, z: -7.5, hw: 0.9, hd: 0.9, draw: 'planter' },     // planter
+    { x: 17.62, z: -4.0, hw: 0.42, hd: 0.62, draw: 'vending' },  // vending machine, facing the road
+    { x: -17.4, z: -7.3, hw: 0.55, hd: 0.55, draw: 'postbox' },  // post box, on the north pavement
+    { x: -11.5, z: -7.6, hw: 0.34, hd: 0.34, draw: 'bin' },  // litter bin, north pavement
+    { x: 6.0, z: 8.4, hw: 0.34, hd: 0.34, draw: 'bin' },     // litter bin, south pavement
+    /* A hydrant at the kerb by the arch, the one red thing on that pavement. */
+    { x: 14.2, z: -6.95, hw: 0.2, hd: 0.2, draw: 'hydrant' },
     /* The arch's pier bases either side of the way into Market Row, drawn a
        metre and a half wide and a metre deep and never given a solid: you
        walked into them up to the hip. Clear of the trigger between them. */
-    { x: 18.0, z: -2.3, hw: 0.75, hd: 0.55 },
-    { x: 18.0, z: 3.3, hw: 0.75, hd: 0.55 },
+    { x: 18.0, z: -2.3, hw: 0.75, hd: 0.55, draw: 'pier' },
+    { x: 18.0, z: 3.3, hw: 0.75, hd: 0.55, draw: 'pier' },
   ],
   /*
    * Both pavements, which sit a kerb above the road. The numbers come from

@@ -82,7 +82,10 @@
     "linger": "tsx scripts/linger-check.ts",
     "duelreturn": "tsx scripts/duelreturn-check.ts",
     "silent": "tsx scripts/silent-picks.ts",
-    "paths": "tsx scripts/path-coverage.ts"
+    "paths": "tsx scripts/path-coverage.ts",
+    "world": "node scripts/world/build.mjs",
+    "world:fetch": "node scripts/world/fetch-assets.mjs",
+    "drawn": "tsx scripts/world-check.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

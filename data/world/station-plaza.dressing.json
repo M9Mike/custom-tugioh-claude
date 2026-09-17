@@ -1,0 +1,588 @@
+{
+  "_": "Station Plaza — what its old builder drew, as a file. Its lamps and sky were captured from the builder the first time it was built; its materials are here.",
+  "recipe": "port",
+  "surfaces": {
+    "base": {
+      "colour": "#2b2723",
+      "rough": 1
+    },
+    "brick": {
+      "tex": "brick_wall_001",
+      "tint": "#7a6458",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c9bda8",
+      "rough": 1,
+      "size": 2.5
+    },
+    "plaster": {
+      "tex": "painted_plaster_wall",
+      "tint": "#c4b9a4",
+      "rough": 1,
+      "size": 2.5
+    },
+    "concrete": {
+      "tex": "concrete_wall_007",
+      "tint": "#b9b3a8",
+      "rough": 0.95
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "asphalt": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "darkWood": {
+      "tex": "dark_wooden_planks",
+      "tint": "#8a6e56",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.5
+    },
+    "woodFloor": {
+      "tex": "wood_floor_worn",
+      "tint": "#d2b88f",
+      "blend": "OVERLAY",
+      "rough": 0.7
+    },
+    "shutter": {
+      "tex": "painted_concrete",
+      "tint": "#8a8580",
+      "rough": 0.6,
+      "size": 1
+    },
+    "turf": {
+      "tex": "leafy_grass",
+      "rough": 1
+    },
+    "soil": {
+      "tex": "brown_mud_leaves_01",
+      "rough": 1
+    },
+    "ballast": {
+      "tex": "gravel_stones",
+      "tint": "#8a847a",
+      "rough": 1
+    },
+    "gravel": {
+      "tex": "gravel_floor_02",
+      "tint": "#ded6c8",
+      "rough": 1
+    },
+    "ceiling": {
+      "tex": "painted_plaster_wall",
+      "tint": "#efe7d8",
+      "rough": 1,
+      "normal": 0.35
+    },
+    "arcadeFloor": {
+      "tex": "floor_tiles_06",
+      "tint": "#a89c8a",
+      "rough": 0.6
+    }
+  },
+  "drawers": {
+    "brick": "brick",
+    "render": "render",
+    "plaster": "plaster",
+    "concrete": "concrete",
+    "paving": "paving",
+    "asphalt": "asphalt",
+    "darkWood": "darkWood",
+    "woodFloor": "woodFloor",
+    "shutter": "shutter",
+    "turf": "turf",
+    "soil": "soil",
+    "ballast": "ballast",
+    "gravel": "gravel",
+    "ceiling": "ceiling",
+    "arcadeFloor": "arcadeFloor"
+  },
+  "glow_strength": 2.2,
+  "lights": [
+    {
+      "x": -57.8667,
+      "y": 2.2,
+      "z": -54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": -33.0667,
+      "y": 2.2,
+      "z": -54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": -8.2667,
+      "y": 2.2,
+      "z": -54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 16.5333,
+      "y": 2.2,
+      "z": -54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 41.3333,
+      "y": 2.2,
+      "z": -54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": -57.8667,
+      "y": 2.2,
+      "z": 54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": -8.2667,
+      "y": 2.2,
+      "z": 54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 41.3333,
+      "y": 2.2,
+      "z": 54.4,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 60.4,
+      "y": 2.2,
+      "z": -4.2857,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 60.4,
+      "y": 2.2,
+      "z": 21.4286,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 60.4,
+      "y": 2.2,
+      "z": 47.1429,
+      "colour": "#ffc186",
+      "intensity": 40,
+      "distance": 11
+    },
+    {
+      "x": 46.5,
+      "y": 5.2,
+      "z": -54.65,
+      "colour": "#ffbe78",
+      "intensity": 92,
+      "distance": 17
+    },
+    {
+      "x": 59.5,
+      "y": 5.2,
+      "z": -54.65,
+      "colour": "#ffbe78",
+      "intensity": 92,
+      "distance": 17
+    },
+    {
+      "x": 59.6,
+      "y": 10.6,
+      "z": -24,
+      "colour": "#ffbe78",
+      "intensity": 52,
+      "distance": 12
+    },
+    {
+      "x": 16,
+      "y": 10.6,
+      "z": 53.6,
+      "colour": "#ffbe78",
+      "intensity": 52,
+      "distance": 12
+    },
+    {
+      "x": -32.5,
+      "y": 5.2,
+      "z": 54.65,
+      "colour": "#ffbe78",
+      "intensity": 92,
+      "distance": 17
+    },
+    {
+      "x": -19.5,
+      "y": 5.2,
+      "z": 54.65,
+      "colour": "#ffbe78",
+      "intensity": 92,
+      "distance": 17
+    },
+    {
+      "x": -60.8,
+      "y": 7,
+      "z": -12.4,
+      "colour": "#ffbe78",
+      "intensity": 60,
+      "distance": 15
+    },
+    {
+      "x": -60.8,
+      "y": 7,
+      "z": -7.6,
+      "colour": "#ffbe78",
+      "intensity": 60,
+      "distance": 15
+    },
+    {
+      "x": 0,
+      "y": 3.2,
+      "z": 0,
+      "colour": "#ffbe78",
+      "intensity": 70,
+      "distance": 17
+    },
+    {
+      "x": -19.2,
+      "y": 2.45,
+      "z": -31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": -19.2,
+      "y": 2.45,
+      "z": 31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": 0,
+      "y": 2.45,
+      "z": -31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": 0,
+      "y": 2.45,
+      "z": 31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": 19.2,
+      "y": 2.45,
+      "z": -31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": 19.2,
+      "y": 2.45,
+      "z": 31.6,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": 27.6,
+      "y": 2.45,
+      "z": -10,
+      "colour": "#ffc186",
+      "intensity": 34,
+      "distance": 9
+    },
+    {
+      "x": -45.4,
+      "y": 2.35,
+      "z": -22,
+      "colour": "#ffc186",
+      "intensity": 46,
+      "distance": 12
+    },
+    {
+      "x": -45,
+      "y": 6.95,
+      "z": -45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -15,
+      "y": 6.95,
+      "z": -45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 15,
+      "y": 6.95,
+      "z": -45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 45,
+      "y": 6.95,
+      "z": -45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -45,
+      "y": 6.95,
+      "z": 45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -12,
+      "y": 6.95,
+      "z": 45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 15,
+      "y": 6.95,
+      "z": 45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 45,
+      "y": 6.95,
+      "z": 45.5,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -36.5,
+      "y": 6.8,
+      "z": -20,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 36.5,
+      "y": 6.8,
+      "z": -20,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -36.5,
+      "y": 6.8,
+      "z": 20,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 36.5,
+      "y": 6.8,
+      "z": 20,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -11,
+      "y": 6.95,
+      "z": -22,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -11,
+      "y": 6.95,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -11,
+      "y": 6.95,
+      "z": 8,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -11,
+      "y": 6.95,
+      "z": 22,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 11,
+      "y": 6.95,
+      "z": -22,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 11,
+      "y": 6.95,
+      "z": -8,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 11,
+      "y": 6.95,
+      "z": 8,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 11,
+      "y": 6.95,
+      "z": 22,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -26,
+      "y": 6.95,
+      "z": -30,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -26,
+      "y": 6.95,
+      "z": 30,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 26,
+      "y": 6.95,
+      "z": -30,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": 26,
+      "y": 6.95,
+      "z": 30,
+      "colour": "#ffbe78",
+      "intensity": 230,
+      "distance": 27
+    },
+    {
+      "x": -21,
+      "y": 4.4,
+      "z": 66,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 34
+    },
+    {
+      "x": -21.8,
+      "y": 4.4,
+      "z": 62.3,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 26
+    },
+    {
+      "x": 58.5,
+      "y": 4.4,
+      "z": -66,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 34
+    },
+    {
+      "x": 48.4,
+      "y": 4.4,
+      "z": -62.3,
+      "colour": "#ffbe78",
+      "intensity": 190,
+      "distance": 26
+    },
+    {
+      "x": -69.6,
+      "y": 5.2,
+      "z": -10,
+      "colour": "#ffbe78",
+      "intensity": 210,
+      "distance": 26
+    },
+    {
+      "x": -73,
+      "y": 5.2,
+      "z": -10,
+      "colour": "#ffbe78",
+      "intensity": 210,
+      "distance": 26
+    }
+  ],
+  "sky": {
+    "reach": 118,
+    "half": 84,
+    "deep": 78,
+    "target": [
+      0,
+      1.5,
+      0
+    ],
+    "normalBias": 0.082
+  }
+}

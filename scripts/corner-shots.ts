@@ -214,7 +214,11 @@ const SHOTS: Shot[] = [
   /* The first five areas, looked at again with the last three's eyes. */
   { name: 'the shop, from the door', area: 'grandpa-shop', x: 2.6, z: 0.6, facing: N },
   { name: 'the shop, the counter', area: 'grandpa-shop', x: 0, z: 0, facing: N },
-  { name: 'the shop, looking back at the door', area: 'grandpa-shop', x: 0, z: -2, facing: S },
+  /* Half a metre off the counter, not five centimetres: the guard reads the
+     duelist's radius against the counter's solid and refused the old spot. */
+  { name: 'the shop, looking back at the door', area: 'grandpa-shop', x: 0, z: -1.5, facing: S },
+  { name: 'the shop, the window', area: 'grandpa-shop', x: -2.4, z: 1.2, facing: S },
+  { name: 'the shop, the left shelves', area: 'grandpa-shop', x: -3.2, z: -0.6, facing: W },
   { name: 'Turtle Lane, east to Market Row', area: 'starting-area', x: 4, z: 0.5, facing: E },
   { name: 'Turtle Lane, west to Step Lane', area: 'starting-area', x: -4, z: 4, facing: W },
   { name: 'Turtle Lane, up to the shrine', area: 'starting-area', x: -10.4, z: 8, facing: S },
@@ -226,6 +230,11 @@ const SHOTS: Shot[] = [
   { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 0, z: 14, facing: N },
   { name: 'the starting area, from the spawn', area: 'starting-area', x: 0, z: 0, facing: N },
   { name: 'the starting area, looking south', area: 'starting-area', x: 0, z: -4, facing: S },
+  /* Straight into each way out from a few metres off, which is where a
+     player decides whether it is one. */
+  { name: 'Turtle Lane, into the alley', area: 'starting-area', x: -14, z: 4, facing: W },
+  { name: 'Turtle Lane, into the arch', area: 'starting-area', x: 12, z: 0.5, facing: E },
+  { name: 'Turtle Lane, the shop from across the road', area: 'starting-area', x: 2.6, z: 5, facing: N },
 
   /* The square, from the middle of it, at all four of its corners. */
   { name: 'square NE, the pier over the court steps', area: 'black-crown', x: 5, z: -16, facing: NE },

@@ -1,0 +1,571 @@
+{
+  "_": "Turtle Lane, the street outside the Kame Game Shop. Where things stand that stop you is areas.ts; this is what the terraces look like, what the shopfronts sell, and what the ends open onto. Textures are Poly Haven ids from assets.json; sizes are metres.",
+  "recipe": "street",
+  "seed": 7,
+  "surfaces": {
+    "road": {
+      "tex": "asphalt_02",
+      "tint": "#5c5c5a",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "pavement": {
+      "tex": "concrete_pavement",
+      "tint": "#4a4640",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "kerb": {
+      "colour": "#8c8a84",
+      "rough": 0.9
+    },
+    "brick": {
+      "tex": "red_brick_03",
+      "tint": "#7a5044",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "brick_alt": {
+      "tex": "brick_wall_001",
+      "tint": "#7a5a48",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "render": {
+      "tex": "painted_plaster_wall",
+      "tint": "#d8ccb8",
+      "rough": 1.0,
+      "size": 2.5
+    },
+    "shop_skin": {
+      "tex": "painted_plaster_wall",
+      "tint": "#dccfb4",
+      "rough": 1.0,
+      "size": 2.5
+    },
+    "stone": {
+      "tex": "concrete_wall_007",
+      "tint": "#d4cdc0",
+      "rough": 0.9
+    },
+    "concrete": {
+      "tex": "concrete_wall_007",
+      "tint": "#c8c2b6",
+      "rough": 0.95
+    },
+    "tread": {
+      "tex": "concrete_wall_007",
+      "tint": "#d6d0c4",
+      "rough": 0.9
+    },
+    "paving": {
+      "tex": "herringbone_pavement",
+      "tint": "#7a6a58",
+      "blend": "SCREEN",
+      "rough": 0.95
+    },
+    "arcade_floor": {
+      "tex": "herringbone_pavement",
+      "tint": "#8a7866",
+      "blend": "SCREEN",
+      "rough": 0.9
+    },
+    "cornice": {
+      "colour": "#4e4a43",
+      "rough": 0.8
+    },
+    "parapet": {
+      "colour": "#5a544c",
+      "rough": 0.85
+    },
+    "reveal": {
+      "colour": "#3c3630",
+      "rough": 0.9
+    },
+    "frame": {
+      "colour": "#3a2a1a",
+      "rough": 0.5
+    },
+    "woodwork": {
+      "colour": "#33291f",
+      "rough": 0.55
+    },
+    "door": {
+      "tex": "wood_table_001",
+      "tint": "#9a6a4c",
+      "blend": "SCREEN",
+      "rough": 0.55,
+      "size": 1.2
+    },
+    "sill": {
+      "colour": "#4a3320",
+      "rough": 0.5
+    },
+    "step": {
+      "colour": "#8b8d90",
+      "rough": 0.9
+    },
+    "glass": {
+      "colour": "#9fc4d8",
+      "rough": 0.2,
+      "alpha": 0.12
+    },
+    "pane_lit": {
+      "colour": "#5a3d1c",
+      "rough": 0.3,
+      "emissive": "#c2954f",
+      "emissive_strength": 1.6
+    },
+    "pane_dark": {
+      "colour": "#1b2028",
+      "rough": 0.25
+    },
+    "interior": {
+      "colour": "#4a3218",
+      "rough": 0.5,
+      "emissive": "#9d6f35",
+      "emissive_strength": 1.4
+    },
+    "curtain": {
+      "colour": "#8a6238",
+      "rough": 0.95
+    },
+    "fascia": {
+      "colour": "#3b332a",
+      "rough": 0.6
+    },
+    "shop_fascia": {
+      "colour": "#2f4a3a",
+      "rough": 0.6
+    },
+    "brass": {
+      "colour": "#b08d57",
+      "rough": 0.32,
+      "metal": 0.2
+    },
+    "iron": {
+      "colour": "#33373a",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "bench_wood": {
+      "tex": "wood_table_001",
+      "tint": "#9a7050",
+      "blend": "SCREEN",
+      "rough": 0.7,
+      "size": 1.0
+    },
+    "planter": {
+      "colour": "#7b746a",
+      "rough": 0.9
+    },
+    "soil": {
+      "colour": "#3a2f22",
+      "rough": 1.0
+    },
+    "vending": {
+      "colour": "#2f3a4a",
+      "rough": 0.5,
+      "metal": 0.2
+    },
+    "vending_glass": {
+      "colour": "#3d5c78",
+      "rough": 0.2,
+      "emissive": "#5f93bc",
+      "emissive_strength": 1.8
+    },
+    "vending_brand": {
+      "colour": "#c0452f",
+      "rough": 0.5
+    },
+    "post_red": {
+      "colour": "#8a3a3a",
+      "rough": 0.55
+    },
+    "bin": {
+      "colour": "#3f443f",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "bin_lid": {
+      "colour": "#2f342f",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "bollard_cap": {
+      "colour": "#5a5f62",
+      "rough": 0.5,
+      "metal": 0.2
+    },
+    "hoarding": {
+      "colour": "#4a5a52",
+      "rough": 0.9
+    },
+    "scaffold": {
+      "colour": "#7a7266",
+      "rough": 0.6,
+      "metal": 0.2
+    },
+    "canopy": {
+      "colour": "#6b5f52",
+      "rough": 0.85
+    },
+    "torii": {
+      "colour": "#8b8578",
+      "rough": 0.85
+    },
+    "torii_dark": {
+      "colour": "#6f6a60",
+      "rough": 0.85
+    },
+    "bulb": {
+      "colour": "#fff2d8",
+      "rough": 0.4,
+      "emissive": "#f0c98a",
+      "emissive_strength": 4.0
+    }
+  },
+  "shop": {
+    "x": 2.6,
+    "w": 13.0,
+    "door": {
+      "x": 2.6,
+      "w": 1.5,
+      "h": 2.35
+    },
+    "window": {
+      "x": -1.6,
+      "w": 4.2,
+      "sill": 1.0,
+      "top": 2.5
+    }
+  },
+  "terraces": [
+    {
+      "face": "north",
+      "buildings": [
+        {
+          "x": -16.0,
+          "w": 8.0,
+          "h": 9.5,
+          "shopfront": true,
+          "awning": "#7a4a3a",
+          "sign": "bakery",
+          "skin": "brick"
+        },
+        {
+          "x": -7.85,
+          "w": 7.9,
+          "h": 8.2,
+          "shopfront": true,
+          "sign": "records",
+          "skin": "brick_alt"
+        },
+        {
+          "x": 11.4,
+          "w": 4.6,
+          "h": 8.8,
+          "shopfront": true,
+          "awning": "#3f5f7a",
+          "sign": "cafe",
+          "skin": "render"
+        },
+        {
+          "x": 15.95,
+          "w": 4.5,
+          "h": 9.8,
+          "skin": "brick"
+        }
+      ],
+      "party_walls": [
+        [
+          -12.0,
+          -11.8,
+          8.2
+        ]
+      ]
+    },
+    {
+      "face": "south",
+      "buildings": [
+        {
+          "x": -17.2,
+          "w": 8.6,
+          "h": 10.5,
+          "shopfront": true,
+          "awning": "#4a6a4a",
+          "sign": "grocer",
+          "skin": "brick_alt"
+        },
+        {
+          "x": -5.15,
+          "w": 5.5,
+          "h": 9.2,
+          "skin": "render"
+        },
+        {
+          "x": 2.85,
+          "w": 10.5,
+          "h": 11.2,
+          "shopfront": true,
+          "sign": "books",
+          "skin": "brick"
+        },
+        {
+          "x": 11.05,
+          "w": 5.9,
+          "h": 9.6,
+          "awning": "#6a4a6a",
+          "skin": "render"
+        },
+        {
+          "x": 18.0,
+          "w": 8.0,
+          "h": 10.8,
+          "shopfront": true,
+          "sign": "tailor",
+          "skin": "brick_alt"
+        }
+      ]
+    }
+  ],
+  "ends": {
+    "alley": {
+      "z0": 2.3,
+      "z1": 5.7
+    },
+    "arch": {
+      "z0": -1.7,
+      "z1": 2.7
+    },
+    "shrine": {
+      "x0": -12.9,
+      "x1": -7.9
+    }
+  },
+  "manholes": [
+    [
+      -6.0,
+      0.8
+    ],
+    [
+      8.5,
+      -3.6
+    ]
+  ],
+  "signs": {
+    "kame-fascia": {
+      "text": "KAME",
+      "sub": "GAME SHOP",
+      "w": 1400,
+      "h": 264,
+      "fg": "#f2e3ba",
+      "bg": "#24402f"
+    },
+    "steplane": {
+      "text": "STEP LANE",
+      "w": 1080,
+      "h": 200,
+      "fg": "#e6dcc2",
+      "bg": "#2f3a33"
+    },
+    "market": {
+      "text": "MARKET ROW",
+      "w": 1316,
+      "h": 200,
+      "fg": "#f0e2bc",
+      "bg": "#3a2f22"
+    },
+    "shrine": {
+      "text": "DOMINO SHRINE",
+      "w": 1120,
+      "h": 200,
+      "fg": "#e6dcc2",
+      "bg": "#2f3a33"
+    },
+    "bakery": {
+      "text": "DOMINO BAKERY",
+      "w": 1400,
+      "h": 200,
+      "fg": "#f2e3ba",
+      "bg": "#5a2e22"
+    },
+    "records": {
+      "text": "TURTLE RECORDS",
+      "w": 1400,
+      "h": 200,
+      "fg": "#e8dcc4",
+      "bg": "#22303a"
+    },
+    "cafe": {
+      "text": "CAFÉ DUEL",
+      "w": 1400,
+      "h": 200,
+      "fg": "#f2e3ba",
+      "bg": "#2f4a3a"
+    },
+    "grocer": {
+      "text": "ISHTAR & SONS",
+      "w": 1400,
+      "h": 200,
+      "fg": "#f2e3ba",
+      "bg": "#3a3a22"
+    },
+    "books": {
+      "text": "MUTO BOOKS",
+      "w": 1400,
+      "h": 200,
+      "fg": "#f2e3ba",
+      "bg": "#2a2f4a"
+    },
+    "tailor": {
+      "text": "KAIBA & CO. TAILORS",
+      "w": 1400,
+      "h": 200,
+      "fg": "#e8dcc4",
+      "bg": "#3a2222"
+    }
+  },
+  "lights": [
+    {
+      "x": -9.5,
+      "y": 3.55,
+      "z": -6.45,
+      "colour": "#ffb469",
+      "intensity": 210,
+      "distance": 24,
+      "shadow": true
+    },
+    {
+      "x": 9.5,
+      "y": 3.55,
+      "z": -6.45,
+      "colour": "#ffb469",
+      "intensity": 210,
+      "distance": 24,
+      "shadow": true
+    },
+    {
+      "x": -9.5,
+      "y": 3.55,
+      "z": 7.45,
+      "colour": "#ffb469",
+      "intensity": 210,
+      "distance": 24,
+      "shadow": true
+    },
+    {
+      "x": 9.5,
+      "y": 3.55,
+      "z": 7.45,
+      "colour": "#ffb469",
+      "intensity": 210,
+      "distance": 24,
+      "shadow": true
+    },
+    {
+      "x": 1.2,
+      "y": 2.2,
+      "z": -7.0,
+      "colour": "#ffbe78",
+      "intensity": 70,
+      "distance": 14
+    },
+    {
+      "x": -16.0,
+      "y": 2.1,
+      "z": -7.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": -9.2,
+      "y": 2.1,
+      "z": -7.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": 9.75,
+      "y": 2.1,
+      "z": -7.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": -17.2,
+      "y": 2.1,
+      "z": 8.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": 2.85,
+      "y": 2.1,
+      "z": 8.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": 18.0,
+      "y": 2.1,
+      "z": 8.6,
+      "colour": "#ffb96a",
+      "intensity": 45,
+      "distance": 12
+    },
+    {
+      "x": 17.0,
+      "y": 1.5,
+      "z": -4.0,
+      "colour": "#8fc8ff",
+      "intensity": 40,
+      "distance": 9
+    },
+    {
+      "x": -10.4,
+      "y": 4.4,
+      "z": 10.6,
+      "colour": "#ffcf90",
+      "intensity": 44,
+      "distance": 12
+    },
+    {
+      "x": -10.4,
+      "y": 2.6,
+      "z": 28.0,
+      "colour": "#ffb469",
+      "intensity": 60,
+      "distance": 15
+    },
+    {
+      "x": -18.4,
+      "y": 3.9,
+      "z": 4.0,
+      "colour": "#ffcf90",
+      "intensity": 46,
+      "distance": 12
+    },
+    {
+      "x": -22.2,
+      "y": 2.8,
+      "z": 4.0,
+      "colour": "#ffc98a",
+      "intensity": 60,
+      "distance": 14
+    },
+    {
+      "x": 24.0,
+      "y": 3.0,
+      "z": 0.5,
+      "colour": "#ffc98a",
+      "intensity": 60,
+      "distance": 16
+    }
+  ]
+}
