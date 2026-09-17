@@ -566,6 +566,35 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
+  {
+    /*
+     * Ash Ketchum, who is not from this cartoon and is not on any list.
+     *
+     * Mike's own sculpt, and it arrived the way Tina did: a UniRig export,
+     * sixty-nine bones fitted to his own body, weights that work, no clips.
+     * His Idle, Walk and Run are Sarah's, moved onto his skeleton by
+     * `scripts/blender/retarget.py` — rotations only, his bind untouched. A
+     * ten-year-old walking like a scout is nearer the truth than any other
+     * gait in the cast, which is the whole of why Sarah is the donor again.
+     * Stretch, LookAround and Settle are his own, from `make-gesture.py`, for
+     * the looking about a boy does in a shop full of cards that are not his.
+     *
+     * 1.45 m, because he is ten. The file is modelled at 1.70 like everything
+     * from that pipeline, so the two speeds below are the measured 1.65 and
+     * 3.56 (`gait.py`) scaled by 1.45/1.70 — a small body covers less ground
+     * with the same rotations, and the feet stay honest.
+     */
+    id: 'ash',
+    label: 'Ash Ketchum',
+    note: 'Pallet Town, red cap',
+    file: '/models/cast/ash.glb',
+    bytes: 6143376,
+    height: 1.45,
+    walkSpeed: 1.41,
+    runSpeed: 3.04,
+    tintSlots: [],
+    npcOnly: true,
+  },
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */

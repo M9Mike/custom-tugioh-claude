@@ -74,6 +74,12 @@ interface Props {
   first: boolean;
   onConfirm: (deck: string[]) => Promise<string | null>;
   onCancel?: () => void;
+  /**
+   * A line to put above the grid, when there is something the player has to
+   * be told before they start: the deck is short and this screen is the only
+   * way out. Absent on an ordinary visit.
+   */
+  notice?: string;
 }
 
 /**
@@ -172,7 +178,7 @@ const Card = memo(function Card({
   );
 });
 
-export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, onCancel, onSeen }: Props) {
+export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, onCancel, onSeen, notice }: Props) {
   const [chosen, setChosen] = useState<string[]>(() => (initial ?? []).filter((s) => pool.includes(s)));
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [asking, setAsking] = useState(false);
@@ -474,6 +480,11 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
         <h1 className="font-display text-xl leading-none text-brassbright sm:text-2xl">
           {first ? 'Cut your first deck' : 'Edit your deck'}
         </h1>
+        {notice && (
+          <p data-deck-notice className="mx-auto mt-1 max-w-md rounded border border-oxblood bg-[#2a1216]/70 px-3 py-1.5 text-[11px] text-[#f0c9cc]">
+            {notice}
+          </p>
+        )}
         <p className="mx-auto mt-1 max-w-md text-[11px] leading-relaxed text-ptext/80">
           {first
             ? `Choose exactly ${DECK_SIZE} of the ${pool.length}. One copy of each — this is everything you have.`

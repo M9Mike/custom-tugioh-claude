@@ -27,9 +27,9 @@ import {
 } from '../src/game/experience';
 import type { LogEntry } from '../src/game/types';
 import { revivable } from '../src/game/targeting';
-import { choiceResponses , tributeUnits} from '../src/game/engine';
+import { choiceResponses , tributeUnits, isExtraDeckCard } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
-import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
+import { CARDS, DUELISTS, ROSTER, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
 import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
@@ -12729,7 +12729,7 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
      showed you when a fifth arrived was a row that looked correct. */
   {
     const order = DUELISTS.map((x) => x.id);
-    const NPCS = ['tony', 'sarah', 'isha', 'solomon', 'tina'];
+    const NPCS = ['tony', 'sarah', 'isha', 'solomon', 'tina', 'ash'];
     const npcAt = NPCS.map((id) => order.indexOf(id));
     ok(npcAt.every((i) => i >= 0), 'ROSTER: the city duelists are on it', npcAt.join(','));
     const firstNpc = Math.min(...npcAt);
@@ -15799,6 +15799,175 @@ console.log('\nThe card says "1 monster your opponent controls", so the player n
   ok(!answered.players[FOE].field && !!answered.players[FOE].spellTrap,
     'the Field Spell the player named is the one that breaks',
     `${answered.players[FOE].field?.slug ?? 'gone'} / ${answered.players[FOE].spellTrap?.slug ?? 'gone'}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Ash's deck: the evolution road, the Master, and the God at the top  */
+/* ------------------------------------------------------------------ */
+
+console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes back');
+{
+  const ash = (): DuelState => {
+    const s = structuredClone(
+      createDuel({ seed: 99, p1: { duelistId: 'ash', name: 'Ash' }, p2: { duelistId: 'yugi', name: 'Foe' } })
+    );
+    s.turn = 6;
+    s.active = ME;
+    s.phase = 'main';
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      const p = s.players[pid];
+      p.monsters = [null, null, null];
+      p.hand = [];
+      p.grave = [];
+      p.banished = [];
+      p.spellTrap = null;
+      p.field = null;
+      p.lp = 4000;
+      p.normalSummonUsed = false;
+      p.deck = Array.from({ length: 12 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+  const MASTER = 'ash-s-ultimate-pokemon-master-of-all';
+
+  /* --- The deck itself --- */
+  {
+    const d = DUELISTS.find((x) => x.id === 'ash');
+    ok(!!d && d.secret === true, 'ASH: he is a duelist, and a secret one');
+    ok(d!.deck.length === 25 && d!.deck.every(([, n]) => n === 1), 'ASH: twenty-five singles');
+    ok(d!.extra.length === 21 && d!.extra.every((e) => isExtraDeckCard(e)), 'ASH: twenty-one in the Extra Deck, all of them Extra Deck cards');
+    ok(d!.deck.every(([sl]) => CARDS[sl]?.kind !== 'monster' || (CARDS[sl].level ?? 0) <= 4),
+      'ASH: every Pokémon in the main deck is Level 4 or under, so no hand is dead',
+      d!.deck.filter(([sl]) => (CARDS[sl].level ?? 0) > 4).map(([sl]) => sl).join(','));
+    ok(CARDS.mewtwo.type === 'Divine-Beast' && d!.extra.includes('mewtwo'), 'ASH: Mewtwo is a Divine-Beast in the Extra Deck');
+    ok(!CARDS[MASTER].text.toLowerCase().includes('mewtwo'), 'ASH: and the Master of All does not say so');
+  }
+
+  /* --- Evolution: the button tributes the body and the next form arrives --- */
+  {
+    const s = ash();
+    const pika = card(ME, 'pikachu');
+    pika.summonedOnTurn = 0;
+    s.players[ME].monsters = [pika, null, null];
+    const opts = ignitionOptions(s, ME, pika);
+    ok(opts.some((o) => o.label === 'Evolve'), 'EVOLVE: Pikachu offers to evolve', opts.map((o) => o.label).join(','));
+    const r = applyAction(s, ME, { type: 'ignition', uid: pika.uid, targets: [] });
+    ok(!r.error, 'EVOLVE: and the button is accepted', r.error);
+    /* Two forms qualify, so the engine asks. */
+    let st = r.state;
+    if (st.pending?.kind === 'choose') {
+      const gmax = st.players[ME].extra.find((c) => c.slug === 'gigantamax-pikachu')!;
+      ok(st.pending.options.includes(gmax.uid), 'EVOLVE: the two forms are the question');
+      st = act(st, ME, { type: 'chooseCard', uids: [gmax.uid] });
+    }
+    const evolved = st.players[ME].monsters.find((m) => m?.slug === 'gigantamax-pikachu');
+    ok(!!evolved, 'EVOLVE: Gigantamax Pikachu stands where Pikachu was', st.players[ME].monsters.map((m) => m?.slug).join(','));
+    ok(st.players[ME].grave.some((c) => c.slug === 'pikachu'), 'EVOLVE: and Pikachu is in the Graveyard');
+    ok(!st.players[ME].extra.some((c) => c.slug === 'gigantamax-pikachu'), 'EVOLVE: out of the Extra Deck');
+    /* Not a second stage the same turn: the form that just stepped out has
+       not stood a turn, and the whole ladder in one Main Phase was the fault
+       this clause exists for. */
+    ok(!ignitionOptions(st, ME, evolved!).some((o) => o.label === 'Evolve'),
+      'EVOLVE: the Gigantamax form cannot evolve again the turn it arrived');
+    const tooSoon = applyAction(st, ME, { type: 'ignition', uid: evolved!.uid, targets: [] });
+    ok(!!tooSoon.error, 'EVOLVE: and the engine refuses the button', tooSoon.error);
+    const later = structuredClone(st);
+    later.turn += 2;
+    const again = applyAction(later, ME, { type: 'ignition', uid: evolved!.uid, targets: [] });
+    ok(!again.error && again.state.players[ME].monsters.some((m) => m?.slug === 'pikachu-thunder-emperor'),
+      'EVOLVE: two turns on, it evolves into the Thunder Emperor', again.error);
+    /* And a Pokémon that arrived this turn cannot evolve at all yet. */
+    const fresh1 = ash();
+    const newPika = card(ME, 'pikachu');
+    newPika.summonedOnTurn = fresh1.turn;
+    fresh1.players[ME].monsters = [newPika, null, null];
+    ok(!ignitionOptions(fresh1, ME, newPika).some((o) => o.label === 'Evolve'),
+      'EVOLVE: a Pikachu summoned this turn offers nothing yet');
+    /* And nothing else may put an evolved form on the field. */
+    ok(summonBlocked(st, ME, 'raichu') !== null, 'EVOLVE: Raichu cannot be Normal Summoned');
+    ok(!revivable(st, ME, 'raichu', 'monster-reborn'), 'EVOLVE: nor Monster Reborn\'d');
+    ok(revivable(st, ME, 'raichu', 'max-revive'), 'EVOLVE: Max Revive reaches it');
+  }
+
+  /* --- The Master: two other Level 8s pay for it --- */
+  {
+    const s = ash();
+    const emperor = card(ME, 'charizard-flame-emperor');
+    emperor.summonedOnTurn = 0;
+    s.players[ME].monsters = [emperor, card(ME, 'ash-greninja'), card(ME, 'mega-lucario')];
+    const r = applyAction(s, ME, { type: 'ignition', uid: emperor.uid, targets: [] });
+    ok(!r.error, 'MASTER: the Flame Emperor calls the Master of All', r.error);
+    const left = r.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(',');
+    ok(r.state.players[ME].monsters.some((m) => m?.slug === MASTER) && r.state.players[ME].monsters.some((m) => m?.slug === 'charizard-flame-emperor'),
+      'MASTER: the Master stands beside the one that called it', left);
+    ok(r.state.players[ME].monsters.filter(Boolean).length === 2, 'MASTER: and the two others were spent', left);
+    /* With one Level 8 beside it, the button is not offered. */
+    const poor = ash();
+    const alone = card(ME, 'charizard-flame-emperor');
+    alone.summonedOnTurn = 0;
+    poor.players[ME].monsters = [alone, card(ME, 'ash-greninja'), card(ME, 'pikachu')];
+    ok(!ignitionOptions(poor, ME, alone).some((o) => o.label === 'Call the Master of All'),
+      'MASTER: a Level 4 beside it does not pay for the Master');
+  }
+
+  /* --- Mewtwo: destroy the Master and the God steps out, and stays --- */
+  {
+    const s = ash();
+    const master = card(ME, MASTER);
+    master.summonedOnTurn = 0;
+    s.players[ME].monsters = [master, null, null];
+    s.players[FOE].monsters = [card(FOE, 'summoned-skull'), card(FOE, 'kuriboh'), null];
+    s.active = FOE;
+    const hole = card(FOE, 'dark-hole');
+    s.players[FOE].hand = [hole];
+    const r = applyAction(s, FOE, { type: 'activateSpell', uid: hole.uid, targets: [] });
+    ok(!r.error, 'MEWTWO: their Dark Hole resolves', r.error);
+    const mew = r.state.players[ME].monsters.find((m) => m?.slug === 'mewtwo');
+    ok(!!mew, 'MEWTWO: Mewtwo steps out of the Extra Deck when the Master is destroyed',
+      r.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    /* Their own Dark Hole emptied their board a beat before the God arrived,
+       so there was nothing left for its arrival to burn for — the audit drives
+       that clause on a board that still has bodies on it. */
+    ok(r.state.players[FOE].monsters.every((m) => !m), 'MEWTWO: and their board is empty');
+    ok(r.state.players[FOE].lp === 4000, 'MEWTWO: with nothing left standing to be billed for', String(r.state.players[FOE].lp));
+    /* The rental clause does not apply: it came by its own road. */
+    const ended = act(r.state, FOE, { type: 'endTurn' });
+    ok(ended.players[ME].monsters.some((m) => m?.slug === 'mewtwo'), 'MEWTWO: it does not return to the Graveyard at the End Phase');
+    /* Whereas a God dragged back by Monster Reborn still does. */
+    const rent = ash();
+    rent.players[ME].grave = [card(ME, 'obelisk-the-tormentor')];
+    const reborn = card(ME, 'monster-reborn');
+    rent.players[ME].hand = [reborn];
+    const back = act(rent, ME, { type: 'activateSpell', uid: reborn.uid, targets: [rent.players[ME].grave[0].uid] });
+    ok(back.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'), 'MEWTWO: CONTROL: Obelisk is reborn');
+    const rented = act(back, ME, { type: 'endTurn' });
+    ok(!rented.players[ME].monsters.some((m) => m?.slug === 'obelisk-the-tormentor'), 'MEWTWO: CONTROL: and a borrowed Obelisk still goes home');
+    /* And no other road reaches it. */
+    ok(!revivable(s, ME, 'mewtwo', 'monster-reborn'), 'MEWTWO: Monster Reborn cannot call it');
+    ok(!revivable(s, ME, 'mewtwo', 'sangan'), 'MEWTWO: nor can Sangan');
+    ok(!revivable(s, ME, 'mewtwo', 'max-revive'), 'MEWTWO: nor Max Revive');
+    ok(revivable(s, ME, 'mewtwo', MASTER), 'MEWTWO: only the Master of All');
+    /* A Tribute is not a destruction. */
+    const t = ash();
+    const m2 = card(ME, MASTER);
+    m2.summonedOnTurn = 0;
+    t.players[ME].monsters = [m2, null, null];
+    const ra = card(ME, 'the-winged-dragon-of-ra');
+    t.players[ME].hand = [ra];
+    t.players[ME].monsters = [m2, card(ME, 'pikachu'), card(ME, 'rowlet')];
+    const paid = applyAction(t, ME, {
+      type: 'normalSummon', uid: ra.uid, zone: 0, position: 'atk', face: 'up',
+      tributes: t.players[ME].monsters.map((m) => m!.uid),
+    });
+    ok(!paid.error && !paid.state.players[ME].monsters.some((m) => m?.slug === 'mewtwo'),
+      'MEWTWO: tributing the Master opens nothing', paid.error);
+  }
+
+  /* --- The roster --- */
+  {
+    ok(!ROSTER.some((d) => d.id === 'ash') && DUELISTS.some((d) => d.id === 'ash'),
+      'ASH: on the full list and off the shown one');
+  }
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);

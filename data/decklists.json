@@ -2030,6 +2030,142 @@
           1
         ]
       ]
+    },
+    {
+      "id": "ash",
+      "name": "Ash Ketchum",
+      "epithet": "Pallet Town",
+      "quote": "Pikachu, I choose you!",
+      "accent": "#2f5fb3",
+      "accent2": "#f2c53d",
+      "emblem": "Pikachu",
+      "strategy": "Everything he plays evolves into something bigger, and none of it is for sale.",
+      "secret": true,
+      "extra": [
+        "Ash-Greninja",
+        "Mega Charizard X",
+        "Mega Charizard Y",
+        "Gigantamax Charizard",
+        "Mega Lucario",
+        "Mega Sceptile",
+        "Gigantamax Gengar",
+        "Gigantamax Pikachu",
+        "Raichu",
+        "Venusaur",
+        "Blastoise",
+        "Decidueye",
+        "Gigantamax Snorlax",
+        "Ash-Greninja — Ultimate Bond",
+        "Charizard — Flame Emperor",
+        "Pikachu — Thunder Emperor",
+        "Infernape — Blaze Unleashed",
+        "Sceptile — Forest Overlord",
+        "Lucario — Aura Master",
+        "Ash's Ultimate Pokémon — Master of All",
+        "Mewtwo"
+      ],
+      "deck": [
+        [
+          "Pikachu",
+          1
+        ],
+        [
+          "Charizard",
+          1
+        ],
+        [
+          "Greninja",
+          1
+        ],
+        [
+          "Sceptile",
+          1
+        ],
+        [
+          "Infernape",
+          1
+        ],
+        [
+          "Lucario",
+          1
+        ],
+        [
+          "Gengar",
+          1
+        ],
+        [
+          "Bulbasaur",
+          1
+        ],
+        [
+          "Squirtle",
+          1
+        ],
+        [
+          "Pidgeot",
+          1
+        ],
+        [
+          "Krookodile",
+          1
+        ],
+        [
+          "Snorlax",
+          1
+        ],
+        [
+          "Talonflame",
+          1
+        ],
+        [
+          "Rowlet",
+          1
+        ],
+        [
+          "Butterfree",
+          1
+        ],
+        [
+          "Poké Ball",
+          1
+        ],
+        [
+          "Evolution Stone",
+          1
+        ],
+        [
+          "Bond Evolution",
+          1
+        ],
+        [
+          "Pokémon Battle Arena",
+          1
+        ],
+        [
+          "The Heart of the Trainer",
+          1
+        ],
+        [
+          "Max Revive",
+          1
+        ],
+        [
+          "Pikachu's Quick Attack",
+          1
+        ],
+        [
+          "Charizard's Rage",
+          1
+        ],
+        [
+          "Substitute",
+          1
+        ],
+        [
+          "Blaze of Determination",
+          1
+        ]
+      ]
     }
   ]
 }

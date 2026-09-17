@@ -3604,6 +3604,8 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   const cond = eff.condition;
   if (!cond) return true;
   const p = state.players[controller];
+  /* A body that arrived this turn has not stood a turn — see the condition. */
+  if (cond.stoodATurn && c.summonedOnTurn >= state.turn) return false;
   /* What just arrived, for `onAllySummon`. Unfiltered, the trigger answers
      every summon in the duel — including the card's own. */
   if (cond.summonedIs) {
@@ -5215,6 +5217,13 @@ function returnBorrowedGods(state: DuelState) {
     for (const m of [...state.players[pid].monsters]) {
       if (!m || m.specialSummonedOnTurn !== state.turn) continue;
       if (CARDS[m.slug]?.type !== 'Divine-Beast') continue;
+      /* A God that came by the road written on its own card is not borrowed:
+         it paid whatever that road costs. Mewtwo is the one that has one —
+         `summonOnlyBy` names the Master of All and nothing else — and the
+         rental clause was written for the three Gods a Monster Reborn can
+         drag back for a turn. Read off `summonedBy`, which is the same fact
+         `revivable` allowed the arrival on. */
+      if (m.summonedBy && CARDS[m.slug]?.summonOnlyBy?.includes(m.summonedBy)) continue;
       log(state, `${displayName(state, m)} cannot be borrowed — it returns to the Graveyard.`, 'effect', pid, logSlug(m));
       anim(state, { kind: 'destroy', uid: m.uid, slug: m.slug, player: pid });
       toGrave(state, m.uid, true);

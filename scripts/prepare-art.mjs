@@ -15,6 +15,17 @@ import path from 'node:path';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const ART_DIR = path.join(ROOT, 'public', 'art');
 const CARDS = path.join(ROOT, 'src', 'game', 'generated', 'cards.json');
+/**
+ * Art that is ours, not the database's.
+ *
+ * Ash's forty-six cards exist in no card database: the pictures are Mike's own
+ * and live in the repository, already cut to the card's shape and encoded, under
+ * an artId no real card could have (nine digits, `900000001` up). They are
+ * copied into `public/art` before anything is downloaded, so the download loop
+ * finds them "cached" and never asks the internet for a picture it does not
+ * have. Same folder, same URL shape, same `artUrl` — the game cannot tell.
+ */
+const OWN_ART = path.join(ROOT, 'data', 'art');
 
 const CONCURRENCY = 10;
 const ATTEMPTS = 3;
@@ -95,8 +106,32 @@ async function makeIcons(cards) {
   console.log('• app icons written');
 }
 
+/** Copies every picture in `data/art` into `public/art`, once. */
+async function copyOwnArt() {
+  let files = [];
+  try {
+    files = (await fs.readdir(OWN_ART)).filter((f) => f.endsWith('.webp'));
+  } catch {
+    return 0;
+  }
+  let copied = 0;
+  for (const f of files) {
+    const src = path.join(OWN_ART, f);
+    const dest = path.join(ART_DIR, f);
+    const [a, b] = await Promise.all([fs.stat(src), fs.stat(dest).catch(() => null)]);
+    /* Re-copied when the source changed, so re-cutting a picture in `data/art`
+       shows up locally without anybody clearing `public/art`. */
+    if (b && b.size === a.size && b.mtimeMs >= a.mtimeMs) continue;
+    await fs.copyFile(src, dest);
+    copied += 1;
+  }
+  console.log(`• own artwork: ${files.length} files, ${copied} copied`);
+  return files.length;
+}
+
 const main = async () => {
   await fs.mkdir(ART_DIR, { recursive: true });
+  await copyOwnArt();
   const cards = JSON.parse(await fs.readFile(CARDS, 'utf8'));
   const ids = [...new Set(Object.values(cards).map((c) => c.artId))].filter(Boolean);
 

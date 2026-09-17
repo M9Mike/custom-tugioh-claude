@@ -15,6 +15,8 @@ import { compareCards } from '../src/story/deckSort';
 import { newProfile, type StoryProfile } from '../src/story/profile';
 import {
   BOUNTY,
+  CARD_WAGER,
+  KEEPS_THEIR_CARDS,
   PURSE,
   STOCK,
   WAGER,
@@ -30,6 +32,7 @@ import {
   shopStock,
   stakeFor,
   wagerFor,
+  wagersACard,
 } from '../src/story/shop';
 
 let failures = 0;
@@ -304,6 +307,43 @@ console.log('\nand what she brought with her\n');
     Object.keys(PURSE).every((id) => !!DUELIST_BY_ID[id]),
     'every purse belongs to a real duelist',
     Object.keys(PURSE).filter((id) => !DUELIST_BY_ID[id]).join(', ')
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* A card on the table                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one duelist who asks for a card rather than money. The arithmetic of
+ * the bet itself is `npm run ash`'s, end to end through the routes; what is
+ * held here is the table's shape — that the sets and the bounties agree with
+ * each other, so a second such character cannot arrive half-wired.
+ */
+{
+  console.log('\nAsh, who plays for a card\n');
+  check(wagersACard('ash'), 'he asks for a card on the table');
+  check(
+    [...CARD_WAGER].every((id) => !!DUELIST_BY_ID[id]),
+    'every duelist who wagers a card is a real one',
+    [...CARD_WAGER].filter((id) => !DUELIST_BY_ID[id]).join(', ')
+  );
+  check(
+    [...CARD_WAGER].every((id) => !WAGER[id] && !PURSE[id]),
+    'and none of them also plays for money — one thing on the table, not two',
+    [...CARD_WAGER].filter((id) => WAGER[id] || PURSE[id]).join(', ')
+  );
+  check(
+    [...CARD_WAGER].every((id) => KEEPS_THEIR_CARDS.has(id)),
+    'and every one of them keeps their own cards — a card for a card would be a trade, not a bet',
+    [...CARD_WAGER].filter((id) => !KEEPS_THEIR_CARDS.has(id)).join(', ')
+  );
+  check(bountyFor('ash') === 3000, 'the win pays three thousand', `$${bountyFor('ash')}`);
+  check(!givesAPack('ash'), 'and no pack');
+  check(
+    [...KEEPS_THEIR_CARDS].every((id) => bountyFor(id) > 0),
+    'everybody who keeps their cards pays money instead, or a win against them is worth nothing',
+    [...KEEPS_THEIR_CARDS].filter((id) => bountyFor(id) <= 0).join(', ')
   );
 }
 

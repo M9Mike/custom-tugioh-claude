@@ -560,3 +560,51 @@ seven is the same number. Forty duels is a small sample and the honest
 reading is "a few points against a deck built to be unbeatable"; it is not a
 200 IQ player, it is a player that no longer walks into the same Mirror Gate
 twice, and that can tell you which turn it lost on.
+
+## The deck from another cartoon (2026-09-17)
+
+Mike sent forty-six cards of his own art and a boy in a red cap, and asked for
+a secret duelist stronger than Jaden whose hands are never dead. The deck is
+`src/game/effects/pokemon.ts`, and its shape is a ladder: fifteen Level 4 or
+under Pokémon that each do one small thing on arrival and carry one button —
+**evolve**, a `tributeSelf` ignition that Special Summons the next form out of
+the Extra Deck by `summonOnlyBy`, the road Winged Kuriboh LV10 and the Great
+Moth already walk. Twenty forms wait there, three stages deep; the sixth
+Level 10 form buys the Master of All with two others; and a twenty-first
+card, a Divine-Beast, steps out of the Extra Deck when the Master is
+*destroyed* — written on no card, by the owner's ask.
+
+**Measured first, then paced.** Unpaced, the deck benched 88% ±10 against the
+field and 93% against Jaden — and the transcript of a real duel showed why:
+the beam climbed the whole ladder in its first Main Phase, Lucario to Aura
+Master, Charizard to Flame Emperor, both into the Master of All, and banished
+the other player's hand before they had drawn. That is not a duel anybody
+loses; it is one nobody gets to play. `stoodATurn` is the new condition on the
+evolution and Master buttons: the body has to have been on the field before
+the current turn, which is exactly the opponent's turn to answer it. Paced,
+the deck reads **90% ±9 against the field (36/40)**, 53% against Jaden and
+47% against Solomon — the two decks that burst (fourteen Fusions) or steal
+(three Gods off borrowed Tributes) are even matches, and everyone else is not.
+
+**The brain** (`brains/ash.ts`) is choices, and only choices. Charizard
+offers three forms and the engine's default took the biggest every time; the
+brain reads the board — Mega Y over three small monsters, Gigantamax over a
+wide one, X into a single big one — and ranks every fetch and revival by the
+arrival it makes. It also carried an evaluation term, the ladder's shadow (a
+Pokémon standing with its next form still on the shelf worth a share of it
+now), and that term was raced and deleted: with it the deck read 83% ±12
+against the field, 47% against Jaden and 43% against Solomon — inside the
+noise and worse on every line — where the general search alone read 90, 53
+and 47. Workstream D's rule applies to a new deck as much as to the old
+ones. The choices alone, raced afterwards: **85% ±11 against the field and
+53% ±18 against Jaden**, the same deck within the noise — kept for what the
+forms *are* rather than for strength, because a Charizard that is always
+Gigantamax is one picture of three. `ai-honesty` stays green; it reads
+nothing it cannot see.
+
+Two harness rules widened on the way, each with its fault put back first:
+`playable-check` lets an Extra Deck card an earlier round has *proved* vouch
+for the next rung (two unproved cards still cannot swear each other in), and
+`card-audit` drives a `summonOnlyBy` card through a plain ignition road, with
+the road's own Tribute cost stocked, and through a destruction road by
+breaking the summoner with a Dark Hole.

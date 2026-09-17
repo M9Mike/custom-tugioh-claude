@@ -233,6 +233,29 @@ read as a sentry beat then bought a three-second stop in the middle of a
 straight walk. Mike's words were "few steps stop few steps stop". A point in
 the middle of a path is a corner; only the ends are somewhere to arrive at.
 
+**A secret is kept by the list, not by the record.** Ash Ketchum is a duelist
+the engine knows and no screen shows: `DUELISTS` is the whole roster and
+`ROSTER` is the shown one, and the Home page, the Lobby, the bracket and a
+random computer opponent all read `ROSTER`. His cards are Mike's own art in
+`data/art/` (tracked, artIds `900000001` up, copied into `public/art` by
+`prepare-art.mjs` before anything is downloaded), his deck is one file
+(`effects/pokemon.ts`), and he is in the world only when `story/ash.ts` says
+so — a seeded schedule per seventy-two-minute day, two shops, three visits,
+never at three in the morning. Nothing explains him: no line in Grandpa's, no
+hint, no entry. `?t=` pins his day as well as his hour; `?day=` names one.
+The brief was "an easter egg", and an easter egg with a signpost is a feature.
+
+**A card on the table is escrow, like the money.** Ash duels for one of your
+cards (`CARD_WAGER`): it leaves the collection in the same write as the duel's
+note, after the room is seated — the first version took it before, and in
+the gap the save held a deck naming a card it did not own with no duel on
+record to excuse it, and `mendDeck` squared the deck a card short on the way
+into a duel about to be won. A claimed win puts it back into the collection
+*and the deck it was sleeved in*, because the claim and the `duelDone` save
+race out of the same screen; a loss keeps it gone, and a deck a card short is
+sent to the builder with no way back until it is twenty-five (`deckIsShort`).
+`npm run ash` walks all of it through the real routes on the in-process store.
+
 **A note nobody clears is a conversation that never ends.** The world is
 unmounted by every other screen — the deck builder, the collection, the map —
 and it reads the resume note in a `useState` initialiser, which means on *every*
@@ -372,6 +395,7 @@ npm run walk       # recorded walks — descriptive, watch them
 npm run soak       # one page, six laps of every door: nothing only goes up
 npm run linger     # one page, six minutes in one area with the clock running: nothing only goes up
 npm run duelreturn # into a duel from a conversation and back: no sign-in, same spot, conversation resumed
+npm run ash        # Ash's schedule, both routes, the roster, and the card wager end to end
 npm run models     # every model the size it says
 npm run stale      # the guard that puts you back where you were
 npm run story      # the whole flow, tapped, at both phone sizes

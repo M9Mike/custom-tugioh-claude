@@ -167,6 +167,11 @@ export function revivable(state: DuelState, pid: PlayerId, slug: string, by?: st
      Monster Reborn is the one road back has found something, and a player who
      reads it off the card has merely been told. Tribute Summoning a God is
      untouched — that is not a Special Summon and does not come through here. */
-  if (CARDS[slug]?.type === 'Divine-Beast' && by !== 'monster-reborn') return false;
+  /* Unless the God was written with a road of its own. `summonOnlyBy` above
+     has already insisted `by` is on that list, so a Divine-Beast that carries
+     one is a God arriving the one way its own card allows — Mewtwo out of
+     Master of All — and not a God somebody's Sangan tripped over. A God with
+     no list is exactly as unreachable as it always was. */
+  if (CARDS[slug]?.type === 'Divine-Beast' && by !== 'monster-reborn' && !only?.length) return false;
   return true;
 }

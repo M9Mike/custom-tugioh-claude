@@ -2030,6 +2030,142 @@
      1
     ]
    ]
+  },
+  {
+   "id": "ash",
+   "name": "Ash Ketchum",
+   "epithet": "Pallet Town",
+   "quote": "Pikachu, I choose you!",
+   "accent": "#2f5fb3",
+   "accent2": "#f2c53d",
+   "emblem": "pikachu",
+   "strategy": "Everything he plays evolves into something bigger, and none of it is for sale.",
+   "secret": true,
+   "extra": [
+    "ash-greninja",
+    "mega-charizard-x",
+    "mega-charizard-y",
+    "gigantamax-charizard",
+    "mega-lucario",
+    "mega-sceptile",
+    "gigantamax-gengar",
+    "gigantamax-pikachu",
+    "raichu",
+    "venusaur",
+    "blastoise",
+    "decidueye",
+    "gigantamax-snorlax",
+    "ash-greninja-ultimate-bond",
+    "charizard-flame-emperor",
+    "pikachu-thunder-emperor",
+    "infernape-blaze-unleashed",
+    "sceptile-forest-overlord",
+    "lucario-aura-master",
+    "ash-s-ultimate-pokemon-master-of-all",
+    "mewtwo"
+   ],
+   "deck": [
+    [
+     "pikachu",
+     1
+    ],
+    [
+     "charizard",
+     1
+    ],
+    [
+     "greninja",
+     1
+    ],
+    [
+     "sceptile",
+     1
+    ],
+    [
+     "infernape",
+     1
+    ],
+    [
+     "lucario",
+     1
+    ],
+    [
+     "gengar",
+     1
+    ],
+    [
+     "bulbasaur",
+     1
+    ],
+    [
+     "squirtle",
+     1
+    ],
+    [
+     "pidgeot",
+     1
+    ],
+    [
+     "krookodile",
+     1
+    ],
+    [
+     "snorlax",
+     1
+    ],
+    [
+     "talonflame",
+     1
+    ],
+    [
+     "rowlet",
+     1
+    ],
+    [
+     "butterfree",
+     1
+    ],
+    [
+     "poke-ball",
+     1
+    ],
+    [
+     "evolution-stone",
+     1
+    ],
+    [
+     "bond-evolution",
+     1
+    ],
+    [
+     "pokemon-battle-arena",
+     1
+    ],
+    [
+     "the-heart-of-the-trainer",
+     1
+    ],
+    [
+     "max-revive",
+     1
+    ],
+    [
+     "pikachu-s-quick-attack",
+     1
+    ],
+    [
+     "charizard-s-rage",
+     1
+    ],
+    [
+     "substitute",
+     1
+    ],
+    [
+     "blaze-of-determination",
+     1
+    ]
+   ]
   }
  ]
 }

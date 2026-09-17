@@ -25,11 +25,11 @@ import DeckBuilder from '@/components/story/DeckBuilder';
 import DeckLab from '@/components/story/DeckLab';
 import PackOpening from '@/components/story/PackOpening';
 import Shop from '@/components/story/Shop';
-import { shopStock } from '@/story/shop';
+import { deckIsShort, shopStock } from '@/story/shop';
 import type { PackResult } from '@/story/packs';
 import { DUELIST_BY_ID } from '@/game/cards';
 import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
-import { STARTER_POOL } from '@/story/roster';
+import { DECK_SIZE, STARTER_POOL } from '@/story/roster';
 import type { PremadeCharacter } from '@/story/premade';
 import type { WorldNpc } from '@/story/npcs';
 import { saveIdentity } from '@/lib/useDuelRoom';
@@ -109,8 +109,10 @@ export default function StoryMode() {
    * exactly once, and a note left in place would reopen the character every time
    * the world mounted for the rest of the session.
    */
-  const [resume, setResume] = useState<{ npcId: string; node: string } | null>(() =>
-    returned ? { npcId: returned.npcId, node: returned.outcome === 'won' ? returned.won : returned.lost } : null
+  const [resume, setResume] = useState<{ npcId: string; node: string; wagered?: string } | null>(() =>
+    returned
+      ? { npcId: returned.npcId, node: returned.outcome === 'won' ? returned.won : returned.lost, wagered: returned.wagered }
+      : null
   );
   /**
    * The room a win still owes a pack for.
@@ -191,7 +193,7 @@ export default function StoryMode() {
        `resume` once, on the way in. A loss resumes too; only a win owes. */
     const back = res.data.profile.pendingDuel;
     if (back?.outcome) {
-      setResume({ npcId: back.npcId, node: back.outcome === 'won' ? back.won : back.lost });
+      setResume({ npcId: back.npcId, node: back.outcome === 'won' ? back.won : back.lost, wagered: back.wagered });
       if (back.outcome === 'won') setOwed({ code: back.code, token: back.token });
     }
     try { window.localStorage.removeItem(MIRROR); } catch { /* private browsing */ }
@@ -425,7 +427,7 @@ export default function StoryMode() {
    * owns. The note is written *before* navigating, so the win screen can find it
    * however the player gets there.
    */
-  const startDuel = async (npc: WorldNpc, stake?: number) => {
+  const startDuel = async (npc: WorldNpc, stake?: number, wager?: string) => {
     if (!npc.duel || busy) return;
     setBusy(true);
     sfx.click();
@@ -440,6 +442,9 @@ export default function StoryMode() {
              into the character's own range and takes it from the save before
              the room exists; this is a request, not a figure. */
           stake,
+          /* The card the player put on the table, for the one duelist who asks
+             for one. A slug the save does not hold is refused by the route. */
+          wager,
           npcId: npc.id,
           won: npc.duel.won,
           lost: npc.duel.lost,
@@ -459,6 +464,7 @@ export default function StoryMode() {
         npcId: npc.id,
         won: npc.duel.won,
         lost: npc.duel.lost,
+        wagered: wager,
       });
       try { window.localStorage.setItem(MIRROR, '1'); } catch { /* private browsing */ }
       router.push(`/duel/${data.code}`);
@@ -632,14 +638,19 @@ export default function StoryMode() {
   }
 
   if (screen === 'editDeck') {
+    /* A deck a card short has no way back to the world: the only door out of
+       the builder is a twenty-five-card deck. See the effect in `OpenWorld`
+       that opened it, and `CARD_WAGER` for the one way a deck gets short. */
+    const short = deckIsShort(profile);
     return (
       <DeckBuilder
         pool={profile.collection}
         initial={profile.deck ?? []}
         first={false}
         fresh={profile.fresh}
+        notice={short ? `Your deck is ${profile.deck?.length ?? 0} cards. Sleeve ${DECK_SIZE} before you duel again.` : undefined}
         onConfirm={saveDeck}
-        onCancel={() => setScreen('world')}
+        onCancel={short ? undefined : () => setScreen('world')}
         /*
          * Posted with the position, which is the only reason this needs no
          * route of its own: `save` already writes the profile under the same
@@ -723,6 +734,8 @@ export interface PendingDuel {
   lost: string;
   /** Filled in by the win screen on the way back. */
   outcome?: 'won' | 'lost';
+  /** The card put on the table, if the duel was played for one. */
+  wagered?: string;
 }
 
 export function readPendingDuel(): PendingDuel | null {

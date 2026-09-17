@@ -126,6 +126,11 @@ function thresholdIsExpressed(def: CardDef, kind: 'atk' | 'level'): boolean {
       if ('target' in op && bounded(op.target?.filter)) return true;
     }
     if (bounded(eff.aura?.target.filter)) return true;
+    /* A price is a filter too. "Tribute 2 other Level 8 or higher Pokémon" is
+       a Level bound that lives on the cost rather than on an op, and the cost
+       is what the engine reads when it decides what may be paid with — so a
+       bound there is as real as one on a target. */
+    if (bounded(eff.cost?.tributeFilter)) return true;
   }
   return false;
 }

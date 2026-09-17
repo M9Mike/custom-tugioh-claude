@@ -3,6 +3,7 @@ import { describeStoreError } from '@/server/store';
 import { readBody } from '../body';
 import { areaById, settle, PLAYER_RADIUS, standingOn } from '@/story/areas';
 import type { WorldPosition } from '@/story/profile';
+import { mendDeck } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,7 +78,12 @@ export async function POST(req: Request) {
       const fresh = seen.length
         ? (profile.fresh ?? []).filter((slug) => !seen.includes(slug))
         : profile.fresh;
-      return { ok: true, profile: { ...profile, world, pendingDuel, fresh } };
+      /* The bet is settled the moment the conversation has picked up: a card
+         lost to Ash is out of the collection already, and a deck that still
+         names it is squared in the same write, so the builder that opens
+         next reads the deck as it really is. */
+      const next = { ...profile, world, pendingDuel, fresh };
+      return { ok: true, profile: pendingDuel ? next : mendDeck(next) };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });
     return Response.json({ ok: true, profile: result.profile });

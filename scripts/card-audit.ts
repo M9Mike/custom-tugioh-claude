@@ -29,6 +29,8 @@ import type {
 } from '../src/game/types';
 
 const ONLY = process.argv[2];
+/** Three, and named so the fodder loop cannot walk off the board. */
+const MONSTER_ZONES_AUDIT = 3;
 
 /* ------------------------------------------------------------------ */
 /* Position building                                                   */
@@ -488,17 +490,46 @@ function ritualSpellFor(slug: string): string | null {
  * can fire in a single action — a rung that hands the next one up at the start
  * of a turn is covered by that rung's own audit.
  */
-function summonRoute(slug: string): { slug: string; counters: number } | null {
+function summonRoute(slug: string): { slug: string; counters: number; fodder?: CardFilter; fodderCount?: number } | null {
   for (const by of CARDS[slug]?.summonOnlyBy ?? []) {
     for (const eff of CARDS[by]?.effects ?? []) {
       if (eff.trigger !== 'ignition') continue;
       for (const op of eff.ops) {
+        /* The plain road, which is most of them now: an ignition whose op
+           reaches straight for the card. Ash's Pokémon evolve this way — the
+           button tributes the body and the next form steps out — and the
+           Level 10 forms call the Master of All by tributing two others, so
+           what the cost asks for travels with the route and the driver stocks
+           it. */
+        if (op.op === 'specialSummon' && op.filter?.slugs?.includes(slug)) {
+          return {
+            slug: by,
+            counters: 0,
+            ...(eff.cost?.tribute ? { fodder: eff.cost.tributeFilter ?? {}, fodderCount: eff.cost.tribute } : {}),
+          };
+        }
         if (op.op !== 'byCounters') continue;
         const tier = op.tiers.find((t) =>
           t.ops.some((o) => o.op === 'specialSummon' && o.filter?.slugs?.includes(slug))
         );
         if (tier) return { slug: by, counters: tier.at };
       }
+    }
+  }
+  return null;
+}
+
+/**
+ * The other road onto the field: a summoner that reaches for the card when
+ * *it* is destroyed. Mewtwo has exactly one — the Master of All falls and the
+ * God steps out — and there is no button to press for it, so the driver
+ * breaks the summoner with a Dark Hole and lets the engine do the rest.
+ */
+function destructionRoute(slug: string): string | null {
+  for (const by of CARDS[slug]?.summonOnlyBy ?? []) {
+    for (const eff of CARDS[by]?.effects ?? []) {
+      if (eff.trigger !== 'onDestroyed') continue;
+      if (eff.ops.some((o) => o.op === 'specialSummon' && o.filter?.slugs?.includes(slug))) return by;
     }
   }
   return null;
@@ -547,7 +578,11 @@ function stockOwnTargetFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) 
   for (const op of FLATTEN(eff.ops as Op[])) {
     if (!('target' in op) || !op.target) continue;
     const t = op.target;
-    if (t.side === 'opp' || t.pick !== 'chosen' || (t.zone ?? 'monster') !== 'monster' || !t.filter) continue;
+    /* `all` as well as `chosen`: "every Pokémon you control gains 1000 ATK"
+       names nobody in particular and still needs one of them standing there,
+       or the harness reads a card that does nothing on a board that holds
+       nothing it could do it to. */
+    if (t.side === 'opp' || (t.pick !== 'chosen' && t.pick !== 'all') || (t.zone ?? 'monster') !== 'monster' || !t.filter) continue;
     if (s.players[owner].monsters.some((m) => m && matchesFilter(m, t.filter))) continue;
     const body = matchCard(t.filter, 'monster');
     if (!body) continue;
@@ -691,7 +726,16 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
       ).length;
     const fodder = matchCard(eff.cost?.tributeFilter, 'monster') ?? CARDS['baby-dragon'];
     for (let guard = 0; usable() < trib && guard < 3; guard++) {
-      const z = s.players[ME].monsters.findIndex((m) => !m);
+      /* A free zone first; failing that, a body the cost cannot spend gives
+         its zone up. The Master of All is bought with two other Level 8
+         Pokémon, and the stock board's one Baby Dragon was standing in the
+         only zone left for the second of them. */
+      let z = s.players[ME].monsters.findIndex((m) => !m);
+      if (z < 0) {
+        z = s.players[ME].monsters.findIndex(
+          (m) => m && m.uid !== self?.uid && !matchesLoosely(m.slug, eff.cost?.tributeFilter)
+        );
+      }
       if (z < 0) break;
       place(s, ME, z, fodder.slug);
     }
@@ -1138,13 +1182,38 @@ for (const def of Object.values(CARDS)) {
            of its named summoners can reach for it does the reaching. */
         const route = summonRoute(def.slug);
         if (!route) {
-          skipped.push(`${def.slug} (nothing in the game can Summon it)`);
+          const fall = destructionRoute(def.slug);
+          if (!fall) {
+            skipped.push(`${def.slug} (nothing in the game can Summon it)`);
+            continue;
+          }
+          /* The summoner stands, the card waits in the Extra Deck, and a Dark
+             Hole out of the hand is the blow. What the audit then reads is the
+             card's own arrival — its `onSummon` — exactly as the engine fires
+             it, because that is what the engine is doing. */
+          s.players[ME].hand = s.players[ME].hand.filter((h) => h.uid !== c.uid);
+          s.players[ME].extra.push(c);
+          place(s, ME, 0, fall);
+          const hole = mint(s, ME, 'dark-hole');
+          s.players[ME].hand.push(hole);
+          audit(def, eff, s, (st) => run(st, ME, { type: 'activateSpell', uid: hole.uid, targets: [] }));
           continue;
         }
         s.players[ME].hand = s.players[ME].hand.filter((h) => h.uid !== c.uid);
-        s.players[ME].deck.push(c);
+        /* Where the card waits is where its road reaches for it. An Extra Deck
+           card is never in the Deck — an evolution reads the Extra Deck and
+           the Graveyard — and a rung on the moths' ladder is never anywhere
+           else. */
+        if (isExtraDeckCard(def.slug)) s.players[ME].extra.push(c);
+        else s.players[ME].deck.push(c);
         const opener = place(s, ME, 0, route.slug);
         opener.counters = route.counters;
+        /* And what the button costs, beside it. The Master of All is bought
+           with two other evolved Pokémon, so two are stood up to be spent. */
+        if (route.fodder && route.fodderCount) {
+          const body = matchCard(route.fodder, 'monster', [route.slug, def.slug]);
+          for (let z = 1; body && z <= route.fodderCount && z < MONSTER_ZONES_AUDIT; z++) place(s, ME, z, body.slug);
+        }
         audit(def, eff, s, (st) => run(st, ME, { type: 'ignition', uid: opener.uid, targets: [] }));
         continue;
       } else if (def.isRitual) {

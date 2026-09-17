@@ -6,6 +6,7 @@
  * follows its deck everywhere without a call site having to name it.
  */
 import type { DuelistBrain } from '../brain';
+import { ASH } from './ash';
 import { JADEN } from './jaden';
 import { PRIESTSETO } from './priestseto';
 import { YAMI } from './yami';
@@ -13,6 +14,7 @@ import { YAMIMARIK } from './yamimarik';
 
 const BRAINS: Record<string, DuelistBrain> = {
   [JADEN.id]: JADEN,
+  [ASH.id]: ASH,
   [YAMI.id]: YAMI,
   [PRIESTSETO.id]: PRIESTSETO,
   [YAMIMARIK.id]: YAMIMARIK,

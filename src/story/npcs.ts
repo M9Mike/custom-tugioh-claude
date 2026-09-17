@@ -28,6 +28,7 @@
 import type { AreaId } from './areas';
 import type { PremadeCharacter, RepaintRule } from './premade';
 import type { AccessorySpec } from '@/components/story/accessories';
+import { ASH_HAUNTS, ashWhereabouts, type Haunt } from './ash';
 
 export interface DialogueChoice {
   /** What the player says. */
@@ -101,6 +102,22 @@ export interface DuelOffer {
    */
   short?: string;
   spent?: string;
+  /**
+   * What this character asks for on the table instead of money.
+   *
+   * `'card'` is Ash's: the conversation opens a picker over the player's
+   * collection when a `duel` reply is pressed, and the chosen card is the stake
+   * — see `CARD_WAGER` in `story/shop.ts` for what happens to it. Absent for
+   * everybody else, who play for a pack, a bounty or a purse.
+   */
+  wager?: 'card';
+  /**
+   * What they say when the player has no card to spare — a collection that is
+   * exactly a deck, which the owner's rule says may not be bet from. In their
+   * own words, like `short`, because a picker that will not open is a button
+   * that reads as broken.
+   */
+  few?: string;
 }
 
 /**
@@ -227,7 +244,33 @@ export interface WorldNpc {
    * cannot be answered is worse than an NPC who only talks.
    */
   duel?: DuelOffer;
+  /**
+   * Somebody who is not always where their record says, or here at all.
+   *
+   * `area`, `x`, `z`, `facing` and `roam` above are where a placed character
+   * *is*; for one of these they are where the tools that iterate the cast
+   * (the face lab, the audits) may put them, and where they are in the world
+   * is `whereabouts` — which reads the clock, and may answer that they are
+   * nowhere right now. Ash is the only one, and the reason it is a function
+   * rather than a table is that his is seeded by the day.
+   */
+  haunts?: Haunt[];
+  /** Which of `haunts` they are at, at this hour of this day; `null` is away. */
+  schedule?: (hour: number, day: number) => Haunt | null;
   script: Record<string, DialogueNode>;
+}
+
+/**
+ * Where somebody is at this hour of this day, or `null` if they are not
+ * anywhere the player can meet them.
+ *
+ * For everybody with no schedule it is the record itself — the one place the
+ * old fields are read into the new shape — so a renderer or a check asks one
+ * question of every NPC and never special-cases the one who moves about.
+ */
+export function whereabouts(npc: WorldNpc, hour: number, day: number): Haunt | null {
+  if (npc.schedule) return npc.schedule(hour, day);
+  return { area: npc.area, x: npc.x, z: npc.z, facing: npc.facing, roam: npc.roam };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1130,6 +1173,118 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* Ash                                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ash Ketchum, who is ten, is not from this cartoon, and is not on any list.
+ *
+ * He is the one person in Domino City who does not belong to it, and the
+ * script says so without explaining it: he is looking for a Pokémon Center,
+ * he thinks a card shop is a strange kind of gym, and he has not worked out
+ * why nobody has heard of the Indigo League. He never says how he got here
+ * and neither does anybody else — an easter egg that explains itself is a
+ * feature.
+ *
+ * The terms are his, in his own words, and they are the owner's rules: his
+ * Pokémon are not for trade, so a win pays money rather than a pack; a duel
+ * costs one of *your* cards on the table, and if he wins it is his. `wager:
+ * 'card'` on the offer is what opens the picker, and `few` is what he says to
+ * somebody whose collection is exactly a deck.
+ *
+ * `{card}` in the two aftermath nodes is the card that was on the table, filled
+ * by the panel from the duel's own note — the one token in this file that is
+ * not the player's name, and it is here so the loss is named rather than
+ * implied: "that Pidgeot is mine" is a thing a boy would say.
+ */
+const ASH_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Oh! Hi! Sorry — is this a Pokémon Center? It has the look of one but nobody in here has a Chansey.',
+      'I am Ash. Ash Ketchum, from Pallet Town. This is Pikachu. We have been walking around your city all day and every gym is a card shop, {name}, which is a weird kind of gym.',
+    ],
+    choices: [
+      { label: 'Pokémon? Never heard of them.', to: 'pokemon' },
+      { label: 'Do you battle?', to: 'offer' },
+      { label: 'Good luck finding it.', to: null },
+    ],
+  },
+
+  pokemon: {
+    lines: [
+      'Never — okay. Okay. That explains the last three people.',
+      'They are like your monsters, except they are not cards, they are my friends. Charizard flew me here from — well. From somewhere. Pikachu says it was a very long way.',
+      'The cards I have got, I drew myself, so I would have something to battle with. Everyone here battles with cards. When in Rome.',
+    ],
+    choices: [
+      { label: 'Do you battle?', to: 'offer' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Right. Good luck.', to: null },
+    ],
+  },
+
+  /* The terms, all of them, before anybody can say yes: no cards of his ever,
+     three thousand if you win, one of yours on the table if you want to play
+     at all. He does not soften any of it. */
+  offer: {
+    lines: [
+      'Always! But you should know the deal first, because it is not the deal everyone else here offers.',
+      'You are not getting my Pokémon. Not one card, not ever — they are not for trading, they are my team. If you beat me I will give you money instead. Three thousand — I have League prize money and nobody here takes it, so.',
+      'And I do not battle for nothing. You put one of your cards on the table. You win, you get it straight back with the money. I win, it is mine. I will look after it, but it is mine.',
+    ],
+    choices: [
+      { label: 'Deal. Pick a card, then.', to: 'beaten', duel: true },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Not for my cards.', to: 'later' },
+    ],
+  },
+
+  /* Sarah's contract: he tells you exactly what the deck does, and it is true. */
+  style: {
+    lines: [
+      'Pokémon. Fifteen of them, and every one evolves. Pikachu comes out, Pikachu finds a friend, the friend evolves, and if you have not dealt with it by then you are dealing with the thing it turned into.',
+      'They do not stay down, either. And if you ever see three of them evolved at once — I would not let it get to that. Just saying.',
+    ],
+    choices: [
+      { label: 'Deal. Pick a card, then.', to: 'beaten', duel: true },
+      { label: 'Let me think about it.', to: null },
+    ],
+  },
+
+  later: {
+    lines: [
+      'That is fair. It is a big ask. Pikachu says we will be around — we still have not found the Pokémon Center.',
+    ],
+    choices: [],
+  },
+
+  /* The player won. He pays up and hands the card back, and he is a good
+     loser because he is Ash. */
+  beaten: {
+    lines: [
+      'Whoa. WHOA. Okay. Pikachu, did you see — you saw.',
+      'Here — your {card}, and the three thousand, all of it. I said I would. You did not just beat my Pokémon, {name}, you beat them evolved, and nobody does that.',
+      'Next time I am starting with Charizard.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'I will take the money.', to: null },
+    ],
+  },
+
+  /* The player lost. He keeps the card and says so, kindly. */
+  won: {
+    lines: [
+      'That was close! It was not close. But it felt close, right at the start.',
+      'So — the {card} is mine now. I will look after it, I promise; it goes in the bag with the badges. You want it back, you know where to find me. Sort of. We move around.',
+    ],
+    choices: [
+      { label: 'I will be back for it.', to: null },
+    ],
+  },
+};
+
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
@@ -1299,6 +1454,38 @@ export const WORLD_NPCS: WorldNpc[] = [
       spent: 'I have {purse} left, love — you have had the rest of it off me. Say {purse} or less and we will play.',
     },
     script: TINA_SCRIPT,
+  },
+  {
+    /*
+     * Ash, who is here or not here.
+     *
+     * The record's own place is the first haunt — Grandpa's shop — which is
+     * where the face lab and the audits will find him. Where the *world* puts
+     * him is `whereabouts`, which reads the clock and answers with one of two
+     * shops or with nothing at all; see `story/ash.ts` for the schedule and
+     * for both routes. Range 3.2, the street pair's.
+     */
+    id: 'ash',
+    area: ASH_HAUNTS[0].area,
+    character: { name: 'Ash Ketchum', model: 'ash', tints: [], stature: 0.5 },
+    x: ASH_HAUNTS[0].x,
+    z: ASH_HAUNTS[0].z,
+    facing: ASH_HAUNTS[0].facing,
+    roam: ASH_HAUNTS[0].roam,
+    haunts: ASH_HAUNTS,
+    schedule: ashWhereabouts,
+    range: 3.2,
+    start: 'greet',
+    duel: {
+      opponentId: 'ash',
+      won: 'beaten',
+      lost: 'won',
+      wager: 'card',
+      /* A collection that is exactly a deck has nothing to put on the table —
+         the owner's rule, in his voice. */
+      few: 'You have got exactly a deck and nothing else. I am not taking a card out of the deck you need to play with — come back when you have a spare one.',
+    },
+    script: ASH_SCRIPT,
   },
   {
     id: 'isha',

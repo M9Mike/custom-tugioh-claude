@@ -17,6 +17,7 @@
 import { deleteKey, durable, readJson, writeJsonIf } from './store';
 import { newProfile, type StoryProfile } from '@/story/profile';
 import { normalisePremade } from '@/story/premade';
+import { mendDeck } from '@/story/shop';
 
 /** Ten years. Long enough that "permanent" is a fair description. */
 const FOREVER_SECONDS = 10 * 365 * 24 * 60 * 60;
@@ -197,6 +198,18 @@ export async function loadProfile(username: string): Promise<StoryProfile | null
   if (!Array.isArray(profile.packs)) profile.packs = [];
   if (!profile.pulled || typeof profile.pulled !== 'object') profile.pulled = {};
   if (typeof profile.money !== 'number' || !Number.isFinite(profile.money)) profile.money = 0;
+  /*
+   * A deck may not name a card the collection does not hold — except while a
+   * duel is in flight, when the deck is *meant* to: a card wagered to Ash has
+   * left the collection and is still sleeved for the duel it was bet on. Once
+   * the note is gone the bet is settled one way or the other, and a deck that
+   * still names the card lost it. Squared here, on the way out of the store,
+   * so nothing past this line meets a deck the player cannot own.
+   */
+  if (!profile.pendingDuel) {
+    const mended = mendDeck(profile);
+    if (mended !== profile) profile.deck = mended.deck;
+  }
   return profile;
 }
 

@@ -21,7 +21,9 @@
 
 import { useEffect, useState } from 'react';
 import { sayLine, type WorldNpc } from '@/story/npcs';
+import { DECK_SIZE } from '@/story/roster';
 import { sfx } from '@/lib/sfx';
+import CardWager from './CardWager';
 
 interface Props {
   npc: WorldNpc;
@@ -37,8 +39,9 @@ interface Props {
    * handed a node and carries on.
    */
   openAt?: string;
-  /** Leave the conversation and duel this character, for this much money. */
-  onDuel?: (stake?: number) => void;
+  /** Leave the conversation and duel this character — for this much money,
+   *  or for this card. */
+  onDuel?: (stake?: number, wager?: string) => void;
   /** Open this character's shop, and come back to the conversation after. */
   onShop?: () => void;
   /**
@@ -53,11 +56,27 @@ interface Props {
    */
   money?: number;
   ceiling?: number;
+  /**
+   * What the player owns and what they have sleeved, for a character who asks
+   * for a card on the table rather than money — see `DuelOffer.wager`. The
+   * picker is drawn over this panel and hands the slug to `onDuel`.
+   */
+  collection?: string[];
+  deck?: string[];
+  /**
+   * Tokens beyond `{name}` a line may carry, already written the way they
+   * should read: the card a duel was played for, filled by the world from the
+   * duel's note. See `sayLine`.
+   */
+  fill?: Record<string, number | string>;
 }
 
-export default function Conversation({ npc, playerName, onClose, openAt, onDuel, onShop, money, ceiling }: Props) {
+export default function Conversation({ npc, playerName, onClose, openAt, onDuel, onShop, money, ceiling, collection, deck, fill }: Props) {
   const [nodeId, setNodeId] = useState(openAt ?? npc.start);
   const [page, setPage] = useState(0);
+  /** The card picker is open: a duel reply was pressed for somebody who plays
+   *  for a card, and the card has not been chosen yet. */
+  const [picking, setPicking] = useState(false);
   /**
    * A stake that could not be covered, and by whom.
    *
@@ -82,7 +101,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
   if (!node) return null;
 
   const lastPage = page >= node.lines.length - 1;
-  const line = refused ?? sayLine(node.lines[page] ?? '', playerName);
+  const line = refused ?? sayLine(node.lines[page] ?? '', playerName, fill);
 
   const advance = () => {
     sfx.click();
@@ -130,6 +149,23 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
         return;
       }
     }
+    /*
+     * A card on the table, chosen before anything moves.
+     *
+     * The same shape as the money above: the collection is what the save says
+     * and the server still decides, but a player with nothing to spare hears
+     * it here, in his words, rather than from a reply that does nothing. The
+     * owner's rule is a collection of exactly a deck may not be bet from.
+     */
+    if (duel && npc.duel?.wager === 'card') {
+      if ((collection?.length ?? 0) <= DECK_SIZE && npc.duel.few) {
+        sfx.error();
+        setRefused(sayLine(npc.duel.few, playerName));
+        return;
+      }
+      setPicking(true);
+      return;
+    }
     /* A duel leaves the conversation rather than advancing it. The node named
        by the choice is where it will resume, and the caller records that — the
        panel is about to be unmounted and cannot remember anything. */
@@ -153,6 +189,18 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex flex-col justify-end">
+      {picking && (
+        <CardWager
+          collection={collection ?? []}
+          deck={deck ?? []}
+          askedBy={npc.character.name}
+          onCancel={() => setPicking(false)}
+          onPick={(slug) => {
+            setPicking(false);
+            onDuel?.(undefined, slug);
+          }}
+        />
+      )}
       {/* Tapping the speech advances it — the whole area above the replies is
           the button, because a small "next" chevron on a phone is a target you
           miss. */}

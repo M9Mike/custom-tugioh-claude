@@ -6,7 +6,7 @@ import GameCard from './GameCard';
 import CardDetail from './CardDetail';
 import { previewInstances } from './deckPreview';
 import { menuDeckOrder, menuExtraOrder } from '@/story/deckSort';
-import { CARDS, DUELISTS, artUrl } from '@/game/cards';
+import { CARDS, DUELISTS, ROSTER, artUrl } from '@/game/cards';
 import { primeAudio, sfx } from '@/lib/sfx';
 import { other } from '@/game/engine';
 import type { CardInstance } from '@/game/types';
@@ -187,7 +187,7 @@ export default function Lobby({ view, chooseDuelist, setPlayerName, shareUrl, co
       {/* duelist grid + detail */}
       <div className="grid flex-1 gap-4 lg:grid-cols-[1fr_300px]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-          {DUELISTS.map((d) => {
+          {ROSTER.map((d) => {
             const takenByFoe = foeSeat?.duelistId === d.id;
             const isMine = mySeat?.duelistId === d.id;
             return (

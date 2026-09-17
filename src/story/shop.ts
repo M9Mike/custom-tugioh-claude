@@ -19,6 +19,7 @@
 import { CARDS } from '@/game/cards';
 import { compareCards } from './deckSort';
 import type { StoryProfile } from './profile';
+import { DECK_SIZE } from './roster';
 
 /**
  * What beating each duelist pays, in dollars.
@@ -57,6 +58,16 @@ export const BOUNTY: Record<string, number> = {
    * right way round for a man who owns a shop.
    */
   solomon: 100,
+  /*
+   * Three thousand, and it is the only money in the game that comes from
+   * somebody who is not supposed to be here.
+   *
+   * Ash keeps his cards like Solomon (see `KEEPS_THEIR_CARDS`) — a Pokémon in a
+   * Duel Monsters collection would be a hole in the world — so what a win is
+   * worth has to be the money, and the money has to be worth the thing he asks
+   * for first: a card of yours on the table. See `CARD_WAGER`.
+   */
+  ash: 3000,
 };
 
 /** What beating this duelist pays. Zero for anyone not on the list. */
@@ -80,7 +91,7 @@ export function bountyFor(duelistId: string): number {
  * that anybody can rewrite without changing what beating him does. Mike is
  * going to change Solomon's deck entirely, more than once.
  */
-export const KEEPS_THEIR_CARDS = new Set<string>(['solomon']);
+export const KEEPS_THEIR_CARDS = new Set<string>(['solomon', 'ash']);
 
 /** Does beating this duelist hand over a pack of their deck? */
 export function givesAPack(duelistId: string): boolean {
@@ -130,6 +141,94 @@ export const WAGER: Record<string, { min: number; max: number }> = {
 /** What this duelist will play for, or `null` if they do not play for money. */
 export function wagerFor(duelistId: string): { min: number; max: number } | null {
   return WAGER[duelistId] ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* A duelist who plays for a card                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Who will not sit down unless one of *your* cards is on the table.
+ *
+ * Tina's stake is money and the pot is two stakes; Ash's stake is a card and
+ * the pot is one-sided by design. Win and the card comes back with three
+ * thousand dollars (`BOUNTY`); lose and the card is his, which in a collection
+ * that holds one of everything is a real loss — and if it was in your deck,
+ * your deck is a card short and the game will not seat you again until it is
+ * twenty-five (see `deckIsShort`).
+ *
+ * The same escrow as the money, for the same three reasons written on `WAGER`:
+ * the card leaves the collection when the duel is seated, a claimed win is the
+ * only road back, and nobody is asked to own up to a loss. What is different is
+ * that the card has to be *chosen*, so the conversation opens a picker over the
+ * collection rather than offering four replies.
+ */
+export const CARD_WAGER = new Set<string>(['ash']);
+
+/** Does this duelist ask for a card rather than money? */
+export function wagersACard(duelistId: string): boolean {
+  return CARD_WAGER.has(duelistId);
+}
+
+/**
+ * Why a card cannot be put on the table, or `null` when it can.
+ *
+ * `few` is the owner's rule word for word: "you can't wager a card if you
+ * don't have over 25 cards" — a collection that is exactly a deck has nothing
+ * spare, and losing out of it would be losing the ability to duel at all.
+ * `unowned` covers a slug the client made up as much as one it no longer has.
+ */
+export type WagerRefusal = 'few' | 'unowned';
+
+export function refuseWager(profile: StoryProfile, slug: string): WagerRefusal | null {
+  if (profile.collection.length <= DECK_SIZE) return 'few';
+  if (!profile.collection.includes(slug)) return 'unowned';
+  return null;
+}
+
+/**
+ * The collection with the wagered card taken out of it — one copy, the first.
+ *
+ * The deck is deliberately left alone. The player is about to duel *with* the
+ * deck they sleeved, wagered card and all; what they have put up is the card's
+ * ownership, not its seat. Which is why a loss leaves a deck naming a card the
+ * collection no longer holds, and `mendDeck` exists.
+ */
+export function escrowCard(profile: StoryProfile, slug: string): StoryProfile {
+  const at = profile.collection.indexOf(slug);
+  if (at < 0) return profile;
+  return { ...profile, collection: [...profile.collection.slice(0, at), ...profile.collection.slice(at + 1)] };
+}
+
+/** The collection with a won card back in it. */
+export function returnCard(profile: StoryProfile, slug: string): StoryProfile {
+  return { ...profile, collection: [...profile.collection, slug], fresh: profile.fresh };
+}
+
+/**
+ * A deck that holds only cards the collection still does.
+ *
+ * Applied once a wager is settled or abandoned — never while a duel is in
+ * flight, because during one the deck is *meant* to name a card the collection
+ * has lent to the table. Cards are counted, not merely named: a collection may
+ * one day hold two of something, and a deck with two must lose only one.
+ */
+export function mendDeck(profile: StoryProfile): StoryProfile {
+  if (!profile.deck) return profile;
+  const left = new Map<string, number>();
+  for (const slug of profile.collection) left.set(slug, (left.get(slug) ?? 0) + 1);
+  const deck = profile.deck.filter((slug) => {
+    const n = left.get(slug) ?? 0;
+    if (n <= 0) return false;
+    left.set(slug, n - 1);
+    return true;
+  });
+  return deck.length === profile.deck.length ? profile : { ...profile, deck };
+}
+
+/** A sleeved deck that is no longer the size the rules demand. */
+export function deckIsShort(profile: StoryProfile): boolean {
+  return !!profile.deck && profile.deck.length !== DECK_SIZE;
 }
 
 /**

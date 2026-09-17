@@ -14,7 +14,7 @@
 import { applyAction, createDuel } from '@/game/engine';
 import { aiNext, createAiRuntime, invalidatePlan } from '@/game/ai';
 import { GAME_AI } from '@/game/ai-levels';
-import { DUELIST_BY_ID, DUELISTS } from '@/game/cards';
+import { DUELIST_BY_ID, ROSTER } from '@/game/cards';
 import type { DuelState, PlayerId } from '@/game/types';
 
 /**
@@ -86,7 +86,8 @@ export interface Tournament {
 }
 
 export function createTournament(humanDuelist: string, seed: number): Tournament {
-  const roster = DUELISTS.map((d) => d.id);
+  /* Everybody a player can be shown — a secret duelist is not in the draw. */
+  const roster = ROSTER.map((d) => d.id);
   const others = roster.filter((id) => id !== humanDuelist);
   // Deterministic shuffle from the seed, so the same bracket is rebuilt if a
   // creation request is retried.

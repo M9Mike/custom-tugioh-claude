@@ -1437,6 +1437,20 @@ export interface EffectCondition {
   onlyMonsterInHand?: boolean;
   /** Turn number must be at least this. */
   turnAtLeast?: number;
+  /**
+   * This monster was on the field before the current turn began.
+   *
+   * Ash's Pokémon evolve, and the button that does it is an ignition — so a
+   * Pokémon summoned this turn could press it at once, the form that stepped
+   * out could press its own, and the whole ladder from a Level 4 to the Master
+   * of All climbed in a single Main Phase, banishing the other player's hand
+   * before they had drawn a card. A threat nobody can see coming is not a
+   * threat, it is a coin toss on who goes first. So an evolution waits a
+   * turn: the Pokémon has to have stood through the opponent's turn, which
+   * is exactly the window they get to answer it. Read off `summonedOnTurn`,
+   * which every arrival stamps.
+   */
+  stoodATurn?: boolean;
 }
 
 /* ------------------------------------------------------------------ */

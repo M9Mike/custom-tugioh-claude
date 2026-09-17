@@ -465,9 +465,16 @@ for (const du of DUELISTS) {
          deck plus every Extra Deck card that can get onto the field under its
          own steam. A recipe-less card cannot vouch for another, which is what
          stops two unreachable monsters swearing each other in. */
+      /* And a recipe-less card that an earlier round has already *proved* can
+         vouch as well: Ash-Greninja is called out by Greninja in the main deck,
+         and it is Ash-Greninja's own button that calls the Ultimate Bond. What
+         still cannot happen is two unproved cards swearing each other in — a
+         card is only on this list once something outside the pair reached it. */
       const vouchers = [
         ...du.deck.map(([mainSlug]) => mainSlug),
-        ...(du.extra ?? []).filter((e) => e !== slug && (CARDS[e]?.fusionMaterials?.length ?? 0) > 0),
+        ...(du.extra ?? []).filter(
+          (e) => e !== slug && ((CARDS[e]?.fusionMaterials?.length ?? 0) > 0 || summonable.includes(e))
+        ),
       ];
       const calledOut = vouchers.some((mainSlug) =>
         (CARDS[mainSlug]?.effects ?? []).some(function reaches(eff): boolean {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CARDS, DUELISTS, artUrl } from '@/game/cards';
+import { CARDS, DUELISTS, ROSTER, artUrl } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
@@ -205,7 +205,7 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-          {DUELISTS.map((d) => (
+          {ROSTER.map((d) => (
             <button
               key={d.id}
               disabled={busy !== null}
@@ -455,7 +455,7 @@ export default function Home() {
           {/* Tapping a duelist opens their deck. The strip looked like a menu
               and behaved like a picture, which is the worst of both — the same
               viewer the picker already uses is one line away. */}
-          {DUELISTS.map((d) => (
+          {ROSTER.map((d) => (
             <button
               key={d.id}
               type="button"

@@ -4,7 +4,7 @@ import { claimStoryPack } from '@/server/rooms';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 import { openPack } from '@/story/packs';
-import { bountyFor, givesAPack, purseAfterWin } from '@/story/shop';
+import { bountyFor, givesAPack, purseAfterWin, returnCard } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,10 +107,29 @@ export async function POST(req: Request) {
        */
       const paid = bountyFor(duelistId) + verdict.stake * 2;
       const pack = givesAPack(duelistId);
+      /*
+       * And the card comes home.
+       *
+       * The one duelist who asks for a card on the table (`CARD_WAGER`) took
+       * it out of the collection when the duel was seated; a win the claim has
+       * proved puts it back, in the same write as the money, so the two cannot
+       * come apart. Read off the room, like the stake. A loss never reaches
+       * this line, and the card stays gone — which is the whole bet.
+       */
+      const won = verdict.wagerCard;
       const result = await updateProfile(canonical, (profile) => ({
         ok: true,
         profile: {
-          ...profile,
+          ...(won ? returnCard(profile, won) : profile),
+          /* And back into the deck it was sleeved in, if the save has already
+             squared the deck without it. The conversation's `duelDone` and this
+             claim are two requests racing out of the same screen, and `mendDeck`
+             on the first of them takes the card out of a deck the collection
+             did not yet hold it for; this puts it back whichever landed first. */
+          deck:
+            won && verdict.wagerSleeved && profile.deck && !profile.deck.includes(won)
+              ? [...profile.deck, won]
+              : profile.deck,
           packs: pack ? [...profile.packs, duelistId] : profile.packs,
           money: (profile.money ?? 0) + paid,
           /*

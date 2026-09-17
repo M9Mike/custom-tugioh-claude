@@ -21,7 +21,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
-import { WORLD_NPCS, type WorldNpc } from '@/story/npcs';
+import { WORLD_NPCS, whereabouts, type WorldNpc } from '@/story/npcs';
+import { dayFrom, type Haunt } from '@/story/ash';
+import { CARDS } from '@/game/cards';
 import {
   areaById,
   doorAt,
@@ -39,7 +41,7 @@ import {
 import WorldMap from './WorldMap';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
-import { ceilingFor } from '@/story/shop';
+import { ceilingFor, deckIsShort } from '@/story/shop';
 import { setShadowQuality } from './world/sky';
 import { buildShop } from './world/shop';
 import { buildStreet } from './world/street';
@@ -108,14 +110,14 @@ interface Props {
    * A character has been taken up on a duel. The caller opens the room and
    * navigates; this screen is about to be unmounted either way.
    */
-  onDuel?: (npc: WorldNpc, stake?: number) => void;
+  onDuel?: (npc: WorldNpc, stake?: number, wager?: string) => void;
   /** A character has been asked what they have for sale. */
   onShop?: (npc: WorldNpc) => void;
   /**
    * Somebody to walk straight back into a conversation with, and where to pick
    * it up — set when returning from a duel they sent the player to.
    */
-  resume?: { npcId: string; node: string } | null;
+  resume?: { npcId: string; node: string; wagered?: string } | null;
   /**
    * The resume has been taken up, and must not be handed over again.
    *
@@ -221,6 +223,13 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   /* Cleared the moment the conversation closes, so re-opening it later starts
      from the top rather than replaying the aftermath of a duel. */
   const [resumeAt, setResumeAt] = useState<string | null>(resume?.node ?? null);
+  /**
+   * The card the duel was played for, held here rather than read off `resume`
+   * on every render: `onResumed` clears the note upstream the moment it has
+   * been taken, and the conversation it named is still open. Read once, like
+   * the node, and cleared with it.
+   */
+  const [wageredCard, setWageredCard] = useState<string | null>(resume?.wagered ?? null);
   /* What the loop last reported, so it only calls setState when it changes. */
   const nearRef = useRef<WorldNpc | null>(null);
   /* Read by the render loop, which must not re-run when a conversation opens:
@@ -256,6 +265,22 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     tookResume.current = true;
     onResumed?.();
   }, [resume, onResumed]);
+
+  /**
+   * A deck a card short is a deck that cannot duel, and the game says so by
+   * opening the builder rather than by refusing at the next table.
+   *
+   * The only way a sleeved deck loses a card is losing it to Ash — see
+   * `CARD_WAGER` — and the conversation that tells you so is the one this
+   * waits for: the builder replaces the world, so opening it over the panel
+   * would cut him off mid-sentence. The moment the conversation closes, the
+   * player is in the builder, and the builder has no way back until the deck
+   * is twenty-five again (see `StoryMode`).
+   */
+  useEffect(() => {
+    if (!deckIsShort(profile) || talkingTo) return;
+    onEditDeck();
+  }, [profile, talkingTo, onEditDeck]);
 
 
   const holder = useRef<HTMLDivElement>(null);
@@ -399,9 +424,16 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * last week's. Every check in `scripts/` passes it.
      */
     let pinned: number | null = null;
+    /* And the day, for the one person whose whereabouts depend on it. A
+       pinned hour already pins the day to nought (see `dayFrom`); `?day=` names
+       a particular one, so a check can stand where Ash is known to be. */
+    let pinnedDay: number | null = null;
     try {
-      const raw = new URLSearchParams(window.location.search).get('t');
+      const search = new URLSearchParams(window.location.search);
+      const raw = search.get('t');
       if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) pinned = Number(raw);
+      const rawDay = search.get('day');
+      if (rawDay !== null && rawDay !== '' && Number.isFinite(Number(rawDay))) pinnedDay = Number(rawDay);
     } catch {
       /* no window.location worth reading — leave it running */
     }
@@ -616,7 +648,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     let npcs: {
       npc: WorldNpc;
       rig: PremadeRig;
-      at: { x: number; z: number };
+      /**
+       * Where they are — and how high. `y` is the floor they were last put
+       * on, handed back to `groundAt` as `near` on every step: without it a
+       * route under a gallery answered with the gallery, because the gallery
+       * is over you and is higher, and Ash crossing the Crown's atrium stood
+       * on the first floor's underside.
+       */
+      at: { x: number; z: number; y: number };
+      /** The route and facing of the haunt they were built for — a schedule
+          may put the same person on a different route in a different shop. */
+      route: Haunt['roam'];
+      facing: number;
       leg: number;
       dir: 1 | -1;
       hold: number;
@@ -635,15 +678,30 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * be the optimisation, and it would be the wrong one — this world is going
      * to have a lot more areas than it has people on screen.
      */
-    const populate = (id: AreaId) => {
-      for (const { rig: theirs } of npcs) {
-        scene.remove(theirs.root);
-        theirs.dispose();
-      }
-      npcs = [];
-      const wanted = WORLD_NPCS.filter((n) => n.area === id);
-      for (const npc of wanted) {
-        buildPremadeRig(npc.character, {
+    /** Takes one person out of the field, whole. */
+    const depart = (id: string) => {
+      const gone = npcs.find((n) => n.npc.id === id);
+      if (!gone) return;
+      scene.remove(gone.rig.root);
+      gone.rig.dispose();
+      npcs = npcs.filter((n) => n !== gone);
+    };
+
+    /**
+     * Builds one person at one haunt, in the area that is open.
+     *
+     * Split out of `populate` so the presence loop can call it for somebody
+     * who has just arrived on the clock, exactly as the door does for
+     * everybody standing here when it opens.
+     */
+    /* Somebody whose model is still coming down. The presence loop asks every
+       two seconds and a cold fetch can take longer than that, so without this
+       the same person was built twice and stood in two places. */
+    const building = new Set<string>();
+    const arrive = (npc: WorldNpc, at: Haunt, id: AreaId) => {
+      if (npcs.some((n) => n.npc.id === npc.id) || building.has(npc.id)) return;
+      building.add(npc.id);
+      buildPremadeRig(npc.character, {
           overrides: npc.overrides,
           accessories: npc.accessories,
           repaint: npc.repaint,
@@ -651,9 +709,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           spirit: npc.spirit,
         })
           .then((fresh) => {
+            building.delete(npc.id);
             /* Two ways to be stale: the screen is gone, or the player has
-               already walked out of the area this rig belongs to. */
-            if (gone || areaRef.current !== id) {
+               already walked out of the area this rig belongs to — or they
+               were built by the door and the clock both in the same breath. */
+            if (gone || areaRef.current !== id || npcs.some((n) => n.npc.id === npc.id)) {
               fresh.dispose();
               return;
             }
@@ -668,7 +728,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
                the player, and `settle` keeps them out of a wall if the
                conversation happened against one. */
             const rejoining = rejoinRef.current === npc.id;
-            let start = { x: npc.x, z: npc.z };
+            let start = { x: at.x, z: at.z };
             let leg = 1;
             if (rejoining) {
               rejoinRef.current = null;
@@ -682,7 +742,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
               /* Carry on to whichever point of the route is nearest, rather
                  than back to the leg they were on before the duel: from here
                  that one can be behind them. */
-              const path = npc.roam?.path;
+              const path = at.roam?.path;
               if (path) {
                 let best = 0;
                 let bestD = Infinity;
@@ -696,26 +756,66 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
                 leg = best;
               }
             }
-            fresh.root.position.set(start.x, groundAt(areaById(npc.area), start.x, start.z), start.z);
-            fresh.root.rotation.y = npc.facing;
+            /* On the floor they walk in on. `standingOn` is what a door's
+               landing asks, and a haunt's first point is a landing of sorts. */
+            const floor = standingOn(areaById(id), start.x, start.z);
+            fresh.root.position.set(start.x, floor, start.z);
+            fresh.root.rotation.y = at.facing;
             scene.add(fresh.root);
             npcs.push({
               npc,
               rig: fresh,
-              at: start,
+              at: { x: start.x, z: start.z, y: floor },
+              route: at.roam,
+              facing: at.facing,
               leg,
               dir: 1,
               hold: 0,
               /* Staggered on arrival rather than started at the full interval,
                  so two people in one area do not stop together on the first
                  lap and then for ever after. */
-              rest: npc.roam?.restEvery ? npc.roam.restEvery * (0.3 + Math.random()) : Infinity,
+              rest: at.roam?.restEvery ? at.roam.restEvery * (0.3 + Math.random()) : Infinity,
             });
           })
           .catch((err) => {
+            building.delete(npc.id);
             console.error(`open world: ${npc.id} failed to load`, err);
           });
+    };
+
+    /**
+     * Who is in an area is a question with a time in it.
+     *
+     * Everybody placed is here whenever the area is; the one with a schedule
+     * is here when the clock says so. Asked on every door, and again every
+     * couple of seconds by the frame loop below, which is what lets somebody
+     * walk in — or leave — while you are standing in the room.
+     */
+    const presentNow = (id: AreaId): { npc: WorldNpc; at: Haunt }[] => {
+      const hour = hourFrom(Date.now(), pinned);
+      const day = dayFrom(Date.now(), pinned, pinnedDay);
+      const out: { npc: WorldNpc; at: Haunt }[] = [];
+      for (const npc of WORLD_NPCS) {
+        let at = whereabouts(npc, hour, day);
+        /* Somebody mid-conversation is here whatever the clock says. A duel is
+           a different page and the clock ran through it; the fiction on the
+           way back is that you never stopped talking, so the person you were
+           talking to is standing in front of you — see `rejoinRef` — and only
+           leaves, like anyone on a schedule, once you have walked away. */
+        const withMe = rejoinRef.current === npc.id || talkingRef.current?.id === npc.id;
+        if (withMe && npc.haunts && (!at || at.area !== id)) at = npc.haunts.find((h) => h.area === id) ?? at;
+        if (at && at.area === id) out.push({ npc, at });
       }
+      return out;
+    };
+
+    const populate = (id: AreaId) => {
+      for (const { rig: theirs } of npcs) {
+        scene.remove(theirs.root);
+        theirs.dispose();
+      }
+      npcs = [];
+      for (const { npc, at } of presentNow(id)) arrive(npc, at, id);
     };
 
     /* Now that both halves exist, open the area the save left us in. */
@@ -811,6 +911,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         quality.since = now; quality.frames = 0;
       }
     };
+
+    /* Seconds since the area was last asked who should be in it. */
+
+    let presenceClock = 0;
 
     const clock = new THREE.Clock();
     /**
@@ -1106,6 +1210,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              cylinder is one that can shove you off a terrace or corner you
              against a wall, and this one passes through you instead. */
           if (npc.spirit) continue;
+          /* And a body on the gallery over your head is not in your way. */
+          if (Math.abs(groundY - at.y) > 1.5) continue;
           const dx = p.x - at.x;
           const dz = p.z - at.z;
           const d = Math.hypot(dx, dz);
@@ -1186,6 +1292,33 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * back to their own facing when you leave — a character who tracks you
        * across the field like a turret is worse than one who never moves.
        */
+      /*
+       * Arrivals and departures, on the clock.
+       *
+       * Every two seconds — not every frame — the area is asked who should be
+       * in it, and the answer is compared with who is. Somebody due here and
+       * not built is built where their haunt puts them; somebody built and no
+       * longer due leaves. Not while they are being looked at: a person who
+       * vanishes in front of you, or mid-sentence, is a bug however correct
+       * the clock is, so a departure waits until the player is well outside
+       * the range that turns them to face you, and until the conversation is
+       * over. Ash is the only one this ever moves, and he leaves the way he
+       * came — when nobody is watching.
+       */
+      presenceClock += dt;
+      if (presenceClock > 2) {
+        presenceClock = 0;
+        const due = presentNow(area.id);
+        for (const { npc, at } of due) arrive(npc, at, area.id);
+        for (const them of [...npcs]) {
+          if (!them.npc.schedule) continue;
+          if (due.some((d) => d.npc.id === them.npc.id)) continue;
+          if (talkingRef.current?.id === them.npc.id) continue;
+          if (Math.hypot(p.x - them.at.x, p.z - them.at.z) < them.npc.range * 2.5) continue;
+          depart(them.npc.id);
+        }
+      }
+
       let closest: WorldNpc | null = null;
       let closestD = Infinity;
       /**
@@ -1201,7 +1334,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         const { npc, rig: theirs, at } = them;
         const dx = p.x - at.x;
         const dz = p.z - at.z;
-        const d = Math.hypot(dx, dz);
+        /* Three dimensions, not two. Ash on the Crown's first gallery stopped
+           and turned for a player standing on the shop floor under him —
+           five metres away as the plan reads it, and a storey apart — and the
+           prompt offered a conversation with somebody over your head. On the
+           flat the height is nought and nothing changes. */
+        const d = Math.hypot(dx, dz, groundY - at.y);
         /**
          * Noticed a little before the talk range, so they are already looking
          * at you by the time the prompt appears — and for as long as the
@@ -1227,8 +1365,8 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * its owner walked out of range of it.
          */
         let speed = 0;
-        if (npc.roam && !noticed) {
-          const route = npc.roam;
+        if (them.route && !noticed) {
+          const route = them.route;
           if (them.hold > 0) {
             them.hold -= dt;
           } else if (them.rest <= 0) {
@@ -1309,16 +1447,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           theirs.root.position.x = at.x;
           theirs.root.position.z = at.z;
           /* Asked every step, so a route may climb stairs without the route
-             knowing there are any. The rig's own breath and step-rise are
-             measured from whatever height it is given. */
-          theirs.root.position.y = groundAt(areaById(npc.area), at.x, at.z);
+             knowing there are any — and asked from the floor they are on, so
+             a route under a gallery stays under it. The rig's own breath and
+             step-rise are measured from whatever height it is given. */
+          at.y = groundAt(area, at.x, at.z, at.y);
+          theirs.root.position.y = at.y;
         }
         /* Facing: at you when noticed, along the route while walking, and
            their own way when they are standing at the end of one. */
-        const to = npc.roam?.path[them.leg];
+        const to = them.route?.path[them.leg];
         const heading = speed > 0 && to
           ? Math.atan2(to.x - at.x, to.z - at.z)
-          : npc.facing;
+          : them.facing;
         const want = noticed ? Math.atan2(dx, dz) : heading;
         let turn = want - theirs.root.rotation.y;
         turn = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -2199,8 +2339,15 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              server is still the decision. */
           money={profile.money ?? 0}
           ceiling={talkingTo.duel ? ceilingFor(talkingTo.duel.opponentId, profile.purse) : undefined}
+          /* What could be put on the table, and which of it is sleeved — the
+             picker marks a deck card, because losing one costs a rebuild. */
+          collection={profile.collection}
+          deck={profile.deck ?? []}
+          /* The card the duel was played for, named in the aftermath. Off the
+             note the duel came back with; nothing else knows it. */
+          fill={wageredCard ? { card: CARDS[wageredCard]?.name ?? wageredCard } : undefined}
           onShop={() => onShop?.(talkingTo)}
-          onDuel={(stake) => {
+          onDuel={(stake, wager) => {
             /*
              * Where you are standing is written down before the duel, not after.
              *
@@ -2226,13 +2373,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              */
             void (async () => {
               await persist();
-              onDuel?.(talkingTo, stake);
+              onDuel?.(talkingTo, stake, wager);
             })();
           }}
           playerName={character.name}
           onClose={() => {
             setTalkingTo(null);
             setResumeAt(null);
+            setWageredCard(null);
           }}
         />
       )}

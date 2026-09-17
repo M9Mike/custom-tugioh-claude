@@ -145,6 +145,14 @@ export interface DuelInProgress {
   won: string;
   lost: string;
   startedAt: number;
+  /**
+   * The card the player put on the table, if the duel was played for one.
+   *
+   * Carried so the conversation can name it on the way back — "that Pidgeot
+   * is mine". The room holds the copy that decides anything (see
+   * `Room.wagerCard`); this one is for the sentence.
+   */
+  wagered?: string;
   /** Attached on the way back by `login`, read off the room; never stored. */
   outcome?: 'won' | 'lost';
 }

@@ -4,6 +4,7 @@ import type { StoryProfile } from '@/story/profile';
 import { describeStoreError } from '@/server/store';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
+import { mendDeck } from '@/story/shop';
 
 /**
  * A duel walked into and not come back from: ask the room how it went.
@@ -17,8 +18,11 @@ async function withVerdict(canonical: string, profile: StoryProfile): Promise<St
   if (!pending) return profile;
   const room = await loadRoom(pending.code).catch(() => null);
   if (!room || !room.story) {
-    const cleared = await updateProfile(canonical, (p) => ({ ok: true, profile: { ...p, pendingDuel: null } })).catch(() => null);
-    return cleared?.ok ? cleared.profile : { ...profile, pendingDuel: null };
+    /* Nothing to come back to, and nothing on the table any more: a wagered
+       card that was never won back is gone, and a deck still naming it is
+       squared here. */
+    const cleared = await updateProfile(canonical, (p) => ({ ok: true, profile: mendDeck({ ...p, pendingDuel: null }) })).catch(() => null);
+    return cleared?.ok ? cleared.profile : mendDeck({ ...profile, pendingDuel: null });
   }
   const winner = room.state?.winner;
   if (!winner) return profile;
