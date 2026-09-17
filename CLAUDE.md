@@ -225,6 +225,25 @@ otherwise reads one decision as three faults; the audit still demands the
 skeleton, and it checks a `still` model has *no* clips, so the word cannot rot.
 Put clips in the file and delete the word.
 
+**A gesture carries rotation and nothing else, and a skinned mesh measures its
+bind pose.** The exporter bakes every bone into every action, so a gesture clip
+is a full-skeleton pose track: a rotation, a *position* and a scale for all
+thirty-one bones. `makeClipAdditive` turns those positions into deltas of zero,
+which holds only while the clip really is blended additively — drive one at a
+normal weight and every bone goes to the origin. Tina shipped invisible on
+that: thirty-one bones at one height and a "Talk to Tina" prompt over an empty
+arcade. So a gesture keeps only the quaternion tracks whose values actually
+change, and layers by ordinary blending. The reason it reached Mike is the
+second half of the sentence: `Box3.setFromObject` on a `SkinnedMesh` reports
+bind geometry and knows nothing about skinning, so a rig crushed to a point
+measures 1.70 m and reports `visible: true`, and my own screenshots of an empty
+street read as a framing problem. Measure a character by its **bones**' world
+positions — metres whatever the file was authored in, where running the skin by
+hand fails a centimetre-authored Sarah at 0.017 m — and measure them **while
+they move**: a rig is in its rest pose the instant it is built, which is why a
+build-time reading of a collapsed Tina came back a healthy 1.441 m. `npm run
+faces` now runs the rig and fires every gesture it owns.
+
 **A floor nobody can reach is a floor nobody has looked at.** All twenty-two of
 Domino High's vantages were on the ground, because a save carries x, z and a
 facing but no floor and an upstairs vantage photographs the room underneath it.
