@@ -7,7 +7,7 @@
  * what its buttons should do.
  */
 import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
-import { changesAnything, faceUpOnSide, matchesFilter, revivable } from './targeting';
+import { changesAnything, faceUpOnSide, matchesFilter, revivable, stripAtkBounds, withinAtkBounds } from './targeting';
 /* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
    targeting rules from `targeting.ts` now, not from here. */
 import { specChainForEffect, targetCandidates, targetSpecFor, worthAsking } from './ui';
@@ -1505,10 +1505,7 @@ function passesLiveAtk(state: DuelState, c: CardInstance, zone: Selector['zone']
   if (!f || (f.minAtk == null && f.maxAtk == null)) return true;
   if ((zone ?? 'monster') !== 'monster') return true;
   const owner = controllerOf(state, c.uid);
-  const live = effAtk(state, c, owner ?? undefined);
-  if (f.minAtk != null && live < f.minAtk) return false;
-  if (f.maxAtk != null && live > f.maxAtk) return false;
-  return true;
+  return withinAtkBounds(effAtk(state, c, owner ?? undefined), f);
 }
 
 function targetPool(ctx: EffectCtx, s: Selector): CardInstance[] {
@@ -1526,15 +1523,6 @@ function targetPool(ctx: EffectCtx, s: Selector): CardInstance[] {
     }
   }
   return pool;
-}
-
-/** The same filter with its ATK bounds removed — they are asked live instead. */
-function stripAtkBounds(f?: CardFilter): CardFilter | undefined {
-  if (!f || (f.minAtk == null && f.maxAtk == null)) return f;
-  const rest: CardFilter = { ...f };
-  delete rest.minAtk;
-  delete rest.maxAtk;
-  return rest;
 }
 
 function resolveTargets(ctx: EffectCtx, s: Selector): CardInstance[] {
@@ -3998,7 +3986,8 @@ function askOne(
     controller,
     spec,
     (t, owner) => effFlags(state, t, owner).untargetable === true,
-    c.uid
+    c.uid,
+    (t, owner) => effAtk(state, t, owner)
   );
   const want = spec.count ?? 1;
   /* "Up to" always asks, so long as there is anything to point at: taking two
@@ -4133,7 +4122,7 @@ function drainChoices(state: DuelState) {
     drainChoices(state);
     return;
   }
-  const options = targetCandidates(state, next.player, spec, (t, owner) => effFlags(state, t, owner).untargetable === true);
+  const options = targetCandidates(state, next.player, spec, (t, owner) => effFlags(state, t, owner).untargetable === true, undefined, (t, owner) => effAtk(state, t, owner));
   /* The same `worthAsking` the other two gates ask. A parked question that is
      no longer worth putting must resolve itself here exactly as it would have
      been skipped there — three gates, one rule, or a question the board would

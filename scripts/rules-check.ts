@@ -15723,5 +15723,83 @@ console.log('\nThe deck that remembers: the sentence it writes');
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Three picks the cards had made for their owner                       */
+/* ------------------------------------------------------------------ */
+console.log('\nThe card says "1 monster your opponent controls", so the player names it');
+{
+  /* Reported: "Dark Jeroid should let you pick which monster loses the atk".
+     It drained whatever was biggest, which is often the wrong end of the
+     board — 1500 off a 1600 puts it inside everything you own. */
+  const s = fresh();
+  const jeroid = card(ME, 'dark-jeroid');
+  s.players[ME].hand = [jeroid];
+  const big = card(FOE, 'blue-eyes-white-dragon'); // 3000, what it used to take
+  const small = card(FOE, 'battle-ox'); // 1700, the one worth draining
+  s.players[FOE].monsters = [big, small, null];
+  const spec = specChainForEffect('dark-jeroid', 0);
+  ok(spec.length === 1 && spec[0].side === 'opp' && spec[0].zone === 'monster',
+    'Dark Jeroid puts one question about their board', JSON.stringify(spec));
+  ok(spec[0]?.prompt === 'Choose a monster to weaken',
+    'and the prompt reads as a drain, not a buff', spec[0]?.prompt);
+  const down = act(s, ME, {
+    type: 'normalSummon', uid: jeroid.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [small.uid],
+  });
+  const ox = down.players[FOE].monsters.find((m) => m?.uid === small.uid)!;
+  const bews = down.players[FOE].monsters.find((m) => m?.uid === big.uid)!;
+  ok(effAtk(down, ox, FOE) === 200, 'the monster the player named is the one that loses 1500', String(effAtk(down, ox, FOE)));
+  ok(effAtk(down, bews, FOE) === 3000, 'and the biggest body is left exactly as it was', String(effAtk(down, bews, FOE)));
+
+  /* Ryu-Ran's "1 monster your opponent controls with 1600 or less ATK" had
+     the same fault the other way up: it took the smallest thing in range. */
+  const r = fresh();
+  const ryu = card(ME, 'ryu-ran');
+  r.players[ME].hand = [ryu];
+  const pay = [card(ME, 'battle-ox'), card(ME, 'battle-ox')];
+  r.players[ME].monsters = [pay[0], pay[1], null];
+  const weakest = card(FOE, 'kuriboh'); // 300
+  const worth = card(FOE, 'mad-sword-beast'); // 1400 — in range, and the real answer
+  /* Printed 1600, standing at 1900 on its own aura: in range on the card face
+     and out of range on the board. */
+  const outOfRange = card(FOE, 'robotic-knight');
+  r.players[FOE].monsters = [weakest, worth, outOfRange];
+  const rSpec = specChainForEffect('ryu-ran', 0);
+  ok(rSpec.length >= 1 && rSpec[0].filter?.maxAtk === 1600,
+    'Ryu-Ran asks, and only inside the 1600 its text names', JSON.stringify(rSpec[0]));
+  /* And the picker reads the same number the engine does. Robotic Knight is
+     printed 1600 and stands at 1900 on its own aura: offering it is offering a
+     pick that would destroy something else. */
+  const offeredTo = targetCandidates(r, ME, rSpec[0], () => false, ryu.uid, (c, owner) => effAtk(r, c, owner))
+    .map((c) => c.slug).sort().join(',');
+  ok(offeredTo === 'kuriboh,mad-sword-beast', 'the picker offers exactly what the engine will take', offeredTo);
+  ok(effAtk(r, outOfRange, FOE) === 1900, 'CONTROL: the Knight really is out of range on the board', String(effAtk(r, outOfRange, FOE)));
+  const eaten = act(r, ME, {
+    type: 'normalSummon', uid: ryu.uid, zone: 2, position: 'atk', face: 'up',
+    tributes: [pay[0].uid, pay[1].uid], targets: [worth.uid],
+  });
+  const left = eaten.players[FOE].monsters.filter(Boolean).map((m) => m!.slug).sort().join(',');
+  ok(left === 'kuriboh,robotic-knight', 'and it destroys the one the player named, not the smallest', left);
+  ok(!eaten.players[FOE].monsters.some((m) => m?.uid === worth.uid), 'the 1600 named is the body that left', left);
+
+  /* One sentence, two triggers. Wildheart asked on the summon and decided for
+     itself on the swing; a swing carries no targets, so the question is put
+     mid-attack and the effect resumes on the answer. */
+  const w = fresh('battle');
+  const wild = card(ME, 'elemental-hero-wildheart');
+  wild.summonedOnTurn = 0;
+  w.players[ME].monsters = [wild, null, null];
+  w.players[FOE].spellTrap = card(FOE, 'the-dark-door');
+  w.players[FOE].field = card(FOE, 'umi');
+  const swung = applyAction(w, ME, { type: 'attack', uid: wild.uid, targetUid: null });
+  ok(!swung.error && swung.state.pending?.kind === 'choose',
+    'Wildheart stops to ask which card to break on the way in', swung.error ?? swung.state.pending?.kind);
+  const offered = swung.state.pending?.kind === 'choose' ? [...swung.state.pending.options] : [];
+  ok(offered.length === 2, 'and both of their Spell/Traps are on the menu', String(offered.length));
+  const answered = act(swung.state, ME, { type: 'chooseCard', uids: [w.players[FOE].field!.uid] });
+  ok(!answered.players[FOE].field && !!answered.players[FOE].spellTrap,
+    'the Field Spell the player named is the one that breaks',
+    `${answered.players[FOE].field?.slug ?? 'gone'} / ${answered.players[FOE].spellTrap?.slug ?? 'gone'}`);
+}
+
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
 if (failures) process.exitCode = 1;

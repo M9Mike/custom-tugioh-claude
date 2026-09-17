@@ -1120,7 +1120,14 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
        the Magnet Warrior offered itself as a Magnet Warrior to Special Summon.
        A rule that can be forgotten at one call site will be. */
     (spec: TargetSpec, exclude: string): CardInstance[] =>
-      targetCandidates(state, me, spec, (c, owner) => effFlags(state, c, owner).untargetable === true, exclude),
+      targetCandidates(
+        state,
+        me,
+        spec,
+        (c, owner) => effFlags(state, c, owner).untargetable === true,
+        exclude,
+        (c, owner) => effAtk(state, c, owner)
+      ),
     [state, me]
   );
 

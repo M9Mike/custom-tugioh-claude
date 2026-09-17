@@ -13,7 +13,8 @@
  * does the picker produce a question for it?
  *
  * A card that has *decided* is not a fault and is not listed:
- *   - `pick: 'strongest' | 'weakest' | 'random'` — the card said so in its text
+ *   - `pick: 'strongest' | 'weakest' | 'random'` — but only where the card's
+ *     own text says so, which is checked rather than assumed; see `decided`
  *   - a filter naming exactly one slug, or a pool the board cannot vary
  *   - `all`, which takes everything and chooses nothing
  *
@@ -34,20 +35,44 @@ const PICKS_FROM_A_POOL = new Set([
   'returnToExtra',
 ]);
 
-/** The card has already answered: its text names which one. */
-const SELF_RULED = ['strongest', 'weakest', 'random'];
-function decided(op: Op): boolean {
-  if ('pick' in op && typeof op.pick === 'string' && SELF_RULED.includes(op.pick)) return true;
+/**
+ * The card has already answered — and the card's TEXT is what answers it.
+ *
+ * `strongest` was trusted on sight, on the grounds that a card asking for the
+ * biggest thing says so in its own words. Three did not. Dark Jeroid printed
+ * "1 monster your opponent controls loses 1500 ATK" and always drained the
+ * biggest one — reported — and beside it sat Ryu-Ran's "1 monster your
+ * opponent controls with 1600 or less ATK", which took the smallest, and
+ * Elemental HERO Wildheart, whose one sentence asks on the summon and decided
+ * for itself on the attack. So the word has to be in the text: a pick is the
+ * card's own only where the card says it out loud.
+ */
+const SELF_RULED = ['strongest', 'weakest', 'random'] as const;
+const SAYS_SO: Record<(typeof SELF_RULED)[number], RegExp> = {
+  strongest: /strongest|highest atk|highest attack|most atk/i,
+  weakest: /weakest|lowest atk|lowest attack|least atk/i,
+  random: /random/i,
+};
+function ruled(pick: string, text: string): boolean {
+  return (SELF_RULED as readonly string[]).includes(pick) && SAYS_SO[pick as (typeof SELF_RULED)[number]].test(text);
+}
+function decided(op: Op, text: string): boolean {
+  if ('pick' in op && typeof op.pick === 'string' && ruled(op.pick, text)) return true;
   /* And the same word worn on the selector rather than on the op. The
      Legendary Fisherman shuffles "10 random cards", which the card says out
      loud and which lives in `sel('own', 'random', …)` — two places one rule can
      be written, and a sweep that reads only one of them reports a card that is
      doing exactly what its text promises. */
-  if ('target' in op && op.target && SELF_RULED.includes(op.target.pick)) return true;
+  if ('target' in op && op.target && ruled(op.target.pick, text)) return true;
   /* One named card is not a choice — Avian fetching "Polymerization" has
-     exactly one answer however many copies are down there. */
+     exactly one answer however many copies are down there. Read off the
+     selector as well as off the op: the Ultimate Dragon's "1 Blue-Eyes White
+     Dragon from your Graveyard" carries its filter on the target, and one
+     named card is one answer wherever the name is written. */
   const filter = 'filter' in op ? op.filter : undefined;
   if (filter?.slugs && filter.slugs.length === 1) return true;
+  const tf = 'target' in op && op.target ? op.target.filter : undefined;
+  if (tf?.slugs && tf.slugs.length === 1) return true;
   /* `all` takes the lot. */
   if ('all' in op && op.all) return true;
   if ('target' in op && op.target && op.target.pick === 'all') return true;
@@ -66,20 +91,26 @@ function flatten(ops: Op[]): Op[] {
   return out;
 }
 
+/** A pick the card's text never made — so it is the player's, not the card's. */
+function unearned(op: Op): boolean {
+  if ('target' in op && op.target && (SELF_RULED as readonly string[]).includes(op.target.pick)) return true;
+  return 'pick' in op && typeof op.pick === 'string' && (SELF_RULED as readonly string[]).includes(op.pick);
+}
+
 /** Does this one op reach into a pool the player should be choosing from? */
-function wantsAPick(op: Op): boolean {
+function wantsAPick(op: Op, text: string): boolean {
+  if (decided(op, text)) return false;
   if (PICKS_FROM_A_POOL.has(op.op)) return true;
   return 'target' in op && !!op.target && op.target.pick === 'chosen';
 }
 
-function silentOps(eff: CardEffect): Op[] {
+function silentOps(eff: CardEffect, text: string): Op[] {
   return flatten(eff.ops).filter((op) => {
-    if (decided(op)) return false;
+    if (decided(op, text)) return false;
     if (PICKS_FROM_A_POOL.has(op.op)) return true;
     /* A `chosen` selector is the question itself, so one that produces no
        prompt is the same fault wearing the other hat. */
-    if ('target' in op && op.target && op.target.pick === 'chosen') return true;
-    return false;
+    return 'target' in op && !!op.target && op.target.pick === 'chosen';
   });
 }
 
@@ -89,7 +120,25 @@ for (const def of Object.values(CARDS) as CardDef[]) {
   def.effects.forEach((eff, index) => {
     /* An aura asks nothing and a continuous effect has no moment to ask in. */
     if (eff.trigger === 'continuous') return;
-    const silent = silentOps(eff);
+    const text = def.text ?? '';
+    /* A pick the text never made is a fault on its own, and counting prompts
+       cannot find it: `strongest` raises no question, so there is nothing for
+       a count to come up short of. Ryu-Ran hid behind exactly that — its
+       Graveyard fetch put one prompt on the board, the tally read one asked
+       against one wanted, and the monster it destroyed was still chosen by the
+       engine. Asked before the tally, and one answer per effect. */
+    const unearnedOps = flatten(eff.ops).filter((op) => !decided(op, text) && unearned(op));
+    if (unearnedOps.length) {
+      faults.push({
+        slug: def.slug,
+        name: def.name,
+        index,
+        trigger: eff.trigger,
+        why: `${unearnedOps.map((o) => o.op).join(', ')} makes a pick the card's text never made`,
+      });
+      return;
+    }
+    const silent = silentOps(eff, text);
     const wantsCost = !!eff.cost?.tribute && !eff.cost.tributeSelf;
     const wantsDiscard = !!eff.cost?.discard;
     if (!silent.length && !wantsCost && !wantsDiscard) return;
@@ -112,9 +161,9 @@ for (const def of Object.values(CARDS) as CardDef[]) {
        only one branch runs — which is why the count is taken from the ops as
        the chain sees them rather than from `flatten`. */
     const asking = eff.ops.filter((op) => {
-      if (decided(op)) return false;
-      if (op.op === 'cascade') return op.branches.some((b) => b.ops.some((o) => !decided(o) && wantsAPick(o)));
-      return wantsAPick(op);
+      if (decided(op, text)) return false;
+      if (op.op === 'cascade') return op.branches.some((b) => b.ops.some((o) => wantsAPick(o, text)));
+      return wantsAPick(op, text);
     }).length;
     const want = asking + (wantsCost || wantsDiscard ? 1 : 0);
     if (asked.length < want) {

@@ -42,6 +42,35 @@ export function changesAnything(opName: string | undefined, c: CardInstance): bo
   return rule ? rule(c) : true;
 }
 
+/**
+ * An ATK bound asked of the number a monster is standing at, not the one
+ * printed on it.
+ *
+ * `matchesFilter` reads printed ATK on purpose — it is called from inside the
+ * stat calculation, and a live reading there would send `effAtk` back through
+ * the auras and into itself. So anything asking about a monster already ON THE
+ * FIELD strips the bounds off the printed pass and asks them again here with a
+ * live number. Two readers need that: the engine's pool and the picker's, and
+ * for as long as the rule lived in the engine alone the two disagreed — the
+ * board offered Ryu-Ran ("1 monster with 1600 or less ATK") a Robotic Knight
+ * standing at 1900 on its own aura, and pointing at it destroyed something
+ * else. Down here, where both can reach it.
+ */
+export function stripAtkBounds(f?: CardFilter): CardFilter | undefined {
+  if (!f || (f.minAtk == null && f.maxAtk == null)) return f;
+  const rest: CardFilter = { ...f };
+  delete rest.minAtk;
+  delete rest.maxAtk;
+  return rest;
+}
+
+export function withinAtkBounds(live: number, f?: CardFilter): boolean {
+  if (!f) return true;
+  if (f.minAtk != null && live < f.minAtk) return false;
+  if (f.maxAtk != null && live > f.maxAtk) return false;
+  return true;
+}
+
 export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (!f) return true;
   if (c.isToken) {

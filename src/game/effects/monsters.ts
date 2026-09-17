@@ -1359,8 +1359,12 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
     effects: [
       {
         trigger: 'onSummon',
+        /* "1 monster your opponent controls with 1600 or less ATK" is the
+           player's pick out of everything in range, not the smallest thing in
+           range — the same fault Dark Jeroid was reported for. */
+        targets: 1,
         ops: [
-          { op: 'destroy', target: sel('opp', 'weakest', { filter: { maxAtk: 1600 } }) },
+          { op: 'destroy', target: sel('opp', 'chosen', { filter: { maxAtk: 1600 } }) },
           /* The second copy of the book, out of the pile. Pegasus's deck stops
              dead when the book is answered, and this is the card that restarts
              it — no target prompt, because there is only ever one thing it can
@@ -3661,12 +3665,18 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
   },
 
   'dark-jeroid': {
+    /* "1 monster your opponent controls" is a decision, and the card had made
+       it: the drain went to whatever was biggest. Reported — "should let you
+       pick which monster loses the atk" — and the fix is the sentence the card
+       was already printing. Draining the strongest is often not the play: 1500
+       off a 1600 puts it in range of anything, and off a 3000 leaves a 1500. */
     text: 'When this monster is Summoned: 1 monster your opponent controls loses 1500 ATK.',
     cry: 'Wither.',
     effects: [
       {
         trigger: 'onSummon',
-        ops: [{ op: 'gainAtk', amount: -1500, target: sel('opp', 'strongest'), duration: 'permanent' }],
+        targets: 1,
+        ops: [{ op: 'gainAtk', amount: -1500, target: OPP_PICK, duration: 'permanent' }],
       },
     ],
   },
@@ -4662,9 +4672,13 @@ export const MONSTER_EFFECTS: Record<string, EffectDef> = {
         targets: 1,
         ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
+      /* One sentence, two triggers, and only one of them was asking — the
+         summon put the choice to the player and the attack took whichever
+         card was biggest. A swing carries no targets with it, so this one
+         parks the question mid-attack and resumes on the answer. */
       {
         trigger: 'onDeclareAttack',
-        ops: [{ op: 'destroy', target: sel('opp', 'strongest', { zone: 'backrow' }) }],
+        ops: [{ op: 'destroy', target: sel('opp', 'chosen', { zone: 'backrow', count: 1 }) }],
       },
       {
         trigger: 'onAnyToGrave',

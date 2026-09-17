@@ -4,7 +4,7 @@
  * never need bespoke UI wiring.
  */
 import { CARDS } from './cards';
-import { changesAnything, matchesFilter, revivable } from './targeting';
+import { changesAnything, matchesFilter, revivable, stripAtkBounds, withinAtkBounds } from './targeting';
 import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
 export interface TargetSpec {
@@ -142,7 +142,10 @@ function chosenSpec(op: Op, owner: string): TargetSpec | null {
           : op.op === 'bounce'
             ? 'Choose a card to return'
             : op.op === 'gainAtk'
-              ? 'Choose a monster to strengthen'
+              /* The same op with the sign flipped is the opposite sentence.
+                 Dark Jeroid takes 1500 off one of theirs and would have asked
+                 which monster to "strengthen". */
+              ? ((op.amount ?? 0) < 0 ? 'Choose a monster to weaken' : 'Choose a monster to strengthen')
               /* Luster Dragon's price. It read "Choose a target", which nobody
                  ever saw while the question went unasked, and which is no
                  sentence at all now that it is put to the player. */
@@ -499,18 +502,42 @@ export function targetCandidates(
    * its own answers, and by the time the effect resolved it had left the hand
    * and the pick matched nothing at all. One rule, asked here, by both.
    */
-  exclude?: string
+  exclude?: string,
+  /**
+   * What a monster on the field is standing at, for a filter that bounds ATK.
+   *
+   * Printed ATK is the wrong number on the board and `matchesFilter` can only
+   * read printed — see `stripAtkBounds`. The engine's pool has asked live for
+   * as long as it has had `passesLiveAtk`, so a picker reading printed is the
+   * two disagreeing, which is this file's oldest bug: Ryu-Ran destroys "1
+   * monster with 1600 or less ATK", the board offered a Robotic Knight
+   * standing at 1900 on its own aura, and pointing at it killed a Kuriboh.
+   * Injected like `isUntargetable`, because `effAtk` lives in the engine and
+   * the engine already imports this file.
+   */
+  liveAtk?: (c: CardInstance, owner: PlayerId) => number
 ): CardInstance[] {
   const foe: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
   const sides: PlayerId[] = spec.side === 'own' ? [viewer] : spec.side === 'opp' ? [foe] : [viewer, foe];
   const out: CardInstance[] = [];
   const keep = (c: CardInstance) => matchesFilter(c, spec.filter);
+  /* On the field the bounds come off the printed pass and are asked again of
+     the live number, exactly as `targetPool` does it. `shownAtk` is what a
+     view carries, so a board with no reader in hand still reads the number it
+     is drawing rather than the one printed on the card. */
+  const onFieldKeep = (c: CardInstance, owner: PlayerId) => {
+    if (!matchesFilter(c, stripAtkBounds(spec.filter))) return false;
+    const f = spec.filter;
+    if (f?.minAtk == null && f?.maxAtk == null) return true;
+    const live = liveAtk ? liveAtk(c, owner) : c.shownAtk;
+    return live == null ? true : withinAtkBounds(live, f);
+  };
   for (const pid of sides) {
     const p = state.players[pid];
     if (spec.zone === 'monster') {
       out.push(
         ...p.monsters
-          .filter((m): m is CardInstance => !!m && keep(m))
+          .filter((m): m is CardInstance => !!m && onFieldKeep(m, pid))
           /* What the engine will actually accept. Celtic Guardian cannot be
              targeted by the opponent's effects and was still offered — Ring of
              Destruction pointed at it destroyed nothing. */
