@@ -88,6 +88,44 @@ if (!canvas) {
 const measures = await page.textContent('[data-measures]').catch(() => '');
 if (measures) console.log('faces: ' + measures.replace(/\s+/g, ' ').trim());
 
+/*
+ * Has everybody got a body?
+ *
+ * The stamp above proves the lab finished drawing. It does not prove there is
+ * anybody in the picture, and that is not a theoretical gap: Tina shipped with
+ * every bone in her skeleton collapsed onto a single point — a mesh with no
+ * volume, `visible: true`, a bounding box of exactly the right height, and a
+ * "Talk to Tina" prompt hanging in an empty arcade. A screenshot of her panel
+ * and a screenshot of a bug that failed to build are the same image, which is
+ * the whole reason this check exists, and it sailed straight through.
+ *
+ * The lab reports how far apart each rig's **bones** are now (`boneSpread`)
+ * rather than the size of its bounding box, which is the only measurement that
+ * tells a person from a speck and the only one that does not depend on whether
+ * the file was authored in metres or centimetres. Anybody whose skeleton is not
+ * the span of a body fails the run by name.
+ */
+const standing = await page.$$eval('[data-spread]', (els) =>
+  els.map((e) => ({ who: e.getAttribute('data-who'), m: Number(e.getAttribute('data-spread')) }))
+);
+if (!standing.length) {
+  console.error('faces: the lab reported no measured heights at all');
+  failed = true;
+} else {
+  /* Hip to crown on the shortest person in the game is about a metre; nobody's
+     skeleton spans two. A collapsed rig measures zero, which is the fault this
+     is here for, and an exploded one measures nonsense. */
+  const LOW = 0.6;
+  const HIGH = 2.2;
+  for (const { who, m } of standing) {
+    if (!Number.isFinite(m) || m < LOW || m > HIGH) {
+      console.error(`faces: ${who}'s bones span ${Number.isFinite(m) ? `${m.toFixed(3)} m` : 'nothing'} — a collapsed or exploded rig, not a character`);
+      failed = true;
+    }
+  }
+  if (!failed) console.log(`faces: all ${standing.length} of them have a skeleton ${LOW}–${HIGH} m tall ✅`);
+}
+
 const file = path.join(OUT, `${BODY ? 'bodies' : 'faces'}${BARE ? '-bare' : ''}${CALIB ? '-calib' : ''}${MODELS ? '-cast' : ''}${ONLY ? `-${ONLY}` : ''}.png`);
 await canvas.screenshot({ path: file });
 console.log(`faces: wrote ${file}`);

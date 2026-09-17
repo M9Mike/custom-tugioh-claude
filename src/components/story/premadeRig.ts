@@ -96,15 +96,6 @@ export interface PremadeRig {
 
 interface Template {
   gltf: GLTF;
-  /**
-   * Which of this model's clips have already been turned additive.
-   *
-   * `makeClipAdditive` rewrites the clip object in place and the clips belong
-   * to the *template*, which is shared by every rig built from it. Without a
-   * ledger the second Tina in a scene subtracts the reference pose a second
-   * time and every gesture she has goes flat.
-   */
-  additive: Set<string>;
   /** Height of the unscaled rest pose, measured once. */
   rawHeight: number;
   /**
@@ -209,7 +200,7 @@ export function loadDuelistTemplate(
        metres, and the file's own units are whatever Blender left them as. */
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const rawHeight = Math.max(0.01, box.max.y - box.min.y);
-    return { gltf, rawHeight, floor: restingFloor(gltf), additive: new Set<string>() };
+    return { gltf, rawHeight, floor: restingFloor(gltf) };
   });
   templates.set(model.id, promise);
   /* A failed fetch must not poison the cache for the retry. */
@@ -521,33 +512,62 @@ export async function buildPremadeRig(
    *
    * The small things somebody does while they are waiting — a stretch, a look
    * up the street, a shift of weight (`scripts/blender/make-gesture.py`). They
-   * are not a fourth state alongside idle, walk and run: they play *over*
-   * whatever those are already doing, once, and stop.
+   * are not a fourth state alongside idle, walk and run: they play over the
+   * top of whatever those are doing, once, and stop.
    *
-   * **Additive, and that is not a preference.** The glTF exporter bakes every
-   * bone into every action, so a gesture clip is a full-skeleton pose in which
-   * the bones it does not move sit at the rest pose — which on these models is
-   * the A-pose. Blended normally it drags the arms back out to the bind, and a
-   * look around arrives with a shrug attached. `makeClipAdditive` subtracts
-   * frame 0, and because every one of these clips *starts* at the rest pose
-   * that leaves a bone it never moves as a zero delta and a bone it does move
-   * as a pure offset. Idle plus gesture is then literally idle plus gesture.
+   * ## Rotation only, and only the bones that move
    *
-   * Built once per template and cached on it, because `makeClipAdditive`
-   * rewrites the clip in place: run twice on the same object it subtracts its
-   * own reference a second time and every gesture goes flat.
+   * The exporter bakes every bone into every action, so a gesture clip as
+   * written is a full-skeleton pose track: a rotation, a **position** and a
+   * scale for all thirty-one bones, in which the ones the gesture never moves
+   * sit at their rest value. Two different disasters come out of that, and the
+   * first one shipped:
+   *
+   * - Those baked **position** tracks put every bone at its rest translation.
+   *   `makeClipAdditive` turns them into deltas of zero, which is correct only
+   *   for as long as the clip really is blended additively — and the moment
+   *   anything drives one of them at a normal weight, every bone in the body
+   *   goes to the origin and the whole skeleton collapses into a single point.
+   *   Tina shipped invisible: thirty-one bones all at Y 0.873, a mesh with no
+   *   volume, and a "Talk to Tina" prompt hanging in an empty arcade. The bind
+   *   pose looked perfect in every measurement I took, because
+   *   `Box3.setFromObject` on a skinned mesh reports the *bind* geometry and
+   *   knows nothing about skinning.
+   * - The baked **rotation** tracks assert the rest pose on every bone the
+   *   gesture does not move, and the rest pose here is the A-pose. Blended
+   *   normally, a look around drags the arms out to the bind and arrives with a
+   *   shrug attached.
+   *
+   * Both go away if the clip only carries what it actually animates. A track
+   * whose values never change is doing nothing but overriding somebody else, so
+   * it is dropped — and every `position` and `scale` track is dropped outright,
+   * because a gesture is rotation and a bone that moves is a bone that has come
+   * off its skeleton. What is left is a handful of quaternion curves that layer
+   * over the idle by ordinary blending, with no additive machinery to get
+   * subtly wrong.
    */
   const gestures = new Map<string, THREE.AnimationAction>();
   for (const clip of template.gltf.animations) {
     if (clip.name === 'Idle' || clip.name === 'Walk' || clip.name === 'Run') continue;
-    if (!template.additive.has(clip.name)) {
-      THREE.AnimationUtils.makeClipAdditive(clip);
-      template.additive.add(clip.name);
+    const moving = clip.tracks.filter((t) => {
+      if (!(t instanceof THREE.QuaternionKeyframeTrack)) return false;
+      const v = t.values;
+      const size = t.getValueSize();
+      for (let i = size; i < v.length; i++) {
+        if (Math.abs(v[i] - v[i % size]) > 1e-4) return true;
+      }
+      return false;
+    });
+    if (!moving.length) {
+      console.error(`premadeRig: ${model.id}'s "${clip.name}" moves nothing — skipped`);
+      continue;
     }
-    const a = mixer.clipAction(clip);
-    a.blendMode = THREE.AdditiveAnimationBlendMode;
+    /* A new clip rather than a trimmed one: `template.gltf.animations` is
+       shared by every rig built from this model, and editing it in place would
+       mean the second Tina in a scene gets whatever the first left behind. */
+    const a = mixer.clipAction(new THREE.AnimationClip(clip.name, clip.duration, moving));
     a.setLoop(THREE.LoopOnce, 1);
-    a.clampWhenFinished = false;
+    a.clampWhenFinished = true;
     a.enabled = false;
     gestures.set(clip.name, a);
   }
@@ -604,7 +624,24 @@ export async function buildPremadeRig(
     body.rotation.z = Math.sin(step * 0.5) * 0.03 * moving;
   };
 
+  /**
+   * The gesture currently running, if one is.
+   *
+   * Held so `update` can hand the bones back. The clip ends on the rest pose
+   * and `clampWhenFinished` holds it there, so without a fade the body would
+   * sit in the bind for a frame and then snap to wherever the idle had got to.
+   * Fading the last third of a second returns the arms to the breath instead.
+   */
+  let playing: THREE.AnimationAction | null = null;
+
   const update = (dt: number, stride: number, groundSpeed: number) => {
+    if (playing) {
+      const clip = playing.getClip();
+      if (!playing.isRunning() || playing.time >= clip.duration - 1e-3) {
+        playing.fadeOut(0.3);
+        playing = null;
+      }
+    }
     if (inert) {
       staticMotion(dt, stride, groundSpeed);
       return;
@@ -676,6 +713,7 @@ export async function buildPremadeRig(
     a.setEffectiveWeight(1);
     a.fadeIn(0.25);
     a.play();
+    playing = a;
     return a.getClip().duration;
   };
 

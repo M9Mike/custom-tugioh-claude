@@ -48,11 +48,81 @@ const CELL = { w: 320, h: 420 };
 const COLS = 3;
 
 /** What the bench can tell you about a head, in the units accessories use. */
+/**
+ * How far apart a character's bones are, at the worst moment of everything
+ * they can do — in metres.
+ *
+ * ## Why bones and not the mesh
+ *
+ * `Box3.setFromObject` on a skinned mesh reports the **bind** geometry
+ * transformed by the mesh matrix. It knows nothing about the skeleton, so a rig
+ * whose bones have all collapsed onto a single point still measures 1.7 m and
+ * still reports `visible: true`. Tina shipped exactly that: thirty-one bones at
+ * one height, a body with no volume, a "Talk to Tina" prompt hanging in an
+ * empty arcade, and every number I looked at saying she was fine.
+ *
+ * Running the skin by hand — `applyBoneTransform` then `localToWorld` — is
+ * right in principle and wrong here, because these bundles disagree about
+ * units: the centimetre-authored ones come back at 0.017 m and fail a working
+ * Sarah. A check that cries wolf on somebody who is standing there is the one
+ * everybody learns to ignore. Bone world positions have neither problem — they
+ * are metres whatever the file was authored in, and a crushed skeleton measures
+ * zero however good the mesh looks.
+ *
+ * ## Why over time and not once
+ *
+ * Because the first version of this measured the rig the instant it was built,
+ * which is the one moment it is guaranteed to be in its rest pose — so it
+ * reported 1.441 m for a Tina who collapsed the moment a gesture played, and
+ * would have passed the very bug it was written for. A check that cannot fail
+ * is worse than no check.
+ *
+ * So this *runs* the character: a second of standing, then every gesture they
+ * own, start to finish, keeping the worst spread it ever sees. It leaves them
+ * settled back on the idle, which is what the photograph wants anyway.
+ */
+function worstSpread(rig: PremadeRig): number {
+  const at = new THREE.Vector3();
+  let worst = Infinity;
+  const measure = () => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    rig.root.traverse((o) => {
+      if (!(o as THREE.Bone).isBone) return;
+      o.getWorldPosition(at);
+      if (!Number.isFinite(at.y)) return;
+      lo = Math.min(lo, at.y);
+      hi = Math.max(hi, at.y);
+    });
+    worst = Math.min(worst, hi > lo ? hi - lo : 0);
+  };
+
+  const STEP = 1 / 30;
+  const run = (seconds: number) => {
+    for (let t = 0; t < seconds; t += STEP) {
+      rig.update(STEP, 0, 0);
+      rig.root.updateMatrixWorld(true);
+      measure();
+    }
+  };
+
+  run(1);
+  for (const name of rig.gestures) {
+    const seconds = rig.gesture(name);
+    run(seconds > 0 ? seconds + 0.5 : 0.5);
+  }
+  /* Back to standing, so the render that follows is of somebody standing. */
+  run(1.5);
+  return worst;
+}
+
 interface Measurement {
   id: string;
   /** Bone units per metre. */
   scale: number;
   height: number;
+  /** The worst bone spread over everything they do. See `worstSpread`. */
+  spread: number;
   boneY: number;
   topY: number;
   /** Skull height above the `Head` bone, in bone units. */
@@ -321,6 +391,7 @@ export default function NpcLab({
             id: cast[i].label,
             scale: k,
             height: rig.height,
+            spread: worstSpread(rig),
             boneY: bonePos ? bonePos.y : NaN,
             topY: box.max.y,
             /* How far the skull rises above the bone, in bone units — the
@@ -422,8 +493,9 @@ export default function NpcLab({
       <div ref={host} className="mt-3 overflow-auto" />
       <ul className="mt-2 text-[11px] text-ptextdim" data-measures>
         {measure.map((m, i) => (
-          <li key={`${m.id}-${i}`}>
-            {m.id} — height {m.height.toFixed(3)}m · bone/m {m.scale.toFixed(4)} · headBone×
+          <li key={`${m.id}-${i}`} data-spread={m.spread.toFixed(3)} data-who={m.id}>
+            {m.id} — height {m.height.toFixed(3)}m · worst bone span {m.spread.toFixed(3)}m · bone/m{' '}
+            {m.scale.toFixed(4)} · headBone×
             {m.boneScale.toFixed(4)}
             {[...m.head.entries()]
               .filter(([, b]) => Number.isFinite(b.min.y))
