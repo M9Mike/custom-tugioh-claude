@@ -30,7 +30,7 @@
  * a Discard button would be a way to walk out still broken.
  */
 
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CARDS } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
@@ -51,6 +51,23 @@ import { sfx } from '@/lib/sfx';
 interface Props {
   /** Everything the player may choose from — the starter pool, or all they own. */
   pool: string[];
+  /**
+   * Cards that arrived since the player last looked, badged until they do.
+   *
+   * Given rather than derived: what counts as new is a fact about the save, not
+   * about this screen, and the screen that shows the badge should not be the
+   * one deciding which cards deserve it.
+   */
+  fresh?: string[];
+  /**
+   * The ones looked at, handed over when the screen closes.
+   *
+   * On close rather than on each hover, because a hover is not worth a round
+   * trip and a player passing over forty cards would make forty of them. The
+   * cost of batching is that force-quitting mid-browse brings a few badges
+   * back, which is the harmless direction to be wrong in.
+   */
+  onSeen?: (slugs: string[]) => void;
   /** Where the builder starts: the current deck when editing, empty when new. */
   initial?: string[];
   /** True the first time: the choice also decides what they will own. */
@@ -78,20 +95,39 @@ const Card = memo(function Card({
   slug,
   held,
   card,
+  fresh,
   onPick,
   onRead,
+  onSeen,
 }: {
   slug: string;
   held: boolean;
   card: CardInstance;
+  /** Arrived since the player last looked, and wearing the badge. */
+  fresh: boolean;
   onPick: (slug: string) => void;
   onRead: (slug: string) => void;
+  onSeen: (slug: string) => void;
 }) {
   return (
     <div
       data-card={slug}
       data-where={held ? 'deck' : 'trunk'}
+      data-fresh={fresh ? '' : undefined}
       className="relative will-change-transform"
+      /*
+       * Three ways to have looked at it, because there are three kinds of
+       * pointer and only one of them hovers.
+       *
+       * `pointerenter` covers a mouse. A phone has no hover at all, so a touch
+       * counts — and it fires on the way *down*, before the tap resolves, so a
+       * card picked up in one motion has still been looked at. `focus` covers a
+       * keyboard, which is the one nobody remembers and the one that would
+       * otherwise leave a badge nothing could ever clear.
+       */
+      onPointerEnter={() => fresh && onSeen(slug)}
+      onTouchStart={() => fresh && onSeen(slug)}
+      onFocus={() => fresh && onSeen(slug)}
     >
       <button
         type="button"
@@ -119,6 +155,7 @@ const Card = memo(function Card({
         * is no room for a second control in the flow; `pointer-events` are only
         * on the button itself, so the rest of the card is still one big target.
         */}
+      {fresh && <span className="new-flash">NEW</span>}
       <button
         type="button"
         onClick={(e) => {
@@ -135,7 +172,7 @@ const Card = memo(function Card({
   );
 });
 
-export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel }: Props) {
+export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, onCancel, onSeen }: Props) {
   const [chosen, setChosen] = useState<string[]>(() => (initial ?? []).filter((s) => pool.includes(s)));
   const [inspect, setInspect] = useState<CardInstance | null>(null);
   const [asking, setAsking] = useState(false);
@@ -145,6 +182,47 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
   const [sort, setSort] = useState<TrunkSort>('curve');
   const [filter, setFilter] = useState<TrunkFilter>('all');
   const [query, setQuery] = useState('');
+
+  /*
+   * Which badges are still up, and which have been cleared this visit.
+   *
+   * `unseen` is state so the badge vanishes the instant the pointer arrives;
+   * `cleared` is a ref because nothing renders from it — it is the note that
+   * goes to the server on the way out, and putting it in state would re-render
+   * the grid on a hover for no visible reason.
+   *
+   * Seeded from the prop once and not re-seeded: the save comes back from the
+   * server with `fresh` already shortened, and a re-seed on that would put
+   * badges back on cards the player had just passed over.
+   */
+  const [unseen, setUnseen] = useState<Set<string>>(() => new Set(fresh ?? []));
+  const cleared = useRef<string[]>([]);
+  const sawIt = useCallback((slug: string) => {
+    setUnseen((was) => {
+      if (!was.has(slug)) return was;
+      cleared.current.push(slug);
+      const next = new Set(was);
+      next.delete(slug);
+      return next;
+    });
+  }, []);
+  /*
+   * Handed over on unmount, whichever way the screen was left.
+   *
+   * One effect rather than a line in both the confirm and the cancel path: a
+   * deck builder can also be left by the browser's back button, and a cleanup
+   * is the only exit that all three share. The ref is read at teardown, so it
+   * carries everything cleared right up to the last frame.
+   */
+  const handOver = useRef(onSeen);
+  /* Kept current in an effect rather than assigned during render: a ref written
+     while rendering is a value React is allowed to throw away. */
+  useEffect(() => {
+    handOver.current = onSeen;
+  });
+  useEffect(() => () => {
+    if (cleared.current.length) handOver.current?.(cleared.current);
+  }, []);
 
   const inDeck = useMemo(() => new Set(chosen), [chosen]);
   const complete = chosen.length === DECK_SIZE;
@@ -521,8 +599,12 @@ export default function DeckBuilder({ pool, initial, first, onConfirm, onCancel 
                 slug={row.slug}
                 held={row.held}
                 card={instances.get(row.slug)!}
+                /* Only in the Trunk. A card already in the deck was put there
+                   deliberately and is not news. */
+                fresh={!row.held && unseen.has(row.slug)}
                 onPick={toggle}
                 onRead={read}
+                onSeen={sawIt}
               />
             ) : row.kind === 'heading' ? (
               <h2

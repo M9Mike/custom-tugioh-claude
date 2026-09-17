@@ -29,6 +29,18 @@ export async function POST(req: Request) {
   if (!canonical) return Response.json({ ok: false, error: 'Not signed in.' }, { status: 401 });
 
   const patch = (body.world ?? {}) as Partial<WorldPosition>;
+  /*
+   * Cards the player has now looked at, which come off `fresh`.
+   *
+   * Sent here rather than to a route of its own because it is the same shape
+   * of thing as a position: a small note about where the player has been,
+   * batched up by the screen and posted when it closes. Filtered to strings
+   * because it arrives over HTTP; a slug that is not in `fresh` simply removes
+   * nothing, so there is nothing to validate it against.
+   */
+  const seen: string[] = Array.isArray(body.seen)
+    ? (body.seen as unknown[]).filter((s): s is string => typeof s === 'string')
+    : [];
 
   try {
     const result = await updateProfile(canonical, (profile) => {
@@ -62,7 +74,10 @@ export async function POST(req: Request) {
       /* `duelDone`: the conversation the duel came out of has picked up again,
          and the note on the save has done its job. */
       const pendingDuel = body.duelDone === true ? null : profile.pendingDuel;
-      return { ok: true, profile: { ...profile, world, pendingDuel } };
+      const fresh = seen.length
+        ? (profile.fresh ?? []).filter((slug) => !seen.includes(slug))
+        : profile.fresh;
+      return { ok: true, profile: { ...profile, world, pendingDuel, fresh } };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });
     return Response.json({ ok: true, profile: result.profile });

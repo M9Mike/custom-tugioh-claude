@@ -69,6 +69,61 @@
  * The one thing it costs: an element carrying `safe-page` may not also set a
  * border. None do, and a screen that needs one can put it on a child.
  */
+/*
+ * The NEW flash on a card that has just arrived in the Trunk.
+ *
+ * Flashy without being neon, which is the whole constraint: the flash is a
+ * *shine* — a band of light travelling across worn brass — rather than a colour
+ * the palette does not have. Two animations, on different periods so they never
+ * lock into one beat: the plate breathes, and the highlight sweeps.
+ *
+ * `pointer-events: none` is load-bearing. The badge sits over the middle of the
+ * card and the card is one big tap target; a badge that ate the tap would be a
+ * card you could not pick up, and the way you dismiss the badge is by reaching
+ * for the card.
+ */
+@keyframes new-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.06); }
+}
+@keyframes new-shine {
+  0% { background-position: 200% 0; }
+  60%, 100% { background-position: -200% 0; }
+}
+.new-flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  z-index: 2;
+  padding: 0.16rem 0.5rem;
+  border: 1px solid var(--brass-bright);
+  border-radius: 2px;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  background-image: linear-gradient(
+    100deg,
+    var(--brass) 0%,
+    var(--brass) 38%,
+    #fbf0cf 50%,
+    var(--brass) 62%,
+    var(--brass) 100%
+  );
+  background-size: 200% 100%;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.65);
+  animation: new-breathe 1.9s ease-in-out infinite, new-shine 2.6s ease-in-out infinite;
+}
+/* Somebody who has asked for less movement gets the badge and none of it. */
+@media (prefers-reduced-motion: reduce) {
+  .new-flash {
+    animation: none;
+    transform: translate(-50%, -50%);
+  }
+}
+
 .safe-page {
   border-top: var(--safe-top) solid transparent;
   border-bottom: var(--safe-bottom) solid transparent;

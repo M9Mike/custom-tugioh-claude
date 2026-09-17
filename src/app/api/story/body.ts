@@ -27,6 +27,8 @@ export interface StoryBody {
   slug?: unknown;
   /** `save`: the duel on the save has been come back from; forget it. */
   duelDone?: boolean;
+  /** `save`: Trunk cards the player has now looked at; take them off `fresh`. */
+  seen?: unknown;
 }
 
 export async function readBody(req: Request): Promise<StoryBody> {
@@ -41,6 +43,7 @@ export async function readBody(req: Request): Promise<StoryBody> {
     slug: obj.slug,
     deck: obj.deck,
     world: obj.world,
+    seen: obj.seen,
     duelDone: obj.duelDone === true,
   };
 }

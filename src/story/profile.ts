@@ -70,6 +70,24 @@ export interface StoryProfile {
    */
   money?: number;
   /**
+   * Cards in the Trunk the player has not looked at yet.
+   *
+   * Written when a card *arrives* — a pack opened, a card bought — and never
+   * when the first deck is locked, because those twenty-five were chosen one
+   * at a time and looked at harder than anything else in the game. Cleared a
+   * card at a time as the player passes over them in the deck builder.
+   *
+   * A list of what is new rather than a list of what has been seen, which is
+   * the same information the other way up and a great deal smaller: the seen
+   * list would grow to the size of the collection and be written on every
+   * glance, and this one empties itself.
+   *
+   * Absent on saves written before it existed, which every reader treats as
+   * nothing new — the right answer for a player who has been collecting since
+   * before the badge existed and should not be handed a screen full of them.
+   */
+  fresh?: string[];
+  /**
    * Which cards have already been pulled from each duelist, keyed by duelist id.
    *
    * The values are `slug#copy` entries — see `packs.ts` for why they are keyed
@@ -134,6 +152,7 @@ export function newProfile(username: string, now: number): StoryProfile {
     collection: [],
     packs: [],
     money: 0,
+    fresh: [],
     pulled: {},
     level: 1,
     xp: 0,

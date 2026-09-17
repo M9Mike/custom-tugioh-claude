@@ -170,6 +170,10 @@ export function openPack(
   const next: StoryProfile = {
     ...profile,
     collection: gained.length ? [...profile.collection, ...gained] : profile.collection,
+    /* What arrived is what is new. Only the kept ones: a duplicate never
+       reaches the Trunk, so badging it would point at a card that is not
+       there. */
+    fresh: gained.length ? [...(profile.fresh ?? []), ...gained] : profile.fresh,
     pulled,
   };
 

@@ -637,8 +637,27 @@ export default function StoryMode() {
         pool={profile.collection}
         initial={profile.deck ?? []}
         first={false}
+        fresh={profile.fresh}
         onConfirm={saveDeck}
         onCancel={() => setScreen('world')}
+        /*
+         * Posted with the position, which is the only reason this needs no
+         * route of its own: `save` already writes the profile under the same
+         * revision guard, so a card being marked seen cannot lose a race with
+         * anything else writing at the same moment.
+         *
+         * Fire and mostly forget. If it fails the badges are still up next
+         * time, which is exactly what should happen when the note never
+         * arrived — so there is nothing to tell the player and nothing to
+         * retry.
+         */
+        onSeen={(slugs) => {
+          void post<{ profile: StoryProfile }>('/api/story/save', { username: name, seen: slugs }).then(
+            (res) => {
+              if (res.ok && res.data.profile) setProfile(res.data.profile);
+            }
+          );
+        }}
       />
     );
   }

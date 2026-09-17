@@ -218,5 +218,9 @@ export function buy(profile: StoryProfile, slug: string): StoryProfile {
     ...profile,
     money: (profile.money ?? 0) - price,
     collection: [...profile.collection, slug],
+    /* Bought counts as new. You have seen the card on the shelf, but you have
+       not seen it in your own Trunk, and the Trunk is where you will be
+       looking for it. */
+    fresh: [...(profile.fresh ?? []), slug],
   };
 }
