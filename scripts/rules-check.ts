@@ -30,7 +30,7 @@ import { revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits, isExtraDeckCard } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices } from '../src/game/ui';
+import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices, worthAsking } from '../src/game/ui';
 import { candidates as aiCandidates } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
@@ -15850,16 +15850,28 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
     pika.summonedOnTurn = 0;
     s.players[ME].monsters = [pika, null, null];
     const opts = ignitionOptions(s, ME, pika);
-    ok(opts.some((o) => o.label === 'Evolve'), 'EVOLVE: Pikachu offers to evolve', opts.map((o) => o.label).join(','));
-    const r = applyAction(s, ME, { type: 'ignition', uid: pika.uid, targets: [] });
-    ok(!r.error, 'EVOLVE: and the button is accepted', r.error);
-    /* Two forms qualify, so the engine asks. */
-    let st = r.state;
-    if (st.pending?.kind === 'choose') {
-      const gmax = st.players[ME].extra.find((c) => c.slug === 'gigantamax-pikachu')!;
-      ok(st.pending.options.includes(gmax.uid), 'EVOLVE: the two forms are the question');
-      st = act(st, ME, { type: 'chooseCard', uids: [gmax.uid] });
-    }
+    const evolveBtn = opts.find((o) => o.label === 'Evolve');
+    ok(!!evolveBtn, 'EVOLVE: Pikachu offers to evolve', opts.map((o) => o.label).join(','));
+    /* Two forms qualify, so the *board* asks — it walks a card's questions
+       before it sends the action, exactly as it does for Monster Reborn — and
+       the question is put over the shelf, where both forms lie. It was put
+       over the Graveyard alone: the picker knew the Extra Deck and the
+       Graveyard and not the pair, so with nothing fallen yet there was
+       nothing to ask and the engine took the strongest. This pin used to wait
+       for the engine to ask instead, behind an `if`, which is a check that
+       could not fail. Reported as "cards like Bond Evolution should allow you
+       to pick". */
+    const gmax = s.players[ME].extra.find((c) => c.slug === 'gigantamax-pikachu')!;
+    const raichu = s.players[ME].extra.find((c) => c.slug === 'raichu')!;
+    const evolveSpec = evolveBtn ? targetSpecForEffect('pikachu', evolveBtn.index) : null;
+    ok(evolveSpec?.zone === 'extraOrGrave', 'EVOLVE: the question is put over the Extra Deck and the Graveyard', JSON.stringify(evolveSpec));
+    const forms = evolveSpec ? targetCandidates(s, ME, evolveSpec, undefined, pika.uid) : [];
+    ok(forms.some((c) => c.uid === gmax.uid) && forms.some((c) => c.uid === raichu.uid) && forms.length === 2,
+      'EVOLVE: the two forms are the question', forms.map((c) => c.slug).join(',') || '(none)');
+    ok(!!evolveSpec && worthAsking(evolveSpec, forms, 1), 'EVOLVE: and it is worth asking');
+    const r = applyAction(s, ME, { type: 'ignition', uid: pika.uid, effectIndex: evolveBtn?.index, targets: [gmax.uid] });
+    ok(!r.error, 'EVOLVE: and the button is accepted with the form named', r.error);
+    const st = r.state;
     const evolved = st.players[ME].monsters.find((m) => m?.slug === 'gigantamax-pikachu');
     ok(!!evolved, 'EVOLVE: Gigantamax Pikachu stands where Pikachu was', st.players[ME].monsters.map((m) => m?.slug).join(','));
     ok(st.players[ME].grave.some((c) => c.slug === 'pikachu'), 'EVOLVE: and Pikachu is in the Graveyard');
@@ -15887,6 +15899,72 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
     ok(summonBlocked(st, ME, 'raichu') !== null, 'EVOLVE: Raichu cannot be Normal Summoned');
     ok(!revivable(st, ME, 'raichu', 'monster-reborn'), 'EVOLVE: nor Monster Reborn\'d');
     ok(revivable(st, ME, 'raichu', 'max-revive'), 'EVOLVE: Max Revive reaches it');
+  }
+
+  /* --- Bond Evolution: six forms, wherever they lie, and the player says which --- */
+  {
+    const forms = new Set(['ash-greninja-ultimate-bond', 'charizard-flame-emperor', 'pikachu-thunder-emperor',
+      'infernape-blaze-unleashed', 'sceptile-forest-overlord', 'lucario-aura-master']);
+    const table = () => {
+      const s = ash();
+      const greninja = card(ME, 'greninja');
+      greninja.summonedOnTurn = 0;
+      s.players[ME].monsters = [greninja, null, null];
+      const bond = card(ME, 'bond-evolution');
+      s.players[ME].hand = [bond];
+      /* One of the six has been out once and fallen; the other five are on
+         the shelf. The question spans both piles or it is not the card's own
+         sentence. */
+      const fallen = s.players[ME].extra.find((c) => c.slug === 'charizard-flame-emperor')!;
+      s.players[ME].extra = s.players[ME].extra.filter((c) => c.uid !== fallen.uid);
+      s.players[ME].grave = [fallen];
+      return { s, greninja, bond, fallen };
+    };
+    const { s, greninja, bond, fallen } = table();
+    const chain = specChainForEffect('bond-evolution', 0);
+    ok(chain.length === 2 && chain[0].zone === 'monster' && chain[1].zone === 'extraOrGrave',
+      'BOND: the Tribute is asked first, then the form, over the Extra Deck and the Graveyard',
+      chain.map((c) => c.zone).join(','));
+    const offered = chain[1] ? targetCandidates(s, ME, chain[1], undefined, bond.uid) : [];
+    const shelf = s.players[ME].extra.find((c) => c.slug === 'sceptile-forest-overlord')!;
+    ok(offered.some((c) => c.uid === shelf.uid), 'BOND: a form on the shelf is offered', offered.map((c) => c.slug).join(','));
+    ok(offered.some((c) => c.uid === fallen.uid), 'BOND: and the fallen one in the Graveyard', offered.map((c) => c.slug).join(','));
+    ok(offered.every((c) => forms.has(c.slug)) && offered.length === 6,
+      'BOND: all six and nothing else — five from the shelf, one from the pile', offered.map((c) => c.slug).join(','));
+    ok(!!chain[1] && worthAsking(chain[1], offered, 1), 'BOND: which is worth asking');
+    /* The one the player names is the one that stands — not the strongest.
+       The Forest Overlord is not the biggest number of the six. */
+    const named = applyAction(s, ME, { type: 'activateSpell', uid: bond.uid, targets: [greninja.uid, shelf.uid] });
+    ok(!named.error, 'BOND: Bond Evolution is accepted with the Tribute and the form named', named.error);
+    const stood = named.state.players[ME].monsters.find((m) => m?.slug === 'sceptile-forest-overlord');
+    ok(!!stood, 'BOND: the form the player named is the one that stands', named.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(named.state.players[ME].grave.some((c) => c.slug === 'greninja'), 'BOND: Greninja paid for it');
+    ok(stood?.atkMod === 500, 'BOND: five hundred heavier for the trust', String(stood?.atkMod));
+    ok(!named.state.pending, 'BOND: and nothing is left to ask', named.state.pending?.kind);
+    /* And the fallen one comes back out of the pile when that is the answer. */
+    const again = table();
+    const back = applyAction(again.s, ME, { type: 'activateSpell', uid: again.bond.uid, targets: [again.greninja.uid, again.fallen.uid] });
+    ok(!back.error && back.state.players[ME].monsters.some((m) => m?.uid === again.fallen.uid),
+      'BOND: the fallen Flame Emperor stands again when it is the one named',
+      back.error ?? back.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  }
+
+  /* --- Charizard: three forms on the shelf, and the button asks which --- */
+  {
+    const s = ash();
+    const zard = card(ME, 'charizard');
+    zard.summonedOnTurn = 0;
+    s.players[ME].monsters = [zard, null, null];
+    const btn = ignitionOptions(s, ME, zard).find((o) => o.label === 'Evolve');
+    ok(!!btn, 'EVOLVE: Charizard offers to evolve');
+    const spec = btn ? targetSpecForEffect('charizard', btn.index) : null;
+    const offered = spec ? targetCandidates(s, ME, spec, undefined, zard.uid).map((c) => c.slug).sort() : [];
+    ok(offered.join(',') === ['gigantamax-charizard', 'mega-charizard-x', 'mega-charizard-y'].join(','),
+      'EVOLVE: Mega X, Mega Y and Gigantamax are the question', offered.join(',') || '(none)');
+    const y = s.players[ME].extra.find((c) => c.slug === 'mega-charizard-y')!;
+    const r = applyAction(s, ME, { type: 'ignition', uid: zard.uid, effectIndex: btn?.index, targets: [y.uid] });
+    ok(!r.error && r.state.players[ME].monsters.some((m) => m?.slug === 'mega-charizard-y'),
+      'EVOLVE: and Mega Charizard Y is the one that stands', r.error ?? r.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
   /* --- The Master: two other Level 8s pay for it --- */

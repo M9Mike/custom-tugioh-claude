@@ -609,3 +609,22 @@ for the next rung (two unproved cards still cannot swear each other in), and
 `card-audit` drives a `summonOnlyBy` card through a plain ignition road, with
 the road's own Tribute cost stocked, and through a destruction road by
 breaking the summoner with a Dark Hole.
+
+**The Extra Deck was a pile the picker did not know.** Reported as "cards
+like Bond Evolution should allow you to pick" — Monster Reborn asks, Blue-Eyes
+asks, and Bond Evolution took the strongest of its six forms without a word.
+The board walks a card's questions before it sends the action, and the
+question a Special Summon asks is built from the piles its `from` names; that
+map knew hand, Deck and Graveyard, and `['extra', 'grave']` fell through to
+`grave` — so the evolution road's question was put over the Graveyard alone,
+which is empty until a form has fallen, and Pikachu's, Charizard's and Bond
+Evolution's forms were never offered. `extraOrGrave` is a zone now (`ui.ts`),
+`targetCandidates` reads the shelf first and the pile second, the modal
+labels a card from the Extra Deck as such, and the AI's pile ranking includes
+it so the brain still chooses the form. `picker-check` gained question E:
+every summon op is held to a zone covering the whole of its `from`, which
+named the three cards with the fault put back; `rules-check` pins all three at
+the board's layer — the spec, the candidates, `worthAsking` — and proves the
+engine stands the form that was *named*, not the biggest number. The EVOLVE
+pin used to wait for the *engine* to ask, behind an `if`: it could not fail,
+and did not.

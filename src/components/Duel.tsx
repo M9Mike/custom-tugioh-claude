@@ -2544,7 +2544,8 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
           mode.spec.zone === 'extra' ||
           mode.spec.zone === 'handOrDeck' ||
           mode.spec.zone === 'deckOrGrave' ||
-          mode.spec.zone === 'handOrDeckOrGrave') && (
+          mode.spec.zone === 'handOrDeckOrGrave' ||
+          mode.spec.zone === 'extraOrGrave') && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
           style={{ paddingTop: 'calc(var(--safe-top) + 1rem)', paddingBottom: 'calc(var(--safe-bottom) + 1rem)' }}
@@ -2588,7 +2589,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
                           ? 'hand'
                           : mine.deck.some((d) => d.uid === c.uid)
                             ? 'deck'
-                            : 'grave'}
+                            : mine.extra.some((x) => x.uid === c.uid)
+                              ? 'extra deck'
+                              : 'grave'}
                       </p>
                     )}
                   </button>
@@ -2596,7 +2599,9 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
             </div>
             {![...mine.hand, ...mine.deck, ...mine.grave, ...mine.extra].some((c) => targetableSet.has(c.uid)) && (
               <p className="py-4 text-center text-xs text-ptextdim">
-                Nothing in your {mode.spec.zone === 'extra' ? 'Extra Deck' : 'Deck'} matches.
+                Nothing in your{' '}
+                {mode.spec.zone === 'extra' ? 'Extra Deck' : mode.spec.zone === 'extraOrGrave' ? 'Extra Deck or Graveyard' : 'Deck'}{' '}
+                matches.
               </p>
             )}
           </div>

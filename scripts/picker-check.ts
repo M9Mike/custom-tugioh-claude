@@ -48,8 +48,8 @@
 import { readFileSync } from 'node:fs';
 import { canActivateFromHand, canActivateSetCard, canChangePosition, canIgnite, createDuel, matchesFilter } from '../src/game/engine';
 import { CARDS } from '../src/game/cards';
-import { pickerSides, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '../src/game/ui';
-import type { CardDef, CardFilter, CardInstance, DuelState, PlayerId, Trigger } from '../src/game/types';
+import { pickerSides, specChainForEffect, targetCandidates, targetSpecFor, targetSpecForEffect, type TargetSpec } from '../src/game/ui';
+import type { CardDef, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from '../src/game/types';
 
 const ONLY = process.argv[2];
 const ME: PlayerId = 'p1';
@@ -191,6 +191,12 @@ function satisfy(s: DuelState, spec: TargetSpec, self: string) {
         break;
       case 'hand':
         p.hand.push(c);
+        break;
+      /* The shelf, and the shelf-or-pile pair the evolution road reads: the
+         card only has to be reachable, and the Extra Deck is in both. */
+      case 'extra':
+      case 'extraOrGrave':
+        p.extra.push(c);
         break;
       case 'monster':
         if (def?.kind === 'monster') {
@@ -498,7 +504,73 @@ for (const def of Object.values(CARDS)) {
   }
 }
 
-console.log(`\nPicker path — ${examined} card/trigger pairs reachable, ${checks} checks`);
+/*
+ * E. Every pile a Special Summon reaches is a pile its question is put over.
+ *
+ * The engine honours a named uid from whichever pile `from` lists, and it has
+ * always chosen for the player from every one of them when nothing was named.
+ * The *question* was narrower: the picker knew hand, Deck and Graveyard, and a
+ * summon "from your Extra Deck or Graveyard" was asked over the Graveyard
+ * alone — so Bond Evolution, and every Pokémon's Evolve button with more than
+ * one form to step into, offered nothing until a form had already fallen and
+ * the engine took the strongest off the shelf. Reported as "cards like Bond
+ * Evolution should allow you to pick".
+ *
+ * A pile the picker does not know is a summon nobody is asked about, so this
+ * reads every summon op the way the engine does and holds the chain to it.
+ * Ops that have answered their own question — the strongest, the weakest, at
+ * random — and ops with exactly one name to call are not decisions and are
+ * not asked; everything else must be asked over the whole of `from`.
+ */
+const PILES_OF: Record<TargetSpec['zone'], string[]> = {
+  monster: [],
+  spellTrap: [],
+  backrow: [],
+  grave: ['grave'],
+  hand: ['hand'],
+  deck: ['deck'],
+  extra: ['extra'],
+  handOrDeck: ['hand', 'deck'],
+  deckOrGrave: ['deck', 'grave'],
+  handOrDeckOrGrave: ['hand', 'deck', 'grave'],
+  extraOrGrave: ['extra', 'grave'],
+};
+const SELF_RULED = new Set(['strongest', 'weakest', 'random']);
+function summonOps(ops: Op[]): Op[] {
+  const out: Op[] = [];
+  for (const op of ops) {
+    if (op.op === 'specialSummon') out.push(op);
+    if (op.op === 'cascade') for (const b of op.branches) out.push(...summonOps(b.ops));
+  }
+  return out;
+}
+let summonsAsked = 0;
+for (const def of Object.values(CARDS)) {
+  if (ONLY && def.slug !== ONLY) continue;
+  def.effects.forEach((eff, index) => {
+    for (const op of summonOps(eff.ops)) {
+      if (op.op !== 'specialSummon') continue;
+      if ('pick' in op && typeof op.pick === 'string' && SELF_RULED.has(op.pick)) continue;
+      if (op.filter?.slugs?.length === 1) continue;
+      const piles = Array.isArray(op.from) ? op.from : [op.from];
+      const chain = specChainForEffect(def.slug, index);
+      const covered = chain.some((spec) => piles.every((z) => PILES_OF[spec.zone].includes(z)));
+      summonsAsked += 1;
+      ok(
+        covered,
+        `${def.name}: its summon from ${piles.join(' or ')} is asked over every pile`,
+        `${def.name} (effect ${index}, ${eff.trigger}) Special Summons from ${piles.join(' or ')} but is asked over ${
+          chain.length ? chain.map((c) => c.zone).join(', ') : 'nothing'
+        } — the engine will choose from the rest`
+      );
+    }
+  });
+}
+if (!ONLY && summonsAsked < 20) {
+  fail(`only ${summonsAsked} Special Summons were read — the walk over the cards has probably drifted`);
+}
+
+console.log(`\nPicker path — ${examined} card/trigger pairs reachable, ${summonsAsked} summons read, ${checks} checks`);
 if (problems.length) {
   console.log('\nCards the interface and the rules disagree about:');
   for (const p of problems) console.log(`  ❌ ${p}`);

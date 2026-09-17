@@ -31,7 +31,14 @@ export interface TargetSpec {
     | 'extra'
     | 'handOrDeck'
     | 'deckOrGrave'
-    | 'handOrDeckOrGrave';
+    | 'handOrDeckOrGrave'
+    /* The evolution road: the next form is on the shelf, or it has been out
+       once and fallen. One question over both piles — the picker knew the
+       Extra Deck and the Graveyard and not the pair, so Bond Evolution and
+       every Evolve button with two forms to step into were asked over the
+       Graveyard alone and the engine took the strongest off the shelf.
+       Reported as "cards like Bond Evolution should allow you to pick". */
+    | 'extraOrGrave';
   count: number;
   prompt: string;
   /** Narrows what may be picked — a Deck search is rarely "any card". */
@@ -241,6 +248,11 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
        the queue: Necroshade summons and then searches, and with the summon
        silent the search's prompt became the card's first question. The cost is
        asked first by being asked first, which is where that rule now lives. */
+    /* Read as a whole, not as the first pile that matches: `['extra', 'grave']`
+       fell through to `grave` and the question was put over one pile of the
+       two. Every combination a card uses is named here, and `picker-check`
+       (E) holds every summon op to a zone that covers the whole of its
+       `from`, so a new pair fails there rather than asking half a question. */
     const pool: TargetSpec['zone'] | null =
       wants('grave') && wants('deck') && wants('hand')
         ? 'handOrDeckOrGrave'
@@ -248,13 +260,17 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
           ? 'deckOrGrave'
           : wants('hand') && wants('deck')
             ? 'handOrDeck'
-            : wants('grave')
-              ? 'grave'
-              : wants('hand')
-                ? 'hand'
-                : wants('deck')
-                  ? 'deck'
-                  : null;
+            : wants('extra') && wants('grave')
+              ? 'extraOrGrave'
+              : wants('grave')
+                ? 'grave'
+                : wants('hand')
+                  ? 'hand'
+                  : wants('deck')
+                    ? 'deck'
+                    : wants('extra')
+                      ? 'extra'
+                      : null;
     if (!pool) return null;
     return {
       side: op.side === 'both' ? 'both' : 'own',
@@ -560,6 +576,13 @@ export function targetCandidates(
       out.push(...p.deck.filter(keep));
     } else if (spec.zone === 'extra' && pid === viewer) {
       out.push(...p.extra.filter((c) => keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy))));
+    } else if (spec.zone === 'extraOrGrave' && pid === viewer) {
+      /* The shelf first, then the pile: the form still in the Extra Deck is
+         the usual answer, the fallen one the comeback. */
+      const legal = (c: CardInstance) =>
+        keep(c) && (!spec.revivableOnly || revivable(state, viewer, c.slug, spec.revivableBy));
+      out.push(...p.extra.filter(legal));
+      out.push(...p.grave.filter(legal));
     } else if ((spec.zone === 'handOrDeck' || spec.zone === 'deckOrGrave' || spec.zone === 'handOrDeckOrGrave') && pid === viewer) {
       /* One pool, laid out in the order a player would reach for it: the copy
          already in hand costs nothing, the Deck is next, and the Graveyard

@@ -1196,7 +1196,7 @@ function rankPool(state: DuelState, pool: CardInstance[]): CardInstance[] {
  * fetching is the one that finishes the Fusion in hand, not the biggest
  * number in the Deck, and only the deck's own brain knows which that is.
  */
-const PILES = new Set(['deck', 'grave', 'hand', 'handOrDeck', 'deckOrGrave', 'handOrDeckOrGrave']);
+const PILES = new Set(['deck', 'grave', 'hand', 'extra', 'handOrDeck', 'deckOrGrave', 'handOrDeckOrGrave', 'extraOrGrave']);
 function rankPile(state: DuelState, pid: PlayerId, slug: string, spec: TargetSpec, pool: CardInstance[]): CardInstance[] {
   const brain = PILES.has(spec.zone) ? brainFor(state.players[pid].duelistId) : null;
   if (brain?.rankChoice && pool.length > 1) {
