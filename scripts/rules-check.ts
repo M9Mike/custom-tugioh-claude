@@ -15949,6 +15949,31 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       back.error ?? back.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
+  /* --- Poké Ball: one question, in words that fit whichever branch runs --- */
+  {
+    const s = ash();
+    const ball = card(ME, 'poke-ball');
+    s.players[ME].hand = [ball];
+    s.players[ME].deck.push(card(ME, 'pikachu'), card(ME, 'rowlet'), card(ME, 'snorlax'));
+    const chain = specChainForEffect('poke-ball', 0);
+    ok(chain.length === 1 && chain[0].zone === 'deck', 'BALL: the Deck is the question', chain.map((c) => c.zone).join(','));
+    /* The first branch searches and the second Special Summons the same pick,
+       and the prompt used to be the first branch's — "add to your hand" over
+       a Pokémon about to stand up. */
+    ok(chain[0]?.prompt === 'Choose a card from your Deck', 'BALL: and the sentence fits both branches', chain[0]?.prompt);
+    const offered = chain[0] ? targetCandidates(s, ME, chain[0], undefined, ball.uid).map((c) => c.slug).sort() : [];
+    ok(offered.join(',') === 'pikachu,rowlet,snorlax', 'BALL: every Pokémon in the Deck is offered', offered.join(','));
+    const rowlet = s.players[ME].deck.find((c) => c.slug === 'rowlet')!;
+    const empty = applyAction(structuredClone(s), ME, { type: 'activateSpell', uid: ball.uid, targets: [rowlet.uid] });
+    ok(!empty.error && empty.state.players[ME].monsters.some((m) => m?.uid === rowlet.uid),
+      'BALL: with no monsters, the one named stands', empty.error ?? empty.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    const held = structuredClone(s);
+    held.players[ME].monsters = [card(ME, 'infernape'), null, null];
+    const drawn = applyAction(held, ME, { type: 'activateSpell', uid: ball.uid, targets: [rowlet.uid] });
+    ok(!drawn.error && drawn.state.players[ME].hand.some((c) => c.uid === rowlet.uid),
+      'BALL: with a monster out, the one named comes to hand', drawn.error ?? drawn.state.players[ME].hand.map((c) => c.slug).join(','));
+  }
+
   /* --- Charizard: three forms on the shelf, and the button asks which --- */
   {
     const s = ash();

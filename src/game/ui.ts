@@ -198,6 +198,18 @@ function chosenSpec(op: Op, owner: string): TargetSpec | null {
  *
  * The index is what lets `specChain` find the questions that come *after* it.
  */
+/** Where a pool is, for a prompt that has to serve more than one verb. */
+const POOL_PHRASE: Partial<Record<TargetSpec['zone'], string>> = {
+  deck: ' from your Deck',
+  hand: ' from your hand',
+  grave: ' from your Graveyard',
+  extra: ' from your Extra Deck',
+  handOrDeck: ' from your hand or Deck',
+  deckOrGrave: ' from your Deck or Graveyard',
+  handOrDeckOrGrave: ' from your hand, Deck or Graveyard',
+  extraOrGrave: ' from your Extra Deck or Graveyard',
+};
+
 function scanOpsAt(ops: Op[], owner: string): { spec: TargetSpec; at: number } | null {
   for (let i = 0; i < ops.length; i++) {
     const spec = scanOp(ops[i], owner);
@@ -227,11 +239,25 @@ function scanOp(op: Op, owner: string): TargetSpec | null {
      answer is the one asked for: a branch that does not run simply leaves the
      answer unconsumed, which the ops already tolerate. */
   if (op.op === 'cascade') {
+    const asked: TargetSpec[] = [];
     for (const branch of op.branches) {
       const spec = scanOps(branch.ops, owner);
-      if (spec) return spec;
+      if (spec) asked.push(spec);
     }
-    return null;
+    if (!asked.length) return null;
+    /* Two branches asking over one pool are one question, and its sentence
+       has to fit whichever branch runs. Poké Ball adds a Pokémon from the
+       Deck to your hand, or Special Summons it if you control no monsters —
+       the first branch's prompt said "add to your hand" over a pick that was
+       about to stand up. Same side, zone, count and filter: the prompt names
+       the pool and nothing more. */
+    const [first, ...rest] = asked;
+    const same = (a: TargetSpec, b: TargetSpec) =>
+      a.side === b.side && a.zone === b.zone && a.count === b.count && JSON.stringify(a.filter ?? null) === JSON.stringify(b.filter ?? null);
+    if (rest.some((b) => b.prompt !== first.prompt && same(first, b))) {
+      return { ...first, prompt: `Choose a card${POOL_PHRASE[first.zone] ?? ''}` };
+    }
+    return first;
   }
   /* Every zone the op actually reaches, not the two that happened to be
      written first. `from: 'deck'` and `from: ['hand', 'deck']` both fell
