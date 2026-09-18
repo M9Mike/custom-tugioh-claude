@@ -46,7 +46,7 @@ import {
   AREAS, dhBay, DH_BAY, DH_BAYS, DH_CORR, DH_EAVES, DH_FIELD, DH_FLIGHT, DH_FLIGHT_STEPS,
   DH_FLOOR, DH_GATE, DH_GATE_HALF, DH_GYM, DH_GYM_DOOR, DH_HALL, DH_IN, DH_INNER, DH_LIBRARY, DH_MAIN,
   DH_DESKS, DH_OPEN, DH_OPEN_UP, DH_POOL, DH_ROOM, DH_SPECIAL, DH_THINGS, DH_TOWER, DH_TOWERS, DH_TRACK,
-  DH_UPPER, DH_WALKS, groundAt, type HighThing,
+  DH_UPPER, DH_WALKS, groundAt, type HighThing, goalBack,
 } from '../../../src/story/areas';
 
 const AREA = AREAS['domino-high'];
@@ -515,7 +515,9 @@ export function buildHigh(anisotropy: number): BuiltArea {
     for (const f of floors) {
       const open = f === DH_FLOOR ? DH_OPEN : DH_OPEN_UP;
       for (let i = 0; i < DH_BAYS; i++) {
-        if (i === DH_HALL) continue;
+        /* Nothing across the entrance hall — on the ground floor. Upstairs
+           the staff room stands over it, behind a wall like any other. */
+        if (i === DH_HALL && f === DH_FLOOR) continue;
         const c = dhBay(i);
         const isOpen = open.includes(i);
         /*
@@ -1039,8 +1041,12 @@ export function buildHigh(anisotropy: number): BuiltArea {
          them: flush, a goal is four planes shared at every corner. */
       for (const s of [-1, 1] as const) put(0.16, 2.36, 0.16, cream, t.x + s * 3.62, y + 1.18, t.z, g);
       put(t.hw * 2 + 0.16, 0.16, 0.2, cream, t.x, y + 2.44, t.z, g);
-      for (const s of [-1, 1] as const) put(0.1, 2.24, 0.1, steelPale, t.x + s * 3.62, y + 1.12, t.z + 1.1, g);
-      put(t.hw * 2 + 0.1, 0.1, 0.14, steelPale, t.x, y + 2.29, t.z + 1.1, g);
+      /* The net's frame stands behind the goal line, which is away from the
+         pitch — both goals used to carry it at `z + 1.1`, so the north one
+         had its net across its own mouth. `goalBack` is the collision's. */
+      const back = t.z + goalBack(t);
+      for (const s of [-1, 1] as const) put(0.1, 2.24, 0.1, steelPale, t.x + s * 3.62, y + 1.12, back, g);
+      put(t.hw * 2 + 0.1, 0.1, 0.14, steelPale, t.x, y + 2.29, back, g);
     },
     backstop: (t) => {
       const g = { group: 'backstop' };

@@ -118,6 +118,19 @@ def _is_turned(box):
     return 1 if off > 1e-4 else 0
 
 
+def _footprint(box):
+    """For a captured box turned about the vertical alone: [cx, cz, hw, hd, turn]."""
+    if not box:
+        return None
+    e = box['matrix']
+    if abs(e[1]) + abs(e[4]) + abs(e[6]) + abs(e[9]) > 1e-4:
+        return None  # pitched or rolled: its world box will have to do
+    sx = math.hypot(e[0], e[1], e[2])
+    sz = math.hypot(e[8], e[9], e[10])
+    turn = math.atan2(-e[2], e[0])
+    return [round(e[12], 4), round(e[14], 4), round(box['w'] * sx / 2, 4), round(box['d'] * sz / 2, 4), round(turn, 5)]
+
+
 def build_port(k, layout, dressing, art, mats, capture):
     drop = {}
     for d in dressing.get('drop', []):
@@ -205,19 +218,23 @@ def build_port(k, layout, dressing, art, mats, capture):
                 k.mesh(mats[upright], pos, walls, uv=None, part=None)
                 bm_parts = k._bake_for(mats[upright])[1]
                 for pp in boxes:
-                    bm_parts.append([round(pp[0], 4), round(pp[1], 4), round(pp[2], 4), round(pp[3], 4), round(pp[4] - 0.01, 4), round(pp[5], 4), int(pp[6]) if len(pp) > 6 else 0])
+                    bm_parts.append([round(pp[0], 4), round(pp[1], 4), round(pp[2], 4), round(pp[3], 4), round(pp[4] - 0.01, 4), round(pp[5], 4), int(pp[6]) if len(pp) > 6 else 0] + [round(v, 5) for v in pp[7:12]])
             if not flat:
                 kept += 1
                 continue
-            m = dict(m, idx=flat, parts=[[pp[0], pp[4], pp[2], pp[3], pp[4], pp[5]] + [int(pp[6]) if len(pp) > 6 else 0] for pp in boxes])
+            m = dict(m, idx=flat, parts=[[pp[0], pp[4], pp[2], pp[3], pp[4], pp[5]] + [int(pp[6]) if len(pp) > 6 else 0] + list(pp[7:12]) for pp in boxes])
         if m.get('parts'):
             # a merge says what it was made of; put the parts through as they were
             bm_parts = k._bake_for(mat)[1]
             k.mesh(mat, m['pos'], m['idx'], uv=uv, part=None)
             for p in m['parts']:
-                bm_parts.append([round(p[0], 4), round(p[1], 4), round(p[2], 4), round(p[3], 4), round(p[4], 4), round(p[5], 4), int(p[6]) if len(p) > 6 else 0])
+                bm_parts.append([round(v, 4) for v in p[:6]] + [int(p[6]) if len(p) > 6 else 0] + [round(v, 5) for v in p[7:12]])
         else:
-            k.mesh(mat, m['pos'], m['idx'], uv=uv, part=_aabb(m['pos']), turned=_is_turned(m.get('box')))
+            turned = _is_turned(m.get('box'))
+            k.mesh(mat, m['pos'], m['idx'], uv=uv, part=_aabb(m['pos']), turned=turned)
+            foot = _footprint(m.get('box')) if turned else None
+            if foot:
+                k._bake_for(mat)[1][-1].extend(foot)
         kept += 1
     for p in dressing.get('props', []):
         k.import_model(p['model'], p['x'], p.get('y', 0.0), p['z'], rot_y=p.get('rotY', 0.0), scale=p.get('scale', 1.0), base=p.get('base', 'floor'))

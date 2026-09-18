@@ -347,9 +347,15 @@ class Kit:
         xs = [p[0] for p in world]
         ys = [p[1] for p in world]
         zs = [p[2] for p in world]
-        is_turned = 1 if (turned if turned is not None else (abs(math.sin(rot_y)) > 1e-6 or abs(math.sin(rot_x)) > 1e-6 or abs(math.sin(rot_z)) > 1e-6)) else 0
-        parts.append([round(min(xs), 4), round(min(ys), 4), round(min(zs), 4),
-                      round(max(xs), 4), round(max(ys), 4), round(max(zs), 4), is_turned])
+        is_turned = turned if turned is not None else (1 if (abs(math.sin(rot_y)) > 1e-6 or abs(math.sin(rot_x)) > 1e-6 or abs(math.sin(rot_z)) > 1e-6) else 0)
+        part = [round(min(xs), 4), round(min(ys), 4), round(min(zs), 4),
+                round(max(xs), 4), round(max(ys), 4), round(max(zs), 4), is_turned]
+        # a box turned about the vertical alone carries its true footprint —
+        # centre, half sizes and the turn — so a check can test it in its own
+        # frame instead of the box of air its world box is; see `walls-check.ts`
+        if is_turned == 1 and abs(math.sin(rot_x)) < 1e-6 and abs(math.sin(rot_z)) < 1e-6:
+            part += [round(cx, 4), round(cz, 4), round(w / 2, 4), round(d / 2, 4), round(rot_y, 5)]
+        parts.append(part)
         return parts[-1]
 
     def mesh(self, mat, pos, idx, uv=None, part=None, turned=0):
@@ -495,7 +501,8 @@ class Kit:
         kind bake into one mesh, not a hundred."""
         mat = self.picture(f'cutout:{os.path.basename(png_path)}', png_path, rough=0.9, cutout=True)
         for turn in (0.0, math.pi / 2):
-            self.box(mat, x, y + height / 2, z, width, height, 0.002, rot_y=rot_y + turn, uv='fit', uv_face='front', turned=1, faces={'front', 'back'})
+            # `turned=2`: a picture, which no check may take for a wall or a floor
+            self.box(mat, x, y + height / 2, z, width, height, 0.002, rot_y=rot_y + turn, uv='fit', uv_face='front', turned=2, faces={'front', 'back'})
 
     # ---------------------------------------------------------------- props
 

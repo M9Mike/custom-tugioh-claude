@@ -93,7 +93,9 @@ export default function StoryMenu(p: StoryMenuProps) {
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] sm:grid-cols-1">
             <div>
               <dt className="text-[9px] uppercase tracking-widest text-ptextdim">Level</dt>
-              <dd className="font-display text-base text-parchment">{p.level}</dd>
+              {/* The value reads "Level 1" to a screen reader and to the
+                  story check, and shows the number under its label. */}
+              <dd className="font-display text-base text-parchment"><span className="sr-only">Level </span>{p.level}</dd>
             </div>
             <div>
               <dt className="text-[9px] uppercase tracking-widest text-ptextdim">Purse</dt>

@@ -76,6 +76,8 @@
     "stairs": "tsx scripts/stairs-check.ts",
     "carryon": "tsx scripts/carryon-check.ts",
     "soak": "tsx scripts/soak-check.ts",
+    "whystop": "tsx scripts/whystop.ts",
+    "parts": "node scripts/parts-near.mjs",
     "walls": "tsx scripts/walls-check.ts",
     "doorshots": "tsx scripts/door-shots.ts",
     "ash": "tsx scripts/ash-check.ts",

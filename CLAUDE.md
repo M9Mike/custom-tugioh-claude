@@ -387,7 +387,42 @@ audited four base plates as four clean rooms, and the first time it saw
 the shop it found forty-one hairline faces nobody had measured: a pegboard
 hung in the plane of the dado rail, shelving whose boards ran through its
 back panel, a door frame whose uprights ran up through its head, a kick
-plate two millimetres off its door.
+plate two millimetres off its door. And a part is a *box*: a merge's
+turned box came through the port as its world bounding box, which for a
+shed turned a few degrees is mostly air, and `walls` walked into two
+hundred and thirty-six drawn things in the shrine alone — so a part turned
+about the vertical carries its true footprint (`[…, cx, cz, hw, hd, turn]`,
+see `BakedPart`) and the checks test it in its own frame, and a picture on
+crossed planes is flagged `2` and is neither a wall nor a floor to any of
+them.
+
+**The walls test was hollow for months, and what it found when it woke up is a
+list of habits.** Until 18 September 2026 `npm run walls` could not report a
+wall of air near the ground: the old world's base plate was a rotated plane
+whose *local* height was the world's depth, so one box 184 m tall "drew" every
+stop in the city. The port writes every slab as a zero-height part, the test
+woke up, and eight areas failed at once — none of it made by the port, all of
+it inherited. The kinds, so they are not drawn again: a solid at the *building
+line* under a plinth course proud of it (Black Crown's twenty runs at 0.42 m,
+the towers' podiums at 0.7 — you stood in stone to the shins); a run overrun
+seventy centimetres past its corner into a square that is walked; a cheek or a
+rail solid fifteen centimetres past the treads it was written for; one block
+over nine bicycle racks with two and a half metres of shed between each; a
+thing drawn at a fixed size and turned, with its rectangle written in world
+axes, beside a thing drawn from its own `hw` and turned, with its rectangle
+written in local axes (`blackCrownSolids` turns only the board); a `tall`
+parapet round a hole in the lobby floor, standing on up through the mezzanine
+that runs over the hole; the last tread of a flight skipped *with its cheeks*;
+one parapet hung level at mid-height beside a flight that climbs seven metres;
+an understair boxed to the top of the flight, where the headroom is four
+metres. Three instruments name a fault in a minute: `npm run walls -- <area>
+--why=x,z/x,z` says what is drawn near each stop, `npm run whystop -- <area>
+x,z,dx,dz` says which solid stops her there, and `npm run parts -- <area>
+x,y,z` lists the boxes the file holds at a point. And the test learnt three
+things about itself: she is 0.76 m wide, so what stops her is looked for under
+each shoulder as well as down the middle; a five-centimetre desk top is not a
+floor sheet; and the look for "standing inside a drawn thing" is made at the
+knee as well as the hip, because a plinth course is knee high.
 
 ## How the world is put together
 

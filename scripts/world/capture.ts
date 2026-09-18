@@ -158,7 +158,29 @@ function partsOf(pos: number[], idx: number[]): number[][] | undefined {
       const x = pos[v * 3], z = pos[v * 3 + 2];
       return (Math.abs(x - x0) > eps && Math.abs(x - x1) > eps) || (Math.abs(z - z0) > eps && Math.abs(z - z1) > eps);
     }) ? 1 : 0;
-    parts.push([round(x0), round(y0), round(z0), round(x1), round(y1), round(z1), turned]);
+    const part = [round(x0), round(y0), round(z0), round(x1), round(y1), round(z1), turned];
+    /* A box turned about the vertical says its footprint — centre, half
+       sizes, turn — read off its top face: the corner nearest the top, and
+       the two edges leaving it. The walls check tests it in that frame. */
+    if (turned) {
+      const top = g.filter((v) => Math.abs(pos[v * 3 + 1] - y1) < eps).map((v) => [pos[v * 3], pos[v * 3 + 2]] as [number, number]);
+      const uniq: [number, number][] = [];
+      for (const c of top) if (!uniq.some((u) => Math.abs(u[0] - c[0]) < eps && Math.abs(u[1] - c[1]) < eps)) uniq.push(c);
+      if (uniq.length === 4) {
+        const a = uniq[0];
+        const rest = uniq.slice(1).map((c) => ({ c, d: Math.hypot(c[0] - a[0], c[1] - a[1]) })).sort((p, q) => p.d - q.d);
+        const [b, c] = [rest[0].c, rest[1].c];
+        const e1 = [b[0] - a[0], b[1] - a[1]], e2 = [c[0] - a[0], c[1] - a[1]];
+        const t1 = Math.atan2(-e1[1], e1[0]), t2 = Math.atan2(-e2[1], e2[0]);
+        const wrap = (t: number) => Math.atan2(Math.sin(t), Math.cos(t));
+        const useFirst = Math.abs(wrap(t1)) <= Math.abs(wrap(t2));
+        const turn = wrap(useFirst ? t1 : t2);
+        const hw = (useFirst ? rest[0].d : rest[1].d) / 2;
+        const hd = (useFirst ? rest[1].d : rest[0].d) / 2;
+        part.push(round((x0 + x1) / 2), round((z0 + z1) / 2), round(hw), round(hd), Math.round(turn * 1e5) / 1e5);
+      }
+    }
+    parts.push(part);
   }
   return parts;
 }

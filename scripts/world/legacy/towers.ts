@@ -43,7 +43,7 @@ import {
   CT_DROP, CT_DROP_N, CT_DROP_S, CT_EAST, CT_EAST_SHAFT, CT_EDOOR, CT_ELOBBY, CT_GALLERY,
   CT_GATE, CT_GATE_HALF, CT_IN, CT_LOBBY, CT_LOW, CT_MEZZ, CT_RISE, CT_ROAD, CT_STAIR,
   CT_ARM_FLAT, CT_SLOT, CT_UP, CT_UP_AT, CT_WALK, CT_WDOOR, CT_WELL, CT_WEST, CT_WEST_SHAFT,
-  CT_WLOBBY, pavingPieces,
+  CT_WLOBBY, pavingPieces, ctPiers,
 } from '../../../src/story/areas';
 
 const AREA = AREAS['central-towers'];
@@ -452,10 +452,13 @@ export function buildTowers(anisotropy: number): BuiltArea {
     }
     /* Piers down the canyon face, and glazing between them — but not across
        the lobby, whose own front is glass from the floor to the ceiling. */
-    for (let z = b.z0 + 4; z < b.z1 - 2; z += 8) {
-      if (z > l.z0 - 3 && z < l.z1 + 3) continue;
-      if (omit && z > omit.z0 - 3) continue;
-      put(1.6, b.top - 2.2, 1.4, ashlar, face - side * 0.4, CT_WALK + (b.top - 2.2) / 2 + 0.9, z, { group });
+    /* Where they stand is `ctPiers` in `areas.ts`, which is also what you
+       walk round: a pier eighty centimetres proud of the face with the
+       collision at the face was a metre of stone you stood inside. And it
+       stands on the pavement, not on the plinth course behind it — half of
+       it hung over the walk with nothing under it. */
+    for (const { z } of ctPiers(side)) {
+      put(1.6, b.top - 1.25, 1.4, ashlar, face - side * 0.4, CT_WALK - 0.05 + (b.top - 1.25) / 2, z, { group });
       if (z + 8 < b.z1 - 2 && !(z + 4 > l.z0 - 3 && z + 4 < l.z1 + 3)) {
         put(0.9, 4.4, 6.2, glassLit, face - side * 0.4, CT_WALK + 3.3, z + 4, { group });
         put(0.9, 3.2, 6.2, spandrel, face - side * 0.4, CT_WALK + 7.6, z + 4, { group });
@@ -491,9 +494,27 @@ export function buildTowers(anisotropy: number): BuiltArea {
         put(0.8, H + 1.1, b - a, ashlar, s * (CT_WELL.x1 + 0.4), (H + 1.1) / 2, (a + b) / 2);
       }
     }
+    /* To the flight's edge and 0.8 past the well, which is exactly the wall
+       the collision has (`wallX(... 0.45 ...)` in `areas.ts`): drawn 0.6 m
+       short at both ends, each end was a wall of air. */
     for (const z of [CT_WELL.z0, CT_WELL.z1]) {
-      for (const [a, b] of [[CT_WELL.x0 - 0.4, -CT_DROP.half - 0.6], [CT_DROP.half + 0.6, CT_WELL.x1 + 0.4]]) {
+      /* Into the side wall's thickness at the outer end and five centimetres
+         into the flank at the inner one: run to either face and its end is
+         in that face's plane. */
+      for (const [a, b] of [[CT_WELL.x0 - 0.4, -CT_DROP.half - 0.05], [CT_DROP.half + 0.05, CT_WELL.x1 + 0.4]]) {
         put(b - a, H + 1.0, 0.9, ashlar, (a + b) / 2, (H + 1.0) / 2, z + Math.sign(z) * 0.35);
+      }
+    }
+    /* The flanks of the two grand flights: the podium the flight is cut
+       through, a wall from below and a parapet from above — the solid was
+       always there (`CT_DROP.half + 0.5`); nothing had ever been drawn on
+       it, and from the top you walked into air beside the stair. */
+    for (const f of [CT_DROP_N, CT_DROP_S]) {
+      for (const s of [-1, 1]) {
+        /* Three centimetres short of each end, under the kerb caps that
+           finish the balustrade line there, so no end shares their plane. */
+        put(1.0, H + 1.1, Math.abs(f.end - f.start) - 0.06, ashlar, s * (CT_DROP.half + 0.5), (H + 1.1) / 2, (f.start + f.end) / 2);
+        put(1.2, 0.12, Math.abs(f.end - f.start) - 0.06, kerb, s * (CT_DROP.half + 0.5), H + 1.16, (f.start + f.end) / 2, { cast: false });
       }
     }
     /* A rail on top of the parapet, which is what stops it reading as a kerb. */
@@ -527,8 +548,12 @@ export function buildTowers(anisotropy: number): BuiltArea {
        * wide can be lit: the middle twenty metres had no light on it at any
        * hour and the whole thing read as a black ramp with lines on it.
        */
+      /* Only the two balustrades down the middle step with the treads. The
+         flanks used to as well — a metre of stone rising 1.05 over each
+         tread — which from the forecourt was a wall and from the pavement
+         beside the flight was a drop of six metres guarded by nothing. They
+         are one wall each now, forecourt floor to parapet, drawn above. */
       for (const [x, w, cap, rail] of [
-        [-(CT_DROP.half + 0.5), 1, 1.2, false], [CT_DROP.half + 0.5, 1, 1.2, false],
         [-4.5, 0.36, 0.5, true], [4.5, 0.36, 0.5, true],
       ] as const) {
         for (let i = 0; i < steps; i++) {
@@ -783,8 +808,10 @@ export function buildTowers(anisotropy: number): BuiltArea {
     /* Held a hand clear of the curtain wall at its far end: run right up to
        the glass and the rail's end face is the glass's face. */
     for (const [a, b] of (side < 0
-      ? [[inner, stairAt - CT_STAIR.half], [stairAt + CT_STAIR.half, l.x1 - 0.15]]
-      : [[l.x0 + 0.15, stairAt - CT_STAIR.half], [stairAt + CT_STAIR.half, inner]]) as [number, number][]) {
+      /* Five centimetres into the stair's cheeks, not to their faces: an
+         end in a cheek's plane flickers against it. */
+      ? [[inner, stairAt - CT_STAIR.half - 0.05], [stairAt + CT_STAIR.half + 0.05, l.x1 - 0.15]]
+      : [[l.x0 + 0.15, stairAt - CT_STAIR.half - 0.05], [stairAt + CT_STAIR.half + 0.05, inner]]) as [number, number][]) {
       if (b - a < 0.05) continue;
       put(b - a, 1.05, 0.16, bronze, (a + b) / 2, CT_MEZZ + 0.53, l.z1 - CT_GALLERY - 0.2, { group });
       put(b - a, 0.1, 0.3, timber, (a + b) / 2, CT_MEZZ + 1.1, l.z1 - CT_GALLERY - 0.2, { group });
@@ -806,8 +833,9 @@ export function buildTowers(anisotropy: number): BuiltArea {
         const y = CT_LOBBY + ((CT_MEZZ - CT_LOBBY) / steps) * (i + 1);
         /* The last tread *is* the gallery — drawn as well, its top and the
            gallery's beam are one surface. The deck's flight learnt this first. */
-        if (i === steps - 1) continue;
-        put(CT_STAIR.half * 2, 0.24, tread + 0.004, timber, stairAt, y - 0.12, z);
+        /* The tread is skipped; its cheeks are not, or the last half metre of
+           each was a wall of air at the head of the stair. */
+        if (i < steps - 1) put(CT_STAIR.half * 2, 0.24, tread + 0.004, timber, stairAt, y - 0.12, z);
         /*
          * Two balustrades at the sides, stepping with the treads, and nothing
          * at all underneath.
@@ -967,6 +995,15 @@ export function buildTowers(anisotropy: number): BuiltArea {
            cut round this flight now, so skipping it leaves eighteen cells at
            the foot of the stair standing on nothing at all. */
         put(Math.abs(tread) + 0.004, 0.28, CT_UP.half * 2, ashlar, x, y - 0.14, CT_UP_AT);
+        /* A cheek either side, from the pavement's plinth line up to a
+           parapet 0.9 over this tread — the solid is `tall`, and the one
+           parapet that used to hang level at mid-height left the foot of the
+           flight walled by nothing. */
+        for (const s of [-1, 1]) {
+          const ch = y + 0.9 - (CT_WALK - 0.16);
+          put(Math.abs(tread) + 0.004, ch, 0.36, ashlar, x, CT_WALK - 0.16 + ch / 2,
+              CT_UP_AT + s * (CT_UP.half + 0.15));
+        }
         /* Exactly the tread's width and stopping under it: wider or taller and
            you stand on the pavement beside the flight with it through your
            feet. The lobby stairs learnt this first. */
@@ -979,10 +1016,6 @@ export function buildTowers(anisotropy: number): BuiltArea {
           put(Math.abs(tread) - 0.02, h, CT_UP.half * 2 - 0.12, stone,
               x, CT_WALK - 0.16 + h / 2, CT_UP_AT, { cast: false });
         }
-      }
-      for (const s of [-1, 1]) {
-        put(CT_UP.run - 0.8, 1.0, 0.3, ashlar, d.x0 - CT_UP.run / 2 - 0.4,
-            CT_WALK + (CT_DECK - CT_WALK) / 2 + 0.85, CT_UP_AT + s * (CT_UP.half + 0.15));
       }
       lamp(d.x0 - 2, CT_DECK + 1.4, CT_UP_AT, 18, 120);
     }

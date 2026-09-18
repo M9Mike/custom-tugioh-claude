@@ -164,7 +164,13 @@ const VANTAGES: Vantage[] = [
   { name: 'the shop, under the galleries', area: 'crown-shop', x: -12, z: -8, facing: Math.PI / 2 },
   { name: 'the shop counter', area: 'crown-shop', x: 6, z: 6, facing: Math.PI / 4 },
   { name: 'the shop stair', area: 'crown-shop', x: 14.2, z: 12, facing: Math.PI },
-  { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 2.6, facing: Math.PI },
+  /* From z 0.4 and not 2.6: at 2.6 the camera's 4.6 m sat behind the shop's
+     south wall, `camLift` pulled it in to 2.67, and the last centimetre of
+     that pull-in was still easing when the frames were taken — a centimetre
+     of camera between two shots is every edge in the room, and the view
+     failed on a quiet machine with nothing flickering. Room behind the
+     camera, and the two shots are the same shot. */
+  { name: 'the shop counter', area: 'grandpa-shop', x: 2.6, z: 0.4, facing: Math.PI },
 ];
 
 let failures = 0;

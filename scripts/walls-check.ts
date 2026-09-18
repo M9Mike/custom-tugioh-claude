@@ -46,6 +46,8 @@ import { BASE, NAME, PINNED_HOUR, ensurePlayer, enterStory, refuseRemote } from 
  * solid with nothing drawn near it does not.
  */
 const REACH = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5];
+/** Across the direction of travel: the middle of the body and each shoulder. */
+const SHOULDER = [0, -0.3, 0.3];
 /*
  * A solid may stand this much proud of the thing it is for. A lamp post is
  * seventeen centimetres through with a solid fifty-six wide — the duelist's
@@ -56,12 +58,14 @@ const REACH = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5];
 const GROW = 0.35;
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !/^https?:/.test(a));
-/** `--why=x,z`: for the stopped edges within a metre of a point, say what was looked at. */
+/** `--why=x,z[/x,z…]`: for the stopped edges within a metre of any of the
+    points, say what was looked at. */
 const WHY = (() => {
   const f = process.argv.slice(2).find((a) => a.startsWith('--why='));
   if (!f) return null;
-  const [x, z] = f.slice(6).split(',').map(Number);
-  return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : null;
+  const pts = f.slice(6).split('/').map((p) => p.split(',').map(Number))
+    .filter(([x, z]) => Number.isFinite(x) && Number.isFinite(z)).map(([x, z]) => ({ x, z }));
+  return pts.length ? pts : null;
 })();
 const chosen = (Object.keys(AREAS) as AreaId[]).filter((id) => !only.length || only.some((o) => id.includes(o)));
 
@@ -161,9 +165,23 @@ async function cast(page: Page, rays: Ray[], stones: Obb[]): Promise<{ d: number
       }
       m4.copy(m.matrixWorld).invert();
       for (const bx of boxes) {
-        /* Ground planes are not walls: anything under 5 cm tall is a floor. */
+        /* Ground planes are not walls: a sheet under 5 cm tall is a floor. A
+           fence rail is under 5 cm tall too and is not a floor — it is thin
+           in plan as well, and stays. */
         const sy = Math.hypot(e[4], e[5], e[6]) * (bx[4] - bx[1]);
-        if (sy < 0.05) continue;
+        const sxp = Math.hypot(e[0], e[1], e[2]) * (bx[3] - bx[0]);
+        const szp = Math.hypot(e[8], e[9], e[10]) * (bx[5] - bx[2]);
+        /* A sheet with no height is a floor; a desk top is five centimetres. */
+        if (sy < 0.02 && sxp > 0.4 && szp > 0.4) continue;
+        /* A picture on crossed planes — a tree — is neither a wall nor a
+           floor; a box turned about the vertical is tested in its own frame,
+           like the stones, off the footprint it carries; without one its
+           world box would have to do. See `BakedPart` in `world/kit.ts`. */
+        if (bx[6] === 2) continue;
+        if (bx[6] === 1 && bx.length >= 12) {
+          stones.push({ x: bx[7], z: bx[8], hw: bx[9], hd: bx[10], h: bx[4] - bx[1], y: bx[1], turn: bx[11] });
+          continue;
+        }
         lo.push(bx[0], bx[1], bx[2]);
         hi.push(bx[3], bx[4], bx[5]);
         inv.push(...m4.elements);
@@ -190,7 +208,12 @@ async function cast(page: Page, rays: Ray[], stones: Obb[]): Promise<{ d: number
         const axes: [number, number, number][] = [[px, vx, 0], [py, vy, 1], [pz, vz, 2]];
         let miss = false;
         for (const [p0, v, ax] of axes) {
-          const l = lo[j + ax], h = hi[j + ax];
+          /* A hair smaller sideways: a sample cell sitting exactly on a drawn
+             face — a wall built on the grid line the cells are on — is not
+             inside it, and whether it counted used to turn on the last bit
+             of a float. */
+          const eps = ax === 1 ? 0 : 0.005;
+          const l = lo[j + ax] + eps, h = hi[j + ax] - eps;
           if (Math.abs(v) < 1e-9) { if (p0 < l || p0 > h) { miss = true; break; } continue; }
           let a = (l - p0) / v, b = (h - p0) / v;
           if (a > b) { const t = a; a = b; b = t; }
@@ -248,6 +271,7 @@ async function cast(page: Page, rays: Ray[], stones: Obb[]): Promise<{ d: number
       named.push({ size: s.map((v) => v.toFixed(2)).join('×'), at: centre.toArray().map((v) => v.toFixed(1)).join(',') });
     }
     (window as unknown as { __wallBoxes?: { size: string; at: string }[] }).__wallBoxes = named;
+    (window as unknown as { __wallStones?: unknown[] }).__wallStones = stones;
     return rays.map((r) => {
       const h = slab(r.x, r.y, r.z, r.dx, r.dz, r.far);
       return h.d >= r.far ? { d: Infinity, i: -1 } : h;
@@ -301,13 +325,41 @@ async function covered(page: Page, spots: Spot[], stones: Obb[]): Promise<number
       m4.copy(m.matrixWorld).invert();
       for (const bx of boxes) {
         const sy = Math.hypot(e[4], e[5], e[6]) * (bx[4] - bx[1]);
-        if (sy < 0.05) continue;
+        const sxp = Math.hypot(e[0], e[1], e[2]) * (bx[3] - bx[0]);
+        const szp = Math.hypot(e[8], e[9], e[10]) * (bx[5] - bx[2]);
+        /* A sheet with no height is a floor; a desk top is five centimetres. */
+        if (sy < 0.02 && sxp > 0.4 && szp > 0.4) continue;
+        if (bx[6] === 2) continue;
+        if (bx[6] === 1 && bx.length >= 12) {
+          stones.push({ x: bx[7], z: bx[8], hw: bx[9], hd: bx[10], h: bx[4] - bx[1], y: bx[1], turn: bx[11] });
+          continue;
+        }
         lo.push(bx[0], bx[1], bx[2]);
         hi.push(bx[3], bx[4], bx[5]);
         inv.push(...m4.elements);
       }
     });
     const n = lo.length / 3;
+    /* Named, so `--why` can say what covered a spot. */
+    {
+      const named: { size: string; at: string }[] = [];
+      const inverse = new THREE.Matrix4();
+      const centre = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        const j = i * 3, k = i * 16;
+        inverse.fromArray(inv.slice(k, k + 16)).invert();
+        centre.set((lo[j] + hi[j]) / 2, (lo[j + 1] + hi[j + 1]) / 2, (lo[j + 2] + hi[j + 2]) / 2).applyMatrix4(inverse);
+        const el = inverse.elements;
+        const sz = [
+          Math.hypot(el[0], el[1], el[2]) * (hi[j] - lo[j]),
+          Math.hypot(el[4], el[5], el[6]) * (hi[j + 1] - lo[j + 1]),
+          Math.hypot(el[8], el[9], el[10]) * (hi[j + 2] - lo[j + 2]),
+        ];
+        named.push({ size: sz.map((v) => v.toFixed(2)).join('×'), at: centre.toArray().map((v) => v.toFixed(1)).join(',') });
+      }
+      (window as unknown as { __wallBoxes?: { size: string; at: string }[] }).__wallBoxes = named;
+      (window as unknown as { __wallStones?: unknown[] }).__wallStones = stones;
+    }
     return spots.map((sp) => {
       /* The whole band at once: the spot is a vertical segment from the shin to
          the chest, and a box covers it if the segment crosses the box. Three
@@ -360,7 +412,12 @@ async function covered(page: Page, spots: Spot[], stones: Obb[]): Promise<number
 
 /** Names a box the page reported: its size and centre. */
 async function nameOf(page: Page, i: number, stones: Obb[]): Promise<string> {
-  if (i <= -2) { const st = stones[-2 - i]; return `stone ${(st.hw * 2).toFixed(2)}×${(st.hd * 2).toFixed(2)} @ ${st.x.toFixed(1)},${st.z.toFixed(1)}`; }
+  /* A stone past the end of the list Node holds is a turned part the page
+     added off its footprint — the page keeps the longer list. */
+  if (i <= -2) {
+    const st = stones[-2 - i] ?? await page.evaluate((k) => (window as unknown as { __wallStones?: Obb[] }).__wallStones?.[k], -2 - i);
+    return st ? `stone ${(st.hw * 2).toFixed(2)}×${(st.hd * 2).toFixed(2)}×${st.h.toFixed(2)} @ ${st.x.toFixed(1)},${st.y.toFixed(1)},${st.z.toFixed(1)} turned ${(st.turn * 180 / Math.PI).toFixed(0)}°` : 'a turned part';
+  }
   if (i < 0) return 'nothing';
   return page.evaluate((i) => {
     const b = (window as unknown as { __wallBoxes?: { size: string; at: string }[] }).__wallBoxes;
@@ -434,22 +491,40 @@ async function main() {
     const spots: Spot[] = [];
     for (const s of stopped) {
       /* From the feet up: a coping, a kerb, a plinth is a thing you can see
-         stopping you, and the terraces stop you at their copings on purpose. */
-      for (const r of REACH) spots.push({ x: s.x + s.dx * r, z: s.z + s.dz * r, lo: s.y + 0.05, hi: s.y + 1.4 });
+         stopping you, and the terraces stop you at their copings on purpose.
+         And to a hand over your head: a fence of posts with its rail at two
+         metres is a fence you see, and a beam over a gate is the gate. */
+      /* Down the middle and under each shoulder: the duelist is 0.76 wide,
+         and what stops her is as often the corner of a desk under one
+         shoulder as a wall across her path. Along the middle only, every
+         corner clip in the city read as a wall of air. */
+      for (const r of REACH) for (const w of SHOULDER) {
+        spots.push({ x: s.x + s.dx * r - s.dz * w, z: s.z + s.dz * r + s.dx * w, lo: s.y + 0.05, hi: s.y + 2.2 });
+      }
     }
-    const PER = REACH.length;
+    const PER = REACH.length * SHOULDER.length;
     const rays2: Ray[] = [];
-    for (const c of inside) for (const [dx, dz] of dirs) rays2.push({ x: c.x, y: c.y + 0.9, z: c.z, dx, dz, far: STEP });
+    /* At the hip and at the knee: a podium's plinth course and a street's
+       are knee high and stood seventy centimetres proud of their collision,
+       and a ray at hip height looked straight over them. */
+    for (const c of inside) for (const h of [0.9, 0.4]) for (const [dx, dz] of dirs) rays2.push({ x: c.x, y: c.y + h, z: c.z, dx, dz, far: STEP });
 
-    const hit1 = await covered(page, spots, stones);
+    /* In slices: a page handed half a million rays in one evaluate dies
+       quietly, and the check reads "target closed" for a fault. */
+    const hit1: number[] = [];
+    for (let i = 0; i < spots.length; i += 40000) hit1.push(...await covered(page, spots.slice(i, i + 40000), stones));
     if (WHY) {
       for (let i = 0; i < stopped.length; i++) {
         const st = stopped[i];
-        if (Math.hypot(st.x - WHY.x, st.z - WHY.z) > 1) continue;
+        if (!WHY.some((w) => Math.hypot(st.x - w.x, st.z - w.z) <= 1)) continue;
         const hits = [];
         for (let k = 0; k < PER; k++) hits.push(hit1[i * PER + k]);
         console.log(`     why ${st.x.toFixed(2)},${st.z.toFixed(2)} floor ${st.y.toFixed(2)} dir ${st.dx},${st.dz}: ${hits.map((h) => (h === -1 ? '·' : h <= -2 ? 'stone' : String(h))).join(' ')}`);
+        /* And what each found box is, so a hit can be looked at. */
+        const found = [...new Set(hits.filter((h) => h !== -1))];
+        for (const h of found) console.log(`         ${h <= -2 ? 'stone' : h}: ${await nameOf(page, h, stones)}`);
       }
+      for (const at of WHY) {
       const nearby = await page.evaluate(({ x, z }) => {
         const w = window as unknown as { __scene?: import('three').Scene; __THREE?: typeof import('three') };
         const THREE = w.__THREE!; const scene = w.__scene!;
@@ -463,10 +538,12 @@ async function main() {
           out.push(`${m.geometry.type} v${pos.count} y ${box.min.y.toFixed(2)}..${box.max.y.toFixed(2)} x ${box.min.x.toFixed(2)}..${box.max.x.toFixed(2)} z ${box.min.z.toFixed(2)}..${box.max.z.toFixed(2)}`);
         });
         return out.slice(0, 25);
-      }, WHY);
-      console.log(`     meshes within 1.6 m of ${WHY.x},${WHY.z}:\n       ` + nearby.join('\n       '));
+      }, at);
+      console.log(`     meshes within 1.6 m of ${at.x},${at.z}:\n       ` + nearby.join('\n       '));
+      }
     }
-    const hit2 = await cast(page, rays2, stones);
+    const hit2: { d: number; i: number }[] = [];
+    for (let i = 0; i < rays2.length; i += 40000) hit2.push(...await cast(page, rays2.slice(i, i + 40000), stones));
 
     const nothing: { x: number; z: number; d: number; i: number }[] = [];
     for (let i = 0; i < stopped.length; i++) {
@@ -477,7 +554,7 @@ async function main() {
     const through: { x: number; z: number; d: number; i: number }[] = [];
     for (let i = 0; i < inside.length; i++) {
       let best = { d: Infinity, i: -1 };
-      for (let k = 0; k < 4; k++) if (hit2[i * 4 + k].d < best.d) best = hit2[i * 4 + k];
+      for (let k = 0; k < 8; k++) if (hit2[i * 8 + k].d < best.d) best = hit2[i * 8 + k];
       /* Inside, not merely near: a drawn face fourteen centimetres proud of
          its collision puts the nearest cell's edge within reach without anybody
          ever being inside anything. Zero is the duelist standing in the wall. */
@@ -503,7 +580,7 @@ async function main() {
     else {
       bad++;
       console.log(`  ❌ ${id}: walls of air at ${air.length} edge(s), in ${c1.length} place(s)`);
-      for (const c of c1.slice(0, 8)) console.log(`       ${String(c.n).padStart(4)} edges  around ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`);
+      for (const c of c1.slice(0, 400)) console.log(`       ${String(c.n).padStart(4)} edges  around ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`);
       if (c1.length > 8) console.log(`       …and ${c1.length - 8} more`);
     }
     if (c1w.length) {
@@ -517,7 +594,7 @@ async function main() {
     else {
       bad++;
       console.log(`  ❌ ${id}: walked into ${through.length} drawn thing(s), in ${c2.length} place(s)`);
-      for (const c of c2.slice(0, 8)) {
+      for (const c of c2.slice(0, 400)) {
         console.log(`       ${String(c.n).padStart(4)} cells  around ${c.x.toFixed(1)}, ${c.z.toFixed(1)}  — ${await nameOf(page, c.i, stones)}`);
       }
       if (c2.length > 8) console.log(`       …and ${c2.length - 8} more`);

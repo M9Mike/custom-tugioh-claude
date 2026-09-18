@@ -76,7 +76,8 @@ export default function PackOpening({ pack, from, onDone }: Props) {
         {/* The heading says whose deck this came out of and nothing else. The
             mechanic had its name printed over it — which is a thing to call a
             feature in a changelog, not a thing to read every time you win. */}
-        <h1 className="font-display text-xl text-brassbright sm:text-2xl">
+        <p className="text-[10px] uppercase tracking-[0.32em] text-brass">A pack from</p>
+        <h1 className="mt-1 font-display text-2xl leading-tight text-brassbright">
           {from}&rsquo;s Deck
         </h1>
         <div className="brass-rule mx-auto my-3 w-40" />

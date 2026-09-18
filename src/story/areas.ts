@@ -1429,7 +1429,9 @@ export const SHRINE_THINGS: ShrineThing[] = [
   /* Off the path, west: the basin you rinse your hands at. */
   { kind: 'chozuya', x: -16, z: -6.5, hw: 2.1, hd: 1.5 },
   /* Off the path, east: the rack the wooden plaques hang on. */
-  { kind: 'ema', x: 15.5, z: -9, hw: 1.9, hd: 0.5 },
+  /* As deep as its posts and plaques (0.16 and 0.03 either side of z −9):
+     drawn as a rack, it stopped you half a metre in front of it. */
+  { kind: 'ema', x: 15.5, z: -9, hw: 1.9, hd: 0.18 },
   /* And the board by the gate that tells you whose shrine this is. */
   { kind: 'notice', x: -9.4, z: -13.4, hw: 1.0, hd: 0.3 },
 
@@ -1487,6 +1489,11 @@ export function shrineSolids(): Rect[] {
   return SHRINE_THINGS.flatMap((t) =>
     t.kind === 'torii'
       ? [-1, 1].map((s) => ({ x: t.x + s * (t.hw - 0.3), z: t.z, hw: 0.34, hd: t.hd }))
+      /* A marker stands on a slab twenty centimetres wider than itself, with
+         a small stone and its votive beside it (`shrine.py`): both are knee
+         high and both are walked round. */
+      : t.kind === 'marker'
+      ? [{ x: t.x, z: t.z, hw: t.hw + 0.2, hd: t.hd + 0.2 }, { x: t.x + 1.5, z: t.z - 1.4, hw: 0.3, hd: 0.3 }]
       : [{ x: t.x, z: t.z, hw: t.hw, hd: t.hd }]
   );
 }
@@ -1550,9 +1557,13 @@ const DOMINO_SHRINE: Area = {
      * reaching south of z 8.9 stops a player on the flight a stride before
      * anything drawn, and the flight's sides are open all the way up.
      */
-    { x: -9.6, z: 14.25, hw: 0.36, hd: 5.25 },
-    { x: 9.6, z: 14.25, hw: 0.36, hd: 5.25 },
-    { x: 0, z: 19.6, hw: 9.6, hd: 0.36 },
+    /* Only as far out as the platform (x ±9.5, z 19.5): the rest of each used
+       to lie over the drop, and from the yard below — where people do stand —
+       that was a stop with nothing drawn at it. `npm run walls` found the six
+       places the moment it could see the yard. */
+    { x: -9.37, z: 14.25, hw: 0.13, hd: 5.25 },
+    { x: 9.37, z: 14.25, hw: 0.13, hd: 5.25 },
+    { x: 0, z: 19.37, hw: 9.5, hd: 0.13 },
     { x: -8.15, z: 9.02, hw: 1.1, hd: 0.1 },
     { x: 8.15, z: 9.02, hw: 1.1, hd: 0.1 },
 
@@ -1820,7 +1831,18 @@ export const CROWN_THINGS: CrownThing[] = [
 
 /** What you bump into, out of the same list the geometry is drawn from. */
 export function blackCrownSolids(): Rect[] {
-  return CROWN_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd }));
+  /* The board is drawn from its own `hw` and then turned by `face`, so its
+     rectangle turns with it — the way-in sign was a three-metre wall across
+     the lane with a board drawn along it. A stall and a bench are drawn at a
+     fixed size and turned, and their rectangles were written in world axes to
+     begin with (the stalls' comment above): turning those too put the court's
+     bench across the court and forty centimetres of air at every stall end.
+     `npm run walls`, both ways. */
+  return CROWN_THINGS.map((t) => {
+    const face = (t as { face?: number }).face ?? 0;
+    const quarter = t.kind === 'board' && Math.abs(Math.sin(face)) > 0.5;
+    return { x: t.x, z: t.z, hw: quarter ? t.hd : t.hw, hd: quarter ? t.hw : t.hd };
+  });
 }
 
 const BLACK_CROWN: Area = {
@@ -1849,21 +1871,29 @@ const BLACK_CROWN: Area = {
   bounds: { x: -9, z: -2, hw: BC_W, hd: BC_D },
   platforms: BC_GROUND,
   solids: [
+    /*
+     * Every face a `frontage` runs along stands at its *plinth* line, which
+     * is 0.42 m proud of the building line the run is drawn from
+     * (`world/blackcrown.ts`, `course(-0.12, 1.02, -0.10, 0.42, …)`): a
+     * knee-high course you stood inside of to the shins along every street
+     * in the block. The drawn thing is the colliding thing; the building
+     * line is nobody's.
+     */
     /* The lane in: building both sides, all the way up to the arcade's back. */
-    { x: -37.5, z: -36, hw: 14, hd: 14, tall: true },
-    { x: -1, z: -36, hw: 13, hd: 14, tall: true },
+    { x: -37.29, z: -36, hw: 14.21, hd: 14, tall: true },
+    { x: -1.21, z: -35.79, hw: 13.21, hd: 14.21, tall: true },
 
     /* The square's west terrace, with the alley cut through the middle of it. */
-    { x: -30.5, z: -14, hw: 10, hd: 8, tall: true },
-    { x: -30.5, z: 9.5, hw: 10, hd: 6.5, tall: true },
+    { x: -30.5, z: -14.025, hw: 10.42, hd: 8.445, tall: true },
+    { x: -30.5, z: 9.29, hw: 10.42, hd: 6.71, tall: true },
 
     /* The yard: the back wall of the block, and a shed at each end of it. */
-    { x: -53, z: -3, hw: 2.5, hd: 19, tall: true },
-    { x: -45.5, z: -25, hw: 5, hd: 3, tall: true },
-    { x: -45.5, z: 19, hw: 5, hd: 3, tall: true },
+    { x: -52.79, z: -3, hw: 2.71, hd: 19, tall: true },
+    { x: -45.5, z: -24.79, hw: 5, hd: 3.21, tall: true },
+    { x: -45.5, z: 19.21, hw: 5, hd: 3.21, tall: true },
 
     /* North-east: the building between the lane and the court. */
-    { x: 27, z: -36, hw: 15, hd: 14, tall: true },
+    { x: 27, z: -35.79, hw: 15, hd: 14.21, tall: true },
 
     /*
      * Black Crown, and the wall closing the court behind the sculpture.
@@ -1876,15 +1906,18 @@ const BLACK_CROWN: Area = {
      * has its own three rectangles: two jambs and the door between them, which
      * is what stops you at a shut door instead of inside one.
      */
-    { x: 29.65, z: 3, hw: 12.35, hd: 13, tall: true },
+    { x: 29.65, z: 2.79, hw: 12.35, hd: 13.21, tall: true },
     { x: 17.3, z: -0.05, hw: 0.75, hd: 0.55, tall: true },
     { x: 17.3, z: 6.05, hw: 0.75, hd: 0.55, tall: true },
     { x: 16.5, z: 3, hw: 0.3, hd: 2.6, tall: true },
-    { x: 37, z: -16, hw: 5, hd: 6, tall: true },
+    { x: 36.79, z: -16, hw: 5.21, hd: 6, tall: true },
 
-    /* The south street, and the railway that stops it. */
-    { x: -32, z: 30, hw: 18, hd: 14, tall: true },
-    { x: 15, z: 28.75, hw: 17, hd: 15.25, tall: true },
+    /* The south street, and the railway that stops it. The west block starts
+       at z 15.58 and not 16: its square-facing run stands a plinth's depth
+       proud of the building line, like every run in the block, and the street
+       run's own plinth passed the corner into the square. */
+    { x: -31.79, z: 29.79, hw: 18.21, hd: 14.21, tall: true },
+    { x: 14.79, z: 28.75, hw: 17.21, hd: 15.25, tall: true },
     /* To the face of the blind arch and the buffers at its foot, not the
        brick behind them: at z 43.5 the arch stood forty centimetres proud of
        the solid and you walked into it, and the buffers had no solid at all. */
@@ -2170,8 +2203,11 @@ const CROWN_SHOP: Area = {
      * in that hole is standing inside a building. It stops well short of the
      * foot, so the bottom treads are something you walk onto rather than into.
      */
-    { x: 14.19, z: 6.6, hw: 1.59, hd: 3.9, to: 0.05 },
-    { x: -14.19, z: -6.6, hw: 1.59, hd: 3.9, from: CS_G1, to: CS_G1 + 0.05 },
+    /* And only as far as the headroom under it is under 2.2 m: the flight
+       climbs 4.6 m over 10.1, so past z 5.9 it is over your head, and boxed
+       to the top it was four metres of nothing you walked into. */
+    { x: 14.19, z: 4.3, hw: 1.59, hd: 1.6, to: 0.05 },
+    { x: -14.19, z: -4.3, hw: 1.59, hd: 1.6, from: CS_G1, to: CS_G1 + 0.05 },
 
     /*
      * The counter, which is the one thing here you walk up to rather than past.
@@ -2517,12 +2553,15 @@ const OLD_CEMETERY: Area = {
      * the ground, and standing *on* somebody's grave is the one thing this area
      * should not let you do. One rectangle round the whole of it.
      */
-    ...CM_MARKERS.filter((m) => m.tended).map((m) => ({ x: m.x, z: m.z + 0.14, hw: 0.95, hd: 1.05 })),
+    /* Its kerb slab, 1.5 by 1.2 (`cemetery.ts`), with the stone and the
+       flowers standing on it. */
+    ...CM_MARKERS.filter((m) => m.tended).map((m) => ({ x: m.x, z: m.z, hw: 0.75, hd: 0.6 })),
 
     /* The lanterns and the basin, which are things you walk into. */
     ...CM_THINGS.map((t) => (t.kind === 'basin'
       ? { x: t.x, z: t.z, hw: 1.4, hd: 0.95 }
-      : { x: t.x, z: t.z, hw: 0.46, hd: 0.46 })),
+      /* Its cap, which is the widest thing on it below head height. */
+      : { x: t.x, z: t.z, hw: 0.39, hd: 0.39 })),
 
     /* And every stone in the ground. */
     ...CM_MARKERS.map((m) => ({
@@ -2918,9 +2957,11 @@ const DOMINO_STATION: Area = {
      */
     ...DS_FLIGHTS.flatMap((cross) => [-1, 1].map((s) => ({
       x: cross + s * (DS_FLIGHT_HALF + 0.2),
-      z: (DS_FLIGHT_FOOT + DS_RANGE) / 2 - 0.15,
+      /* From the foot exactly — the drawing starts at the first tread, and
+         thirty centimetres before it was stone nobody could see. */
+      z: (DS_FLIGHT_FOOT + DS_RANGE) / 2,
       hw: 0.23,
-      hd: (DS_RANGE - DS_FLIGHT_FOOT) / 2 + 0.15,
+      hd: (DS_RANGE - DS_FLIGHT_FOOT) / 2,
     }))),
 
     /* ---- the hall ---- */
@@ -2962,7 +3003,11 @@ const DOMINO_STATION: Area = {
     ...DS_PLATFORMS.flatMap((x) => DS_COLUMNS.map((z) => ({ x, z, hw: 0.5, hd: 0.5, tall: true }))),
     /* And everything left out on the floor — the same lists the builder draws
        from, read twice. */
-    ...DS_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd })),
+    ...DS_THINGS.map((t) => (t.kind === 'kiosk'
+      /* The body, which is 0.3 m inside the cap on every side; the cap is
+         over your head and the corners of the rectangle were air. */
+      ? { x: t.x, z: t.z, hw: t.hw - 0.3, hd: t.hd - 0.3 }
+      : { x: t.x, z: t.z, hw: t.hw, hd: t.hd })),
     ...DS_FRONT,
     /* The piers either side of the east exit, which stand in front of the wall
        the doorway is cut into — see `DS_EAST_PIERS`. */
@@ -3442,16 +3487,38 @@ const STATION_PLAZA: Area = {
     { x: 0, z: 0, hw: 1.05, hd: 1.05, tall: true },
 
     /* The cheeks of the station's flight, drawn as the stepped mass they are. */
+    /* Exactly the treads' run: fifteen centimetres past the bottom tread was
+       thirty centimetres of stone at each cheek's foot that nothing drew. */
     ...[-1, 1].map((s) => ({
-      x: (PZ_FLIGHT.from + PZ_FLIGHT.to) / 2 + 0.15,
+      x: (PZ_FLIGHT.from + PZ_FLIGHT.to) / 2,
       z: PZ_FLIGHT.cross + s * (PZ_FLIGHT.half + 0.25),
-      hw: (PZ_FLIGHT.to - PZ_FLIGHT.from) / 2 + 0.15,
+      hw: (PZ_FLIGHT.to - PZ_FLIGHT.from) / 2,
       hd: 0.25,
     })),
 
     /* And everything left out on the square — the same list the builder draws
        from, read twice. */
-    ...PZ_THINGS.map((t) => ({ x: t.x, z: t.z, hw: t.hw, hd: t.hd, tall: t.kind === 'bus' })),
+    ...PZ_THINGS.flatMap((t): Rect[] => {
+      /* A shelter is four posts, a glass back and a bench, and you stand in
+         it: the whole footprint used to be solid, which stopped you two
+         metres short of a bench you could see. Same numbers as `plaza.ts`. */
+      if (t.kind === 'shelter') {
+        const backX = t.turn === Math.PI / 2;
+        const toward = Math.cos(t.turn ?? 0) * -1;
+        return [
+          ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => ({
+            x: t.x + sx * (t.hw - 0.2), z: t.z + sz * (t.hd - 0.2), hw: 0.1, hd: 0.1, tall: true,
+          }))),
+          backX
+            ? { x: t.x + t.hw - 0.1, z: t.z, hw: 0.08, hd: t.hd, tall: true }
+            : { x: t.x, z: t.z + toward * (t.hd - 0.1), hw: t.hw, hd: 0.08, tall: true },
+          backX
+            ? { x: t.x + t.hw - 0.5, z: t.z, hw: 0.25, hd: t.hd - 0.6 }
+            : { x: t.x, z: t.z + toward * (t.hd - 0.5), hw: t.hw - 0.6, hd: 0.25 },
+        ];
+      }
+      return [{ x: t.x, z: t.z, hw: t.hw, hd: t.hd, tall: t.kind === 'bus' }];
+    }),
     ...PZ_RAILS,
   ],
   camSolids: [
@@ -3686,6 +3753,11 @@ export interface HighThing {
   tag?: string;
 }
 
+/** Which way a goal's net stands off its line: away from the pitch. */
+export function goalBack(t: { z: number }): number {
+  return t.z < (DH_FIELD.north + DH_FIELD.south) / 2 ? -1.1 : 1.1;
+}
+
 export const DH_THINGS: HighThing[] = [
   /* The forecourt: the name stone, the flag, the gatekeeper's hut. */
   { kind: 'stone', x: -13, z: -76, hw: 2.4, hd: 0.7, tag: 'DOMINO HIGH SCHOOL' },
@@ -3872,8 +3944,11 @@ const DOMINO_HIGH: Area = {
         /* The teacher's table at the front, and the thirty desks behind it. */
         { x: dhBay(i), z: DH_ROOM.north + 1.2, hw: 0.85, hd: 0.4,
           ...(f === DH_FLOOR ? { to: DH_FLOOR } : { from: DH_UPPER }) },
+        /* Centred on the desk *and its chair*: the top is 0.55 deep and the
+           chair's back stands 0.63 behind its middle, so the rectangle sits
+           0.18 back from the desk's own centre. */
         ...DH_DESKS.map((d): Rect => ({
-          x: dhBay(i) + d.dx, z: DH_ROOM.north + d.dz, hw: 0.58, hd: 0.45,
+          x: dhBay(i) + d.dx, z: DH_ROOM.north + d.dz + 0.18, hw: 0.58, hd: 0.45,
           ...(f === DH_FLOOR ? { to: DH_FLOOR } : { from: DH_UPPER }),
         })),
       ])),
@@ -3941,10 +4016,40 @@ const DOMINO_HIGH: Area = {
       [-34, -26, -18, -10].map((z): Rect => ({ x, z, hw: 0.22, hd: 0.22, tall: true }))),
 
     /* ---- and everything standing on the ground, read from the one list ---- */
-    ...DH_THINGS.map((t): Rect => ({
-      x: t.x, z: t.z, hw: t.hw, hd: t.hd,
-      tall: t.kind === 'bikeShed' || t.kind === 'hut' || t.kind === 'backstop',
-    })),
+    ...DH_THINGS.flatMap((t): Rect[] => {
+      /* What is drawn is what stops you. A goal is two posts and a bar over
+         your head; a bike shed is a roof on eight posts over nine racks; a
+         backstop is a run of posts with a mesh between; a bench is as deep
+         as its seat. Each used to be a block the size of its footprint, and
+         every one of them was walked into where nothing was drawn. */
+      if (t.kind === 'goal') {
+        return [-1, 1].flatMap((s) => [
+          { x: t.x + s * 3.62, z: t.z, hw: 0.1, hd: 0.1, tall: true },
+          { x: t.x + s * 3.62, z: t.z + goalBack(t), hw: 0.08, hd: 0.08, tall: true },
+        ]);
+      }
+      if (t.kind === 'bikeShed') {
+        /* Eight posts, and nine racks — each a rail across the shed with a
+           bicycle on it (`high.ts`), 2.65 m apart, which you walk between.
+           One block over all nine was a wall between every pair of them. */
+        return [
+          ...[-1, 1].flatMap((sx) => [0, 1, 2, 3].map((k) => ({
+            x: t.x + sx * (t.hw - 0.3), z: t.z - t.hd + 1.2 + k * ((t.hd * 2 - 2.4) / 3), hw: 0.1, hd: 0.1, tall: true,
+          }))),
+          ...Array.from({ length: 9 }, (_, k) => ({
+            x: t.x, z: t.z - t.hd + 1.4 + k * ((t.hd * 2 - 2.8) / 8), hw: t.hw - 0.8, hd: 0.12,
+          })),
+        ];
+      }
+      if (t.kind === 'backstop') return [{ x: t.x, z: t.z, hw: 0.15, hd: t.hd, tall: true }];
+      /* Half a metre deep, whichever way it is turned. */
+      if (t.kind === 'bench') {
+        return t.turn === Math.PI / 2
+          ? [{ x: t.x, z: t.z, hw: 0.25, hd: t.hd }]
+          : [{ x: t.x, z: t.z, hw: t.hw, hd: 0.25 }];
+      }
+      return [{ x: t.x, z: t.z, hw: t.hw, hd: t.hd, tall: t.kind === 'hut' }];
+    }),
   ],
   camSolids: [
     /* The gateway, closed to the camera: past it is a different scene. */
@@ -4211,6 +4316,29 @@ export const CT_GALLERY = 8;
  * can never stand on top of — and standing on top of it is the whole idea.
  */
 export const CT_DECK_AT = { x0: 22, x1: 60, z0: 20, z1: 60 };
+/** How far a podium's knee-high plinth course stands proud of its mass. */
+export const CT_PLINTH = 0.7;
+
+/**
+ * The piers down a podium's canyon face — every eight metres, not across the
+ * lobby's glass, and not where the deck begins. `world/towers.ts` draws them
+ * here, 1.6 m along the face and 1.4 m deep, standing forty centimetres
+ * proud of it; the solids are the same rectangles, so the pier you see is
+ * the pier you walk round.
+ */
+export function ctPiers(side: -1 | 1): { x: number; z: number }[] {
+  const b = side < 0 ? CT_WEST : CT_EAST;
+  const l = side < 0 ? CT_WLOBBY : CT_ELOBBY;
+  const omit = side < 0 ? undefined : CT_DECK_AT;
+  const face = side < 0 ? b.x1 : b.x0;
+  const out: { x: number; z: number }[] = [];
+  for (let z = b.z0 + 4; z < b.z1 - 2; z += 8) {
+    if (z > l.z0 - 3 && z < l.z1 + 3) continue;
+    if (omit && z > omit.z0 - 3) continue;
+    out.push({ x: face - side * 0.4, z });
+  }
+  return out;
+}
 export const CT_UP = { half: 2.4, run: 14, rise: 0.18 };
 /*
  * Set so the deck flight's near cheek lands exactly on the head of the canyon
@@ -4390,7 +4518,7 @@ const CENTRAL_TOWERS: Area = {
     })),
     ...[-1, 1].map((s) => ({
       x: CT_GATE + s * (CT_GATE_HALF + 1), z: (CT_IN.z + CT_D) / 2,
-      hw: 1, hd: (CT_D - CT_IN.z) / 2 + 0.6, tall: true,
+      hw: 1, hd: (CT_D - CT_IN.z) / 2 + 0.3, tall: true,
     })),
     /* The city either side: twenty metres of block along each long edge, which
        is what the alley and the colonnade have their backs against. */
@@ -4402,31 +4530,41 @@ const CENTRAL_TOWERS: Area = {
      * pieces and two walls rather than one block with a hole, because a hole
      * is not a thing you can write and the walls are where the doors go.
      */
-    { x: (CT_WEST.x0 + CT_WLOBBY.x0) / 2, z: (CT_WEST.z0 + CT_WEST.z1) / 2,
-      hw: (CT_WLOBBY.x0 - CT_WEST.x0) / 2, hd: (CT_WEST.z1 - CT_WEST.z0) / 2, tall: true },
-    { x: (CT_WLOBBY.x0 + CT_WEST.x1) / 2, z: (CT_WEST.z0 + CT_WLOBBY.z0) / 2,
-      hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WLOBBY.z0 - CT_WEST.z0) / 2, tall: true },
-    { x: (CT_WLOBBY.x0 + CT_WEST.x1) / 2, z: (CT_WLOBBY.z1 + CT_WEST.z1) / 2,
-      hw: (CT_WEST.x1 - CT_WLOBBY.x0) / 2, hd: (CT_WEST.z1 - CT_WLOBBY.z1) / 2, tall: true },
+    /* Every outside face of a podium stands at its plinth line, `CT_PLINTH`
+       proud of the mass `world/towers.ts` draws the courses on: the plinth is
+       knee high and you stood in it to the shins along every face. */
+    { x: (CT_WEST.x0 - CT_PLINTH + CT_WLOBBY.x0) / 2, z: (CT_WEST.z0 + CT_WEST.z1) / 2,
+      hw: (CT_WLOBBY.x0 - CT_WEST.x0 + CT_PLINTH) / 2, hd: (CT_WEST.z1 - CT_WEST.z0) / 2 + CT_PLINTH, tall: true },
+    { x: (CT_WLOBBY.x0 + CT_WEST.x1 + CT_PLINTH) / 2, z: (CT_WEST.z0 - CT_PLINTH + CT_WLOBBY.z0) / 2,
+      hw: (CT_WEST.x1 + CT_PLINTH - CT_WLOBBY.x0) / 2, hd: (CT_WLOBBY.z0 - CT_WEST.z0 + CT_PLINTH) / 2, tall: true },
+    { x: (CT_WLOBBY.x0 + CT_WEST.x1 + CT_PLINTH) / 2, z: (CT_WLOBBY.z1 + CT_WEST.z1 + CT_PLINTH) / 2,
+      hw: (CT_WEST.x1 + CT_PLINTH - CT_WLOBBY.x0) / 2, hd: (CT_WEST.z1 + CT_PLINTH - CT_WLOBBY.z1) / 2, tall: true },
     /* From the lobby floor up, and not from the bottom of the world: the arm
        runs in under this wall six metres below it, and a wall with no `from`
        is a wall at every height. It stood across the tunnel and the flight out
        of the forecourt ended in it. */
-    ...wallZ(CT_WLOBBY.x1 + 0.5, 0.5, CT_WLOBBY.z0 - 1, CT_WLOBBY.z1 + 1,
+    ...wallZ(CT_WLOBBY.x1 + 0.5, 0.5, CT_WLOBBY.z0, CT_WLOBBY.z1,
       [[CT_WDOOR - CT_DOOR_HALF, CT_WDOOR + CT_DOOR_HALF]], { from: CT_LOBBY }),
     /* And the east tower's, the same the other way about — but its southern
        third is the deck's mass, which is `to`-limited so its roof can be
        stood on. A tall solid is one you can never be on top of. */
-    { x: (CT_ELOBBY.x1 + CT_EAST.x1) / 2, z: (CT_EAST.z0 + CT_DECK_AT.z0) / 2,
-      hw: (CT_EAST.x1 - CT_ELOBBY.x1) / 2, hd: (CT_DECK_AT.z0 - CT_EAST.z0) / 2, tall: true },
-    { x: (CT_EAST.x0 + CT_ELOBBY.x1) / 2, z: (CT_ELOBBY.z1 + CT_DECK_AT.z0) / 2,
-      hw: (CT_ELOBBY.x1 - CT_EAST.x0) / 2, hd: (CT_DECK_AT.z0 - CT_ELOBBY.z1) / 2, tall: true },
-    { x: (CT_EAST.x0 + CT_ELOBBY.x1) / 2, z: (CT_EAST.z0 + CT_ELOBBY.z0) / 2,
-      hw: (CT_ELOBBY.x1 - CT_EAST.x0) / 2, hd: (CT_ELOBBY.z0 - CT_EAST.z0) / 2, tall: true },
+    { x: (CT_ELOBBY.x1 + CT_EAST.x1 + CT_PLINTH) / 2, z: (CT_EAST.z0 - CT_PLINTH + CT_DECK_AT.z0) / 2,
+      hw: (CT_EAST.x1 + CT_PLINTH - CT_ELOBBY.x1) / 2, hd: (CT_DECK_AT.z0 - CT_EAST.z0 + CT_PLINTH) / 2, tall: true },
+    { x: (CT_EAST.x0 - CT_PLINTH + CT_ELOBBY.x1) / 2, z: (CT_ELOBBY.z1 + CT_DECK_AT.z0) / 2,
+      hw: (CT_ELOBBY.x1 - CT_EAST.x0 + CT_PLINTH) / 2, hd: (CT_DECK_AT.z0 - CT_ELOBBY.z1) / 2, tall: true },
+    { x: (CT_EAST.x0 - CT_PLINTH + CT_ELOBBY.x1) / 2, z: (CT_EAST.z0 - CT_PLINTH + CT_ELOBBY.z0) / 2,
+      hw: (CT_ELOBBY.x1 - CT_EAST.x0 + CT_PLINTH) / 2, hd: (CT_ELOBBY.z0 - CT_EAST.z0 + CT_PLINTH) / 2, tall: true },
+    /* The deck's north face carries the plinth only behind the lobby block
+       (`podium`'s `omit`): a knee-high strip there, and nothing along the
+       deck's own edge, which has its parapet on top instead. */
+    { x: (CT_ELOBBY.x1 + 0.3 + CT_EAST.x1 + CT_PLINTH) / 2, z: CT_EAST.z1 + CT_PLINTH / 2,
+      hw: (CT_EAST.x1 + CT_PLINTH - CT_ELOBBY.x1 - 0.3) / 2, hd: CT_PLINTH / 2, to: CT_WALK + 0.9 },
     { x: (CT_DECK_AT.x0 + CT_EAST.x1) / 2, z: (CT_DECK_AT.z0 + CT_DECK_AT.z1) / 2,
       hw: (CT_EAST.x1 - CT_DECK_AT.x0) / 2, hd: (CT_DECK_AT.z1 - CT_DECK_AT.z0) / 2,
       to: CT_DECK - 1 },
-    ...wallZ(CT_ELOBBY.x0 - 0.5, 0.5, CT_ELOBBY.z0 - 1, CT_ELOBBY.z1 + 1,
+    /* The lobby's own span and not a metre past it: the overrun stood on the
+       pavement outside the podium's face, a square metre of air at each end. */
+    ...wallZ(CT_ELOBBY.x0 - 0.5, 0.5, CT_ELOBBY.z0, CT_ELOBBY.z1,
       [[CT_EDOOR - CT_DOOR_HALF, CT_EDOOR + CT_DOOR_HALF]], { from: CT_LOBBY }),
     /*
      * The well's parapet — a rail round a six-metre hole in the pavement, and
@@ -4485,7 +4623,10 @@ const CENTRAL_TOWERS: Area = {
         return [
           { x: (t0 + t1) / 2, hw: (t1 - t0) / 2, ...at, to: CT_ROAD - 1 },
           { x: (s0 + s1) / 2, hw: Math.max(0.01, (s1 - s0) / 2), ...at, to: CT_LOBBY - 0.3 },
-          { x: (open0 + open1) / 2, hw: (open1 - open0) / 2, ...at },
+          /* And the parapet stops at its coping: the mezzanine gallery runs
+             over this end of the slot, and a wall with no top was a wall
+             across the gallery. */
+          { x: (open0 + open1) / 2, hw: (open1 - open0) / 2, ...at, to: CT_LOBBY + 1.1 },
         ];
       }),
       /* And the far end, past the top of its flight. Without it the basement
@@ -4508,9 +4649,11 @@ const CENTRAL_TOWERS: Area = {
       const [open0, open1] = span(head, head - side * CT_SLOT);
       return [{
         x: side < 0 ? open1 + 0.15 : open0 - 0.15, z: 0,
-        hw: 0.1, hd: CT_ARM.z1 + 0.5, from: CT_LOBBY, tall: true,
+        hw: 0.1, hd: CT_ARM.z1 + 0.5, from: CT_LOBBY, to: CT_LOBBY + 1.1, tall: true,
       }];
     }),
+    /* The piers down each canyon face, where they are drawn. */
+    ...([-1, 1] as const).flatMap((side) => ctPiers(side).map((p) => ({ x: p.x, z: p.z, hw: 0.8, hd: 0.7, tall: true }))),
     /* The lift core in each lobby: five metres by fourteen of stone against
        the back wall, which was drawn and not collided — six thousand cells of
        duelist walking through it. */

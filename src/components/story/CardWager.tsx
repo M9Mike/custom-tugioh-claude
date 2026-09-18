@@ -48,8 +48,11 @@ export default function CardWager({ collection, deck, askedBy, onPick, onCancel 
     <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col bg-black/80" data-card-wager>
       <div className="safe-page flex min-h-0 flex-1 flex-col p-3">
         <div className="panel grain flex min-h-0 flex-1 flex-col rounded p-3">
-          <div className="flex items-baseline justify-between">
-            <p className="font-display text-base leading-none text-brassbright">Put a card on the table</p>
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.32em] text-brass">{askedBy} asks</p>
+              <p className="mt-0.5 font-display text-lg leading-none text-brassbright">Put a card on the table</p>
+            </div>
             <button
               className="btn rounded px-2 py-1 text-[9px]"
               aria-label="Keep your cards"

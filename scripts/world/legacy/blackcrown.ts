@@ -483,9 +483,12 @@ export function buildBlackCrown(anisotropy: number): BuiltArea {
   frontage({ along: 'x', from: -51.2, to: -39.8, face: 16, dy: -0.07, outward: -1, h: 5, bays: 2, lit: 0, shut: true,
              skin: plastered() });
 
-  /* The south street. */
-  frontage({ along: 'z', from: 15.3, to: 44.7, face: -14, outward: 1, h: 12, bays: 5, lit: 2, base: 0.13, dy: -0.13 });
-  frontage({ along: 'z', from: 12.8, to: 44.7, face: -2, outward: -1, h: 13, bays: 5, lit: 2, dy: -0.13,
+  /* The south street. Each run starts a hand past the square-facing run
+     that closes its corner (whose own courses already pass this one's outer
+     face), not seventy centimetres past it: the plinths ran on into the
+     square, and the square is walked. `npm run walls`. */
+  frontage({ along: 'z', from: 15.35, to: 44.7, face: -14, outward: 1, h: 12, bays: 5, lit: 2, base: 0.13, dy: -0.13 });
+  frontage({ along: 'z', from: 13.4, to: 44.7, face: -2, outward: -1, h: 13, bays: 5, lit: 2, dy: -0.13,
              skin: rendered(), base: 0.13 });
 
   /* The court, closed behind the sculpture. From 12.4 rather than 13, which

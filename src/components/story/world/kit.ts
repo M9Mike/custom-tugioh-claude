@@ -169,7 +169,15 @@ export function basePlate(
  * baked roof slope would come back looking square and every pair of rafters in
  * the shed would be reported as sharing a plane neither of them has.
  */
-export type BakedPart = [number, number, number, number, number, number, number];
+/**
+ * `[minX, minY, minZ, maxX, maxY, maxZ, flag]`, and for a box turned about
+ * the vertical `[…, cx, cz, hw, hd, turn]` after it — its true footprint,
+ * which the walls check tests in the box's own frame instead of the box of
+ * air its world box is. The flag is 0 for a box on the axes, 1 for a turned
+ * one, 2 for a picture on crossed planes (a tree), which no check may take
+ * for a wall or a floor.
+ */
+export type BakedPart = [number, number, number, number, number, number, number, ...number[]];
 
 /**
  * What a merged mesh was made of, written where the checks can read it.

@@ -111,8 +111,9 @@ async function boxesOf(page: Page): Promise<Box[]> {
        * thousand cells for exactly that. See `bakedFrom` in `world/kit.ts`.
        */
       const parts = obj.userData?.parts;
+      /* A picture on crossed planes (part flag 2) is never the floor. */
       const corners: [number, number, number, number, number, number][] = parts?.length
-        ? parts.map((p) => [p[0], p[1], p[2], p[3], p[4], p[5]])
+        ? parts.filter((p) => p[6] !== 2).map((p) => [p[0], p[1], p[2], p[3], p[4], p[5]])
         : [[bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z]];
       for (const c of corners) {
         let minX = Infinity, minY = Infinity, minZ = Infinity;

@@ -78,13 +78,15 @@ const GESTURES = ['LookAround', 'Settle', 'Stretch'];
  */
 const GRANDPA_SHOP: Haunt = {
   area: 'grandpa-shop',
-  x: -4.6,
+  /* Sixty centimetres east of where he used to stand: the chalkboard's easel
+     by the window (`areas.ts`, `draw: 'chalkboard'`) stands on the old spot. */
+  x: -4.0,
   z: 3.6,
   facing: Math.PI,
   roam: {
     path: [
-      { x: -4.6, z: 3.6 },
-      { x: -4.6, z: 1.0 },
+      { x: -4.0, z: 3.6 },
+      { x: -4.0, z: 1.0 },
       { x: -1.2, z: 2.9 },
     ],
     /* Slow: he is reading the shelves. 0.89× of his Walk clip's own rating, so

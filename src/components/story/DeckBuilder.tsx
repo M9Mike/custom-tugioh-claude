@@ -476,41 +476,45 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
 
   return (
     <main className="safe-page mx-auto flex h-[100svh] w-full max-w-4xl flex-col overflow-hidden p-3">
-      <div className="shrink-0 text-center">
-        <h1 className="font-display text-xl leading-none text-brassbright sm:text-2xl">
-          {first ? 'Cut your first deck' : 'Edit your deck'}
-        </h1>
-        {notice && (
-          <p data-deck-notice className="mx-auto mt-1 max-w-md rounded border border-oxblood bg-[#2a1216]/70 px-3 py-1.5 text-[11px] text-[#f0c9cc]">
-            {notice}
+      {/* The head of the sheet: what this is, on the left; how far along the
+          deck is, as a plaque on the right; the bar under both. */}
+      <div className="flex shrink-0 items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-[0.32em] text-brass">{first ? 'Story Mode' : 'Your Trunk'}</p>
+          <h1 className="mt-0.5 font-display text-xl leading-none text-brassbright sm:text-2xl">
+            {first ? 'Cut your first deck' : 'Edit your deck'}
+          </h1>
+          <p className="mt-1 max-w-md text-[11px] leading-relaxed text-ptext/80">
+            {first
+              ? `Choose exactly ${DECK_SIZE} of the ${pool.length}. One copy of each — this is everything you have.`
+              : `Exactly ${DECK_SIZE} cards, one copy of each. Tap to move a card between the Trunk and your Deck.`}
           </p>
-        )}
-        <p className="mx-auto mt-1 max-w-md text-[11px] leading-relaxed text-ptext/80">
-          {first
-            ? `Choose exactly ${DECK_SIZE} of the ${pool.length}. One copy of each — this is everything you have.`
-            : `Exactly ${DECK_SIZE} cards, one copy of each. Tap to move a card between the Trunk and your Deck.`}
-        </p>
-        <div className="brass-rule mx-auto my-2 w-40" />
-      </div>
-
-      <div className="mb-2 flex shrink-0 items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full border border-stoneline bg-black/40">
-          <div
-            className="h-full transition-[width] duration-200"
-            style={{
-              width: `${(chosen.length / DECK_SIZE) * 100}%`,
-              background: complete
-                ? 'linear-gradient(90deg,#8a723d,#e6c980)'
-                : 'linear-gradient(90deg,#3a4351,#c2a15a)',
-            }}
-          />
         </div>
-        <p
-          data-deck-count
-          className={`font-display text-sm tabular-nums ${complete ? 'text-brassbright' : 'text-ptextdim'}`}
-        >
-          {chosen.length}/{DECK_SIZE}
+        <div className="shrink-0 rounded border border-stoneline bg-black/25 px-3 py-2 text-right">
+          <p className="text-[9px] uppercase tracking-widest text-ptextdim">Sleeved</p>
+          <p
+            data-deck-count
+            className={`font-display text-xl leading-none tabular-nums ${complete ? 'text-brassbright' : 'text-parchment'}`}
+          >
+            {chosen.length}/{DECK_SIZE}
+          </p>
+        </div>
+      </div>
+      {notice && (
+        <p data-deck-notice className="mt-2 shrink-0 rounded border border-oxblood bg-[#2a1216]/70 px-3 py-1.5 text-[11px] text-[#f0c9cc]">
+          {notice}
         </p>
+      )}
+      <div className="my-2 h-1.5 shrink-0 overflow-hidden rounded-full border border-stoneline bg-black/40">
+        <div
+          className="h-full transition-[width] duration-200"
+          style={{
+            width: `${(chosen.length / DECK_SIZE) * 100}%`,
+            background: complete
+              ? 'linear-gradient(90deg,#8a723d,#e6c980)'
+              : 'linear-gradient(90deg,#3a4351,#c2a15a)',
+          }}
+        />
       </div>
 
       {/*
@@ -520,7 +524,8 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
         * a deck looks the same every time it is opened. The Trunk is the pile you
         * rummage in, and it grows every time you win, so it gets both.
         */}
-      <div className="mb-1.5 flex shrink-0 gap-1" role="group" aria-label="Show in the Trunk">
+      {/* One joined bar for what the Trunk shows, not a row of loose buttons. */}
+      <div className="mb-1.5 flex shrink-0 divide-x divide-stoneline overflow-hidden rounded border border-stoneline bg-black/30" role="group" aria-label="Show in the Trunk">
         {TRUNK_FILTERS.map((f2) => (
           <button
             key={f2.key}
@@ -532,7 +537,9 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
               rememberPositions();
               setFilter(f2.key);
             }}
-            className={`btn flex-1 rounded px-2 py-1.5 text-[10px] ${filter === f2.key ? 'btn-primary' : ''}`}
+            className={`flex-1 px-2 py-1.5 font-display text-[10px] uppercase tracking-[0.12em] transition-colors ${
+              filter === f2.key ? 'bg-[#6d5320]/55 text-brassbright' : 'text-ptextdim hover:text-parchment'
+            }`}
           >
             {f2.label}
           </button>
@@ -540,15 +547,21 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
       </div>
 
       <div className="mb-2 flex shrink-0 items-center gap-1.5">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search the Trunk"
-          aria-label="Search the Trunk"
-          data-trunk-search
-          className="min-w-0 flex-1 rounded border border-stoneline bg-black/40 px-2 py-1.5 text-[11px] text-parchment placeholder:text-ptextdim/70"
-        />
-        <div className="flex shrink-0 gap-1" role="group" aria-label="Sort the Trunk">
+        <label className="relative min-w-0 flex-1">
+          <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ptextdim" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden>
+            <circle cx="11" cy="11" r="6" />
+            <path d="M20 20l-4.3-4.3" />
+          </svg>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the Trunk"
+            aria-label="Search the Trunk"
+            data-trunk-search
+            className="w-full rounded border border-stoneline bg-black/40 py-1.5 pl-7 pr-2 text-[11px] text-parchment placeholder:text-ptextdim/70 focus:border-brassdim focus:outline-none"
+          />
+        </label>
+        <div className="flex shrink-0 divide-x divide-stoneline overflow-hidden rounded border border-stoneline bg-black/30" role="group" aria-label="Sort the Trunk">
           {TRUNK_SORTS.map((s2) => (
             <button
               key={s2.key}
@@ -560,7 +573,9 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
                 rememberPositions();
                 setSort(s2.key);
               }}
-              className={`btn rounded px-2 py-1.5 text-[10px] ${sort === s2.key ? 'btn-primary' : ''}`}
+              className={`px-2 py-1.5 font-display text-[10px] uppercase tracking-[0.12em] transition-colors ${
+                sort === s2.key ? 'bg-[#6d5320]/55 text-brassbright' : 'text-ptextdim hover:text-parchment'
+              }`}
             >
               {s2.label}
             </button>
@@ -620,8 +635,8 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
             ) : row.kind === 'heading' ? (
               <h2
                 key={row.key}
-                className={`col-span-full sticky top-0 z-10 -mx-1 bg-ink/95 px-1 py-1 font-display text-[11px] uppercase tracking-wider ${
-                  row.tone === 'deck' ? 'text-brassbright' : 'mt-3 text-ptextdim'
+                className={`col-span-full sticky top-0 z-10 -mx-1 border-b bg-ink/95 px-1 py-1.5 font-display text-[11px] uppercase tracking-[0.2em] ${
+                  row.tone === 'deck' ? 'border-brassdim/60 text-brassbright' : 'mt-3 border-stoneline text-ptextdim'
                 }`}
               >
                 {row.label}

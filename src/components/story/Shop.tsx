@@ -60,25 +60,40 @@ export default function Shop({ profile, stock, onBuy, onClose }: Props) {
   const money = profile.money ?? 0;
 
   return (
-    <main className="safe-page fixed inset-0 z-50 grid place-items-center bg-black/85 p-4" data-shop>
-      <div className="panel grain flex max-h-[92svh] w-full max-w-md flex-col rounded p-5">
-        <div className="shrink-0 text-center">
-          <h1 className="font-display text-xl text-brassbright">Kame Game Shop</h1>
-          <p className="mt-1 text-[11px] text-ptextdim">
-            <span data-money className="font-display text-sm text-parchment">${money.toLocaleString()}</span>
-            {' '}in your pocket
+    <main className="safe-page fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-[2px]" data-shop>
+      {/* The same sheet as the pause menu: a plaque on the left — whose counter
+          this is, what is in your pocket, and whatever he last said — and the
+          shelf beside it. On a phone the plaque stands over the shelf. */}
+      <div className="panel grain flex max-h-[92svh] w-full max-w-md flex-col overflow-hidden rounded sm:max-w-2xl sm:flex-row">
+        <div className="shrink-0 border-b border-stoneline bg-black/25 p-5 sm:w-60 sm:border-b-0 sm:border-r">
+          <p className="text-[10px] uppercase tracking-[0.32em] text-brass">The counter</p>
+          <h1 className="mt-1 font-display text-2xl leading-tight text-brassbright">Kame Game Shop</h1>
+          <div className="brass-rule my-3" />
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] sm:grid-cols-1">
+            <div>
+              <dt className="text-[9px] uppercase tracking-widest text-ptextdim">In your pocket</dt>
+              <dd data-money className="font-display text-base text-parchment">${money.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt className="text-[9px] uppercase tracking-widest text-ptextdim">On the shelf</dt>
+              <dd className="font-display text-base text-parchment">{stock.length === 1 ? '1 card' : `${stock.length} cards`}</dd>
+            </div>
+          </dl>
+          {said && (
+            <p
+              data-shop-says
+              className="mt-3 rounded border border-brassdim bg-black/40 px-3 py-2 text-[11px] italic leading-relaxed text-parchment"
+            >
+              &ldquo;{said}&rdquo;
+            </p>
+          )}
+          <p className="mt-3 hidden text-[10px] leading-relaxed text-ptextdim sm:block">
+            One of each. What you buy goes into your Trunk and stays yours.
           </p>
-          <div className="brass-rule mx-auto my-3 w-32" />
         </div>
 
-        {said && (
-          <p
-            data-shop-says
-            className="mb-3 shrink-0 rounded border border-brassdim bg-black/40 px-3 py-2 text-[11px] italic leading-relaxed text-parchment"
-          >
-            &ldquo;{said}&rdquo;
-          </p>
-        )}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-5">
+        <p className="mb-2 shrink-0 text-[10px] uppercase tracking-[0.32em] text-brass">On the shelf</p>
 
         {inspect && (
           <div className="mb-3 shrink-0">
@@ -117,8 +132,11 @@ export default function Shop({ profile, stock, onBuy, onClose }: Props) {
                       <GameCard card={card} compact />
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-display text-[13px] text-parchment">
+                      <p className="truncate font-display text-[13px] uppercase tracking-[0.06em] text-parchment">
                         {CARDS[item.slug]?.name ?? item.slug}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-ptextdim">
+                        {owned ? 'Already in your Trunk' : affordable ? 'One copy, yours to keep' : 'More than you have on you'}
                       </p>
                       <p data-price className="mt-0.5 font-display text-sm text-brassbright">
                         ${item.price.toLocaleString()}
@@ -164,6 +182,7 @@ export default function Shop({ profile, stock, onBuy, onClose }: Props) {
         >
           Back
         </button>
+        </div>
       </div>
     </main>
   );

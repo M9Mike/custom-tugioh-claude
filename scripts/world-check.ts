@@ -98,7 +98,7 @@ async function checkArea(id: AreaId, io: NodeIO) {
         else {
           try {
             const parts = JSON.parse(ex.parts) as number[][];
-            if (!Array.isArray(parts) || !parts.length || parts.some((r) => r.length !== 7 || r.some((v) => typeof v !== 'number'))) malformed.push(name);
+            if (!Array.isArray(parts) || !parts.length || parts.some((r) => (r.length !== 7 && r.length !== 12) || r.some((v) => typeof v !== 'number'))) malformed.push(name);
             else for (const r of parts) partCentres.push([(r[0] + r[3]) / 2, (r[2] + r[5]) / 2]);
           } catch {
             malformed.push(name);

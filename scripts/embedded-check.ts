@@ -177,6 +177,7 @@ async function main() {
           const baked = (o.userData as { parts?: number[][] } | undefined)?.parts;
           if (baked?.length) {
             for (const p of baked) {
+              if (p[6] === 2) continue; /* a picture is driven into nothing */
               parts.push({
                 o,
                 bb: { min: { x: p[0], y: p[1], z: p[2] }, max: { x: p[3], y: p[4], z: p[5] } },

@@ -214,8 +214,11 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
         style={{ marginBottom: 'calc(var(--safe-bottom) + 12px)' }}
         data-conversation={npc.id}
       >
-        <div className="flex items-baseline justify-between">
-          <p className="font-display text-base leading-none text-brassbright">{npc.character.name}</p>
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="text-[9px] uppercase tracking-[0.32em] text-brass">Talking to</p>
+            <p className="mt-0.5 font-display text-lg leading-none text-brassbright">{npc.character.name}</p>
+          </div>
           <button
             className="btn rounded px-2 py-1 text-[9px]"
             aria-label="End the conversation"
@@ -234,7 +237,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
               paragraphs and the speaker's own name is one of them, so "did
               answering move the conversation on" needs to address *this*
               one and not whichever happens to come first. */}
-          <p data-line className="min-h-[3.5rem] text-xs leading-relaxed text-ptext/90">
+          <p data-line className="min-h-[3.5rem] text-[13px] leading-relaxed text-ptext/90">
             {line}
           </p>
         </button>
@@ -261,10 +264,11 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
                    Mode check needs a reply it can press and still be talking
                    afterwards. */
                 data-ends={c.to === null && !c.duel && !c.shop ? '' : undefined}
-                className="btn rounded px-3 py-2 text-left text-[11px]"
+                className="btn flex w-full items-center gap-3 rounded px-3 py-2 text-left text-[11px] normal-case tracking-normal"
                 onClick={() => choose(c.to, c.duel, c.shop, c.stake)}
               >
-                {c.label}
+                <span className="min-w-0 flex-1 font-display text-[12px] uppercase tracking-[0.06em] text-parchment">{c.label}</span>
+                <span className="text-ptextdim/60">{c.duel ? '⚔' : '›'}</span>
               </button>
             ))}
           </div>

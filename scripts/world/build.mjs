@@ -184,12 +184,28 @@ for (const m of captured?.meshes ?? []) {
   const aspect = Math.max(0.5, Math.min(12, sg.aspect ?? 4));
   signSpecs[key] ??= { text: sg.text, sub: sg.sub, fg: sg.ink, bg: sg.ground, w: 1024, h: Math.max(96, Math.round(1024 / aspect)) };
 }
+/* A line is sized from the board's height and then *fitted* to its width:
+   set from the height alone, "DOMINO HIGH SCHOOL" on a board three and a
+   half times as wide as it was tall ran off both ends, and so did twelve
+   others. Georgia's capitals are measured here by eye, wide enough that
+   the fit errs on the small side; the browser's own `signBoard` measures
+   the real font, but there is no browser in this step. */
+const EM = { I: 0.42, J: 0.5, L: 0.62, F: 0.62, E: 0.68, T: 0.66, S: 0.6, P: 0.66, R: 0.74, B: 0.72, C: 0.7, D: 0.76,
+  K: 0.78, A: 0.74, V: 0.72, X: 0.74, Y: 0.72, Z: 0.66, N: 0.8, U: 0.78, H: 0.82, O: 0.78, Q: 0.78, G: 0.78, M: 0.95,
+  W: 1.0, ' ': 0.28, '.': 0.28, ',': 0.28, '&': 0.8, "'": 0.25, '-': 0.35 };
+const emOf = (str) => [...str].reduce((n, ch) => n + (EM[ch.toUpperCase()] ?? (/\d/.test(ch) ? 0.58 : 0.7)), 0);
+const fitted = (str, size, spacing, room) => {
+  const gaps = spacing * Math.max(0, [...str].length - 1);
+  const est = emOf(str) * size + gaps;
+  return est > room ? Math.max(8, (room - gaps) / emOf(str)) : size;
+};
 for (const [key, spec] of Object.entries(signSpecs)) {
   const w = spec.w ?? 1400;
   const h = spec.h ?? 200;
-  const sub = spec.sub ? `<text x="${w / 2}" y="${h * 0.88}" font-family="Georgia, serif" font-size="${h * 0.24}" fill="${spec.fg}" text-anchor="middle" letter-spacing="6">${esc(spec.sub)}</text>` : '';
+  const subSize = spec.sub ? fitted(spec.sub, h * 0.24, 6, w * 0.88) : 0;
+  const sub = spec.sub ? `<text x="${w / 2}" y="${h * 0.88}" font-family="Georgia, serif" font-size="${subSize}" fill="${spec.fg}" text-anchor="middle" letter-spacing="6">${esc(spec.sub)}</text>` : '';
   const mainY = spec.sub ? h * 0.54 : h * 0.68;
-  const mainSize = spec.sub ? h * 0.42 : h * 0.5;
+  const mainSize = fitted(spec.text, spec.sub ? h * 0.42 : h * 0.5, 8, w * 0.88);
   index.signs[key] = await picture(`sign-${key}.png`, async (out) => {
     const svg = Buffer.from(`<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${spec.bg}"/>
       <rect x="6" y="6" width="${w - 12}" height="${h - 12}" fill="none" stroke="${spec.fg}" stroke-opacity="0.55" stroke-width="4"/>
