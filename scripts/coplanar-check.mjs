@@ -371,9 +371,12 @@ const visitOnce = async (area) => {
   }
   /* Built, not merely loaded: the scene appears on `window` the first frame the
      area is in it, and auditing before that reports zero meshes and passes. */
-  for (let i = 0; i < 150; i++) {
+  /* And, for an area that is a file, landed: the probe says `ready` once
+     the file is in the scene, and before that an audit counts one mesh —
+     the base plate — and passes. */
+  for (let i = 0; i < 600; i++) {
     const there = await page.evaluate(
-      (want) => !!window.__scene && window.__probe && window.__probe.area === want, area
+      (want) => !!window.__scene && window.__probe && window.__probe.area === want && window.__probe.ready !== false, area
     ).catch(() => false);
     if (there) break;
     await page.waitForTimeout(200);

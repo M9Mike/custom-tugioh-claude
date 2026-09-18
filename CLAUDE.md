@@ -368,9 +368,17 @@ build that measured it once per tree ran for an hour; a billboard is sized
 to where it stands, because a nine-metre island tree is eleven wide and
 puts a stretched face against the camera in a grove you can walk; nothing
 may stand inside a door's closed box, not even a hillside; headless Blender
-exits 0 after a traceback unless it is told `--python-exit-code 1`; and
-walls are grids with a column at every opening edge, because pieces that
-meet at a T-junction crack.
+exits 0 after a traceback unless it is told `--python-exit-code 1`; walls
+are grids with a column at every opening edge, because pieces that meet at
+a T-junction crack; a slab's *part* is its face and not a centimetre of box,
+because the box's underside sat four millimetres below whatever stood on
+the floor and `coplanar` read the two undersides as a pair; a marking laid
+on a surface comes through the port as a material named `decal:`, which
+`glb.ts` gives the polygon offset the old `decal()` had and `coplanar`
+leaves out of the running, as it always did; and a check that enters an
+area on its own must wait for `__probe.ready` as `enterStory` does — the
+coplanar sweep waited for the area's *name* and audited four base plates as
+four clean rooms.
 
 ## How the world is put together
 

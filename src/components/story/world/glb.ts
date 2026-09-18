@@ -76,6 +76,15 @@ export async function loadArea(own: Owned, root: THREE.Group, url: string, aniso
         m.transparent = true;
         m.depthWrite = true;
       }
+      /* A marking laid on a surface — a road line, a pitch line, a kerb's
+         paint — is a decal: drawn in front of what it lies on whatever the
+         depth buffer says, which is what the old builders' `decal()` did and
+         what the coplanar check excuses. The file can only carry the name. */
+      if (m.name.startsWith('decal:')) {
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -2;
+      }
     }
     /* A shadow map is opaque: a pane of glass that casts one is a wall to the
        daylight, and the shop's window let nothing in at noon. A cut picture

@@ -404,9 +404,14 @@ class Kit:
         return made
 
     def slab(self, mat, cx, cy, cz, w, d, face='top', uv='metres', **kw):
-        """A single face — a floor, a ceiling, a rug — a centimetre thick to the checks."""
+        """A single face — a floor, a ceiling, a rug. Its part is the face too:
+        a centimetre of thickness gave every floor a second, downward face a
+        few millimetres under whatever stood on it, and `coplanar` read that
+        as a pair with the thing's own underside."""
         keep = {face}
-        return self.box(mat, cx, cy - (0.005 if face == 'top' else -0.005), cz, w, 0.01, d, faces=keep, uv=uv, **kw)
+        part = self.box(mat, cx, cy - (0.005 if face == 'top' else -0.005), cz, w, 0.01, d, faces=keep, uv=uv, **kw)
+        part[1] = part[4] = round(cy, 4)
+        return part
 
     # ------------------------------------------------------------ billboards
 

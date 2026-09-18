@@ -58,6 +58,8 @@ def _key_for(m):
         bits.append('glow')
     if mat['transparent'] and mat['opacity'] < 1:
         bits.append(f"a{mat['opacity']:.2f}")
+    if mat.get('polygonOffset'):
+        bits.append('decal')
     if mat.get('sign'):
         s = mat['sign']
         bits.append(f"sign:{s['text']}|{s.get('sub') or ''}")
@@ -86,6 +88,11 @@ def _material(k, key, m, dressing, mats, art):
             return k.pbr(f'{surface}:{tint}', spec['tex'], tint=tint, rough=spec.get('rough', 1.0), normal=spec.get('normal', 1.0), size=spec.get('size'), ao=spec.get('ao', True), blend=spec.get('tint_blend', 'OVERLAY'))
         return mats[surface]
     colour = mat['color']
+    if mat.get('polygonOffset'):
+        # a decal: a marking laid on a surface, drawn in front of it whatever the
+        # depth says. The loader gives a material named `decal:` its offset, and
+        # `coplanar` leaves it out of the running, as it did in three.js.
+        return k.plain(f'decal:{colour}:{min(1.0, max(0.05, mat["roughness"])):.2f}', colour, rough=min(1.0, max(0.05, mat['roughness'])))
     if mat['glow']:
         return k.plain(f'glow:{colour}', colour, rough=0.5, emissive=colour, emissive_strength=dressing.get('glow_strength', 2.2))
     alpha = mat['opacity'] if mat['transparent'] and mat['opacity'] < 1 else None

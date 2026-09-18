@@ -441,10 +441,26 @@ console.log('\nevery shadow has a normal bias');
     const missing = unique.filter((name) => !src.includes(`${name}.shadow.normalBias`));
     check(missing.length === 0, `world/${file}: every shadow caster sets normalBias`,
           missing.length ? missing.join(', ') : `${unique.length} caster(s)`);
-    /* And the one Sky owns. */
+    /* And the one Sky owns. A builder that is a file reads its Sky off the
+       area's dressing (`normalBias: s.normalBias`), so the number is looked
+       for there — in every dressing the builder imports. */
     if (src.includes('new Sky(')) {
-      check(/normalBias:\s*[\d.]+/.test(src), `world/${file}: its Sky is given a normalBias`,
-            'the key light of the whole area hangs off it');
+      const dressings = [...src.matchAll(/from '([^']*data\/world\/[\w-]+\.dressing\.json)'/g)].map((m) => m[1]);
+      const literal = /normalBias:\s*[\d.]+/.test(src);
+      /* A dressing that carries a sky carries its normalBias; a builder whose
+         sky is in code carries the number itself. */
+      let fromDressing = 0;
+      for (const rel of dressings) {
+        const dressing = JSON.parse(readFileSync(new URL(rel, dir), 'utf8')) as { sky?: { normalBias?: unknown } };
+        if (!dressing.sky) continue;
+        fromDressing += 1;
+        check(typeof dressing.sky.normalBias === 'number', `world/${file}: its Sky is given a normalBias (${rel.split('/').pop()})`,
+              'the key light of the whole area hangs off it');
+      }
+      if (!fromDressing) {
+        check(literal, `world/${file}: its Sky is given a normalBias`,
+              'the key light of the whole area hangs off it');
+      }
     }
   }
 }

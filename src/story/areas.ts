@@ -2352,7 +2352,7 @@ function cemeteryMarkers(): Marker[] {
           if (rnd() < 0.08) continue;               // a plot nobody took
           const kind = rnd() < 0.06 ? 'family' : rnd() < 0.22 ? 'obelisk' : rnd() < 0.4 ? 'slab' : 'stone';
           const big = kind === 'family';
-          out.push({
+          const marker: Marker = {
             x: x0 + dx * (c + 0.5) + (rnd() - 0.5) * 0.18,
             z: z0 + dz * (r + 0.5) + (rnd() - 0.5) * 0.18,
             hw: big ? 0.62 : kind === 'slab' ? 0.5 : 0.3,
@@ -2360,7 +2360,11 @@ function cemeteryMarkers(): Marker[] {
             h: big ? 1.9 + rnd() * 0.5 : kind === 'obelisk' ? 1.5 + rnd() * 0.6 : kind === 'slab' ? 0.55 : 0.85 + rnd() * 0.35,
             kind,
             turn: (rnd() - 0.5) * 0.12,
-          });
+          };
+          /* Not where a lantern stands (its base is 0.92 across), drawn
+             after the dice so nothing else moves. */
+          if (CM_THINGS.some((t) => t.kind === 'lantern' && Math.abs(t.x - marker.x) < 0.56 + marker.hw && Math.abs(t.z - marker.z) < 0.56 + marker.hd)) continue;
+          out.push(marker);
         }
       }
     }
@@ -2378,7 +2382,6 @@ function cemeteryMarkers(): Marker[] {
   return out;
 }
 
-export const CM_MARKERS: Marker[] = cemeteryMarkers();
 
 /**
  * The stone lanterns, and the water basin by the gate.
@@ -2420,6 +2423,16 @@ export const CM_THINGS: { x: number; z: number; kind: 'lantern' | 'basin'; lit?:
    * starts, which is what a row of lamps does.
    */
   Math.abs(t.x - 21) > 7.3 || Math.abs(t.z - 41) > 6.3);
+
+/*
+ * Made after the lanterns, because a plot is not let where one stands: the
+ * east row of lamps runs 1.1 m outside the avenue, which is the first column
+ * of graves, and one grave was generated inside a lantern — its plinth and
+ * the lantern's base sharing a face, its upright standing through the
+ * lantern's shaft. Nothing saw it while the checks read the ground as six
+ * merged meshes; the port gave every stone its own box and `coplanar` did.
+ */
+export const CM_MARKERS: Marker[] = cemeteryMarkers();
 
 /** The terraces, and the flights between them. */
 export const CM_GROUND: Platform[] = [
