@@ -2774,6 +2774,12 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         if (dest < 0) break;
         landSpecialSummon(state, form, ctrl, dest, 'atk', 'up', target.slug);
         ctx.summoned = [...(ctx.summoned ?? []), form.uid];
+        /* A Special Summon is a Summon, and this road forgot to say so:
+           Venusaur called by Bond Evolution arrived silent — reported. Every
+           other road onto the field fires these two lines; see
+           `summonRoads` in `rules-check`, which now walks all of them. */
+        fireTriggers(state, form, ctrl, 'onSummon', {}, ctx.targets.slice(ctx.cursor));
+        announceSummon(state, ctrl, form.uid, `${state.players[ctrl].name} Special Summoned ${displayName(state, form)}.`);
         break;
       }
       case 'swapDeckAndGrave': {
@@ -5093,6 +5099,11 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       c.position = mark.position;
       c.face = mark.face;
       home.monsters[zone] = c;
+      /* Returning from banishment is not a Summon — the card was removed from
+         play and put back where it stood, which is why the line says "steps
+         back" rather than "Special Summons". Nothing fires; that is the rule,
+         not an oversight, and it is written here so the next reader of
+         `summonRoads` does not add it. */
       log(state, `${displayName(state, c)} steps back into the world.`, 'effect', mark.to, logSlug(c));
       anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: mark.to });
     }
@@ -5124,6 +5135,11 @@ function endOfTurnCleanup(state: DuelState, pid: PlayerId) {
       home.monsters[zone] = c;
       log(state, `${displayName(state, c)} rises again before the turn is out.`, 'summon', c.owner, logSlug(c));
       anim(state, { kind: 'summon', uid: c.uid, slug: c.slug, player: c.owner });
+      /* Getting up is a Special Summon, and a Summon is a Summon whoever paid
+         for it — the card's own arrival effect fires, and the other side's
+         answer to a Summon opens. This road was silent. */
+      fireTriggers(state, c, c.owner, 'onSummon', {});
+      announceSummon(state, c.owner, c.uid, `${home.name} Special Summoned ${displayName(state, c)}.`);
     }
   }
   /* Bodies bought for one turn go back to dust. The Millennium Ankh's three

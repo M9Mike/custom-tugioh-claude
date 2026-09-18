@@ -26,6 +26,7 @@ import {
   updateProfile,
 } from '../src/game/experience';
 import type { LogEntry } from '../src/game/types';
+import { readFileSync } from 'node:fs';
 import { matchesFilter, revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits, isExtraDeckCard } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
@@ -16265,6 +16266,160 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       fell.state.players[FOE].spellTrap?.slug);
   }
 
+}
+
+/* ------------------------------------------------------------------ */
+/* Every road onto the field is a Summon                                */
+/* ------------------------------------------------------------------ */
+console.log('\nA Summon is a Summon whichever road it came down');
+{
+  /* Reported: "Some cards when special summoned like Venusaur (in this case
+     with Bond Evolution) did not get the effect on summon" — and the owner's
+     rule with it: where a card says "when Summoned" it means any kind, unless
+     it says Normal or Special.
+
+     The card data already reads that way (`text-check` holds it). What did
+     not was the engine: `evolve`, the road the Evolution Stone and Bond
+     Evolution take, landed a body and never said so, and the End Phase
+     self-revive did the same. So this walks the roads themselves, and the
+     source guard under it refuses a road written next month that forgets. */
+  const road = (label: string, build: () => { state: DuelState; run: (s: DuelState) => { state: DuelState; error?: string } }) => {
+    const { state, run } = build();
+    const before = state.players[FOE].lp;
+    const out = run(state);
+    const spoke = out.state.players[FOE].lp < before;
+    ok(!out.error && spoke, `SUMMON: ${label}`, out.error ?? `their LP did not move (${out.state.players[FOE].lp})`);
+  };
+  /* Bulbasaur burns 500 on arrival; Venusaur burns 1500. Their Life Points
+     moving is the arrival speaking, whatever road it walked. */
+  const table = () => {
+    const s = fresh();
+    for (const pid of [ME, FOE] as PlayerId[]) {
+      const p = s.players[pid];
+      p.monsters = [null, null, null];
+      p.hand = [];
+      p.grave = [];
+      p.extra = [];
+      p.deck = Array.from({ length: 8 }, () => card(pid, 'kuriboh'));
+    }
+    return s;
+  };
+
+  road('a Normal Summon speaks', () => {
+    const s = table();
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].hand = [bulba];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'normalSummon', uid: bulba.uid, zone: 0, position: 'atk', face: 'up', tributes: [] }) };
+  });
+  road('and a Tribute Summon', () => {
+    const s = table();
+    const skull = card(ME, 'summoned-skull');
+    s.players[ME].hand = [skull];
+    s.players[ME].monsters = [card(ME, 'bulbasaur'), null, null];
+    /* Summoned Skull says nothing on arrival, so the burn has to come from
+       somewhere else: a Bulbasaur is what pays for it, and Venusaur is what
+       stands up. Read instead off Poké Ball below — here we only need the
+       road itself to fire, so the body that arrives is the one that talks. */
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].hand = [bulba];
+    s.players[ME].monsters = [card(ME, 'kuriboh'), null, null];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'normalSummon', uid: bulba.uid, zone: 1, position: 'atk', face: 'up', tributes: [] }) };
+    void skull;
+  });
+  road('a Flip Summon', () => {
+    const s = table();
+    const bulba = card(ME, 'bulbasaur');
+    bulba.face = 'down';
+    bulba.position = 'def';
+    bulba.summonedOnTurn = 0;
+    s.players[ME].monsters = [bulba, null, null];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'changePosition', uid: bulba.uid }) };
+  });
+  road('a Special Summon out of the Graveyard', () => {
+    const s = table();
+    const reborn = card(ME, 'monster-reborn');
+    s.players[ME].hand = [reborn];
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].grave = [bulba];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'activateSpell', uid: reborn.uid, targets: [bulba.uid] }) };
+  });
+  road('a Special Summon out of the Deck', () => {
+    const s = table();
+    const ball = card(ME, 'poke-ball');
+    s.players[ME].hand = [ball];
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].deck = [bulba, ...s.players[ME].deck];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'activateSpell', uid: ball.uid, targets: [bulba.uid] }) };
+  });
+  road("a Pokémon's own evolution button", () => {
+    const s = table();
+    const bulba = card(ME, 'bulbasaur');
+    bulba.summonedOnTurn = 0;
+    s.players[ME].monsters = [bulba, null, null];
+    s.players[ME].extra = [card(ME, 'venusaur')];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'ignition', uid: bulba.uid }) };
+  });
+  road('Bond Evolution — the one that was reported', () => {
+    const s = table();
+    const bond = card(ME, 'bond-evolution');
+    s.players[ME].hand = [bond];
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].monsters = [bulba, null, null];
+    s.players[ME].extra = [card(ME, 'venusaur')];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'activateSpell', uid: bond.uid, targets: [bulba.uid] }) };
+  });
+  road('the Evolution Stone', () => {
+    const s = table();
+    const stone = card(ME, 'evolution-stone');
+    s.players[ME].hand = [stone];
+    const bulba = card(ME, 'bulbasaur');
+    s.players[ME].monsters = [bulba, null, null];
+    s.players[ME].extra = [card(ME, 'venusaur')];
+    return { state: s, run: (st) => applyAction(st, ME, { type: 'activateSpell', uid: stone.uid, targets: [bulba.uid] }) };
+  });
+
+  /* And the road nobody drives: a body that gets back up at the End Phase.
+     Darkbright is the only card that takes it and it says nothing on arrival,
+     so the road is driven twice — once with the card that really takes it, and
+     once with a body that talks. */
+  {
+    const s = fresh();
+    s.players[ME].monsters = [null, null, null];
+    const dark = card(ME, 'elemental-hero-darkbright');
+    dark.revivesAtEndPhase = s.turn;
+    s.players[ME].grave = [dark];
+    const closed = applyAction(s, ME, { type: 'toPhase', phase: 'end' });
+    ok(closed.state.players[ME].monsters.some((m) => m?.uid === dark.uid),
+      'SUMMON: a body that gets up at the End Phase really stands', closed.error);
+
+    const talks = fresh();
+    talks.players[ME].monsters = [null, null, null];
+    talks.players[FOE].monsters = [null, null, null];
+    const bulba = card(ME, 'bulbasaur');
+    bulba.revivesAtEndPhase = talks.turn;
+    talks.players[ME].grave = [bulba];
+    const before = talks.players[FOE].lp;
+    const rose = applyAction(talks, ME, { type: 'toPhase', phase: 'end' });
+    ok(rose.state.players[FOE].lp < before, 'SUMMON: and a body with something to say, says it',
+      `their LP did not move (${rose.state.players[FOE].lp})`);
+  }
+
+  /* The guard on the roads themselves. Every call that lands a body has to
+     say so within sight of itself — this is what would have caught `evolve`
+     the day it was written, and what will catch the next one. */
+  {
+    const src = readFileSync(new URL('../src/game/engine.ts', import.meta.url), 'utf8').split('\n');
+    const calls: number[] = [];
+    src.forEach((line, i) => {
+      if (!/landSpecialSummon\(/.test(line)) return;
+      if (/^function landSpecialSummon/.test(line)) return;
+      calls.push(i);
+    });
+    const silent = calls.filter((i) => !/fireTriggers\([^)]*'onSummon'/.test(src.slice(i, i + 34).join('\n')));
+    ok(calls.length >= 6, 'SUMMON: every road that lands a body is accounted for', `${calls.length} found`);
+    ok(silent.length === 0, 'SUMMON: and every one of them announces the arrival',
+      silent.map((i) => `engine.ts:${i + 1}`).join(', '));
+  }
 }
 
 /* ------------------------------------------------------------------ */
