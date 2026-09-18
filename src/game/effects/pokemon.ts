@@ -104,9 +104,10 @@ const STOOD = 'if this monster was on the field before this turn, ';
 /**
  * The top of the ladder, on every Level 10 form.
  *
- * Two *other* Level 8 or higher Pokémon are the price, on top of the one doing
- * the calling — three evolved bodies on a three-zone board, which is a board
- * this deck builds by the middle of a duel and no other deck builds at all.
+ * Three Level 8 or higher Pokémon, and the one pressing the button is one of
+ * them — which on a three-zone board is the whole field, so the Master arrives
+ * alone. That is the owner's price and it is what makes the card worthy: you
+ * are not adding a body, you are trading three for one.
  * The filter is the cost's own, and `text-check` reads it for the "Level 8 or
  * higher" in the sentence.
  */
@@ -114,11 +115,11 @@ const masterRoad: CardEffect = {
   trigger: 'ignition',
   label: 'Call the Master of All',
   condition: { stoodATurn: true },
-  cost: { tribute: 2, tributeFilter: { type: 'Pokémon', minLevel: 8 } },
+  cost: { tributeSelf: true, tribute: 2, tributeFilter: { type: 'Pokémon', minLevel: 8 } },
   ops: [{ op: 'specialSummon', from: ['extra', 'grave'], filter: { slugs: [MASTER] }, position: 'atk' }],
 };
 const MASTER_TEXT =
-  'Once per turn: if this monster was on the field before this turn, Tribute 2 other Level 8 or higher Pokémon you control; ' +
+  'Once per turn: if this monster was on the field before this turn, Tribute this monster and 2 other Level 8 or higher Pokémon you control; ' +
   'Special Summon "Ash\'s Ultimate Pokémon — Master of All" from your Extra Deck or Graveyard.';
 
 const EVOLVED = 'Cannot be Normal Summoned or Set. ';
@@ -221,15 +222,16 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
   },
 
   greninja: {
-    /* The bond. He fetches the card that makes him Ash-Greninja, and every
-       swing is a shuriken through their backrow first. */
+    /* The second chance. He fetches the card that puts a fallen Pokémon back
+       on the table — the bond is Pikachu's to hand back now — and every swing
+       is a shuriken through their backrow first. */
     text:
-      'When this monster is Summoned: add 1 "Bond Evolution" from your Deck to your hand. ' +
+      'When this monster is Summoned: add 1 "Max Revive" from your Deck to your hand. ' +
       'When this monster attacks: destroy 1 Spell or Trap your opponent controls. ' +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Ash-Greninja" from your Extra Deck or Graveyard.',
     cry: 'Water Shuriken!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['bond-evolution'] } }] },
+      { trigger: 'onSummon', ops: [{ op: 'search', filter: { slugs: ['max-revive'] } }] },
       { trigger: 'onDeclareAttack', ops: [{ op: 'destroy', target: OPP_ONE_BACKROW }] },
       evolve('Evolve', ['ash-greninja']),
     ],
@@ -774,12 +776,21 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
     text:
       EVOLVED +
       'Can only be Special Summoned by the effect of "Snorlax", "Max Revive" or "Substitute". ' +
-      'This monster cannot be destroyed by battle, and anything that attacks it does so 1000 ATK lighter. ' +
+      'This monster cannot be destroyed by battle. ' +
+      "While this monster is face-up, your opponent's monsters can only attack it. " +
       'At the start of your turn: gain 1000 Life Points.',
     cry: 'G-Max Replenish!',
     summonOnlyBy: roads('snorlax'),
     effects: [
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle', 'sapsAttacker'] } },
+      /* The body the whole team stands behind. The thousand off an attacker
+         was a wall for itself alone; standing in front of everything is what
+         a Gigantamax Snorlax is for, and paired with "cannot be destroyed by
+         battle" it is a shield that does not wear out — the price being that
+         it soaks the damage itself, every swing, on a board that can no
+         longer trade. `mustBeAttacked` is Thousand-Eyes Restrict's word, and
+         it closes the direct attack too: an attacker that could walk past the
+         board has to come through this instead. */
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['indestructibleByBattle', 'mustBeAttacked'] } },
       { trigger: 'onOwnTurnStart', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
     ],
   },

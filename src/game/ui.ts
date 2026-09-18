@@ -437,7 +437,10 @@ function costSpec(eff: CardEffect): TargetSpec | null {
      paid with whatever happened to be standing in the first zone — invisible
      while the damage was a flat 1000, and the whole card once it is worth what
      it throws. `tributeSelf` pays with the card itself and has nothing to ask. */
-  if (eff.cost?.tribute && !eff.cost.tributeSelf) {
+  /* `tribute` is the number of OTHER bodies either way — a card that also pays
+     with itself asks about the others only, because the presser is not one of
+     the answers. See `tributeBill`. */
+  if (eff.cost?.tribute) {
     return {
       side: 'own',
       zone: 'monster',

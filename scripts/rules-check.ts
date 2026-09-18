@@ -16025,25 +16025,61 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       'EVOLVE: and Mega Charizard Y is the one that stands', r.error ?? r.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
   }
 
-  /* --- The Master: two other Level 8s pay for it --- */
+  /* --- The Master: three Level 8s pay for it, the caller included --- */
   {
+    /* The owner's price: "3 Level 8 or higher Pokémon you control", which on a
+       three-zone board is the whole field — so the Master arrives alone. The
+       one pressing the button is one of the three and is not one of the
+       answers: it pays whether or not the player names it. */
     const s = ash();
     const emperor = card(ME, 'charizard-flame-emperor');
     emperor.summonedOnTurn = 0;
-    s.players[ME].monsters = [emperor, card(ME, 'ash-greninja'), card(ME, 'mega-lucario')];
-    const r = applyAction(s, ME, { type: 'ignition', uid: emperor.uid, targets: [] });
+    const one = card(ME, 'ash-greninja');
+    const two = card(ME, 'mega-lucario');
+    s.players[ME].monsters = [emperor, one, two];
+    const r = applyAction(s, ME, { type: 'ignition', uid: emperor.uid, targets: [one.uid, two.uid] });
     ok(!r.error, 'MASTER: the Flame Emperor calls the Master of All', r.error);
     const left = r.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(',');
-    ok(r.state.players[ME].monsters.some((m) => m?.slug === MASTER) && r.state.players[ME].monsters.some((m) => m?.slug === 'charizard-flame-emperor'),
-      'MASTER: the Master stands beside the one that called it', left);
-    ok(r.state.players[ME].monsters.filter(Boolean).length === 2, 'MASTER: and the two others were spent', left);
-    /* With one Level 8 beside it, the button is not offered. */
+    ok(r.state.players[ME].monsters.filter(Boolean).length === 1 && r.state.players[ME].monsters.some((m) => m?.slug === MASTER),
+      'MASTER: and it stands alone — three bodies bought it', left);
+    ok(!r.state.players[ME].monsters.some((m) => m?.slug === 'charizard-flame-emperor'),
+      'MASTER: the one that called it went with the other two', left);
+    const paid = r.state.players[ME].grave.map((c) => c.slug).sort().join(',');
+    ok(paid === ['ash-greninja', 'charizard-flame-emperor', 'mega-lucario'].sort().join(','),
+      'MASTER: all three are in the Graveyard', paid);
+
+    /* It pays with itself even when the player names nobody. */
+    const quiet = ash();
+    const caller = card(ME, 'charizard-flame-emperor');
+    caller.summonedOnTurn = 0;
+    quiet.players[ME].monsters = [caller, card(ME, 'ash-greninja'), card(ME, 'mega-lucario')];
+    const silent = applyAction(quiet, ME, { type: 'ignition', uid: caller.uid, targets: [] });
+    ok(!silent.error && silent.state.players[ME].monsters.filter(Boolean).length === 1,
+      'MASTER: and with nobody named, it still costs all three',
+      silent.error ?? silent.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* Two Level 8s and a Level 4 is not three Level 8s. */
     const poor = ash();
     const alone = card(ME, 'charizard-flame-emperor');
     alone.summonedOnTurn = 0;
     poor.players[ME].monsters = [alone, card(ME, 'ash-greninja'), card(ME, 'pikachu')];
     ok(!ignitionOptions(poor, ME, alone).some((o) => o.label === 'Call the Master of All'),
       'MASTER: a Level 4 beside it does not pay for the Master');
+    /* And one other Level 8 is one short, where two used to be the whole bill. */
+    const short = ash();
+    const solo = card(ME, 'charizard-flame-emperor');
+    solo.summonedOnTurn = 0;
+    short.players[ME].monsters = [solo, card(ME, 'ash-greninja'), null];
+    ok(!ignitionOptions(short, ME, solo).some((o) => o.label === 'Call the Master of All'),
+      'MASTER: two Level 8s on the board are one short now');
+
+    /* The board asks for the two others only — the caller is not a choice. */
+    const spec = targetSpecForEffect(
+      'charizard-flame-emperor',
+      CARDS['charizard-flame-emperor'].effects.findIndex((e) => e.label === 'Call the Master of All')
+    );
+    ok(spec?.count === 2 && spec.filter?.minLevel === 8,
+      'MASTER: the board asks for the two others, Level 8 or higher', JSON.stringify(spec));
   }
 
   /* --- Mewtwo: destroy the Master and the God steps out, and stays --- */
@@ -16166,6 +16202,49 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
     const bond = killed('pikachu', 'bond-evolution');
     ok(bond.includes('bond-evolution'), 'BOND: a fallen Pikachu hands back the bond', bond.join(',') || '(empty)');
 
+    /* Gigantamax Snorlax stands in front of the whole team. It used to take a
+       thousand off whatever hit it, which was a wall for itself alone; now
+       nothing else on its side can be attacked at all, and it cannot be
+       broken by battle — so the shield does not wear out. */
+    {
+      const wall = ash();
+      wall.phase = 'battle';
+      wall.active = FOE;
+      const snor = card(ME, 'gigantamax-snorlax');
+      const small = card(ME, 'rowlet');
+      snor.summonedOnTurn = 0;
+      small.summonedOnTurn = 0;
+      wall.players[ME].monsters = [small, snor, null];
+      const beater = card(FOE, 'blue-eyes-white-dragon');
+      beater.summonedOnTurn = 0;
+      wall.players[FOE].monsters = [beater, null, null];
+      const legal = legalAttackTargets(wall, FOE, beater);
+      ok(legal.uids.length === 1 && legal.uids[0] === snor.uid,
+        'SNORLAX: it is the only thing on its side that can be attacked',
+        legal.uids.map((u) => wall.players[ME].monsters.find((m) => m?.uid === u)?.slug ?? u).join(','));
+      ok(!legal.direct, 'SNORLAX: and there is no walking past it to the player');
+      const refused = applyAction(wall, FOE, { type: 'attack', uid: beater.uid, targetUid: small.uid });
+      ok(!!refused.error, 'SNORLAX: a swing aimed at the little one is refused', refused.error ?? 'it went through');
+      const struck = applyAction(wall, FOE, { type: 'attack', uid: beater.uid, targetUid: snor.uid });
+      ok(struck.state.players[ME].monsters.some((m) => m?.uid === snor.uid),
+        'SNORLAX: and it survives the blow it soaked', struck.error);
+      /* It is a shield, not a free one: the damage still lands. */
+      ok(struck.state.players[ME].lp < wall.players[ME].lp, 'SNORLAX: the damage still goes through to its owner',
+        String(struck.state.players[ME].lp));
+    }
+
+    /* And the one fetch that happens on the way IN. Greninja used to find the
+       bond; the bond is Pikachu's to hand back now, so Greninja finds the card
+       that puts a fallen Pokémon back on the table. */
+    const shuriken = ash();
+    const gren = card(ME, 'greninja');
+    shuriken.players[ME].hand = [gren];
+    shuriken.players[ME].deck = [card(ME, 'max-revive'), card(ME, 'bond-evolution'), ...shuriken.players[ME].deck];
+    const found = applyAction(shuriken, ME, { type: 'normalSummon', uid: gren.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const held = found.state.players[ME].hand.map((c) => c.slug);
+    ok(held.includes('max-revive'), 'GRENINJA: he finds Max Revive on arrival', held.join(',') || '(empty)');
+    ok(!held.includes('bond-evolution'), 'GRENINJA: and leaves the bond in the Deck', held.join(','));
+
     /* And a Tribute is not a death: evolving a Gengar must not also pay its
        owner a stone. */
     const evolved = ash();
@@ -16266,6 +16345,62 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       fell.state.players[FOE].spellTrap?.slug);
   }
 
+}
+
+/* ------------------------------------------------------------------ */
+/* A Tribute that moves the hand                                        */
+/* ------------------------------------------------------------------ */
+console.log('\nPaying the Tributes can move the hand, so the hand is read again');
+{
+  /* Found by `npm run invariants` — "uid … appears in two zones", Ishizu vs
+     Isha. Mudora's "when this monster is sent to the Graveyard: Special
+     Summon 1 Mudora from your Deck OR HAND" fires on being tributed and lifts
+     a card out of the very hand the Summon is about to splice. The index was
+     taken before a single Tribute was paid, so the splice threw away a
+     different card and the monster being Summoned stood on the field *and*
+     stayed in the hand. */
+  const s = fresh();
+  const one = card(ME, 'mudora');
+  const two = card(ME, 'keldo');
+  one.summonedOnTurn = 0;
+  two.summonedOnTurn = 0;
+  s.players[ME].monsters = [one, two, null];
+  const knight = card(ME, 'mystical-knight-of-jackal');
+  const spare = card(ME, 'mudora');
+  /* The spare sits BEFORE the Knight in the hand, so lifting it shifts the
+     Knight's index — which is the whole fault. */
+  s.players[ME].hand = [spare, knight];
+  s.players[ME].deck = [card(ME, 'agido'), ...s.players[ME].deck];
+
+  let out = applyAction(s, ME, {
+    type: 'normalSummon', uid: knight.uid, zone: 2, position: 'atk', face: 'up',
+    tributes: [one.uid, two.uid],
+  });
+  let guard = 0;
+  while (out.state.pending && guard++ < 6) {
+    const pend = out.state.pending;
+    out = applyAction(out.state, pend.player, pend.kind === 'choose' ? { type: 'chooseCard', uids: [pend.options[0]] } : { type: 'respondTrap', uid: null });
+  }
+  ok(!out.error, 'TRIBUTE: the Summon goes through', out.error);
+  ok(out.state.players[ME].monsters.some((m) => m?.uid === knight.uid),
+    'TRIBUTE: the Knight is standing on the field',
+    out.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+  ok(!out.state.players[ME].hand.some((h) => h.uid === knight.uid),
+    'TRIBUTE: and is not still being held in the hand',
+    out.state.players[ME].hand.map((h) => h.slug).join(',') || '(empty)');
+
+  /* And nobody else's card was thrown away instead. */
+  const seen = new Set<string>();
+  const twice: string[] = [];
+  for (const pid of [ME, FOE] as PlayerId[]) {
+    const p = out.state.players[pid];
+    for (const c of [...p.hand, ...p.deck, ...p.grave, ...p.banished, ...p.extra,
+      ...p.monsters.filter((m): m is CardInstance => !!m), ...(p.spellTrap ? [p.spellTrap] : []), ...(p.field ? [p.field] : [])]) {
+      if (seen.has(c.uid)) twice.push(`${c.slug}`);
+      seen.add(c.uid);
+    }
+  }
+  ok(twice.length === 0, 'TRIBUTE: and no card is in two places at once', twice.join(','));
 }
 
 /* ------------------------------------------------------------------ */

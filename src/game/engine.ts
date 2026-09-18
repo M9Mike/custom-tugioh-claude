@@ -5670,11 +5670,36 @@ export function legalAttackTargets(state: DuelState, pid: PlayerId, c: CardInsta
  * picker the player sees — the same reason `summonBlocked` is one function.
  * Two of the three used to be a copy of the rule and they had already drifted.
  */
+/**
+ * How many bodies a cost takes, the card itself included.
+ *
+ * `tributeSelf` and `tribute` used to be alternatives — one meant "pay with
+ * yourself", the other "pay with N others". The Master of All asks for three
+ * Level 8 or higher Pokémon on a three-zone board, which can only mean the one
+ * pressing the button and two more, so the two words compose: the presser is
+ * one of the three and the Master arrives alone. Read here by all three
+ * places that charge it, because a price written out three times is a price
+ * that drifts.
+ */
+export function tributeBill(eff: CardEffect): number {
+  return (eff.cost?.tributeSelf ? 1 : 0) + (eff.cost?.tribute ?? 0);
+}
+
 export function tributeFodder(state: DuelState, pid: PlayerId, eff: CardEffect, self?: string): CardInstance[] {
   const p = state.players[pid];
   if (eff.cost?.tributeSelf) {
     const c = p.monsters.find((m) => m?.uid === self);
-    return c ? [c] : [];
+    if (!c) return [];
+    /* Itself alone, unless the card also asks for others — see `tributeBill`.
+       It heads the list because it is not a choice: the button cannot be
+       pressed by a monster that is not paying. */
+    if (!eff.cost?.tribute) return [c];
+    return [
+      c,
+      ...p.monsters.filter(
+        (m): m is CardInstance => !!m && m.uid !== self && matchesFilter(m, eff.cost?.tributeFilter)
+      ),
+    ];
   }
   /* Your own bodies and no one else's. Soul Exchange lends the opponent's
      monsters for *Tribute Summoning*, which is what the card says — paying an
@@ -5790,10 +5815,10 @@ export function tributeSetFor(
 function canPayCost(state: DuelState, pid: PlayerId, eff: CardEffect, exclude?: string): boolean {
   const p = state.players[pid];
   if (eff.cost?.lp != null && p.lp <= lpCost(state, pid, eff)) return false;
-  if (eff.cost?.tributeSelf) {
-    // The card pays with itself, so there is nothing beside it to check.
+  if (eff.cost?.tributeSelf && eff.cost?.tribute == null) {
+    // The card pays with itself alone, so there is nothing beside it to check.
   } else if (eff.cost?.tribute != null) {
-    if (tributeFodder(state, pid, eff, exclude).length < eff.cost.tribute) return false;
+    if (tributeFodder(state, pid, eff, exclude).length < tributeBill(eff)) return false;
   }
   /* The card asking cannot pay with itself — but only if it is *in* the hand.
      A flat `- 1` charged a monster on the field for a hand it is not part of,
@@ -6629,7 +6654,31 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const dest = p.monsters[action.zone] ? p.monsters.findIndex((m) => !m) : action.zone;
       if (dest < 0) return { state: prev, error: 'That Monster Zone is occupied.' };
 
-      p.hand.splice(hi, 1);
+      /* Found again, because paying the tributes can move the hand.
+         `hi` was taken before a single Tribute was paid, and Mudora's "when
+         this monster is sent to the Graveyard: Special Summon 1 Mudora from
+         your Deck OR HAND" fires on being tributed and takes a card out of
+         that same hand. Every index after it shifts by one, and the splice
+         then threw away somebody else's card while the monster being Summoned
+         stayed where it was — standing on the field and held in the hand at
+         the same time, which is the one thing `npm run invariants` exists to
+         catch. It caught it: "uid … appears in two zones", Ishizu vs Isha.
+         The zone was re-found two lines up for exactly this reason; the card
+         was not. */
+      /* Found again, because paying the tributes can move the hand.
+         `hi` was taken before a single Tribute was paid, and Mudora's "when
+         this monster is sent to the Graveyard: Special Summon 1 Mudora from
+         your Deck OR HAND" fires on being tributed and takes a card out of
+         that same hand. Every index after it shifts by one, and the splice
+         then threw away somebody else's card while the monster being Summoned
+         stayed where it was — standing on the field and held in the hand at
+         the same time, which is the one thing `npm run invariants` exists to
+         catch. It caught it: "uid … appears in two zones", Ishizu vs Isha.
+         The zone was re-found two lines up for exactly this reason; the card
+         was not. */
+      const at = p.hand.findIndex((h) => h.uid === action.uid);
+      if (at < 0) return { state: prev, error: 'Card is not in your hand.' };
+      p.hand.splice(at, 1);
       c.position = action.face === 'down' ? 'def' : action.position;
       c.face = action.face;
       /* What the Set was seen to cost, kept on the card. The tributes were
@@ -6934,7 +6983,7 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
       const sourceCounters = c.counters;
       if (eff.cost?.tribute || eff.cost?.tributeSelf) {
         const fodder = tributeFodder(state, pid, eff, c.uid);
-        const need = eff.cost.tributeSelf ? 1 : (eff.cost.tribute ?? 0);
+        const need = tributeBill(eff);
         if (fodder.length < need) return { state: prev, error: 'Not enough monsters to tribute.' };
         /* Whichever ones the player pointed at, and only then whatever is
            left. It always took the first monster in the row before, so
@@ -6944,7 +6993,12 @@ function applyActionInner(prev: DuelState, pid: PlayerId, action: DuelAction): {
         const chosen = (action.targets ?? [])
           .map((uid) => fodder.find((m) => m.uid === uid))
           .filter((m): m is CardInstance => !!m);
-        const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, need);
+        /* The card itself first when it is part of the price: it is not one of
+           the answers the player gave, and a board with more legal bodies than
+           the bill would otherwise let the presser survive its own cost. */
+        const mine = eff.cost.tributeSelf ? fodder.filter((m) => m.uid === c.uid) : [];
+        const rest = [...chosen, ...fodder].filter((m) => !mine.includes(m));
+        const paying = [...mine, ...rest.filter((m, i) => rest.indexOf(m) === i)].slice(0, need);
         for (const m of paying) {
           tributedAtk.push(effAtk(state, m, pid));
           tributedDef.push(effDef(state, m, pid));
@@ -7196,9 +7250,10 @@ function payActivation(
   const paidForCost: string[] = [];
   if (eff?.cost?.tribute) {
     const fodder = tributeFodder(state, pid, eff, c.uid);
-    if (fodder.length < eff.cost.tribute) return { error: 'Not enough monsters to tribute.' };
+    const bill = tributeBill(eff);
+    if (fodder.length < bill) return { error: 'Not enough monsters to tribute.' };
     const chosen = targets.map((uid) => fodder.find((m) => m.uid === uid)).filter((m): m is CardInstance => !!m);
-    const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, eff.cost.tribute);
+    const paying = [...chosen, ...fodder.filter((m) => !chosen.includes(m))].slice(0, bill);
     for (const m of paying) {
       paidForCost.push(m.uid);
       toGrave(state, m.uid, true);

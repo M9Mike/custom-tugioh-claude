@@ -423,6 +423,59 @@ function checkRent(def: CardDef): string[] {
   return out;
 }
 
+/**
+ * A card that says it adds a NAMED card has to add that card.
+ *
+ * Greninja's sentence was changed from the bond to Max Revive and the effect
+ * left naming the bond, and every gate stayed green: the audit drives the
+ * search and watches a card arrive in the hand, which it did — the wrong one.
+ * Nothing compared the name in the sentence with the slug in the filter.
+ *
+ * Only a quoted string that IS a card name is judged. "add 1 'Elemental HERO'
+ * monster" quotes an archetype, not a card, and reads as prose here, which is
+ * the whole reason this is narrow: the same sweep over every quoted name
+ * anywhere in a text lit up twenty-seven cards that were all correct — Token
+ * names, archetype names, and the cards whose relationship lives in a
+ * mechanism rather than a slug list.
+ */
+const NAME_BY_SLUG = new Map<string, string>();
+for (const d of Object.values(CARDS)) NAME_BY_SLUG.set(d.name.toLowerCase(), d.slug);
+const FETCHES = new Set([
+  'search',
+  'stealFromGrave',
+  'setTrap',
+  'specialSummon',
+  'shuffleIntoDeck',
+  'returnToExtra',
+  'promiseSummon',
+  'millUntilSummon',
+  'destinyDraw',
+]);
+function flatOps(ops: Op[]): Op[] {
+  return ops.flatMap((o) => [
+    o,
+    ...(o.op === 'cascade' ? o.branches.flatMap((b) => flatOps(b.ops)) : []),
+    ...(o.op === 'coinFlip' ? flatOps([...o.heads, ...o.tails]) : []),
+    ...(o.op === 'diceRoll' ? flatOps(o.perPip) : []),
+  ]);
+}
+function checkNamedFetch(def: CardDef): string[] {
+  const out: string[] = [];
+  const fetched = def.effects
+    .flatMap((e) => flatOps(e.ops))
+    .filter((o) => FETCHES.has(o.op))
+    .flatMap((o) => ('filter' in o && o.filter?.slugs ? o.filter.slugs : []));
+  for (const m of (def.text ?? '').matchAll(/\badd\s+(?:1\s+)?["“]([^"”]{2,60})["”]/gi)) {
+    const want = NAME_BY_SLUG.get(m[1].toLowerCase());
+    if (!want || fetched.includes(want)) continue;
+    out.push(
+      `${def.name} (${def.slug}) — text says it adds "${m[1]}" and the card fetches ` +
+        (fetched.length ? fetched.join(', ') : 'nothing by name')
+    );
+  }
+  return out;
+}
+
 for (const def of Object.values(CARDS)) {
   if (def.slug === 'facedown' || !def.text) continue;
   checked += 1;
@@ -431,6 +484,7 @@ for (const def of Object.values(CARDS)) {
   problems.push(...checkBackrowReach(def));
   problems.push(...checkSelfCondition(def));
   problems.push(...checkRent(def));
+  problems.push(...checkNamedFetch(def));
 
   for (const { phrase, needs, label, orElse } of TRIGGERS) {
     if (!phrase.test(def.text)) continue;
