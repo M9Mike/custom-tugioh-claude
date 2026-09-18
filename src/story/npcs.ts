@@ -1418,7 +1418,7 @@ const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
 
   offer: {
     lines: [
-      'Good. Stand where you are and put something down — nobody here plays for money, and the yard is the priest’s, so mind the lanterns.',
+      'Good. A dollar on the step, then — that is what it costs to be wrong. Beat me and you take it back with five of mine on top, and the yard is the priest’s, so mind the lanterns.',
     ],
     choices: [
       { label: 'Ready.', to: 'beaten', duel: true },
@@ -1503,7 +1503,7 @@ const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
 
   offer: {
     lines: [
-      'Set your board. No stake — I have nothing you want and you have nothing I would carry.',
+      'Set your board, and a dollar down with it. Lose and I keep it; put me down and you take it back and ten of mine with it. I would rather not carry that home anyway.',
     ],
     choices: [
       { label: 'Ready.', to: 'beaten', duel: true },
@@ -1590,7 +1590,7 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
 
   offer: {
     lines: [
-      'Then stand there and do not apologise for anything. No stake — I do not take money off people I have just taught something to.',
+      'Then stand there and do not apologise for anything. A dollar to sit down, fifteen of mine and your own back if you put me down. I am not cheap and I do not pretend to be.',
     ],
     choices: [
       { label: 'Ready.', to: 'beaten', duel: true },

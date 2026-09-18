@@ -1,7 +1,7 @@
 import { createExhibitionRoom, createRoom, createSoloRoom, createStoryRoom, createTournamentRoom, viewOf } from '@/server/rooms';
 import { canonicalUsername, loadProfile, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
-import { deckIsShort, escrowCard, refuseWager, stakeFor, wagersACard } from '@/story/shop';
+import { deckIsShort, escrowCard, forfeitFor, refuseWager, stakeFor, wagersACard } from '@/story/shop';
 import { CARDS } from '@/game/cards';
 
 export const runtime = 'nodejs';
@@ -85,13 +85,33 @@ export async function POST(req: Request) {
          she has not got. See `PURSE` in `story/shop.ts`; the figure is read off
          the save and never off the request. */
       const stake = stakeFor(opponentId, body.stake, profile.purse);
-      if (stake > 0) {
+      /*
+       * And what losing to them costs, which is taken the same way.
+       *
+       * Three duelists charge a dollar for a loss (`FORFEIT`), and it is
+       * escrowed rather than collected afterwards for the same reason a stake
+       * is: a loss is claimed by nobody. It comes home with the bounty on a win
+       * the server has proved, and stays on the table otherwise — including
+       * when the player refreshes out of a board they do not like.
+       *
+       * Off the duelist rather than off the request, so there is nothing here
+       * for a client to name.
+       */
+      const forfeit = forfeitFor(opponentId);
+      const owed = stake + forfeit;
+      if (owed > 0) {
         const paid = await updateProfile(canonical, (p) => {
           const held = p.money ?? 0;
-          if (held < stake) {
-            return { ok: false, status: 409, error: `You need $${stake} on you to play for $${stake}.` };
+          if (held < owed) {
+            return {
+              ok: false,
+              status: 409,
+              error: stake > 0
+                ? `You need $${stake} on you to play for $${stake}.`
+                : `You need $${forfeit} on you to sit down — that is what losing costs.`,
+            };
           }
-          return { ok: true, profile: { ...p, money: held - stake } };
+          return { ok: true, profile: { ...p, money: held - owed } };
         });
         if (!paid.ok) {
           return Response.json({ ok: false, error: paid.error }, { status: paid.status });
@@ -151,10 +171,10 @@ export async function POST(req: Request) {
           wagerCard
         );
       } catch (err) {
-        if (stake > 0) {
+        if (owed > 0) {
           await updateProfile(canonical, (p) => ({
             ok: true,
-            profile: { ...p, money: (p.money ?? 0) + stake },
+            profile: { ...p, money: (p.money ?? 0) + owed },
           })).catch(() => null);
         }
         throw err;

@@ -68,7 +68,58 @@ export const BOUNTY: Record<string, number> = {
    * for first: a card of yours on the table. See `CARD_WAGER`.
    */
   ash: 3000,
+  /*
+   * The three Amazons: five, ten and fifteen, which is the order they stand in
+   * and the order they say they stand in. Antiope is the one you practise on,
+   * Hippolyta is the one worth walking back for.
+   *
+   * They are the first duelists who charge for losing as well as paying for
+   * winning — a dollar a time, see `FORFEIT` — so the money moves both ways
+   * across the same table and beating them is worth the difference.
+   */
+  antiope: 5,
+  panthesilea: 10,
+  hippolyta: 15,
 };
+
+/**
+ * What losing to this duelist costs, in dollars.
+ *
+ * ## Why anybody charges for losing
+ *
+ * Because a bounty with nothing against it is a wage: the worst thing that can
+ * happen at a free table is that you try again, so the optimal play against
+ * every duelist in the city is to keep sitting down until the cards fall your
+ * way. A dollar on the other side of the ledger is small enough to be no
+ * punishment and large enough to make the fifteen-dollar fixture a thing you
+ * choose rather than grind. Mike's rule, and the sisters are the first to have
+ * it.
+ *
+ * ## Taken at the table, not asked for afterwards
+ *
+ * The dollar leaves the player's money the moment the duel is *seated*
+ * (`/api/room`) and comes back with the bounty on a win that has been proved
+ * (`/api/story/pack`). Exactly the escrow Tina's stake uses, and for exactly
+ * her reasons: a win is claimed, a loss is claimed by nobody, and deducting on
+ * a reported loss would be asking the loser to report it. It also settles
+ * walking out — seeing the opening hand and closing the tab is a loss the
+ * table has already been paid for.
+ *
+ * So a win is `+BOUNTY` (the dollar comes home with it), a loss is `-1`, and
+ * refreshing out of a bad board is `-1`.
+ *
+ * Absent means losing costs nothing, which is everybody else.
+ */
+export const FORFEIT: Record<string, number> = {
+  antiope: 1,
+  panthesilea: 1,
+  hippolyta: 1,
+};
+
+/** What losing to this duelist costs. Zero for anyone not on the list. */
+export function forfeitFor(duelistId: string): number {
+  return FORFEIT[duelistId] ?? 0;
+}
 
 /** What beating this duelist pays. Zero for anyone not on the list. */
 export function bountyFor(duelistId: string): number {

@@ -4,7 +4,7 @@ import { claimStoryPack } from '@/server/rooms';
 import { readBody } from '../body';
 import { stageFor } from '@/story/profile';
 import { openPack } from '@/story/packs';
-import { bountyFor, givesAPack, purseAfterWin, returnCard } from '@/story/shop';
+import { bountyFor, forfeitFor, givesAPack, purseAfterWin, returnCard } from '@/story/shop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -105,7 +105,15 @@ export async function POST(req: Request) {
        * Losing needs no branch at all. The stake is already gone, taken when the
        * duel was seated, and a loss simply never reaches this line.
        */
-      const paid = bountyFor(duelistId) + verdict.stake * 2;
+      /*
+       * The bounty, the pot, and the dollar that was on the table for losing.
+       *
+       * `forfeitFor` is escrowed when the duel is seated (`/api/room`) and only
+       * a proved win brings it home, so a loss costs it and walking out costs
+       * it. Read off the duelist the *room* recorded, like everything else
+       * here: there is no figure in this route a client could name.
+       */
+      const paid = bountyFor(duelistId) + forfeitFor(duelistId) + verdict.stake * 2;
       const pack = givesAPack(duelistId);
       /*
        * And the card comes home.

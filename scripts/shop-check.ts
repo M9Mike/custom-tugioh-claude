@@ -15,12 +15,14 @@ import { compareCards } from '../src/story/deckSort';
 import { newProfile, type StoryProfile } from '../src/story/profile';
 import {
   BOUNTY,
+  FORFEIT,
   CARD_WAGER,
   KEEPS_THEIR_CARDS,
   PURSE,
   STOCK,
   WAGER,
   bountyFor,
+  forfeitFor,
   buy,
   ceilingFor,
   givesAPack,
@@ -345,6 +347,58 @@ console.log('\nand what she brought with her\n');
     'everybody who keeps their cards pays money instead, or a win against them is worth nothing',
     [...KEEPS_THEIR_CARDS].filter((id) => bountyFor(id) <= 0).join(', ')
   );
+}
+
+console.log('\nthe three sisters, who charge for losing\n');
+{
+  const LADDER: [string, number][] = [['antiope', 5], ['panthesilea', 10], ['hippolyta', 15]];
+  for (const [id, pays] of LADDER) {
+    check(bountyFor(id) === pays, `${id} pays $${pays} for beating her`, `$${bountyFor(id)}`);
+    check(forfeitFor(id) === 1, 'and takes a dollar for losing to her', `$${forfeitFor(id)}`);
+    check(givesAPack(id), 'and hands over a pack either way she is beaten');
+    check(wagerFor(id) === null, 'she does not play for a stake as well', 'a stake and a forfeit would be two tolls on one table');
+  }
+  /* Priced in the order they are hard, which is the order they tell the player
+     to fight them in. */
+  check(
+    bountyFor('antiope') < bountyFor('panthesilea') && bountyFor('panthesilea') < bountyFor('hippolyta'),
+    'and they are priced in the order they are hard',
+    LADDER.map(([id]) => `${id} $${bountyFor(id)}`).join(' < ')
+  );
+
+  /*
+   * The arithmetic, as the routes actually do it: the dollar leaves when the
+   * duel is seated, and a *proved* win is the only thing that brings it back.
+   */
+  for (const [id, pays] of LADDER) {
+    const before = 20;
+    const seated = before - forfeitFor(id);
+    const afterWin = seated + bountyFor(id) + forfeitFor(id);
+    check(afterWin - before === pays, `beating ${id} leaves them up $${pays}`, `$${before} → $${afterWin}`);
+    check(before - seated === 1, `and losing to her leaves them down $1`, `$${before} → $${seated}`);
+    check(before - seated === 1, 'and so does walking out of the duel, which is the same thing to the table');
+  }
+
+  /* Nobody else charges for losing, and nobody who charges for one charges
+     twice: a stake and a forfeit on the same table is two tolls. */
+  check(forfeitFor('tony') === 0 && forfeitFor('sarah') === 0, 'the street pair take nothing for a loss');
+  check(forfeitFor('tina') === 0, 'and Tina does not either — her stake already does it');
+  check(
+    Object.keys(FORFEIT).every((id) => !!DUELIST_BY_ID[id]),
+    'every forfeit belongs to a real duelist',
+    Object.keys(FORFEIT).filter((id) => !DUELIST_BY_ID[id]).join(', ')
+  );
+  check(
+    Object.keys(FORFEIT).every((id) => wagerFor(id) === null),
+    'and nobody is charged a stake and a forfeit at once',
+    Object.keys(FORFEIT).filter((id) => wagerFor(id)).join(', ')
+  );
+
+  /* And it cannot take somebody below nothing: the route refuses first, which
+     is the rule the whole of this file holds the shop to. */
+  const broke = rich(0);
+  check((broke.money ?? 0) < forfeitFor('antiope'), 'a player with nothing cannot cover the dollar');
+  check((broke.money ?? 0) - forfeitFor('antiope') < 0, 'so taking it anyway would go negative — which is why the route refuses first');
 }
 
 console.log(
