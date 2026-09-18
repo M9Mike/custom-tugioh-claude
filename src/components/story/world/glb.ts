@@ -80,7 +80,7 @@ export async function loadArea(own: Owned, root: THREE.Group, url: string, aniso
          paint — is a decal: drawn in front of what it lies on whatever the
          depth buffer says, which is what the old builders' `decal()` did and
          what the coplanar check excuses. The file can only carry the name. */
-      if (m.name.startsWith('decal:')) {
+      if (/(^|:)decal:/.test(m.name)) {
         m.polygonOffset = true;
         m.polygonOffsetFactor = -2;
         m.polygonOffsetUnits = -2;
