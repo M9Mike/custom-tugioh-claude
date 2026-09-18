@@ -277,6 +277,9 @@ class Kit:
         fresh = bmesh.new()
         fresh_uv = fresh.loops.layers.uv.verify()
         verts = [fresh.verts.new(G(*p)) for p in world]
+        # a picture is fitted in the box's own frame: a turned billboard read
+        # its u off world x and smeared the picture down one column
+        local_of = {v: local[i] for i, v in enumerate(verts)}
         # faces named in game terms; winding keeps normals outward
         face_index = {
             'back': (0, 3, 2, 1),    # -z (away from the camera)
@@ -296,19 +299,22 @@ class Kit:
                 gx, gy, gz = p.x, p.z, -p.y
                 if uv == 'fit':
                     if uv_face is None or fname == uv_face or (uv_face == 'front' and fname == 'back' and faces == {'front', 'back'}):
-                        # picture across the face: u along its width, v up
+                        # picture across the face: u along its width, v up, in
+                        # the box's own frame whichever way it is turned
+                        lv = local_of[loop.vert]
+                        lx, ly, lz = lv.x, lv.y, lv.z
                         if fname in ('front', 'back'):
-                            u = (gx - (cx - hw)) / w if fname == 'front' else ((cx + hw) - gx) / w
-                            v = (gy - (cy - hh)) / h
+                            u = (lx + hw) / w if fname == 'front' else (hw - lx) / w
+                            v = (ly + hh) / h
                         elif fname in ('left', 'right'):
                             # seen from -x the viewer's right is +z; from +x it is -z.
                             # The first cut had these the other way and every sign
                             # on a side face read backwards.
-                            u = (gz - (cz - hd)) / d if fname == 'left' else ((cz + hd) - gz) / d
-                            v = (gy - (cy - hh)) / h
+                            u = (lz + hd) / d if fname == 'left' else (hd - lz) / d
+                            v = (ly + hh) / h
                         else:
-                            u = (gx - (cx - hw)) / w
-                            v = (gz - (cz - hd)) / d
+                            u = (lx + hw) / w
+                            v = (lz + hd) / d
                         if flip:
                             u = 1.0 - u
                         loop[fresh_uv].uv = (min(max(u, 0.0), 1.0), min(max(v, 0.0), 1.0))

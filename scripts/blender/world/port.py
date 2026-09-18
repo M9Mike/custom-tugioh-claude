@@ -191,11 +191,13 @@ def build_port(k, layout, dressing, art, mats, capture):
                 length = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
                 (flat if abs(ny) / length > 0.5 else walls).extend(idx[i:i + 3])
             if walls:
+                # the upright bake carries the same boxes: a bake with faces and
+                # no parts is one the checks cannot read
                 k.mesh(mats[upright], pos, walls, uv=None, part=None)
-            if not flat:
                 bm_parts = k._bake_for(mats[upright])[1]
                 for pp in (m.get('parts') or [_aabb(pos) + [0]]):
                     bm_parts.append([round(v, 4) for v in pp[:6]] + [int(pp[6]) if len(pp) > 6 else 0])
+            if not flat:
                 kept += 1
                 continue
             m = dict(m, idx=flat)

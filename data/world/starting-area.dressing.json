@@ -164,15 +164,15 @@
       "rough": 1.0
     },
     "vending": {
-      "colour": "#2f3a4a",
+      "colour": "#3a3632",
       "rough": 0.5,
       "metal": 0.2
     },
     "vending_glass": {
-      "colour": "#3d5c78",
+      "colour": "#5a4a30",
       "rough": 0.2,
-      "emissive": "#5f93bc",
-      "emissive_strength": 1.8
+      "emissive": "#d9b98a",
+      "emissive_strength": 1.6
     },
     "vending_brand": {
       "colour": "#c0452f",

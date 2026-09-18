@@ -111,7 +111,8 @@ const SHOTS: Shot[] = [
   { name: 'station, the north end', area: 'domino-station', x: 0, z: -44, facing: N },
   { name: 'station, back down the shed', area: 'domino-station', x: 0, z: -34, facing: S },
   { name: 'station, the terrace', area: 'domino-station', x: 0, z: 41, facing: N, floor: 2.1 },
-  { name: 'station, the terrace west end', area: 'domino-station', x: -28, z: 41, facing: E, floor: 2.1 },
+  /* From −28 the lens stood inside the terrace's end wall (x −33..−30) and photographed the paving. */
+  { name: 'station, the terrace west end', area: 'domino-station', x: -25, z: 41, facing: E, floor: 2.1 },
   { name: 'station, the north-west corner', area: 'domino-station', x: -44, z: -44, facing: SW },
   { name: 'station, the south-east corner', area: 'domino-station', x: 44, z: 32, facing: SE },
   { name: 'station, out at the east exit', area: 'domino-station', x: 40, z: 26, facing: E },
@@ -132,8 +133,11 @@ const SHOTS: Shot[] = [
     climb: { x: 0, z: 30, facing: N, upTo: -1 } },
   /* Out in the canyon, not on the well's own parapet: at 14 the duelist is
      inside the rail round the hole and there is nowhere to stand. */
-  { name: 'towers, at the west doors', area: 'central-towers', x: -18, z: 16, facing: W },
-  { name: 'towers, at the east doors', area: 'central-towers', x: 18, z: -16, facing: E },
+  /* Far enough from the doors that the lens, 4.6 m behind her, is not inside
+     the wall at x ±(13..16.8): from ±18 the camera stood in it, lifted, and
+     photographed the paving. */
+  { name: 'towers, at the west doors', area: 'central-towers', x: -22.5, z: 16, facing: W },
+  { name: 'towers, at the east doors', area: 'central-towers', x: 22.5, z: -16, facing: E },
   /* Clear of the open stair's own strings: at −34 she stands between them and
      the camera cannot get past the near one — 1.09 m of distance and the frame
      is the floorboards. */
@@ -208,7 +212,8 @@ const SHOTS: Shot[] = [
   { name: 'the station gate', area: 'market-row', x: 14, z: 0, facing: E },
   { name: 'the station gate, from the side', area: 'market-row', x: 12, z: -3, facing: E },
   { name: 'the crown lane, from the arch', area: 'black-crown', x: -19, z: -44, facing: S },
-  { name: 'the crown lane, the east wall', area: 'black-crown', x: -21, z: -34, facing: E },
+  /* Two metres north of the lamp post at (−22.6, −34), which otherwise stands between the lens and her. */
+  { name: 'the crown lane, the east wall', area: 'black-crown', x: -21, z: -31.5, facing: E },
   { name: 'the crown lane, the west wall', area: 'black-crown', x: -17, z: -34, facing: W },
 
   /* The first five areas, looked at again with the last three's eyes. */
@@ -227,8 +232,10 @@ const SHOTS: Shot[] = [
   { name: 'Market Row, east to the crown arch', area: 'market-row', x: 6, z: 0, facing: E },
   { name: 'the shrine, in at the gate', area: 'domino-shrine', x: 0, z: -22, facing: S },
   { name: 'the shrine, the hall', area: 'domino-shrine', x: 0, z: 5, facing: S },
-  /* On the platform in front of the hall's body (which starts at z 10.5), looking back down the yard. */
-  { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 0, z: 9.6, facing: N },
+  /* Along the front of the hall from the platform's east end: the body starts
+     at z 10.5, so looking back down the yard from the top of the steps puts
+     the camera inside it. */
+  { name: 'the shrine, from the hall steps', area: 'domino-shrine', x: 8.6, z: 9.7, facing: W },
   { name: 'the starting area, from the spawn', area: 'starting-area', x: 0, z: 0, facing: N },
   { name: 'the starting area, looking south', area: 'starting-area', x: 0, z: -4, facing: S },
   /* Straight into each way out from a few metres off, which is where a
