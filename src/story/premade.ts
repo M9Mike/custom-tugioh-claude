@@ -595,6 +595,68 @@ export const DUELIST_MODELS: DuelistModel[] = [
     tintSlots: [],
     npcOnly: true,
   },
+  {
+    /*
+     * The three Amazons, who walk the shrine precinct.
+     *
+     * Mike's own sculpts and the same shape as everybody since Tina: a UniRig
+     * export apiece — sixty-seven to sixty-nine bones fitted to their own
+     * bodies, weights that work, no animation of any kind — and each one a
+     * hundred and twelve to a hundred and eighteen megabytes of baked texture
+     * on the way in.
+     *
+     * Their Idle, Walk and Run are Sarah's, moved onto their own skeletons by
+     * `scripts/blender/retarget.py`, and their Stretch, LookAround and Settle
+     * are their own out of `scripts/blender/make-gesture.py`. Sarah is the
+     * donor for the same reason she was Tina's and Ash's: she is the nearest
+     * thing in the cast to a fit woman in hard boots, and a donor who stands
+     * like the target is a retarget with nothing left to correct.
+     *
+     * All three are modelled at exactly 1.70 m, so nothing is rescaled and the
+     * two speeds under each are the measurement itself — `gait.py` on the
+     * shipped file, not on the import. The walks come out within a tenth of a
+     * metre a second of each other and of Tina's, which is what you would
+     * expect of one donor clip on three bodies of the same height: the spread
+     * is shin and foot length and nothing else.
+     */
+    id: 'antiope',
+    label: 'Antiope',
+    note: 'The Shieldwall, Domino Shrine',
+    file: '/models/cast/antiope.glb',
+    bytes: 10367364,
+    height: 1.7,
+    walkSpeed: 1.94,
+    runSpeed: 4.56,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'panthesilea',
+    label: 'Panthesilea',
+    note: 'The Long Hunt, Domino Shrine',
+    file: '/models/cast/panthesilea.glb',
+    bytes: 10356120,
+    height: 1.7,
+    /* The longest stride of the three, which is why her route is the quickest
+       of them: the clip is the same clip, so a longer leg covers more ground
+       per cycle and wants a faster route to play at its own rate. */
+    walkSpeed: 2.07,
+    runSpeed: 4.88,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'hippolyta',
+    label: 'Hippolyta',
+    note: "The Queen's Own, Domino Shrine",
+    file: '/models/cast/hippolyta.glb',
+    bytes: 10661092,
+    height: 1.7,
+    walkSpeed: 1.92,
+    runSpeed: 4.56,
+    tintSlots: [],
+    npcOnly: true,
+  },
 ];
 
 /** What the booth may offer: everything that is not somebody in particular. */

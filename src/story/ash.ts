@@ -84,10 +84,19 @@ const GRANDPA_SHOP: Haunt = {
   z: 3.6,
   facing: Math.PI,
   roam: {
+    /*
+     * The turn is at z 1.4 rather than 1.0, and the far point at 3.2 rather
+     * than 2.9, because a straight line between two points that both clear
+     * Grandpa cuts the corner between them: the middle of that last leg came
+     * within 6.56 m of him against the 6.6 their two talk ranges add up to, so
+     * for a stride and a half of his walk the shop offered two prompts at once.
+     * The check below this file measured the *corners* of the route and passed
+     * it; `npm run roam` samples forty points a leg and did not. 6.86 m now.
+     */
     path: [
       { x: -4.0, z: 3.6 },
-      { x: -4.0, z: 1.0 },
-      { x: -1.2, z: 2.9 },
+      { x: -4.0, z: 1.4 },
+      { x: -1.2, z: 3.2 },
     ],
     /* Slow: he is reading the shelves. 0.89× of his Walk clip's own rating, so
        the feet still cover the ground they show. */

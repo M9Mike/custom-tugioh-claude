@@ -227,6 +227,18 @@ clip's own playback rate, off the real ground speed. Set a route's speed to what
 the model's Walk is *rated* at — `npm run gait` measures it — and the feet are
 honest by construction; three fifths of it is a walk played in slow motion.
 
+**Two people you can talk to are one person you cannot.** The prompt names
+whoever is nearest inside their `range`, so two characters who can come within
+the sum of their two ranges are a choice of two conversations the world does not
+offer. It is why Ash keeps 6.6 m from Grandpa and why the three Amazons' routes
+never close inside 7.6 m — and the rule has to be measured *along* a route and
+not at its corners: a straight leg between two points that both clear somebody
+cuts the corner between them, which is how Ash spent a stride and a half inside
+Grandpa's range with his own check green. `npm run roam` samples forty points a
+leg, refuses a step `settle` would move a body out of (a spirit excepted — one
+has no body), and holds every route to a speed that is a walk at something like
+the clip's own rate.
+
 **A stop belongs where the route turns round.** The dwell used to be charged at
 every point, and a path bent through the middle of an arcade so it would not
 read as a sentry beat then bought a three-second stop in the middle of a
@@ -444,6 +456,14 @@ knee as well as the hip, because a plinth course is knee high.
   `__camera`, `__THREE`, `__teleport`) that every check reads.
 - `src/story/npcs.ts` — who stands where and what they say. Adding somebody is
   a row, not a renderer change.
+- `data/decklists.json` is the deck source and **nothing reads it**: the engine
+  reads `src/game/generated/decklists.json`, which `npm run cards` mirrors out
+  of it with every card name slugified. That command is off-limits — it
+  re-fetches every card and clobbers the parallel agent's balance work — so a
+  new deck is written to *both* files, the generated one by hand, in its own
+  format (one-space indent, `[["panther-warrior", 1], …]`). A deck that only
+  exists in `data/` loads nowhere and `npm run playable` will not notice,
+  because it reads the mirror too.
 - `scripts/world/` and `scripts/blender/world/` — the Blender pipeline for an
   area that is a file: `layout.ts` (the collision, written out), `build.mjs`
   (the whole run), `capture.ts` (an old builder from `legacy/`, run in Node
@@ -520,6 +540,7 @@ npm run soak       # one page, six laps of every door: nothing only goes up
 npm run linger     # one page, six minutes in one area with the clock running: nothing only goes up
 npm run duelreturn # into a duel from a conversation and back: no sign-in, same spot, conversation resumed
 npm run ash        # Ash's schedule, both routes, the roster, and the card wager end to end
+npm run roam       # everybody who walks: every step standable, a walk and not a run, one prompt at a time
 npm run drawn      # every area built in Blender is the room that stands: hash, parts, budget, manifest
 npm run models     # every model the size it says
 npm run stale      # the guard that puts you back where you were

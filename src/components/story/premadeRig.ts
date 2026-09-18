@@ -50,6 +50,7 @@
  */
 
 import * as THREE from 'three';
+import { RUN_BLEND_FROM, RUN_BLEND_TO } from '@/story/gait';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
@@ -649,7 +650,7 @@ export async function buildPremadeRig(
     /* Moving-ness and running-ness, each eased so the blend has no seams.
        The run blend starts where a brisk walk stops looking like walking. */
     const moving = smoothstep(0.03, 0.3, stride);
-    const running = smoothstep(0.62, 0.92, stride);
+    const running = smoothstep(RUN_BLEND_FROM, RUN_BLEND_TO, stride);
     idle?.setEffectiveWeight(1 - moving);
     walk?.setEffectiveWeight(moving * (1 - running));
     run?.setEffectiveWeight(moving * running);

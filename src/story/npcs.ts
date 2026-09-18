@@ -1309,6 +1309,318 @@ const ASH_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* The Amazons of Domino Shrine                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Three sisters walking the shrine precinct, and the first characters here who
+ * are a *set*.
+ *
+ * ## Why three at once, and why they are a ladder
+ *
+ * Everybody in the city so far is one person with one deck, and the player has
+ * no way of knowing whether the next stranger is a step up or a step down until
+ * they have lost to them. Three who arrive together can say it themselves:
+ * Antiope is the shieldwall and the weakest of them, Panthesilea is the even
+ * match, Hippolyta is the queen and the hardest. The decks are built to that
+ * order (`data/decklists.json`), and Hippolyta *tells you* the order in as many
+ * words — which is a difficulty curve delivered by a character rather than by a
+ * number on a menu.
+ *
+ * ## The letter
+ *
+ * They are here because somebody sent for them, and none of the three can say
+ * who. That is the same organiser Tina hears about in Market Row — she has the
+ * halls and the money, they have the invitation — and neither of them knows
+ * that the other one is a second source. The player is the only one who gets
+ * both halves, and nothing in either conversation points at the other: a
+ * character who summarises somebody else's scene is a character doing the
+ * player's thinking for them.
+ *
+ * ## Where they walk
+ *
+ * The precinct is 64 × 52 m and stands 2.16 m above the street, with the hall
+ * across the middle of it — so the open ground is a south band in front of the
+ * flight and an aisle up each side. One route each, and the three never come
+ * within 7.6 m of each other: both talk ranges are 3.2, so anything over 6.4
+ * means two prompts can never live at once, which is a choice of two
+ * conversations the world does not offer. Every point and every leg is a place
+ * `settle` does not move a body out of, checked in `npm run shrine`.
+ */
+const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Close enough. I can see your hands from here, and that is all I want from a stranger on the steps.',
+      'Antiope. My sisters and I have the run of this yard until the summer, by the kindness of a priest who did not ask us many questions.',
+    ],
+    choices: [
+      { label: 'What brings you here?', to: 'letter' },
+      { label: 'Sisters?', to: 'sisters' },
+      { label: 'Fight me.', to: 'offer' },
+      { label: 'I will leave you to it.', to: null },
+    ],
+  },
+
+  /* The letter, and the one detail that makes it more than a letter: it knew
+     where to find them, which nobody does. She reports it flatly and does not
+     theorise — the theorising belongs to Hippolyta, who has the standing for
+     it. */
+  letter: {
+    lines: [
+      'A letter came. No name at the foot of it, no crest, and paid carriage all the way to a camp that is not on anybody’s road.',
+      'It said there would be a tournament, that every duelist alive would be in it, and that we would want to be. My sister says a thing that knows where we sleep is worth walking to. So we walked.',
+    ],
+    choices: [
+      { label: 'Who sent it?', to: 'nameless' },
+      { label: 'Fight me.', to: 'offer' },
+      { label: 'Good luck to you.', to: null },
+    ],
+  },
+
+  nameless: {
+    lines: [
+      'I have carried that letter four hundred miles and read it at every fire. There is no name in it. There is not even a place to send an answer.',
+      'Ask Hippolyta. She held it longest and she has said least about it, which in my sister means she has an opinion she does not want argued with.',
+    ],
+    choices: [
+      { label: 'Where is she?', to: 'sisters' },
+      { label: 'Fight me.', to: 'offer' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  sisters: {
+    lines: [
+      'Panthesilea is out in front of the steps, walking off a temper. Hippolyta keeps to the east side, under the trees, where she can see both of us and the gate.',
+      'Take me first. I am the shield — I am what you practise on, and I will not pretend otherwise to make myself feel taller.',
+    ],
+    choices: [
+      { label: 'Then let’s go.', to: 'offer' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  /* Same contract as the rest of the city's duelists: she describes her deck
+     accurately, and it is a fact the player can check. A wall deck that claimed
+     to be a killer would be the one lie in a conversation nobody can verify. */
+  style: {
+    lines: [
+      'Nothing quick. A shield, a spear behind it, and enough spear-carriers that you will be bored before I am.',
+      'I will not take you apart — I have nothing in there that could. I will make everything you try cost you something and see what you have left at the end of it.',
+    ],
+    choices: [
+      { label: 'Let’s find out.', to: 'offer' },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Good. Stand where you are and put something down — nobody here plays for money, and the yard is the priest’s, so mind the lanterns.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'You came through the shield. It took you long enough that I watched you decide to do it, which is worth more to me than the losing is.',
+      'Take a pack of it — the walls are no use to you but the spears might be. And go and find Panthesilea. She has been waiting for somebody to be worth the walk.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'I will do that.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'You went at the shield. Everybody does, once.',
+      'The shield is not the deck, {name} — it is the clock. Take it down at your leisure and I will still have a spear behind it. Come back when you have worked out which of us is actually in a hurry.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'I need a think.', to: null },
+    ],
+  },
+};
+
+const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'You are the fourth person to walk up these steps today and the first one carrying a deck. I was beginning to think this city duels indoors only.',
+      'Panthesilea. I hunt, mostly. Here there is nothing to hunt but duelists, so.',
+    ],
+    choices: [
+      { label: 'Why the shrine?', to: 'why' },
+      { label: 'Hunt?', to: 'hunt' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Some other time.', to: null },
+    ],
+  },
+
+  /* She does not believe the letter and says so in the same breath as admitting
+     she came anyway. A sceptic who acts on the thing she is sceptical of is a
+     person; one who only sneers is a signpost. */
+  why: {
+    lines: [
+      'Because a letter with no name on it told us to be somewhere, and my sisters wanted to come. I think it is a rich man buying an audience and I think we are the audience.',
+      'And I am here, so you may weigh my opinion accordingly. Whoever it is will have to put duelists in a hall to make a tournament of it, and I would rather meet a few of them early.',
+    ],
+    choices: [
+      { label: 'Early for what?', to: 'hunt' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  hunt: {
+    lines: [
+      'A hunt is not the kill. It is the three days before it, when you learn what a thing does when it is frightened and what it does when it thinks it is winning.',
+      'So I will trade with you. Every one of mine that goes down takes one of yours with it, and I will know your deck by the end of the afternoon whether I win or not.',
+    ],
+    choices: [
+      { label: 'Try it.', to: 'offer' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  style: {
+    lines: [
+      'Nothing that survives. Everything I put down is worth more dead than alive, and the traps are for the moment you decide you have seen enough of it.',
+      'It is an even match, if you want the truth of it — my sister on the west side is easier and the one under the trees is not. Start where you like.',
+    ],
+    choices: [
+      { label: 'Here, then.', to: 'offer' },
+      { label: 'I will start easier.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Set your board. No stake — I have nothing you want and you have nothing I would carry.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Give me a moment.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Hah. You let me spend three of them and then took the fourth trade off me — that is the whole hunt, and you did it to me.',
+      'A pack of mine, then. And go and stand in front of Hippolyta while you are still pleased with yourself; she is at her best against people who are.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'I will go and see her.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'You killed everything I put in front of you, {name}, and every one of them was meant to be killed.',
+      'Count what it cost you next time. That is the only lesson in it and it is not a hard one.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'Later.', to: null },
+    ],
+  },
+};
+
+const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'You have walked past both my sisters to get to me. Either somebody sent you or you cannot count.',
+      'Hippolyta. I hold what is left of a people you have not heard of, which is eleven women and a good deal of opinion. Say what you came to say.',
+    ],
+    choices: [
+      { label: 'I want the duel.', to: 'order' },
+      { label: 'About the letter.', to: 'letter' },
+      { label: 'Nothing. Carry on.', to: null },
+    ],
+  },
+
+  /* The queen names the ladder, which is the point of her existing: the player
+     learns the order to fight the three of them in from somebody standing in
+     the world, and not from a difficulty label on a menu. */
+  order: {
+    lines: [
+      'Not yet. Antiope is on the west side and Panthesilea in front of the steps, and you will beat both of them before you are worth my afternoon.',
+      'That is not pride, it is arithmetic. My guard calls itself up out of the deck two at a time and there is a cat in there that strikes twice. You want to have learnt something first.',
+    ],
+    choices: [
+      { label: 'I have beaten them.', to: 'offer' },
+      { label: 'I will go and do that.', to: null },
+      { label: 'Try me anyway.', to: 'offer' },
+    ],
+  },
+
+  /* She is the one who thinks the letter is a *summons* rather than an
+     invitation, and she does not explain why — the third source for Tina's
+     rumour, and the only one in the city who sounds worried by it. */
+  letter: {
+    lines: [
+      'It found a camp that has moved twice since spring, and it had my name on it spelled the way my mother spelled it. Nobody alive spells it that way.',
+      'So it is not an invitation. Somebody has been keeping a list, and my sisters and I are on it. I intend to arrive at that hall in condition to be disappointing.',
+    ],
+    choices: [
+      { label: 'Then duel me.', to: 'offer' },
+      { label: 'Who keeps a list like that?', to: 'money' },
+      { label: 'Good luck.', to: null },
+    ],
+  },
+
+  money: {
+    lines: [
+      'Somebody who can pay carriage from here to the end of the world and never send a name with it. I have met three men who could afford the gesture and none of them could afford the silence.',
+      'Ask in the market if you want gossip. I would rather be ready than informed.',
+    ],
+    choices: [
+      { label: 'Let’s duel, then.', to: 'offer' },
+      { label: 'I will ask about.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Then stand there and do not apologise for anything. No stake — I do not take money off people I have just taught something to.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Give me a minute.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Well. That is the first time since the crossing that I have had to watch the end of one coming.',
+      'A pack of the guard, and you have earned the rest of it: when that hall opens, find me in it. I would sooner be beaten twice by somebody I have met than once by a stranger.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'I will see you there.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'You came at the guard and the guard held. It is what a guard is for.',
+      'You are not far off, {name}, and I do not say that to be kind — I say it because the next time you stand there I want it to be difficult. Go away and make it difficult.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'I will be back.', to: null },
+    ],
+  },
+};
+
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
@@ -1533,6 +1845,106 @@ export const WORLD_NPCS: WorldNpc[] = [
     start: 'greet',
     duel: { opponentId: 'isha', won: 'beaten', lost: 'won' },
     script: ISHA_SCRIPT,
+  },
+  {
+    /*
+     * The three Amazons, walking the shrine precinct. The block above
+     * `ANTIOPE_SCRIPT` says why they are a set, how the yard is divided between
+     * them, and what holds the three routes apart.
+     *
+     * `x`/`z` is the first point of each route, written once: a record is where
+     * somebody starts. The facing is only ever used while they stand still,
+     * which for a roamer is the moment the area is built — across the yard at
+     * the hall, `atan2(0 - x, 4.5 - z)`, so nobody is introduced staring at a
+     * wall.
+     *
+     * Every route speed is a shade under the model's own Walk rating (1.94,
+     * 2.07, 1.92 — `npm run gait`), so the clip plays between 0.92× and 0.97×
+     * and the feet are honest; all three are well under the 2.05 m/s where the
+     * rig starts blending towards a Run. The dwell is short because it is only
+     * charged where a route turns round, and `restEvery` is long because the
+     * precinct is somewhere people wait rather than pace.
+     */
+    id: 'antiope',
+    area: 'domino-shrine',
+    character: { name: 'Antiope', model: 'antiope', tints: [], stature: 0.5 },
+    x: -23.0,
+    z: -11.5,
+    facing: 0.96,
+    range: 3.2,
+    roam: {
+      /* The west aisle: along the front of the precinct and then north up the
+         side, 25.4 m each way — the longest of the three, because the west side
+         is the one nobody else walks. */
+      path: [
+        { x: -23.0, z: -11.5 },
+        { x: -16.0, z: -10.0 },
+        { x: -12.0, z: -9.0 },
+        { x: -11.5, z: -1.0 },
+        { x: -12.5, z: 5.0 },
+      ],
+      speed: 1.8,
+      dwell: 1.2,
+      restEvery: 24,
+      gestures: ['Stretch', 'LookAround', 'Settle'],
+    },
+    start: 'greet',
+    duel: { opponentId: 'antiope', won: 'beaten', lost: 'won' },
+    script: ANTIOPE_SCRIPT,
+  },
+  {
+    id: 'panthesilea',
+    area: 'domino-shrine',
+    character: { name: 'Panthesilea', model: 'panthesilea', tints: [], stature: 0.5 },
+    x: -1.0,
+    z: -10.2,
+    facing: 0.07,
+    range: 3.2,
+    roam: {
+      /* Across the front of the steps, 13 m each way. The shortest route of the
+         three and the busiest bit of ground: she is the one you meet on the way
+         in. It bends a little south in the middle to keep her off the crown of
+         the yard and clear of the lantern at (5.6, -12). */
+      path: [
+        { x: -1.0, z: -10.2 },
+        { x: 6.0, z: -10.6 },
+        { x: 12.0, z: -10.2 },
+      ],
+      speed: 1.9,
+      dwell: 1.4,
+      restEvery: 22,
+      gestures: ['Stretch', 'LookAround', 'Settle'],
+    },
+    start: 'greet',
+    duel: { opponentId: 'panthesilea', won: 'beaten', lost: 'won' },
+    script: PANTHESILEA_SCRIPT,
+  },
+  {
+    id: 'hippolyta',
+    area: 'domino-shrine',
+    character: { name: 'Hippolyta', model: 'hippolyta', tints: [], stature: 0.5 },
+    x: 16.5,
+    z: -4.0,
+    facing: -1.09,
+    range: 3.2,
+    roam: {
+      /* The east aisle, 19.2 m each way, from the corner of the yard up past
+         the hall — which is where she says she can see both her sisters and the
+         gate, and from x 15..16.5 she can. */
+      path: [
+        { x: 16.5, z: -4.0 },
+        { x: 15.5, z: 3.0 },
+        { x: 16.0, z: 9.0 },
+        { x: 15.0, z: 15.0 },
+      ],
+      speed: 1.85,
+      dwell: 1.5,
+      restEvery: 26,
+      gestures: ['Stretch', 'LookAround', 'Settle'],
+    },
+    start: 'greet',
+    duel: { opponentId: 'hippolyta', won: 'beaten', lost: 'won' },
+    script: HIPPOLYTA_SCRIPT,
   },
 ];
 

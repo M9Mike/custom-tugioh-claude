@@ -2032,6 +2032,249 @@
    ]
   },
   {
+   "id": "antiope",
+   "name": "Antiope",
+   "epithet": "The Shieldwall",
+   "quote": "Break the shield first. Then we will talk about the spear.",
+   "accent": "#6b4a2f",
+   "accent2": "#d8c39a",
+   "emblem": "guardian-sphinx",
+   "strategy": "One shield, a spear behind it, and spear-carriers in numbers — the weakest of the three sisters and the one who says so.",
+   "extra": [],
+   "deck": [
+    [
+     "guardian-sphinx",
+     1
+    ],
+    [
+     "aqua-madoor",
+     1
+    ],
+    [
+     "wall-of-illusion",
+     1
+    ],
+    [
+     "tiger-axe",
+     3
+    ],
+    [
+     "masaki-the-legendary-swordsman",
+     2
+    ],
+    [
+     "axe-raider",
+     2
+    ],
+    [
+     "zolga",
+     2
+    ],
+    [
+     "hitotsu-me-giant",
+     3
+    ],
+    [
+     "sonic-maid",
+     3
+    ],
+    [
+     "mask-of-darkness",
+     1
+    ],
+    [
+     "shield-sword",
+     1
+    ],
+    [
+     "negate-attack",
+     1
+    ],
+    [
+     "spellbinding-circle",
+     1
+    ],
+    [
+     "trap-hole",
+     1
+    ],
+    [
+     "just-desserts",
+     1
+    ],
+    [
+     "michizure",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "panthesilea",
+   "name": "Panthesilea",
+   "epithet": "The Long Hunt",
+   "quote": "Everything I put down takes something with it.",
+   "accent": "#4a5f3a",
+   "accent2": "#c8b27a",
+   "emblem": "the-earl-of-demise",
+   "strategy": "Bodies that cost her nothing to lose and everything to kill, with the hunt waiting on whatever you commit to.",
+   "extra": [],
+   "deck": [
+    [
+     "the-earl-of-demise",
+     1
+    ],
+    [
+     "rude-kaiser",
+     1
+    ],
+    [
+     "vorse-raider",
+     2
+    ],
+    [
+     "granadora",
+     2
+    ],
+    [
+     "uraby",
+     2
+    ],
+    [
+     "newdoria",
+     2
+    ],
+    [
+     "kojikocy",
+     2
+    ],
+    [
+     "battle-ox",
+     2
+    ],
+    [
+     "sangan",
+     1
+    ],
+    [
+     "mask-of-darkness",
+     1
+    ],
+    [
+     "michizure",
+     2
+    ],
+    [
+     "blast-held-by-a-tribute",
+     1
+    ],
+    [
+     "kunai-with-chain",
+     1
+    ],
+    [
+     "mirror-wall",
+     1
+    ],
+    [
+     "just-desserts",
+     1
+    ],
+    [
+     "stop-defense",
+     1
+    ],
+    [
+     "monster-reborn",
+     1
+    ],
+    [
+     "tribute-to-the-doomed",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "hippolyta",
+   "name": "Hippolyta",
+   "epithet": "The Queen's Own",
+   "quote": "I brought my own guard. Bring whatever you have.",
+   "accent": "#5c2f38",
+   "accent2": "#d9b464",
+   "emblem": "panther-warrior",
+   "strategy": "A guard that calls itself up out of the deck, a cat that strikes twice, and a hole in the field for when neither is enough.",
+   "extra": [],
+   "deck": [
+    [
+     "panther-warrior",
+     1
+    ],
+    [
+     "judge-man",
+     2
+    ],
+    [
+     "queen-s-knight",
+     2
+    ],
+    [
+     "king-s-knight",
+     2
+    ],
+    [
+     "jack-s-knight",
+     1
+    ],
+    [
+     "rocket-warrior",
+     3
+    ],
+    [
+     "axe-raider",
+     2
+    ],
+    [
+     "dark-elf",
+     1
+    ],
+    [
+     "swordsman-of-landstar",
+     2
+    ],
+    [
+     "dark-hole",
+     1
+    ],
+    [
+     "pot-of-greed",
+     2
+    ],
+    [
+     "malevolent-nuzzler",
+     1
+    ],
+    [
+     "salamandra",
+     1
+    ],
+    [
+     "negate-attack",
+     1
+    ],
+    [
+     "trap-hole",
+     1
+    ],
+    [
+     "spellbinding-circle",
+     1
+    ],
+    [
+     "just-desserts",
+     1
+    ]
+   ]
+  },
+  {
    "id": "ash",
    "name": "Ash Ketchum",
    "epithet": "Pallet Town",

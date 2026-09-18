@@ -42,6 +42,7 @@ import WorldMap from './WorldMap';
 import StoryMenu from './StoryMenu';
 import type { BuiltArea } from './world/kit';
 import { skyAt, hourFrom } from '@/story/sky';
+import { TOP_SPEED, npcGait } from '@/story/gait';
 import { ceilingFor, deckIsShort } from '@/story/shop';
 import { setShadowQuality } from './world/sky';
 import { buildShop } from './world/shop';
@@ -61,27 +62,8 @@ import { sfx } from '@/lib/sfx';
 /** Matches the clamp in `/api/story/save`; the field ends here. */
 export const WORLD_RADIUS = 120;
 
-/**
- * Top speed, in metres a second — what a full stick gets you.
- *
- * 3.3, and it is a **run**, which is what the rig was already animating: the
- * legs cross-fade from the Walk clip to the Run clip as the stick passes 0.6,
- * and the Run clips on this roster cover 3.2–3.5 m of ground a second at
- * playback rate 1. Holding the top speed at 2.35 meant that clip played at
- * 0.7× — a running animation in slow motion, and the reason moving around
- * felt sluggish even though nothing was wrong with the walk.
- *
- * Matching the number to the clip fixes both ends at once: full stick now
- * covers ground at the pace the run was drawn for, and the feet stay honest
- * because the playback rate lands on 1 rather than being dragged below it.
- * Half a stick is still a walk at 1.65, which is a brisk one and plays its own
- * clip at about 1.1×.
- *
- * It is one number rather than each model's own `runSpeed` because the field
- * has to feel the same whoever you picked; the 0.06 spread across the roster
- * is well inside what a cross-fade hides.
- */
-const TOP_SPEED = 3.3;
+/* Top speed and the stride an NPC is given for it both live in
+   `story/gait.ts` now — the rig reads the same two numbers. */
 
 /**
  * How close you may get to somebody standing in the field, in metres.
@@ -1466,27 +1448,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         let turn = want - theirs.root.rotation.y;
         turn = Math.atan2(Math.sin(turn), Math.cos(turn));
         theirs.root.rotation.y += turn * Math.min(1, dt * 3.2);
-        /**
-         * The same scale the player's legs are read on, and it has to be.
-         *
-         * `stride` is what picks the clip: the rig blends to Run across
-         * 0.62–0.92 of it, and those numbers were tuned against `TOP_SPEED` —
-         * which is what a full stick covers. Dividing an NPC's speed by "a
-         * nominal walk" of 1.4 instead put Tina's 1.15 m/s amble at 0.82 and
-         * ran her three quarters into the Run clip: she sprinted the arcade at
-         * walking pace, arms and all, while the ground went past at half the
-         * speed her feet were selling. Two scales for one number is how that
-         * happens, so there is one now.
-         *
-         * The floor is the other half. A drift of 0.6 m/s divided by 3.3 is
-         * 0.18, and `moving` ramps over 0.03–0.3 — so a spirit gliding down an
-         * avenue would get a half-weight walk blended over a half-weight idle,
-         * which is legs that move at half amplitude and feet that slide.
-         * Anybody actually walking reads as walking; how *fast* they are
-         * walking is the clip's own playback rate, off the real ground speed.
-         */
-        const gait = speed > 0.01 ? Math.max(0.32, Math.min(1, speed / TOP_SPEED)) : 0;
-        theirs.update(dt, gait, speed);
+        /* Their legs, on the same scale the player's are read on — see
+           `npcGait`. The real ground speed goes with it, because that is what
+           the clip's playback rate comes off. */
+        theirs.update(dt, npcGait(speed), speed);
         if (d < npc.range && d < closestD) {
           closest = npc;
           closestD = d;
