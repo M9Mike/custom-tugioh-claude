@@ -54,7 +54,7 @@ import { prefetchAround } from './world/files';
 import {
   buildBlackCrown, buildCrownShop, buildCemetery, buildStation, buildPlaza, buildTowers, buildHigh,
 } from './world/ported';
-import { buildPremadeRig, type PremadeRig } from './premadeRig';
+import { buildPremadeRig, releaseTemplates, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
@@ -791,7 +791,23 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         theirs.dispose();
       }
       npcs = [];
-      for (const { npc, at } of presentNow(id)) arrive(npc, at, id);
+      const here = presentNow(id);
+      /*
+       * And the models nobody in this area is wearing are thrown away.
+       *
+       * A parsed model is cached for the life of the page, which for the booth
+       * is right and for a city is a leak with a good reason: the *file* is ten
+       * megabytes but the decoded texture is sixty-seven, so a page that has
+       * walked through four areas is holding a quarter of a gigabyte of people
+       * who are nowhere near it. Mike's phone was killed by that with the game
+       * still on its main menu.
+       *
+       * Named rather than cleared: the player's own model is still standing,
+       * and so is everybody about to be built here — a template disposed under
+       * a live rig is a body with no geometry left to draw.
+       */
+      releaseTemplates([character.model, ...here.map(({ npc }) => npc.character.model)]);
+      for (const { npc, at } of here) arrive(npc, at, id);
     };
 
     /* Now that both halves exist, open the area the save left us in. */

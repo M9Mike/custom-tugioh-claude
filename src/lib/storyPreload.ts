@@ -88,6 +88,11 @@ export type StoryPreload =
  * unbounded: past this the player gets in and loads what they need on the way,
  * which is exactly what the game did before any of this existed.
  */
+/*
+ * The cast phases are still in the type and the button still knows how to
+ * draw them, because a model *is* still loaded before a screen that needs it —
+ * it just is not this screen's job any more. Nothing reports them today.
+ */
 const GIVE_UP_AFTER = 90_000;
 
 export function preloadStory(report: (p: StoryPreload) => void): () => void {
@@ -104,11 +109,11 @@ export function preloadStory(report: (p: StoryPreload) => void): () => void {
     report({ phase: 'code' });
 
     /*
-     * The code first, and on its own.
+     * The code, and only the code.
      *
-     * Not because it is bigger — it is a twentieth of the size — but because
-     * `loadDuelistTemplate` lives inside it. Asking for the models means having
-     * the loader, so this is a dependency and not a preference.
+     * Two megabytes of three.js, the rig, the world builders and the booth —
+     * which is what makes pressing the button walk you in rather than hand you
+     * a spinner while a route change waits on a dynamic import.
      */
     const loaders = await Promise.all([
       import('@/components/story/premadeRig'),
@@ -119,53 +124,36 @@ export function preloadStory(report: (p: StoryPreload) => void): () => void {
 
     if (!live) return;
     if (!loaders) return finish();
-    const [rig, premade] = loaders;
 
-    const models = premade.DUELIST_MODELS;
-    report({ phase: 'cast', pct: 0 });
-
-    /* Known before a byte moves, so the fraction is right from the first frame
-       and there is no round trip in front of the download. */
-    const size = models.map((m) => Math.max(1, m.bytes));
-    const loaded = new Map<string, number>();
-    /* Counted from the progress events rather than from the promises, because
-       a promise resolves after its model is *parsed* — which is the very wait
-       the parse phase exists to cover. */
-    const arrived = new Set<string>();
-    const tick = () => {
-      if (!live) return;
-      if (arrived.size >= models.length) return report({ phase: 'parse' });
-      const got = [...loaded.values()].reduce((a, b) => a + b, 0);
-      const all = size.reduce((a, b) => a + b, 0);
-      report({ phase: 'cast', pct: Math.min(1, got / all) });
-    };
-
-    await Promise.all(
-      models.map((m, i) =>
-        rig
-          .loadDuelistTemplate(m.id, (got, total) => {
-            /* `total` is 0 when the response carried no length. The HEAD above
-               is the number that matters; this one is only used to notice that
-               a file has finished arriving. */
-            /* If a model has been re-exported and the catalogue not updated,
-               the bar must not stall at its old size — the declared figure is a
-               starting weight, and what actually arrives wins. */
-            if (got > size[i]) size[i] = got;
-            loaded.set(m.id, got);
-            if (got >= (total || size[i])) arrived.add(m.id);
-            tick();
-          })
-          /* One bad file must not hold the other nine, or the door. */
-          .catch(() => null)
-          .then(() => {
-            /* A model served from cache may emit no progress at all. */
-            arrived.add(m.id);
-            loaded.set(m.id, size[i]);
-            tick();
-          })
-      )
-    );
-
+    /*
+     * And the cast is *not* fetched here. That is the whole of this change.
+     *
+     * It used to be: every `.glb` in the catalogue, downloaded and parsed,
+     * before the door would open. The reasoning was sound when there were
+     * twelve of them and the world was drawn out of a canvas — the wait moved
+     * to the menu, where somebody is reading, instead of into the first field.
+     *
+     * Then the cast grew to seventeen and every one of them carries a 4096²
+     * texture, which decodes to about sixty-seven megabytes whatever the ten
+     * megabyte file suggests. Sitting on the main menu with nothing open, this
+     * page held all seventeen: measured on the phone-sized viewport against
+     * production, the heap went 112 MB → 230 MB and kept everything, because a
+     * parsed template is cached for the life of the page. On a desktop that is
+     * invisible. On Mike's phone iOS killed the tab, Safari reloaded it, it was
+     * killed again, and he got "A problem repeatedly occurred" before he had
+     * pressed anything.
+     *
+     * So the menu warms the *code* — three.js, the rig, the builders, a couple
+     * of megabytes, which is what makes the button open into the booth or the
+     * field rather than into a spinner — and every model is loaded by whoever
+     * actually needs it: the booth as it shows a face, the world as it builds
+     * an area, and both of them behind a screen that already says it is
+     * waiting. A phone then holds one room's worth of people instead of a city.
+     *
+     * The catalogue is still imported above: it is kilobytes of JSON, it is
+     * what the world reads a model's height and speeds out of, and having it
+     * warm costs nothing.
+     */
     clearTimeout(timer);
     finish();
   })();

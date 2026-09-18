@@ -209,6 +209,63 @@ export function loadDuelistTemplate(
   return promise;
 }
 
+/**
+ * Throws away every parsed model but the ones named, and says how many went.
+ *
+ * ## Why a cache needs a bin
+ *
+ * `templates` is keyed by model and never expired, which is right for the
+ * booth — flicking between twelve faces should not re-download one — and wrong
+ * for a city. Every character you walk past stays parsed for the life of the
+ * page, and a parsed character is not its ten megabyte file: it is a decoded
+ * 4096² texture, about sixty-seven megabytes of it, plus geometry. Walk from
+ * the shop to the street to the arcade and the page is holding all of them,
+ * for ever, whether or not anybody is on screen.
+ *
+ * That is what killed Mike's phone. So the world calls this whenever it
+ * changes area, naming the people it is about to build and whoever the player
+ * is, and everything else is disposed: geometry, materials, and the textures,
+ * which are the whole of the weight.
+ *
+ * ## What must be in `keep`
+ *
+ * Anybody with a rig still standing. A built rig owns its own materials and
+ * skeleton but shares the template's *geometry and textures*, so disposing a
+ * template out from under a live rig leaves a body with nothing to draw. The
+ * caller knows who is standing; this cannot, so it does not guess.
+ */
+export function releaseTemplates(keep: Iterable<string>): number {
+  const spare = new Set(keep);
+  let dropped = 0;
+  for (const [id, pending] of [...templates]) {
+    if (spare.has(id)) continue;
+    templates.delete(id);
+    dropped++;
+    void pending
+      .then((template) => {
+        const seen = new Set<THREE.Texture>();
+        template.gltf.scene.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.geometry?.dispose();
+          for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+            if (!material) continue;
+            /* The maps are the sixty-seven megabytes; the material itself is
+               nothing. Gathered first so a texture shared by two materials is
+               not disposed twice. */
+            for (const value of Object.values(material)) {
+              if (value instanceof THREE.Texture) seen.add(value);
+            }
+            material.dispose();
+          }
+        });
+        for (const texture of seen) texture.dispose();
+      })
+      .catch(() => {});
+  }
+  return dropped;
+}
+
 /** Warms the cache so the booth can flick between models without a stall. */
 export function preloadAllDuelists(): void {
   /* Only what the booth shows: the named characters are megabytes nobody
