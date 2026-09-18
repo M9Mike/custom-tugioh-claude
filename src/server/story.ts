@@ -7,9 +7,9 @@
  * so it is written with a ten-year deadline and never touched again by the TTL
  * sweeper.
  *
- * The rest of this file is the login gate, which is temporary by design: one
- * account, no password, so the game can be walked end to end without waiting on
- * anybody to type a secret. Accounts, passwords and registration come later;
+ * The rest of this file is the login gate, which is temporary by design: a
+ * short list of names, no password, so the game can be walked end to end
+ * without waiting on anybody to type a secret. Accounts, passwords and registration come later;
  * everything below `AUTHORISED` is written as though they already existed, so
  * adding them is a change to this one function.
  */
@@ -36,9 +36,18 @@ export function fold(username: string): string {
  * outright rather than quietly creating an account — there is no registration
  * yet, and silently minting a profile for a typo would strand a character
  * against a username nobody meant to use.
+ *
+ * Two names now. Everything that makes a save a save is keyed on the folded
+ * name — the store's key, the dev file's, the rooms' `storyUser` — so a second
+ * account needed nothing but this line: separate character, deck, collection,
+ * money, packs, position and progress, with no code anywhere holding "the
+ * profile" as though there were one of them. What is *not* separate is the
+ * world's clock and Ash's timetable, which are the same for everybody because
+ * they are facts about Domino City rather than about a player.
  */
 const AUTHORISED: Record<string, string> = {
   mike: 'Mike',
+  teddy: 'Teddy',
 };
 
 /**
@@ -50,16 +59,25 @@ const AUTHORISED: Record<string, string> = {
  * and is believed. Anyone who can reach the API can write any admitted account's
  * character, deck and position.
  *
- * That is the state the mode is deliberately being built in, and the reason it
- * is not a live hole is the roster above: exactly one hardcoded development name
- * is admitted, so there is nobody to impersonate. It stops being true the moment
- * a second account exists.
+ * That is the state the mode is deliberately being built in. The argument that
+ * used to stand here — "exactly one name is admitted, so there is nobody to
+ * impersonate" — went when Teddy did, and it is worth being exact about what
+ * that did and did not change, because the honest answer is *less* than it
+ * sounds.
  *
- * So this function is the gate for what comes next, and it is the *only* one:
- * accounts, passwords and registration all land here, as a credential checked
- * against a real user record before a name is handed back. Until then, no route
- * should treat the name it gets as proof of anything, and nothing that matters
- * outside one player's own save should be reachable through them.
+ * It did not open a hole. The site is public and the routes have always
+ * believed the name they are given, so anyone who could reach the API could
+ * already write Mike's save; a second name adds a second target to something
+ * that was never guarded, rather than unguarding anything. What it does add is
+ * that the two players can now reach each other's saves — which, for two people
+ * playing one household's game, is not a boundary either of them asked for.
+ *
+ * So this function is still the gate for what comes next, and it is still the
+ * *only* one: accounts, passwords and registration all land here, as a
+ * credential checked against a real user record before a name is handed back.
+ * Until then, no route should treat the name it gets as proof of anything, and
+ * nothing that matters outside one player's own save should be reachable
+ * through them.
  */
 export function canonicalUsername(username: string): string | null {
   return AUTHORISED[fold(username)] ?? null;
