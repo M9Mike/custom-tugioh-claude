@@ -375,10 +375,19 @@ because the box's underside sat four millimetres below whatever stood on
 the floor and `coplanar` read the two undersides as a pair; a marking laid
 on a surface comes through the port as a material named `decal:`, which
 `glb.ts` gives the polygon offset the old `decal()` had and `coplanar`
-leaves out of the running, as it always did; and a check that enters an
-area on its own must wait for `__probe.ready` as `enterStory` does — the
-coplanar sweep waited for the area's *name* and audited four base plates as
-four clean rooms.
+leaves out of the running, as it always did; a Poly Haven prop is joined
+into one mesh on import, because a model that arrives as a lid and a body
+is two boxes to the checks sharing every face where they meet; a surface
+split into a flat bake and an upright one (turf and hedge) splits its parts
+too, the flat one carrying the tops as faces and the upright one stopping a
+centimetre under them, or the two bakes read as one box drawn twice; and a
+check that enters an area on its own must wait for `__probe.ready` as
+`enterStory` does — the coplanar sweep waited for the area's *name* and
+audited four base plates as four clean rooms, and the first time it saw
+the shop it found forty-one hairline faces nobody had measured: a pegboard
+hung in the plane of the dado rail, shelving whose boards ran through its
+back panel, a door frame whose uprights ran up through its head, a kick
+plate two millimetres off its door.
 
 ## How the world is put together
 

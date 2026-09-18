@@ -260,7 +260,7 @@ def build_lane(k, layout, dressing, art, mats):
     for s in (-1, 1):
         k.box(mats['retaining'], gate_x - 0.55, top_y + 1.55, s * 1.75, 1.1, 3.1, 0.9)
         k.box(mats['cap'], gate_x - 0.6, top_y + 3.2, s * 1.75, 1.3, 0.2, 1.1)
-    k.box(mats['cap'], gate_x - 0.6, top_y + 3.02, 0, 1.2, 0.28, 2.7)
+    k.box(mats['cap'], gate_x - 0.62, top_y + 3.02, 0, 1.2, 0.28, 2.7)
     for s, house_west, eaves in (
         (1, south[-1] - dressing['house_w_south'] / 2, ground_at(layout, south[-1], 0) + 1.05 + 6.4),
         (-1, north[-1] - dressing['house_w_north'] / 2, ground_at(layout, north[-1], 0) + 1.05 + 6.4),
@@ -268,7 +268,7 @@ def build_lane(k, layout, dressing, art, mats):
         x0 = gate_x - 0.55
         x1 = min(house_west, gate_x + 0.55)
         gy = ground_at(layout, gate_x, 0) - 0.5
-        d = house_face - 2.2 - 0.05
+        d = house_face - 2.2 - 0.01
         k.box(mats['retaining'], (x0 + x1) / 2, (gy + eaves) / 2, s * (2.2 + d / 2), x1 - x0, eaves - gy, d)
     for i in range(9):
         k.box(mats['steel'], gate_x, top_y + 1.2, -1.2 + i * 0.3, 0.06, 2.4, 0.06)
@@ -291,7 +291,7 @@ def build_lane(k, layout, dressing, art, mats):
         k.box(mats['reveal'], sl_w + 8.18, 1.75, bz, 0.14, 2.1, 3.4)
         k.box(mats['pane_lit'] if i == 1 else mats['pane_cool'], sl_w + 8.1, 1.75, bz, 0.05, 1.9, 3.1, faces={'left'})
     for s in (-1, 1):
-        k.box(mats['retaining'], sl_w - 0.4, 2.7, s * (lane_half + 0.52), 1.4, 5.4, 0.7)
+        k.box(mats['retaining'], sl_w - 0.42, 2.7, s * (lane_half + 0.52), 1.44, 5.4, 0.7)
     k.box(mats['retaining'], sl_w - 0.4, 5.85, 0, 1.4, 0.9, lane_half * 2 + 1.4)
     if 'steplane' in art.get('signs', {}):
         k.box(k.picture('sign-steplane-in', art['signs']['steplane'], rough=0.5), sl_w - 1.12, 5.85, 0, 0.02, 2.1 / 5.2, 2.1, uv='fit', uv_face='right')

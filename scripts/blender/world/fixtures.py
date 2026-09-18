@@ -208,8 +208,9 @@ def door_set(k, room, o, mats, art, thick=0.3):
     zc = z_face + thick * 0.45
     frame, leaf = mats['frame'], mats['door']
     # the surround, set into the reveal
-    k.box(frame, x - w / 2 + 0.05, h / 2, zc, 0.1, h, 0.14)
-    k.box(frame, x + w / 2 - 0.05, h / 2, zc, 0.1, h, 0.14)
+    # the uprights stop under the head rather than running through it
+    k.box(frame, x - w / 2 + 0.05, (h - 0.1) / 2, zc, 0.1, h - 0.1, 0.14)
+    k.box(frame, x + w / 2 - 0.05, (h - 0.1) / 2, zc, 0.1, h - 0.1, 0.14)
     k.box(frame, x, h - 0.05, zc, w, 0.1, 0.14)
     # the leaf, a hair inside the frame
     lw, lh, lt = w - 0.2, h - 0.1, 0.045
@@ -227,7 +228,7 @@ def door_set(k, room, o, mats, art, thick=0.3):
     # brass: a lever handle on the inside, and a kick plate
     k.box(mats['brass'], x - lw / 2 + 0.16, 1.04, lz - lt / 2 - 0.04, 0.14, 0.022, 0.022, bevel=0.004)
     k.box(mats['brass'], x - lw / 2 + 0.1, 1.04, lz - lt / 2 - 0.02, 0.02, 0.06, 0.04)
-    k.box(mats['brass'], x, 0.17, lz - lt / 2 - 0.004, lw - 0.16, 0.22, 0.004)
+    k.box(mats['brass'], x, 0.17, lz - lt / 2 - 0.02, lw - 0.16, 0.22, 0.006)
     # the OPEN card, hung on the pane, facing the street (its back to us)
     k.box(k.picture('open-sign', art['sign_open']), x + 0.18, 1.86, lz - lt / 2 - 0.012, 0.36, 0.2, 0.01, uv='fit', uv_face='back')
 
@@ -377,16 +378,18 @@ def shelf_run(k, solid, against, mats, art, seed=1):
             return k.box(mat, a, y, z, wa, h, wt, **kw)
 
         # carcass: back, two sides, top with a cornice, a kick base
-        place(mats['shelf'], uc, height / 2, back_t / 2 + 0.004, unit_w, height, back_t)
+        # the back panel stands off the wall, and everything else starts in front of it
+        t0 = back_t + 0.016
+        place(mats['shelf'], uc, height / 2, back_t / 2 + 0.012, unit_w, height, back_t)
         place(mats['shelf'], u0 + side_t / 2, height / 2, depth / 2, side_t, height, depth, bevel=0.003)
         place(mats['shelf'], u0 + unit_w - side_t / 2, height / 2, depth / 2, side_t, height, depth, bevel=0.003)
         place(mats['shelf'], uc, height - board_t / 2, depth / 2, unit_w, board_t, depth)
         place(mats['trim'], uc, height + 0.03, depth * 0.55, unit_w + 0.02, 0.06, depth * 0.1 + 0.02, bevel=0.004)
-        place(mats['shelf'], uc, 0.05, depth / 2 - 0.03, unit_w - side_t * 2, 0.1, depth - 0.06)
+        place(mats['shelf'], uc, 0.05, (t0 + depth - 0.03) / 2, unit_w - side_t * 2, 0.1, depth - 0.03 - t0)
         # four shelves and their stock
         for i in range(4):
             y = 0.32 + i * 0.44
-            place(mats['shelf'], uc, y, depth / 2, unit_w - side_t * 2, board_t, depth - 0.004)
+            place(mats['shelf'], uc, y, (t0 + depth - 0.004) / 2, unit_w - side_t * 2, board_t, depth - 0.004 - t0)
             place(mats['brass'], uc, y + 0.01, depth - 0.006, unit_w - side_t * 2 - 0.02, 0.022, 0.006)
             slots = max(3, int((unit_w - 0.12) / 0.19))
             pitch = (unit_w - 0.1) / slots
@@ -421,7 +424,8 @@ def pegboard(k, room, cx, cy, w, h, mats, art, seed=3):
     twelve centimetres read as confetti from the door.
     """
     rnd = random.Random(seed)
-    z = room['z0'] + 0.004 + 0.01
+    # in front of the dado rail, which stands 35 mm proud of the wall
+    z = room['z0'] + 0.048
     k.box(mats['pegboard'], cx, cy, z, w, h, 0.02)
     # a frame round the board
     for ex in (-1, 1):
@@ -514,7 +518,7 @@ def backdrop(k, room, mats, art, height):
     # ground: pavement then road
     k.slab(mats['pavement'], room['cx'], -0.02, z_face + 1.9, width, 3.8 + 0.6, face='top')
     k.slab(mats['road'], room['cx'], -0.03, z_face + 3.8 + (far - z_face - 3.8) / 2, width, far - z_face - 3.8 + 2, face='top')
-    k.box(mats['pavement'], room['cx'], -0.09, z_face + 3.8, width, 0.14, 0.12)
+    k.box(mats['pavement'], room['cx'], -0.08, z_face + 3.8, width, 0.14, 0.12)
     # the terrace opposite: brick, with lit windows and a sign band
     k.box(mats['brick'], room['cx'], height * 1.3, far + 0.5, width, height * 2.6, 1.0, faces={'back', 'top'})
     win = k.plain('far-window', '#2a2418', rough=0.3, emissive='#ffd28a', emissive_strength=2.2)

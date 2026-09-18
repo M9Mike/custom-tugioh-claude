@@ -197,17 +197,19 @@ def build_port(k, layout, dressing, art, mats, capture):
                 nz = ux * vy - uy * vx
                 length = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
                 (flat if abs(ny) / length > 0.5 else walls).extend(idx[i:i + 3])
+            boxes = m.get('parts') or [_aabb(pos) + [0]]
             if walls:
-                # the upright bake carries the same boxes: a bake with faces and
-                # no parts is one the checks cannot read
+                # the upright bake carries the boxes, stopped a centimetre under
+                # their tops; the flat bake carries the tops as faces. Written to
+                # both whole, the two bakes read as one box drawn twice.
                 k.mesh(mats[upright], pos, walls, uv=None, part=None)
                 bm_parts = k._bake_for(mats[upright])[1]
-                for pp in (m.get('parts') or [_aabb(pos) + [0]]):
-                    bm_parts.append([round(v, 4) for v in pp[:6]] + [int(pp[6]) if len(pp) > 6 else 0])
+                for pp in boxes:
+                    bm_parts.append([round(pp[0], 4), round(pp[1], 4), round(pp[2], 4), round(pp[3], 4), round(pp[4] - 0.01, 4), round(pp[5], 4), int(pp[6]) if len(pp) > 6 else 0])
             if not flat:
                 kept += 1
                 continue
-            m = dict(m, idx=flat)
+            m = dict(m, idx=flat, parts=[[pp[0], pp[4], pp[2], pp[3], pp[4], pp[5]] + [int(pp[6]) if len(pp) > 6 else 0] for pp in boxes])
         if m.get('parts'):
             # a merge says what it was made of; put the parts through as they were
             bm_parts = k._bake_for(mat)[1]

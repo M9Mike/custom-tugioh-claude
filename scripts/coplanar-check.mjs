@@ -175,7 +175,17 @@ const audit = async (label) => {
         }
         return;
       }
-      boxes.push({ name: o.name || o.type, lo, hi, offset, square, faces,
+      /* A model that arrives as several primitives — a lid and a body in
+         two materials — is one object, and the bounding boxes of its
+         primitives share every face where they meet. Two meshes under one
+         parent that is not the scene are that, and are not each other's
+         neighbours. A baked mesh hangs off the root and carries its parts. */
+      /* scene → area root → prop node → primitive: three parents up is the
+         scene for a prop's primitive, and nothing for a bake, whose parent is
+         the area root itself. Keying on "parent is not the scene" alone would
+         make every bake a sibling of every other and blind the sweep. */
+      const owner = o.parent && o.parent.parent && o.parent.parent.parent ? o.parent.uuid : null;
+      boxes.push({ name: o.name || o.type, lo, hi, offset, square, faces, owner,
                    size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] });
     });
 
@@ -211,6 +221,7 @@ const audit = async (label) => {
         const b = boxes[j];
         if (a.offset || b.offset) continue;
         if (!a.square || !b.square) continue;
+        if (a.owner && a.owner === b.owner) continue;
         for (let axis = 0; axis < 3; axis++) {
           for (let sa = 0; sa < 2; sa++) {
             for (let sb = 0; sb < 2; sb++) {

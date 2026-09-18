@@ -229,7 +229,8 @@ def hoarding(k, mats, art, rnd, faces, layout, z0, z1):
     k.box(mats['hoarding'], west - 2.4, 1.8, (z0 + z1) / 2, 4, 3.6, z1 - z0)
     k.box(mats['brick'], west - 2.7, 4.58, (z0 + z1) / 2 - 0.15, 3.8, 9.16, z1 - z0 + 0.1)
     posters = art['posters'] + art['boxes']
-    z = z0 + 0.9
+    # on the open face only: the hoarding runs on behind the north terrace's end
+    z = max(z0 + 0.9, faces['north'] + 0.7)
     i = 0
     while z < z1 - 0.9:
         pic = k.picture(f'bill-{i}', posters[rnd.randrange(len(posters))], rough=0.8)
@@ -250,7 +251,7 @@ def passage(k, mats, art, cx, face_z, out, w, sign_key, depth=8.0, head=5.0):
     if sign_key in art.get('signs', {}):
         k.box(k.picture(f'sign-{sign_key}', art['signs'][sign_key], rough=0.5), cx, head + 0.5, face_z + out * 0.02, 2.2, 2.2 / 5.6, 0.02, uv='fit', uv_face='front' if out > 0 else 'back')
     # the soffit lining, so the passage has a ceiling
-    k.box(mats['reveal'], cx, head - 0.03, face_z - out * depth / 2, w - 0.02, 0.06, depth - 0.1, faces={'bottom'})
+    k.box(mats['reveal'], cx, head - 0.04, face_z - out * depth / 2, w - 0.02, 0.06, depth - 0.1, faces={'bottom'})
 
 
 def build_street(k, layout, dressing, art, mats):
@@ -301,11 +302,11 @@ def build_street(k, layout, dressing, art, mats):
     wcx, ww, sill, top = win['x'], win['w'], win['sill'], win['top']
     wh = top - sill
     k.box(mats['reveal'], wcx, (sill + top) / 2, zf, ww + 0.16, wh + 0.16, 0.12)
-    k.box(mats['interior'], wcx, (sill + top) / 2, zf + 0.05, ww - 0.1, wh - 0.1, 0.02, faces={'front'})
+    k.box(mats['interior'], wcx, (sill + top) / 2, zf + 0.07, ww - 0.1, wh - 0.1, 0.02, faces={'front'})
     k.box(mats['glass'], wcx, (sill + top) / 2, zf + 0.09, ww - 0.16, wh - 0.16, 0.01, uv='fit')
     for mx in (-ww / 6, ww / 6):
         k.box(mats['frame'], wcx + mx, (sill + top) / 2, zf + 0.1, 0.07, wh - 0.16, 0.06)
-    k.box(mats['frame'], wcx, sill + wh * 0.68, zf + 0.115, ww - 0.16, 0.06, 0.06)
+    k.box(mats['frame'], wcx, sill + wh * 0.68, zf + 0.125, ww - 0.16, 0.06, 0.06)
     for ex in (-ww / 2 + 0.04, ww / 2 - 0.04):
         k.box(mats['frame'], wcx + ex, (sill + top) / 2, zf + 0.1, 0.08, wh, 0.12)
     k.box(mats['frame'], wcx, top - 0.04, zf + 0.1, ww, 0.08, 0.12)
@@ -379,7 +380,7 @@ def build_street(k, layout, dressing, art, mats):
             xx = east + 5 + i * 4.6
             k.box(mats['pane_lit'], xx, 1.6, az + side * 0.31, 2.6, 2.0, 0.02, faces={'front' if side > 0 else 'back'})
             k.box(mats['woodwork'], xx, 2.75, az + side * 0.34, 3.0, 0.3, 0.08)
-    k.box(mats['canopy'], east + 4.4 + 15, 6.6, amid2, 30, 0.2, aw + 1.2)
+    k.box(mats['canopy'], east + 4.4 + 15, 6.6, amid2, 29.8, 0.2, aw + 1.2)
     k.box(mats['render'], east + 4.4 + 30.5, 4, amid2, 1, 8, aw + 2)
 
     # the passage up to the shrine, through the south terrace
@@ -420,9 +421,9 @@ def build_street(k, layout, dressing, art, mats):
         elif d == 'bollard':
             bollard(k, mats, s['x'], s['z'])
         elif d == 'pier':
-            # the solid straddles the wall face; the plinth is the half of it in
-            # front, so nothing is driven into the wall
-            k.box(mats['stone'], s['x'] - s['hw'] / 2, 0.35, s['z'], s['hw'], 0.7, s['hd'] * 2, bevel=0.01)
+            # the arch's own column stands on this solid (see `build_street`);
+            # a plinth drawn inside it shared every face with it
+            pass
         elif d == 'hydrant':
             k.import_model('fire_hydrant', s['x'], 0.14, s['z'])
     # manhole covers in the road, flat, walked over

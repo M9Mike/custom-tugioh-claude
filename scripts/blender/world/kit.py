@@ -521,6 +521,18 @@ class Kit:
                 c.objects.unlink(o)
             self.collection.objects.link(o)
         bpy.context.view_layer.update()
+        # one mesh per prop: a model that arrives as a lid and a body is two
+        # boxes to the checks, sharing every face where they meet
+        if len(meshes) > 1:
+            gone = set(meshes[1:])
+            imported = [o for o in imported if o not in gone]
+            bpy.ops.object.select_all(action='DESELECT')
+            for o in meshes:
+                o.select_set(True)
+            bpy.context.view_layer.objects.active = meshes[0]
+            bpy.ops.object.join()
+            meshes = [meshes[0]]
+            bpy.context.view_layer.update()
         lo = Vector((1e9, 1e9, 1e9))
         hi = Vector((-1e9, -1e9, -1e9))
         for o in meshes:
