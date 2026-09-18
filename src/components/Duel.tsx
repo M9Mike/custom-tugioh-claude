@@ -32,7 +32,7 @@ import {
   wastedWithoutTarget,
 } from '@/game/engine';
 import { isSignatureBeat, shownNameFor, spokenFor } from '@/game/announce';
-import { lockNotices, pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonRiderSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
+import { lockNotices, narrowSpec, pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonRiderSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, worthAsking, type TargetSpec } from '@/game/ui';
 import { getSfxEnabled, primeAudio, setSfxEnabled, sfx } from '@/lib/sfx';
 import { STARTING_LP } from '@/game/types';
 import type { AnimEvent, CardInstance, DuelAction, DuelState, PlayerId } from '@/game/types';
@@ -1096,7 +1096,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   ) => {
     let carried = answers;
     for (let i = 0; i < rest.length; i++) {
-      const spec = rest[i];
+      /* Narrowed by what has been answered already — the evolution's second
+         question is its first answer's line. The engine narrows at the same
+         point in its own walk, or the board lays out a form it will refuse.
+         Both chain walks, because a rule written on one road is a rule the
+         other road forgets. */
+      const spec = narrowSpec(rest[i], carried, state);
       const want = spec.count ?? 1;
       // Never the monster that is arriving — see `targetCandidates`.
       if (mustAsk(spec, uid, want)) {
@@ -1201,7 +1206,12 @@ export default function Duel({ view, act, rematch, toLobby, connection, onBracke
   ) => {
     let carried = answers;
     for (let i = 0; i < rest.length; i++) {
-      const spec = rest[i];
+      /* Narrowed by what has been answered already — the evolution's second
+         question is its first answer's line. The engine narrows at the same
+         point in its own walk, or the board lays out a form it will refuse.
+         Both chain walks, because a rule written on one road is a rule the
+         other road forgets. */
+      const spec = narrowSpec(rest[i], carried, state);
       const want = spec.count ?? 1;
       if (mustAsk(spec, uid, want)) {
         setMode({ kind: 'target', source, uid, spec, picked: [], carry: carried, rest: rest.slice(i + 1), effectIndex });

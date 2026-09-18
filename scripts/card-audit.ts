@@ -16,7 +16,7 @@
  *   npx tsx scripts/card-audit.ts mirror-wall  # one card, verbose
  */
 import { applyAction, createDuel, effAtk, effDef, effFlags, isExtraDeckCard, lpCost, matchesFilter, tributesRequired } from '../src/game/engine';
-import { CARDS, isToon } from '../src/game/cards';
+import { CARDS, isToon, nextEvolutions } from '../src/game/cards';
 import type {
   CardDef,
   CardEffect,
@@ -677,6 +677,28 @@ function stockExtraFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
   }
 }
 
+/**
+ * The evolution's shelf.
+ *
+ * The `evolve` op names no card at all — the forms live on the body it is
+ * pointed at — so this runs *after* the board is stocked and reads the line
+ * off whichever Pokémon ended up standing there. Without it the harness drives
+ * Bond Evolution over an empty Extra Deck, nothing arrives, and a card that
+ * works reads as a card that does nothing.
+ */
+function stockEvolutionFor(s: DuelState, eff: CardEffect, owner: PlayerId = ME) {
+  for (const op of FLATTEN(eff.ops as Op[])) {
+    if (op.op !== 'evolve') continue;
+    for (const m of s.players[owner].monsters) {
+      if (!m || !matchesFilter(m, op.target.filter)) continue;
+      for (const slug of nextEvolutions(m.slug)) {
+        if (s.players[owner].extra.some((c) => c.slug === slug)) continue;
+        s.players[owner].extra.push(mint(s, owner, slug));
+      }
+    }
+  }
+}
+
 function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: PlayerId = ME) {
   /* Stocked on the side the card is actually on. A Spell or Trap is destroyed
      by the *other* player, so it sits on their side of the field — and a
@@ -687,6 +709,7 @@ function satisfy(s: DuelState, eff: CardEffect, self?: CardInstance, owner: Play
   stockHandFor(s, eff, owner);
   stockExtraFor(s, eff, owner);
   stockOwnTargetFor(s, eff, owner);
+  stockEvolutionFor(s, eff, owner);
   // Effects that reach across the field need a legal victim over there, and a
   // free zone over here to put it in.
   for (const op of eff.ops) {

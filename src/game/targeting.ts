@@ -13,7 +13,7 @@
  * `engine.ts` re-exports `matchesFilter` and `revivable` so the dozens of
  * callers that have always imported them from there still can.
  */
-import { CARDS, isToon } from './cards';
+import { CARDS, isToon, nextEvolutions } from './cards';
 import type { CardFilter, CardInstance, DuelState, PlayerId } from './types';
 
 /**
@@ -90,8 +90,14 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   if (f.type && def.type !== f.type) return false;
   if (f.excludeType && def.type === f.excludeType) return false;
   if (f.attribute && def.attribute !== f.attribute) return false;
-  if (f.minLevel != null && (def.level ?? 0) < f.minLevel) return false;
-  if (f.maxLevel != null && (def.level ?? 0) > f.maxLevel) return false;
+  /* Printed plus whatever has been put on it. The Evolution Stone is the one
+     card in the game that moves a Level, and this is the one place a Level is
+     ever compared — so a Blastoise wearing two extra stars really is Level 8
+     or higher fodder for the Master of All, everywhere that sentence is
+     asked. */
+  const level = (def.level ?? 0) + (c.levelMod ?? 0);
+  if (f.minLevel != null && level < f.minLevel) return false;
+  if (f.maxLevel != null && level > f.maxLevel) return false;
   /* "?" is not a number. Slifer and Ra are printed with -1 for an ATK that is
      whatever the hand or the Tributes behind them are worth, and a filter
      reading that printed value straight counted it as "1500 or less" — which
@@ -119,6 +125,10 @@ export function matchesFilter(c: CardInstance, f?: CardFilter): boolean {
   /* "A monster worth setting face-down" asked of the card itself, rather than
      kept as a list that goes stale the first time a FLIP card is written. */
   if (f.hasFlipEffect && !def.effects.some((e) => e.trigger === 'onFlip')) return false;
+  /* "A Pokémon that has a next evolution" — asked of the card's own button.
+     See `nextEvolutions`: one table, derived, so Bond Evolution's pool and the
+     Evolution Stone's two branches can never disagree with the ladder. */
+  if (f.hasEvolution !== undefined && nextEvolutions(c.slug).length > 0 !== f.hasEvolution) return false;
   if (f.slugs && !f.slugs.includes(c.slug)) return false;
   if (f.position && c.position !== f.position) return false;
   if (f.face && c.face !== f.face) return false;

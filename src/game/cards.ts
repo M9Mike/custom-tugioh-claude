@@ -229,6 +229,34 @@ export function baseDef(slug: string): number {
   return c.defOverride ?? c.def ?? 0;
 }
 
+/**
+ * The forms a card can evolve into — read off its own evolution button.
+ *
+ * Every Pokémon that has somewhere to go carries an ignition that Tributes
+ * itself and Special Summons one of a named list; that list *is* the
+ * evolution line, and deriving it here means there is exactly one place the
+ * road is written. The Evolution Stone and Bond Evolution both hand a Pokémon
+ * the same road it already had, so a form written next month is reachable by
+ * all three the day it lands — and there is no second table to fall behind.
+ *
+ * The Master of All's button is not an evolution: it Tributes two *other*
+ * bodies rather than itself, which is why the test is `tributeSelf`.
+ */
+const EVOLUTION_LINE = new Map<string, string[]>();
+export function nextEvolutions(slug: string): string[] {
+  const known = EVOLUTION_LINE.get(slug);
+  if (known) return known;
+  const out: string[] = [];
+  for (const eff of CARDS[slug]?.effects ?? []) {
+    if (eff.trigger !== 'ignition' || !eff.cost?.tributeSelf) continue;
+    for (const op of eff.ops) {
+      if (op.op === 'specialSummon' && op.filter?.slugs) out.push(...op.filter.slugs);
+    }
+  }
+  EVOLUTION_LINE.set(slug, out);
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /* Duelists                                                            */
 /* ------------------------------------------------------------------ */

@@ -360,6 +360,16 @@ export interface CardFilter {
    * fall out of date the first time a FLIP card was added.
    */
   hasFlipEffect?: boolean;
+  /**
+   * A Pokémon with a form still ahead of it.
+   *
+   * Asked of the card's own evolution button rather than kept as a list —
+   * `nextEvolutions` reads the slugs the card itself names — so a form written
+   * next month answers this filter the day it is written and Bond Evolution
+   * reaches it without anybody remembering to edit a second place. The same
+   * reasoning as `hasFlipEffect` one field up.
+   */
+  hasEvolution?: boolean;
   position?: Position;
   face?: Face;
 }
@@ -628,6 +638,33 @@ export type Op =
    * their hand — one shot that falls through until it finds something.
    */
   | { op: 'cascade'; branches: Array<{ condition?: EffectCondition; ops: Op[] }> }
+  /**
+   * A card out of a Deck and straight into its owner's Graveyard, chosen at
+   * random from whatever matches.
+   *
+   * `mill` takes off the top, which is a different sentence: the top of a Deck
+   * is a card its owner is about to draw and nothing can be said about what it
+   * is. Talonflame burns a Spell or Trap out of a Deck it cannot see, which
+   * only means anything if the card it finds is one of the ones it was named
+   * after. Random, never chosen — neither player may read a Deck.
+   */
+  | { op: 'deckToGrave'; who: Side; count: number; filter?: CardFilter }
+  /**
+   * The evolution road as a card can hand it to somebody else: Tribute the
+   * target and Special Summon the form it names next.
+   *
+   * The forms are read off the target's own evolution button (`nextEvolutions`)
+   * rather than listed here, so the Evolution Stone and Bond Evolution reach a
+   * Pokémon written next month without either of them being edited. The summon
+   * is credited to the TRIBUTED Pokémon, not to the card that paid for it —
+   * Raichu can only be Special Summoned by "Pikachu", and it is still Pikachu
+   * evolving however the evolution was bought.
+   *
+   * `orGrow` is the other half of the Evolution Stone: a Pokémon with nothing
+   * ahead of it takes the Levels and the stats instead, which is a real card
+   * rather than a refusal.
+   */
+  | { op: 'evolve'; target: Selector; orGrow?: { levels?: number; atk?: number; def?: number } }
   /** This monster rolls to shrug off destruction — see `CardFlags`. */
   | { op: 'rollsToSurvive'; duration: Duration }
   /** `scale` multiplies `count` by something on the board. Blast Held by a
@@ -1323,6 +1360,17 @@ export interface EffectCondition {
   /** The opponent is holding at least one card. */
   opponentHasHand?: boolean;
   /**
+   * The opponent's DECK still holds a card like this.
+   *
+   * Nobody reads a Deck, and this does not let them: it is asked by a cascade
+   * deciding which of its branches is worth taking, exactly as
+   * `opponentHasHand` is, and the branch it opens takes a card at random. A
+   * cascade that fell through to "send a random Spell or Trap" over a Deck
+   * with none left would announce that nothing had happened, which is the
+   * "card looks inert" report this file keeps relearning.
+   */
+  oppDeckHas?: CardFilter;
+  /**
    * This monster was Special Summoned by one of these cards' effects.
    *
    * Metalzoa is what Zoa becomes, and only that: summoned any other way — off
@@ -1606,6 +1654,17 @@ export interface CardInstance {
    */
   battleAtkMod?: number;
   battleDefMod?: number;
+  /**
+   * Levels added to the printed Level, and the only thing in the game that
+   * moves one.
+   *
+   * The Evolution Stone held against a Pokémon with nothing ahead of it puts
+   * two on, which is how a Level 7 Blastoise becomes fodder for the Master of
+   * All's "2 other Level 8 or higher Pokémon". Read by `matchesFilter`, which
+   * is the one place a Level is ever compared, and by the board so the stars
+   * it draws are the stars the rules count.
+   */
+  levelMod?: number;
   /**
    * What this monster really stands at, stamped into a *view* by `viewFor`.
    *

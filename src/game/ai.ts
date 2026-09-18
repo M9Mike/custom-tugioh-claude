@@ -1920,6 +1920,37 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
      later, from reality instead of imagination. */
   for (const d of view.players[viewer].deck) d.turnFlags = { ...d.turnFlags, worldBlind: true };
 
+  /* What every face-up monster is standing at, read before a single hidden
+     zone is touched.
+     A face-up monster's ATK is PUBLIC — the board draws it for both players,
+     which is the whole reason `viewFor` stamps `shownAtk` into a human's view.
+     The computer was the one player in the game not being told: Bladedge gains
+     1000 for each "Elemental HERO" card in its controller's hand, the hand is
+     proxied out of every world below, the filter then matched nothing, and the
+     AI priced a 5600 body at its printed 2600. Reported from a real duel as
+     the computer attacking into it "2 times in a row with a weaker monster"
+     and losing both — it was not gambling, it could not see the number.
+     Carried across as a permanent modifier rather than a stamp: a stamp would
+     freeze the number against everything the plan then does to it, and the
+     delta rides along with every buff and drain the world plays out. */
+  const publicStats = new Map<string, { atk: number; def: number }>();
+  for (const pid of ['p1', 'p2'] as PlayerId[]) {
+    for (const m of view.players[pid].monsters) {
+      if (m && m.face === 'up') publicStats.set(m.uid, { atk: effAtk(view, m, pid), def: effDef(view, m, pid) });
+    }
+  }
+  const keepPublicStats = () => {
+    for (const pid of ['p1', 'p2'] as PlayerId[]) {
+      for (const m of view.players[pid].monsters) {
+        if (!m || m.face !== 'up') continue;
+        const was = publicStats.get(m.uid);
+        if (!was) continue;
+        m.atkMod += was.atk - effAtk(view, m, pid);
+        m.defMod += was.def - effDef(view, m, pid);
+      }
+    }
+  };
+
   const foe = view.players[other(viewer)];
   const hiddenMonsters = foe.monsters.filter((m): m is CardInstance => !!m && m.face === 'down');
 
@@ -1964,6 +1995,7 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
     for (const h of foe.hand) proxyBody(h, PHANTOM_SUMMON_ATK, pool.small.def);
     sortHidden(foe.deck);
     shuffleWith(foe.deck, rnd);
+    keepPublicStats();
     return view;
   }
 
@@ -2027,6 +2059,10 @@ function buildWorld(state: DuelState, viewer: PlayerId, salt: number, sample: bo
   let at = 0;
   for (const h of foe.hand) reidentify(h, remain[at++]);
   for (const d of foe.deck) reidentify(d, remain[at++]);
+  /* And in a sampled world too: the hand it just dealt is imagined, and a
+     public number must not move because an imagined hand holds different
+     cards. */
+  keepPublicStats();
   return view;
 }
 

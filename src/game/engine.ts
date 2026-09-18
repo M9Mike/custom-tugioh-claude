@@ -6,11 +6,11 @@
  * this as the single source of truth; the client runs the same code to predict
  * what its buttons should do.
  */
-import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookOpen, toonActive, toonDisplayName } from './cards';
+import { baseAtk, baseDef, card, CARDS, DUELIST_BY_ID, DUELISTS, isToonWhenBookOpen, nextEvolutions, toonActive, toonDisplayName } from './cards';
 import { changesAnything, faceUpOnSide, matchesFilter, revivable, stripAtkBounds, withinAtkBounds } from './targeting';
 /* The engine asks the same picker the board does. No cycle: `ui.ts` reads its
    targeting rules from `targeting.ts` now, not from here. */
-import { specChainForEffect, targetCandidates, targetSpecFor, worthAsking } from './ui';
+import { narrowSpec, specChainForEffect, targetCandidates, targetSpecFor, worthAsking } from './ui';
 import type { TargetSpec } from './ui';
 /* Re-exported because they lived here for the whole of this game's history and
    dozens of callers — the board, the checks, the harnesses — import them from
@@ -1161,6 +1161,27 @@ function fireDepartures(state: DuelState, pending: PendingDeparture[]) {
   }
 }
 
+/**
+ * A card on its way into somebody's hand — and the one door it goes through.
+ *
+ * An Extra Deck monster has no business in a hand: it cannot be Normal
+ * Summoned, no cost can discard it for value, and it sits there doing nothing
+ * for the rest of the duel. The owner's line was "what will I do with a
+ * Blue-Eyes Ultimate Dragon in hand" — so a Fusion, and every evolved Pokémon,
+ * goes home to the Extra Deck instead, which is where the card that summons it
+ * reaches. Written once, here, because three ops reach for a hand and the
+ * fourth one written next month would forget.
+ */
+function toHand(state: DuelState, c: CardInstance, owner: PlayerId, line: string): void {
+  if (!c.isToken && CARDS[c.slug]?.isFusion) {
+    state.players[owner].extra.push(c);
+    log(state, `${displayName(state, c)} returns to the Extra Deck.`, 'effect', owner, logSlug(c));
+    return;
+  }
+  state.players[owner].hand.push(c);
+  log(state, line, 'effect', undefined, logSlug(c));
+}
+
 function toGrave(state: DuelState, uid: string, fromField: boolean, destroyed = false, defer?: PendingDeparture[], asFusionMaterial = false) {
   const found = fromField ? findOnField(state, uid) : null;
   const controller = found?.controller;
@@ -2289,8 +2310,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
           const removed = removeFromAnywhere(state, t.uid);
           if (removed && !removed.isToken) {
             resetInstance(removed);
-            state.players[owner].hand.push(removed);
-            log(state, `${displayName(state, removed)} returns to the hand.`, 'effect', undefined, logSlug(removed));
+            toHand(state, removed, owner, `${displayName(state, removed)} returns to the hand.`);
           }
         }
         checkExodia(state);
@@ -2677,6 +2697,85 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         break;
       }
+      case 'deckToGrave': {
+        /* A card out of a Deck, taken at random from whatever matches — never
+           off the top, which is the card its owner is about to draw, and never
+           chosen, because nobody reads a Deck. Talonflame burns a Spell or Trap
+           out of a Deck it cannot see; the cascade above it has already asked
+           whether there is one to burn. */
+        for (const pid of sideToPlayers(ctx, op.who)) {
+          const p = state.players[pid];
+          for (let i = 0; i < op.count; i++) {
+            const pool = p.deck
+              .map((c, at) => ({ c, at }))
+              .filter(({ c }) => matchesFilter(c, op.filter));
+            if (!pool.length) break;
+            const { c, at } = pool[randInt(state, pool.length)];
+            p.deck.splice(at, 1);
+            landInGrave(state, c, pid);
+            log(
+              state,
+              `${displayName(state, c)} is sent from ${p.name}'s Deck to the Graveyard.`,
+              'effect',
+              pid,
+              logSlug(ctx.source)
+            );
+          }
+          /* The Deck was just read through to find a match, so its order is no
+             longer a thing only its owner knows. */
+          deckSeen(state, pid);
+        }
+        break;
+      }
+      case 'evolve': {
+        /* The evolution road, handed to a card that is not the Pokémon: the
+           Evolution Stone and Bond Evolution both Tribute the target and call
+           what it names next. See the op's note in `types.ts` — the forms come
+           off the target's own button, and the summon is credited to the
+           TRIBUTED Pokémon so every `summonOnlyBy` on the ladder still holds.
+           A Pokémon with nothing ahead of it takes `orGrow` instead, which is
+           the stone's other half rather than a refusal. */
+        const [target] = resolveTargets(ctx, op.target);
+        if (!target) break;
+        const ctrl = controllerOf(state, target.uid) ?? ctx.controller;
+        const line = nextEvolutions(target.slug);
+        const zone = state.players[ctrl].monsters.findIndex((m) => m?.uid === target.uid);
+        if (!line.length) {
+          if (!op.orGrow) break;
+          target.levelMod = (target.levelMod ?? 0) + (op.orGrow.levels ?? 0);
+          target.atkMod += op.orGrow.atk ?? 0;
+          target.defMod += op.orGrow.def ?? 0;
+          log(
+            state,
+            `${displayName(state, target)} has nowhere left to evolve — it grows instead.`,
+            'effect',
+            ctrl,
+            logSlug(target)
+          );
+          break;
+        }
+        /* The player's own pick first — the second question in this effect's
+           chain, narrowed to this Pokémon's line by `narrowSpec` — and
+           otherwise the biggest form it can legally reach. */
+        const shelf = [...state.players[ctrl].extra, ...state.players[ctrl].grave].filter(
+          (c) => line.includes(c.slug) && revivable(state, ctrl, c.slug, target.slug)
+        );
+        const named = ctx.targets[ctx.cursor];
+        let form = named ? shelf.find((c) => c.uid === named) ?? null : null;
+        if (form) ctx.cursor += 1;
+        else form = shelf.length ? shelf.reduce((a, b) => (baseAtk(a.slug) >= baseAtk(b.slug) ? a : b)) : null;
+        if (!form) {
+          emptyHanded(state, ctx, `${displayName(state, target)} has no evolution to step into.`);
+          break;
+        }
+        log(state, `${state.players[ctrl].name} tributes ${displayName(state, target)}.`, 'effect', ctrl, logSlug(target));
+        toGrave(state, target.uid, true);
+        const dest = state.players[ctrl].monsters[zone] ? state.players[ctrl].monsters.findIndex((m) => !m) : zone;
+        if (dest < 0) break;
+        landSpecialSummon(state, form, ctrl, dest, 'atk', 'up', target.slug);
+        ctx.summoned = [...(ctx.summoned ?? []), form.uid];
+        break;
+      }
       case 'swapDeckAndGrave': {
         /* Everything spent becomes everything left. Both piles change places
            for both players, and the new Deck is shuffled: a Graveyard is a
@@ -2904,15 +3003,13 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
             }
             if (gi < 0) break;
             const g = p.grave.splice(gi, 1)[0];
-            p.hand.push(g);
+            toHand(state, g, ctx.controller, `${p.name} takes ${displayName(state, g)} from the Graveyard.`);
             found += 1;
-            log(state, `${p.name} takes ${displayName(state, g)} from the Graveyard.`, 'effect', ctx.controller, logSlug(g));
             continue;
           }
           const c = p.deck.splice(idx, 1)[0];
-          p.hand.push(c);
+          toHand(state, c, ctx.controller, `${p.name} adds ${displayName(state, c)} from their Deck to their hand.`);
           found += 1;
-          log(state, `${p.name} adds ${displayName(state, c)} from their Deck to their hand.`, 'effect', ctx.controller, logSlug(c));
         }
         if (!found) emptyHanded(state, ctx, `${displayName(state, ctx.source)} finds nothing to add.`);
         deckSeen(state, ctx.controller);
@@ -3408,9 +3505,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         const removed = removeFromAnywhere(state, me.uid);
         if (removed) {
           resetInstance(removed);
-          state.players[owner].hand.push(removed);
-          log(state, `${displayName(state, removed)} flutters back into ${state.players[owner].name}'s hand.`,
-            'effect', owner, logSlug(removed));
+          toHand(state, removed, owner, `${displayName(state, removed)} flutters back into ${state.players[owner].name}'s hand.`);
         }
         break;
       }
@@ -3488,8 +3583,7 @@ function runOps(ctx: EffectCtx, ops: Op[]) {
         }
         if (!pool || i2 < 0) break;
         const c = pool.splice(i2, 1)[0];
-        state.players[ctx.controller].hand.push(c);
-        log(state, `${state.players[ctx.controller].name} takes ${displayName(state, c)} from the Graveyard.`, 'effect', ctx.controller, logSlug(c));
+        toHand(state, c, ctx.controller, `${state.players[ctx.controller].name} takes ${displayName(state, c)} from the Graveyard.`);
         checkExodia(state);
         break;
       }
@@ -3674,6 +3768,12 @@ function conditionMet(state: DuelState, eff: CardEffect, c: CardInstance, contro
   if (cond.opponentHasBackrow) {
     const them = state.players[other(controller)];
     if (!them.spellTrap && !them.field) return false;
+  }
+  /* Asked, never read: a cascade wants to know whether its next branch has
+     anything to find, and the branch it opens takes a card at random. See the
+     note on `oppDeckHas`. */
+  if (cond.oppDeckHas) {
+    if (!state.players[other(controller)].deck.some((c) => matchesFilter(c, cond.oppDeckHas))) return false;
   }
   if (cond.anyBackrow) {
     const mine = state.players[controller];
@@ -3931,7 +4031,10 @@ function raiseChoice(
      run only once every question has been asked. */
   const chain = specChainForEffect(c.slug, effectIndex);
   for (let i = step; i < chain.length; i++) {
-    const spec = chain[i];
+    /* A question whose pool is the answer before it — the evolution's second
+       half. `narrowSpec` hands back anything else untouched, and the board
+       calls it at the same point in its own walk. */
+    const spec = narrowSpec(chain[i], targets, state);
     if (askOne(state, c, controller, trigger, spec, targets, effectIndex, i)) return true;
   }
   return false;

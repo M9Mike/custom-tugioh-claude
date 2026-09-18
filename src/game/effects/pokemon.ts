@@ -41,7 +41,7 @@
  * rule `text-check` enforces. Every trigger clause is one the check knows how
  * to read, and every number in a sentence is the number the effect carries.
  */
-import type { CardEffect, CardFilter, Pick, Selector, Side } from '../types';
+import type { CardEffect, CardFilter, Op, Pick, Selector, Side } from '../types';
 import type { EffectDef } from './monsters';
 
 const sel = (side: Side, pick: Pick, extra: Partial<Selector> = {}): Selector => ({ side, pick, ...extra });
@@ -53,6 +53,8 @@ const OPP_BACKROW = sel('opp', 'all', { zone: 'backrow' });
 
 /** The archetype: a monster type this game made up, exactly like a real one. */
 const POKEMON: CardFilter = { type: 'Pokémon' };
+/** "A Spell or Trap", written the way the engine writes it — see `notKind`. */
+const MAGIC: CardFilter = { notKind: 'monster' };
 /** A Pokémon still in the main deck — an evolved form is never there, but a
  *  Graveyard holds both kinds and a hand can only ever use one of them. */
 const BASIC: CardFilter = { type: 'Pokémon', kind: 'monster', isFusion: false };
@@ -121,6 +123,55 @@ const MASTER_TEXT =
 
 const EVOLVED = 'Cannot be Normal Summoned or Set. ';
 
+/**
+ * What a Pokémon leaves behind.
+ *
+ * Every card in this deck points at another card in it, and these three are
+ * the loops that keep it pointing: the five with a form still ahead of them
+ * hand back the stone that skips a stage, the four at the end of their line
+ * hand back the arena that makes the end of a line worth standing on, and
+ * Pikachu hands back the bond. Written once each and shared, because a fetch
+ * copied five times is five places for one of them to say something else.
+ *
+ * Destroyed for the stone and for the bond — a Tribute is not a death, so
+ * evolving a Gengar must not also pay its owner — and sent to the Graveyard
+ * for the arena, because the four that fetch it have no evolution to be
+ * tributed for and every other road down is a real loss.
+ */
+const backFromAnywhere = (slug: string, trigger: 'onDestroyed' | 'onAnyToGrave'): CardEffect => ({
+  trigger,
+  ops: [{ op: 'search', filter: { slugs: [slug] }, orGrave: true }],
+});
+const STONE_HOME = backFromAnywhere('evolution-stone', 'onDestroyed');
+const ARENA_HOME = backFromAnywhere('pokemon-battle-arena', 'onAnyToGrave');
+const BOND_HOME = backFromAnywhere('bond-evolution', 'onDestroyed');
+/**
+ * Talonflame's strike, on all three of its timings.
+ *
+ * The board first, and only then the Deck — Barrel Dragon's shape, which
+ * strips a board from the front rather than skipping to the part nobody can
+ * see. The last branch carries no condition: an empty Deck is a player who
+ * has already lost the duel on their next draw, and a card that says "send 1
+ * random card" over an empty pile simply sends nothing.
+ */
+const FLAME_CHARGE: Op[] = [
+  {
+    op: 'cascade',
+    branches: [
+      { condition: { opponentHasBackrow: true }, ops: [{ op: 'destroy', target: OPP_ONE_BACKROW }] },
+      {
+        condition: { oppDeckHas: MAGIC },
+        ops: [{ op: 'deckToGrave', who: 'opp', count: 1, filter: MAGIC }],
+      },
+      { ops: [{ op: 'deckToGrave', who: 'opp', count: 1 }] },
+    ],
+  },
+];
+
+const STONE_TEXT = 'When this monster is destroyed: add 1 "Evolution Stone" from your Deck or Graveyard to your hand. ';
+const ARENA_TEXT =
+  'When this monster is sent to the Graveyard: add 1 "Pokémon Battle Arena" from your Deck or Graveyard to your hand.';
+
 export const POKEMON_EFFECTS: Record<string, EffectDef> = {
   /* ================================================================ */
   /* The team                                                          */
@@ -136,6 +187,7 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
       'If you control no monsters, this monster can be Special Summoned from your hand. ' +
       'When this monster is Summoned: add 1 Pokémon from your Deck to your hand. ' +
       'When this monster destroys a monster in battle: inflict 1000 damage to your opponent. ' +
+      'When this monster is destroyed: add 1 "Bond Evolution" from your Deck or Graveyard to your hand. ' +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Raichu" or "Gigantamax Pikachu" from your Extra Deck or Graveyard.',
     cry: 'Pika… CHUUU!',
     effects: [
@@ -147,6 +199,7 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
       },
       { trigger: 'onSummon', ops: [{ op: 'search', filter: BASIC }] },
       { trigger: 'onBattleDestroy', ops: [{ op: 'damage', amount: 1000, to: 'opp' }] },
+      BOND_HOME,
       evolve('Evolve', ['raichu', 'gigantamax-pikachu']),
     ],
   },
@@ -233,19 +286,20 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
        one of theirs on the way. */
     text:
       'When this monster is Summoned: your opponent discards 1 random card. ' +
-      'When this monster is destroyed: destroy 1 monster your opponent controls. ' +
+      'When this monster is destroyed: destroy 1 monster your opponent controls. ' + STONE_TEXT +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Gigantamax Gengar" from your Extra Deck or Graveyard.',
     cry: 'Shadow Ball!',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'discard', count: 1, who: 'opp' }] },
       { trigger: 'onDestroyed', targets: 1, ops: [{ op: 'destroy', target: OPP_ONE }] },
+      STONE_HOME,
       evolve('Evolve', ['gigantamax-gengar']),
     ],
   },
 
   bulbasaur: {
     text:
-      'When this monster is Summoned: inflict 500 damage to your opponent and gain 500 Life Points. ' +
+      'When this monster is Summoned: inflict 500 damage to your opponent and gain 500 Life Points. ' + STONE_TEXT +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Venusaur" from your Extra Deck or Graveyard.',
     cry: 'Leech Seed!',
     effects: [
@@ -256,6 +310,7 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
           { op: 'heal', amount: 500, to: 'own' },
         ],
       },
+      STONE_HOME,
       evolve('Evolve', ['venusaur']),
     ],
   },
@@ -264,25 +319,29 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
     /* Withdraw. The same thousand every wall in this game takes off an
        attacker, on the smallest body that has it. */
     text:
-      'Anything that attacks this monster does so 1000 ATK lighter. ' +
+      'Anything that attacks this monster does so 1000 ATK lighter. ' + STONE_TEXT +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Blastoise" from your Extra Deck or Graveyard.',
     cry: 'Withdraw!',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttacker'] } },
+      STONE_HOME,
       evolve('Evolve', ['blastoise']),
     ],
   },
 
   pidgeot: {
-    /* Gust on the way in, and then it flies over the fight — at half, which is
-       the price Sky Scout pays for the same sentence. */
+    /* Gust on the way in, and then it flies over the fight. The halving is
+       gone at the owner's word: a 1900 body that can only ever hit Life
+       Points is already paying for the privilege by never being able to
+       answer anything on the board. */
     text:
       'When this monster is Summoned: return 1 monster your opponent controls to their hand. ' +
-      'This monster can attack your opponent directly, but its battle damage is halved.',
+      'This monster can attack your opponent directly. ' + ARENA_TEXT,
     cry: 'Gust!',
     effects: [
       { trigger: 'onSummon', targets: 1, ops: [{ op: 'bounce', target: OPP_ONE }] },
-      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['directAttack', 'halvedBattleDamage'] } },
+      { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['directAttack'] } },
+      ARENA_HOME,
     ],
   },
 
@@ -290,12 +349,13 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
     /* Intimidate, kept: every monster across the table is 800 smaller for the
        rest of the duel, and the next one to arrive is not. */
     text:
-      'When this monster is Summoned: every monster your opponent controls loses 800 ATK permanently. ' +
-      'This monster inflicts piercing battle damage.',
+      'When this monster is Summoned: every monster your opponent controls loses 900 ATK permanently. ' +
+      'This monster inflicts piercing battle damage. ' + ARENA_TEXT,
     cry: 'Intimidate!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'gainAtk', amount: -800, target: OPP_ALL, duration: 'permanent' }] },
+      { trigger: 'onSummon', ops: [{ op: 'gainAtk', amount: -900, target: OPP_ALL, duration: 'permanent' }] },
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['pierce'] } },
+      ARENA_HOME,
     ],
   },
 
@@ -304,24 +364,39 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
        lying down, and it heals its trainer every morning. */
     text:
       'While this monster is in Defence Position, anything that attacks it does so 1000 ATK lighter. ' +
-      'At the start of your turn: gain 1000 Life Points. ' +
+      'At the start of your turn: gain 1000 Life Points. ' + STONE_TEXT +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Gigantamax Snorlax" from your Extra Deck or Graveyard.',
     cry: 'Rest.',
     effects: [
       { trigger: 'continuous', ops: [], aura: { target: SELF, grants: ['sapsAttackerInDefense'] } },
       { trigger: 'onOwnTurnStart', ops: [{ op: 'heal', amount: 1000, to: 'own' }] },
+      STONE_HOME,
       evolve('Evolve', ['gigantamax-snorlax']),
     ],
   },
 
   talonflame: {
+    /* Flame Charge, three times over: it strips a Spell or Trap on the way in,
+       again every time it declares, and once more on the way down. A backrow
+       is the one thing this deck cannot answer once the ladder starts — a
+       Trap fires between rungs — so the bird is the deck's answer to a set
+       card, and it keeps answering after it is dead.
+       And it never whiffs: with nothing on their field it burns the card out
+       of their Deck instead, so the sentence is always worth something. */
     text:
       'This monster can attack twice each Battle Phase. ' +
-      'When this monster destroys a monster in battle: draw 1 card.',
+      'When this monster destroys a monster in battle: draw 1 card. ' +
+      'When this monster is Summoned, when it declares an attack, and when it is sent to the Graveyard: ' +
+      'destroy 1 Spell or Trap your opponent controls — or, if they control none, send 1 random Spell or Trap from their Deck to the Graveyard — ' +
+      'or, if they have none there either, send 1 random card from their Deck to the Graveyard. ' +
+      ARENA_TEXT,
     cry: 'Brave Bird!',
     effects: [
-      { trigger: 'onSummon', ops: [{ op: 'extraAttacks', count: 1 }] },
+      { trigger: 'onSummon', targets: 1, ops: [{ op: 'extraAttacks', count: 1 }, ...FLAME_CHARGE] },
       { trigger: 'onBattleDestroy', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      { trigger: 'onDeclareAttack', ops: [...FLAME_CHARGE] },
+      { trigger: 'onAnyToGrave', ops: [...FLAME_CHARGE] },
+      ARENA_HOME,
     ],
   },
 
@@ -329,22 +404,30 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
     /* The smallest body in the deck and never a dead card: it replaces itself
        on arrival and it is a Decidueye by the end of the turn. */
     text:
-      'When this monster is Summoned: draw 1 card. ' +
+      'When this monster is Summoned: draw 1 card. ' + STONE_TEXT +
       'Once per turn: ' + STOOD + 'Tribute this monster; Special Summon "Decidueye" from your Extra Deck or Graveyard.',
     cry: 'Hoo!',
     effects: [
       { trigger: 'onSummon', ops: [{ op: 'draw', count: 1, who: 'own' }] },
+      STONE_HOME,
       evolve('Evolve', ['decidueye']),
     ],
   },
 
   butterfree: {
-    /* Sleep Powder: the turn it buys is the turn the board evolves. The same
-       lock Swords of Revealing Light applies, one turn of it. */
+    /* Sleep Powder: the turns it buys are the turns the board evolves. The
+       same lock Swords of Revealing Light applies, and for as long — one turn
+       of it was a tempo card in a deck whose whole plan is standing still,
+       and standing still for one turn buys one rung of a ladder that has
+       three. */
     text:
-      "When this monster is Summoned: your opponent's monsters cannot attack or change position for 1 turn.",
+      "When this monster is Summoned: your opponent's monsters cannot attack or change position for 3 turns. " +
+      'When this monster is sent to the Graveyard: add 1 "Pokémon Battle Arena" from your Deck or Graveyard to your hand.',
     cry: 'Sleep Powder!',
-    effects: [{ trigger: 'onSummon', ops: [{ op: 'freezeMonsters', who: 'opp', turns: 1 }] }],
+    effects: [
+      { trigger: 'onSummon', ops: [{ op: 'freezeMonsters', who: 'opp', turns: 3 }] },
+      ARENA_HOME,
+    ],
   },
 
   /* ================================================================ */
@@ -375,51 +458,43 @@ export const POKEMON_EFFECTS: Record<string, EffectDef> = {
   },
 
   'evolution-stone': {
-    /* A second body on the table without spending the Normal Summon — and a
-       body on the table is a body that can evolve this turn, which is what
-       the stone is for. */
-    text: 'Special Summon 1 Pokémon from your hand or Deck in Attack Position.',
+    /* The stone does what a stone does: it evolves the thing you hold it
+       against, whatever rung that thing is standing on — and against a
+       Pokémon with nothing ahead of it, it is the thing that makes the end of
+       a line worth reaching. Two Levels and a thousand each way is not a
+       consolation: a Level 7 Blastoise becomes a Level 9, and Level 8 or
+       higher is exactly the price the Master of All asks. */
+    text:
+      'Target 1 Pokémon you control: Tribute it and Special Summon its next evolution from your Extra Deck or Graveyard — ' +
+      'or, if it has no next evolution, its Level increases by 2 and it gains 1000 ATK and DEF permanently.',
     cry: 'It is glowing!',
     effects: [
       {
         trigger: 'activate',
-        ops: [{ op: 'specialSummon', from: ['hand', 'deck'], filter: BASIC, position: 'atk' }],
+        targets: 1,
+        ops: [{ op: 'evolve', target: sel('own', 'chosen', { filter: POKEMON }), orGrow: { levels: 2, atk: 1000, def: 1000 } }],
       },
     ],
   },
 
   'bond-evolution': {
-    /* The Ash-Greninja card, and in this deck it skips a stage for anyone:
-       one Pokémon goes in, one of Ash's own Level 10 forms comes out, five
-       hundred heavier for the trust. The six are named so the playability
-       sweep can see the road; the Level is on the filter so the sentence is
-       honest. */
+    /* The Ash-Greninja card. It used to leap straight to a Level 10 whatever
+       it ate, which made the ladder decorative — why climb when one Spell
+       buys the top? Now it is the ladder without the wait: the Pokémon you
+       tribute becomes the thing it was always going to become, one rung on,
+       five hundred heavier for the trust, and it does it the turn it lands
+       instead of the turn after. The rung is read off the Pokémon itself, so
+       a form written next month is on this card without anybody editing it. */
     text:
-      'Tribute 1 Pokémon you control: Special Summon 1 Level 10 Pokémon from your Extra Deck or Graveyard. ' +
+      'Tribute 1 Pokémon you control that has a next evolution: Special Summon that evolution from your Extra Deck or Graveyard. ' +
       'It gains 500 ATK permanently.',
     cry: 'Our bond is our strength!',
     effects: [
       {
         trigger: 'activate',
-        cost: { tribute: 1, tributeFilter: POKEMON },
+        targets: 1,
         ops: [
-          {
-            op: 'specialSummon',
-            from: ['extra', 'grave'],
-            filter: {
-              minLevel: 10,
-              maxLevel: 10,
-              slugs: [
-                'ash-greninja-ultimate-bond',
-                'charizard-flame-emperor',
-                'pikachu-thunder-emperor',
-                'infernape-blaze-unleashed',
-                'sceptile-forest-overlord',
-                'lucario-aura-master',
-              ],
-            },
-            position: 'atk',
-          },
+          { op: 'evolve', target: sel('own', 'chosen', { filter: { type: 'Pokémon', hasEvolution: true } }) },
           { op: 'gainAtk', amount: 500, target: sel('own', 'summoned'), duration: 'permanent' },
         ],
       },

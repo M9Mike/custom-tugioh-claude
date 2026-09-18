@@ -3,7 +3,7 @@
  * before it is activated — derived from the effect data itself, so new cards
  * never need bespoke UI wiring.
  */
-import { CARDS } from './cards';
+import { CARDS, nextEvolutions } from './cards';
 import { changesAnything, matchesFilter, revivable, stripAtkBounds, withinAtkBounds } from './targeting';
 import type { CardDef, CardEffect, CardFilter, CardInstance, DuelState, Op, PlayerId, Trigger } from './types';
 
@@ -69,6 +69,32 @@ export interface TargetSpec {
    * own gate reads it.
    */
   changing?: string;
+  /**
+   * A question whose pool is the answer before it.
+   *
+   * The Evolution Stone asks which Pokémon, and then — only when that
+   * Pokémon's line forks, which is Pikachu's two forms and Charizard's three —
+   * which form it becomes. Nothing static can know that second pool, so the
+   * spec carries the word and `narrowSpec` fills the slugs in at the moment
+   * the question is put. Both askers call it, or the board lays out a form the
+   * engine will not accept.
+   */
+  evolutionOf?: boolean;
+}
+
+/**
+ * The same question with its pool decided by the answers already given.
+ *
+ * Called by the engine in `raiseChoice` and by the board in `advance`, which
+ * are the only two places a chain is walked. A spec with nothing dynamic on it
+ * comes back exactly as it went in.
+ */
+export function narrowSpec(spec: TargetSpec, answers: string[], state: DuelState): TargetSpec {
+  if (!spec.evolutionOf) return spec;
+  const uid = answers[answers.length - 1];
+  const on = (['p1', 'p2'] as PlayerId[]).flatMap((pid) => state.players[pid].monsters);
+  const chosen = on.find((m) => m?.uid === uid) ?? null;
+  return { ...spec, filter: { ...spec.filter, slugs: chosen ? nextEvolutions(chosen.slug) : [] } };
 }
 
 /**
@@ -148,6 +174,8 @@ function chosenSpec(op: Op, owner: string): TargetSpec | null {
           ? 'Choose a monster to absorb'
           : op.op === 'bounce'
             ? 'Choose a card to return'
+            : op.op === 'evolve'
+              ? 'Choose a Pokémon to evolve'
             : op.op === 'gainAtk'
               /* The same op with the sign flipped is the opposite sentence.
                  Dark Jeroid takes 1500 off one of theirs and would have asked
@@ -457,6 +485,13 @@ function specChain(eff: CardEffect, owner: string): TargetSpec[] {
   for (const op of eff.ops) {
     const spec = scanOp(op, owner);
     if (spec) asks.push(spec);
+    /* The one op that asks twice: which Pokémon, and then which form it steps
+       into. A line with one form ahead of it never puts the second question —
+       `worthAsking` sees one option and answers it — so this is a prompt only
+       where there is really a fork. */
+    if (op.op === 'evolve') {
+      asks.push({ side: 'own', zone: 'extraOrGrave', count: 1, prompt: 'Choose the evolution to call', evolutionOf: true });
+    }
   }
   if (asks.length === 1) asks[0] = { ...asks[0], count: Math.max(asks[0].count, eff.targets ?? 1) };
   return cost ? [cost, ...asks] : asks;

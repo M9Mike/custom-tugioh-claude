@@ -26,12 +26,12 @@ import {
   updateProfile,
 } from '../src/game/experience';
 import type { LogEntry } from '../src/game/types';
-import { revivable } from '../src/game/targeting';
+import { matchesFilter, revivable } from '../src/game/targeting';
 import { choiceResponses , tributeUnits, isExtraDeckCard } from '../src/game/engine';
 import { applyAction, cloneState, canActivateFromHand, canActivateSetCard, canAttackWith, canIgnite, createDuel, displayName, effAtk, effDef, effFlags, fusionOptions, handSummonOffer, legalAttackTargets, makesSeven, maxAttacks, summonBlocked, tributesRequired, viewFor, wastedWithoutTarget } from '../src/game/engine';
 import { CARDS, DUELISTS, baseAtk as baseAtkOf, isToon } from '../src/game/cards';
-import { pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices, worthAsking } from '../src/game/ui';
-import { candidates as aiCandidates } from '../src/game/ai';
+import { narrowSpec, pickerSides, specChainFor, specChainForEffect, summonChoiceSpec, summonSpecChain, summonTargetSpec, targetCandidates, targetSpecFor, targetSpecForEffect, lockNotices, worthAsking } from '../src/game/ui';
+import { candidates as aiCandidates, expectationWorld } from '../src/game/ai';
 import { chooseAction as autoChoose, legalActions as autoLegal } from '../src/game/autoplay';
 import { isSignatureBeat, spokenFor } from '../src/game/announce';
 import { canDiscardForEffect, ignitionOptions, summonAffordable, tributableBodies } from '../src/game/engine';
@@ -12362,7 +12362,11 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
     let bounced = act(s, FOE, { type: 'normalSummon', uid: s.players[FOE].hand[0].uid, zone: 0, position: 'atk', face: 'up', targets: [beud.uid] });
     let g = 0;
     while (bounced.pending?.kind === 'choose' && g++ < 4) bounced = act(bounced, bounced.pending.player, { type: 'chooseCard', uids: [bounced.pending.options[0]] });
-    ok(bounced.players[ME].hand.some((h) => h.uid === beud.uid), 'the Ultimate Dragon really was sent to the hand', 'it went elsewhere');
+    /* And home rather than into the hand: an Extra Deck monster in a hand is a
+       card that can never be played again — see `toHand`. The road off the
+       field is what the Shining Dragon reads, and that is unchanged. */
+    ok(bounced.players[ME].extra.some((h) => h.uid === beud.uid), 'the Ultimate Dragon really was sent off the field — and home to the Extra Deck', 'it went elsewhere');
+    ok(!bounced.players[ME].hand.some((h) => h.uid === beud.uid), 'and never into a hand that could do nothing with it', 'it landed in the hand');
     ok(bounced.players[ME].monsters.some((m) => m?.slug === 'blue-eyes-shining-dragon'),
       'and the light comes on for a road that never touches a Graveyard',
       bounced.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
@@ -15901,52 +15905,80 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
     ok(revivable(st, ME, 'raichu', 'max-revive'), 'EVOLVE: Max Revive reaches it');
   }
 
-  /* --- Bond Evolution: six forms, wherever they lie, and the player says which --- */
+  /* --- Bond Evolution: the Pokémon you Tribute becomes what IT becomes --- */
   {
-    const forms = new Set(['ash-greninja-ultimate-bond', 'charizard-flame-emperor', 'pikachu-thunder-emperor',
-      'infernape-blaze-unleashed', 'sceptile-forest-overlord', 'lucario-aura-master']);
-    const table = () => {
+    /* The card used to leap to any of six Level 10 forms whatever it ate,
+       which made the ladder decorative. It is the ladder now, without the
+       wait — so the forms on offer are the tributed Pokémon's own line, and
+       the question is only worth putting where that line forks. */
+    const table = (slug: string) => {
       const s = ash();
-      const greninja = card(ME, 'greninja');
-      greninja.summonedOnTurn = 0;
-      s.players[ME].monsters = [greninja, null, null];
+      const body = card(ME, slug);
+      body.summonedOnTurn = 0;
+      s.players[ME].monsters = [body, null, null];
       const bond = card(ME, 'bond-evolution');
       s.players[ME].hand = [bond];
-      /* One of the six has been out once and fallen; the other five are on
-         the shelf. The question spans both piles or it is not the card's own
-         sentence. */
-      const fallen = s.players[ME].extra.find((c) => c.slug === 'charizard-flame-emperor')!;
-      s.players[ME].extra = s.players[ME].extra.filter((c) => c.uid !== fallen.uid);
-      s.players[ME].grave = [fallen];
-      return { s, greninja, bond, fallen };
+      return { s, body, bond };
     };
-    const { s, greninja, bond, fallen } = table();
     const chain = specChainForEffect('bond-evolution', 0);
     ok(chain.length === 2 && chain[0].zone === 'monster' && chain[1].zone === 'extraOrGrave',
       'BOND: the Tribute is asked first, then the form, over the Extra Deck and the Graveyard',
       chain.map((c) => c.zone).join(','));
-    const offered = chain[1] ? targetCandidates(s, ME, chain[1], undefined, bond.uid) : [];
-    const shelf = s.players[ME].extra.find((c) => c.slug === 'sceptile-forest-overlord')!;
-    ok(offered.some((c) => c.uid === shelf.uid), 'BOND: a form on the shelf is offered', offered.map((c) => c.slug).join(','));
+
+    /* Pikachu is the fork: Raichu on the shelf, the Gigantamax form fallen
+       into the pile, and the question spans both piles or it is not the
+       card's sentence. */
+    const { s, body: pika, bond } = table('pikachu');
+    const fallen = s.players[ME].extra.find((c) => c.slug === 'gigantamax-pikachu')!;
+    s.players[ME].extra = s.players[ME].extra.filter((c) => c.uid !== fallen.uid);
+    s.players[ME].grave = [fallen];
+    const forkSpec = narrowSpec(chain[1], [pika.uid], s);
+    const offered = targetCandidates(s, ME, forkSpec, undefined, bond.uid);
+    ok(offered.some((c) => c.slug === 'raichu'), 'BOND: the form on the shelf is offered', offered.map((c) => c.slug).join(','));
     ok(offered.some((c) => c.uid === fallen.uid), 'BOND: and the fallen one in the Graveyard', offered.map((c) => c.slug).join(','));
-    ok(offered.every((c) => forms.has(c.slug)) && offered.length === 6,
-      'BOND: all six and nothing else — five from the shelf, one from the pile', offered.map((c) => c.slug).join(','));
-    ok(!!chain[1] && worthAsking(chain[1], offered, 1), 'BOND: which is worth asking');
+    ok(offered.length === 2, "BOND: and nothing outside that Pokémon's own line", offered.map((c) => c.slug).join(','));
+    ok(worthAsking(forkSpec, offered, 1), 'BOND: which is worth asking');
     /* The one the player names is the one that stands — not the strongest.
-       The Forest Overlord is not the biggest number of the six. */
-    const named = applyAction(s, ME, { type: 'activateSpell', uid: bond.uid, targets: [greninja.uid, shelf.uid] });
+       Raichu is the smaller of Pikachu's two forms. */
+    const raichu = offered.find((c) => c.slug === 'raichu')!;
+    const named = applyAction(s, ME, { type: 'activateSpell', uid: bond.uid, targets: [pika.uid, raichu.uid] });
     ok(!named.error, 'BOND: Bond Evolution is accepted with the Tribute and the form named', named.error);
-    const stood = named.state.players[ME].monsters.find((m) => m?.slug === 'sceptile-forest-overlord');
+    const stood = named.state.players[ME].monsters.find((m) => m?.slug === 'raichu');
     ok(!!stood, 'BOND: the form the player named is the one that stands', named.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
-    ok(named.state.players[ME].grave.some((c) => c.slug === 'greninja'), 'BOND: Greninja paid for it');
+    ok(named.state.players[ME].grave.some((c) => c.slug === 'pikachu'), 'BOND: Pikachu paid for it');
     ok(stood?.atkMod === 500, 'BOND: five hundred heavier for the trust', String(stood?.atkMod));
     ok(!named.state.pending, 'BOND: and nothing is left to ask', named.state.pending?.kind);
+
     /* And the fallen one comes back out of the pile when that is the answer. */
-    const again = table();
-    const back = applyAction(again.s, ME, { type: 'activateSpell', uid: again.bond.uid, targets: [again.greninja.uid, again.fallen.uid] });
-    ok(!back.error && back.state.players[ME].monsters.some((m) => m?.uid === again.fallen.uid),
-      'BOND: the fallen Flame Emperor stands again when it is the one named',
+    const again = table('pikachu');
+    const gone = again.s.players[ME].extra.find((c) => c.slug === 'gigantamax-pikachu')!;
+    again.s.players[ME].extra = again.s.players[ME].extra.filter((c) => c.uid !== gone.uid);
+    again.s.players[ME].grave = [gone];
+    const back = applyAction(again.s, ME, { type: 'activateSpell', uid: again.bond.uid, targets: [again.body.uid, gone.uid] });
+    ok(!back.error && back.state.players[ME].monsters.some((m) => m?.uid === gone.uid),
+      'BOND: the fallen Gigantamax Pikachu stands again when it is the one named',
       back.error ?? back.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* A line with one rung ahead of it asks nothing at all, and still climbs. */
+    const solo = table('greninja');
+    const soloSpec = narrowSpec(chain[1], [solo.body.uid], solo.s);
+    const soloOffer = targetCandidates(solo.s, ME, soloSpec, undefined, solo.bond.uid);
+    ok(soloOffer.length === 1 && soloOffer[0].slug === 'ash-greninja',
+      'BOND: a line with one form ahead of it offers exactly that one', soloOffer.map((c) => c.slug).join(','));
+    ok(!worthAsking(soloSpec, soloOffer, 1), 'BOND: and is not a question worth putting');
+    const climbed = applyAction(solo.s, ME, { type: 'activateSpell', uid: solo.bond.uid, targets: [solo.body.uid] });
+    ok(!climbed.error && climbed.state.players[ME].monsters.some((m) => m?.slug === 'ash-greninja'),
+      'BOND: Greninja becomes Ash-Greninja with nothing more asked',
+      climbed.error ?? climbed.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+
+    /* A Pokémon at the end of its line is not one of the card's answers. */
+    const dead = ash();
+    const blast = card(ME, 'blastoise');
+    blast.summonedOnTurn = 0;
+    dead.players[ME].monsters = [blast, null, null];
+    const pool = targetCandidates(dead, ME, chain[0], undefined, undefined);
+    ok(!pool.some((c) => c.uid === blast.uid), 'BOND: a Pokémon with nowhere to go is not offered as the Tribute',
+      pool.map((c) => c.slug).join(','));
   }
 
   /* --- Poké Ball: one question, in words that fit whichever branch runs --- */
@@ -16066,6 +16098,209 @@ console.log('\nAsh: a Pokémon evolves, the Master is bought, and Mewtwo strikes
       'MEWTWO: tributing the Master opens nothing', paid.error);
   }
 
+  /* --- The stone, and what a Pokémon leaves behind --- */
+  {
+    /* Held against something with a form ahead of it, the stone is the
+       evolution. Held against the end of a line, it is two Levels and a
+       thousand each way — which is what makes the end of a line worth
+       reaching: a Level 7 Blastoise becomes Master of All fodder. */
+    const climb = ash();
+    const rowlet = card(ME, 'rowlet');
+    rowlet.summonedOnTurn = 0;
+    climb.players[ME].monsters = [rowlet, null, null];
+    const stone = card(ME, 'evolution-stone');
+    climb.players[ME].hand = [stone];
+    const up = applyAction(climb, ME, { type: 'activateSpell', uid: stone.uid, targets: [rowlet.uid] });
+    ok(!up.error && up.state.players[ME].monsters.some((m) => m?.slug === 'decidueye'),
+      'STONE: a Pokémon with a form ahead of it evolves', up.error ?? up.state.players[ME].monsters.map((m) => m?.slug ?? '-').join(','));
+    ok(up.state.players[ME].grave.some((c) => c.slug === 'rowlet'), 'STONE: and the body it was pays for it');
+
+    const grow = ash();
+    const blast = card(ME, 'blastoise');
+    blast.summonedOnTurn = 0;
+    grow.players[ME].monsters = [blast, null, null];
+    const stone2 = card(ME, 'evolution-stone');
+    grow.players[ME].hand = [stone2];
+    const bigger = applyAction(grow, ME, { type: 'activateSpell', uid: stone2.uid, targets: [blast.uid] });
+    const grown = bigger.state.players[ME].monsters.find((m) => m?.uid === blast.uid);
+    ok(!!grown, 'STONE: a Pokémon at the end of its line stays where it is', bigger.error);
+    ok(effAtk(bigger.state, grown!, ME) === baseAtkOf('blastoise') + 1000 && effDef(bigger.state, grown!, ME) === CARDS['blastoise'].def! + 1000,
+      'STONE: and takes a thousand each way instead',
+      `${effAtk(bigger.state, grown!, ME)}/${effDef(bigger.state, grown!, ME)}`);
+    ok(grown!.levelMod === 2, 'STONE: two Levels on top of the printed seven', String(grown!.levelMod));
+    ok(matchesFilter(grown!, { type: 'Pokémon', minLevel: 8 }),
+      'STONE: which is exactly the Level the Master of All asks its Tributes for');
+    ok(!matchesFilter(card(ME, 'blastoise'), { type: 'Pokémon', minLevel: 8 }),
+      'STONE: CONTROL: an untouched Blastoise is still short of it');
+
+    /* The five with a form ahead of them hand the stone back, the four at the
+       end of their line hand back the arena, and Pikachu hands back the bond.
+       Destroyed for the first two; sent to the Graveyard for the arena. */
+    const killed = (slug: string, want: string) => {
+      const s = ash();
+      const body = card(ME, slug);
+      body.summonedOnTurn = 0;
+      s.players[ME].monsters = [body, null, null];
+      s.players[ME].deck = [card(ME, want), ...s.players[ME].deck];
+      s.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), null, null];
+      s.players[FOE].monsters[0]!.summonedOnTurn = 0;
+      s.phase = 'battle';
+      s.active = FOE;
+      let out = applyAction(s, FOE, { type: 'attack', uid: s.players[FOE].monsters[0]!.uid, targetUid: body.uid });
+      let g = 0;
+      while (out.state.pending && g++ < 4) {
+        const pend = out.state.pending;
+        out = applyAction(out.state, pend.player, pend.kind === 'choose' ? { type: 'chooseCard', uids: [pend.options[0]] } : { type: 'respondTrap', uid: null });
+      }
+      return out.state.players[ME].hand.map((c) => c.slug);
+    };
+    for (const slug of ['gengar', 'snorlax', 'bulbasaur', 'squirtle', 'rowlet']) {
+      const held = killed(slug, 'evolution-stone');
+      ok(held.includes('evolution-stone'), `STONE: a fallen ${slug} hands its trainer the stone`, held.join(',') || '(empty)');
+    }
+    for (const slug of ['krookodile', 'pidgeot', 'talonflame', 'butterfree']) {
+      const held = killed(slug, 'pokemon-battle-arena');
+      ok(held.includes('pokemon-battle-arena'), `ARENA: a fallen ${slug} hands back the arena`, held.join(',') || '(empty)');
+    }
+    const bond = killed('pikachu', 'bond-evolution');
+    ok(bond.includes('bond-evolution'), 'BOND: a fallen Pikachu hands back the bond', bond.join(',') || '(empty)');
+
+    /* And a Tribute is not a death: evolving a Gengar must not also pay its
+       owner a stone. */
+    const evolved = ash();
+    const gengar = card(ME, 'gengar');
+    gengar.summonedOnTurn = 0;
+    evolved.players[ME].monsters = [gengar, null, null];
+    evolved.players[ME].deck = [card(ME, 'evolution-stone'), ...evolved.players[ME].deck];
+    const hatched = applyAction(evolved, ME, { type: 'ignition', uid: gengar.uid });
+    ok(!hatched.error && !hatched.state.players[ME].hand.some((c) => c.slug === 'evolution-stone'),
+      'STONE: evolving is not dying — no stone for a Tribute',
+      hatched.error ?? hatched.state.players[ME].hand.map((c) => c.slug).join(','));
+  }
+
+  /* --- The three numbers the owner moved, and Talonflame's three timings --- */
+  {
+    const intimidate = ash();
+    const krook = card(ME, 'krookodile');
+    intimidate.players[ME].hand = [krook];
+    intimidate.players[FOE].monsters = [card(FOE, 'summoned-skull'), null, null];
+    const feared = applyAction(intimidate, ME, { type: 'normalSummon', uid: krook.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    const skull = feared.state.players[FOE].monsters[0]!;
+    ok(effAtk(feared.state, skull, FOE) === 2500 - 900, 'KROOK: Intimidate takes nine hundred now',
+      String(effAtk(feared.state, skull, FOE)));
+
+    const sleep = ash();
+    const butter = card(ME, 'butterfree');
+    sleep.players[ME].hand = [butter];
+    const asleep = applyAction(sleep, ME, { type: 'normalSummon', uid: butter.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(asleep.state.log.some((l) => /locked down for 3 of their turns/.test(typeof l === 'string' ? l : l.text ?? '')),
+      'BUTTERFREE: Sleep Powder holds the board for three turns, like the Swords',
+      asleep.state.log.slice(-2).map((l) => (typeof l === 'string' ? l : l.text)).join(' | '));
+
+    const fly = ash();
+    fly.phase = 'battle';
+    const pidgeot = card(ME, 'pidgeot');
+    pidgeot.summonedOnTurn = 0;
+    fly.players[ME].monsters = [pidgeot, null, null];
+    fly.players[FOE].monsters = [card(FOE, 'battle-ox'), null, null];
+    const flown = applyAction(fly, ME, { type: 'attack', uid: pidgeot.uid, targetUid: null });
+    ok(!flown.error && flown.state.players[FOE].lp === 4000 - baseAtkOf('pidgeot'),
+      'PIDGEOT: it flies over the fight for its whole ATK, no halving',
+      flown.error ?? String(flown.state.players[FOE].lp));
+
+    /* Talonflame strips a Spell or Trap on the way in, again when it declares,
+       and once more on the way down — and when their field is bare it burns
+       the card out of their Deck instead, so the sentence is never wasted. */
+    const strike = ash();
+    const talon = card(ME, 'talonflame');
+    strike.players[ME].hand = [talon];
+    const set = card(FOE, 'mirror-force');
+    set.face = 'down';
+    strike.players[FOE].spellTrap = set;
+    strike.players[FOE].deck = [card(FOE, 'monster-reborn'), card(FOE, 'battle-ox')];
+    const arrived = applyAction(strike, ME, {
+      type: 'normalSummon', uid: talon.uid, zone: 0, position: 'atk', face: 'up', tributes: [], targets: [set.uid],
+    });
+    ok(!arrived.state.players[FOE].spellTrap, 'TALON: the Set card is gone on arrival', arrived.state.players[FOE].spellTrap?.slug);
+    ok(arrived.state.players[FOE].grave.some((g) => g.slug === 'mirror-force'), 'TALON: and it is the one that was standing there');
+
+    const swinging = arrived.state;
+    swinging.phase = 'battle';
+    const swung = applyAction(swinging, ME, { type: 'attack', uid: talon.uid, targetUid: null });
+    ok(swung.state.players[FOE].grave.some((g) => g.slug === 'monster-reborn'),
+      'TALON: with their field bare, the declaration burns the Spell out of their Deck',
+      swung.state.players[FOE].grave.map((g) => g.slug).join(','));
+    ok(!swung.state.players[FOE].deck.some((c) => c.slug === 'monster-reborn'), 'TALON: and it really left the Deck');
+
+    /* Nothing of that kind left in the Deck: it takes a card all the same. */
+    const bare = ash();
+    const talon2 = card(ME, 'talonflame');
+    bare.players[ME].hand = [talon2];
+    bare.players[FOE].spellTrap = null;
+    bare.players[FOE].deck = [card(FOE, 'battle-ox'), card(FOE, 'kuriboh')];
+    const burned = applyAction(bare, ME, { type: 'normalSummon', uid: talon2.uid, zone: 0, position: 'atk', face: 'up', tributes: [] });
+    ok(burned.state.players[FOE].deck.length === 1 && burned.state.players[FOE].grave.length === 1,
+      'TALON: with no Spell or Trap anywhere, it burns a card of theirs all the same',
+      `${burned.state.players[FOE].deck.length} left, ${burned.state.players[FOE].grave.length} down`);
+
+    /* And on the way down. */
+    const dying = ash();
+    const talon3 = card(ME, 'talonflame');
+    talon3.summonedOnTurn = 0;
+    dying.players[ME].monsters = [talon3, null, null];
+    const theirSet = card(FOE, 'mirror-force');
+    theirSet.face = 'down';
+    dying.players[FOE].spellTrap = theirSet;
+    dying.players[FOE].monsters = [card(FOE, 'blue-eyes-white-dragon'), null, null];
+    dying.players[FOE].monsters[0]!.summonedOnTurn = 0;
+    dying.phase = 'battle';
+    dying.active = FOE;
+    let fell = applyAction(dying, FOE, { type: 'attack', uid: dying.players[FOE].monsters[0]!.uid, targetUid: talon3.uid });
+    let guard = 0;
+    while (fell.state.pending && guard++ < 4) {
+      const pend = fell.state.pending;
+      fell = applyAction(fell.state, pend.player, pend.kind === 'choose' ? { type: 'chooseCard', uids: [pend.options[0]] } : { type: 'respondTrap', uid: null });
+    }
+    ok(!fell.state.players[FOE].spellTrap, 'TALON: and it takes one with it on the way to the Graveyard',
+      fell.state.players[FOE].spellTrap?.slug);
+  }
+
+}
+
+/* ------------------------------------------------------------------ */
+/* A number both players can see                                        */
+/* ------------------------------------------------------------------ */
+console.log('\nThe computer is told what the board is showing');
+{
+  /* Reported: the computer "attacked it 2 times in a row with a weaker monster
+     and lost them". It was not gambling — Bladedge gains 1000 for each
+     "Elemental HERO" card in its controller's hand, every world the AI plans
+     in proxies that hand out of existence, and the filter then matched
+     nothing. A face-up monster's ATK is public; the reason for it is not. */
+  const s = fresh('battle');
+  const blade = card(FOE, 'elemental-hero-bladedge');
+  s.players[FOE].monsters = [blade, null, null];
+  s.players[FOE].hand = [card(FOE, 'elemental-hero-avian'), card(FOE, 'elemental-hero-burstinatrix'), card(FOE, 'elemental-hero-clayman')];
+  const raider = card(ME, 'vorse-raider');
+  raider.summonedOnTurn = 0;
+  s.players[ME].monsters = [raider, null, null];
+  ok(effAtk(s, blade, FOE) === 2600 + 3000, 'BLADEDGE: three HEROes in hand stand it at 5600', String(effAtk(s, blade, FOE)));
+
+  const world = expectationWorld(s, ME);
+  const seen = world.players[FOE].monsters.find((m) => m?.uid === blade.uid)!;
+  ok(world.players[FOE].hand.every((c) => c.slug !== 'elemental-hero-avian'),
+    'BLADEDGE: CONTROL: the hand really is hidden from the world it plans in',
+    world.players[FOE].hand.map((c) => c.slug).join(','));
+  ok(effAtk(world, seen, FOE) === 5600, 'BLADEDGE: and it is priced at 5600 there all the same',
+    String(effAtk(world, seen, FOE)));
+  ok(!aiCandidates(s, ME, 12).some((a) => a.type === 'attack' && a.targetUid === blade.uid),
+    'BLADEDGE: so a 1900 body is never offered the swing into it');
+
+  /* And the delta rides along: a drain played inside that world still lands. */
+  const drained = world.players[FOE].monsters.find((m) => m?.uid === blade.uid)!;
+  drained.turnAtkMod -= 1000;
+  ok(effAtk(world, drained, FOE) === 4600, 'BLADEDGE: the number is carried, not frozen — it still moves',
+    String(effAtk(world, drained, FOE)));
 }
 
 console.log(failures ? `\n${failures} regression(s) FAILED` : `\nAll ${checks} rules regressions pass. ✅`);
