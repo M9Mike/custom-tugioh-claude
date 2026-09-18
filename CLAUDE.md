@@ -318,6 +318,28 @@ the collision, so two metres either side was wall with nothing on it. A vantage
 can `climb` now — walk up until the probe says she is there, then teleport,
 which keeps the floor. Build a storey, put a vantage on it.
 
+**A texture costs what it decodes to, and a phone pays it.** A 4096² sheet is
+ten megabytes on disk as WebP and about **eighty-five on the GPU** — width by
+height by four bytes, plus a third again for mipmaps — and nothing in the file
+size hints at it. Every character here carries one; Grandpa's shop carries
+three hundred and forty-eight megabytes of wall and floor between its
+eighty-four textures. Mike's phone died of this: the *main menu* preloaded and
+parsed all seventeen models so the Story Mode button could open instantly, the
+heap went 112 → 230 MB with nothing on screen, iOS killed the tab, Safari
+retried, and he got "A problem repeatedly occurred" before he had pressed
+anything. A desktop never notices, which is why it shipped.
+
+So: **load what an area needs, when you go there, and let go of the last one.**
+The menu warms the *code* (three.js, the rig, the builders — two megabytes) and
+no models at all; `releaseTemplates` disposes every parsed model but the ones
+the new area is about to build and the player's own, because a parsed model is
+not its file — it is a decoded texture that is cached for the life of the page.
+Measured over one lap of all twenty-two doors, that is 205 MB of heap against
+60, and a worst frame of 25.4 s against 1.0. What it does not fix is the *peak*:
+one room is still three to five hundred megabytes, and only the format
+(KTX2/ASTC, which keeps 4096² and costs about six megabytes) brings that down.
+Before adding anything to a room or to the cast, work out what it decodes to.
+
 **Smooth beats sharp.** The renderer watches its own frame time
 (`OpenWorld`'s governor) and gives up pixels, then shadow-map size, before it
 gives up frames; a phone starts at one and a half times its pixels, not two.
