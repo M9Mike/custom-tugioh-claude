@@ -12,6 +12,58 @@ import { joinRoomWithRetry, loadIdentity, loadName, saveIdentity, saveName } fro
 import { primeAudio, sfx } from '@/lib/sfx';
 import { preloadStory, type StoryPreload } from '@/lib/storyPreload';
 
+/** A player of the open world, as `/api/story/decks` prints them. */
+type StoryPlayer = { username: string; character: string; deck: string[] };
+
+/**
+ * A deck the menu will open, whoever holds it.
+ *
+ * The strip used to map `DUELISTS` straight onto tiles and the viewer used to
+ * look a `Duelist` up by id, which left no room for a deck that is not on the
+ * roster. Both read this instead, and a duelist and a player differ only in
+ * where the fields came from.
+ */
+type OnShow = {
+  id: string;
+  name: string;
+  note: string;
+  accent: string;
+  emblem: string;
+  deck: [string, number][];
+  extra: string[];
+};
+
+/** `['dark-magician', 'kuriboh', …]` as the `[slug, count]` every deck screen reads. */
+const tally = (slugs: readonly string[]): [string, number][] => {
+  const counts = new Map<string, number>();
+  for (const slug of slugs) counts.set(slug, (counts.get(slug) ?? 0) + 1);
+  return [...counts];
+};
+
+/**
+ * A player, as a tile and a deck.
+ *
+ * A duelist's emblem is a card chosen for them; a player has none, so theirs is
+ * the card at the top of their own deck's ladder — the thing they paid the most
+ * to put on the board. It moves when they rebuild, which is right: it is their
+ * deck's own face and not a picture attached to their name.
+ *
+ * Story Mode has no Extra Deck (`validateDeck` takes exactly 25 and nothing
+ * else), so there is nothing to show below the main deck.
+ */
+const asShelf = (p: StoryPlayer): OnShow => {
+  const deck = menuDeckOrder(tally(p.deck));
+  return {
+    id: `player:${p.username}`,
+    name: p.username,
+    note: p.character && p.character !== p.username ? `walks Domino City as ${p.character}` : 'walks Domino City',
+    accent: 'var(--brass)',
+    emblem: deck[0]?.[0] ?? '',
+    deck,
+    extra: [],
+  };
+};
+
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
@@ -45,9 +97,33 @@ export default function Home() {
   const [watchA, setWatchA] = useState<string | null>(null);
   const [deckOpen, setDeckOpen] = useState<string | null>(null);
   const [deckInspect, setDeckInspect] = useState<CardInstance | null>(null);
+  /**
+   * The people who walk Domino City, and the decks they have locked.
+   *
+   * They are duelists as much as the roster is — they just do not live in
+   * `decklists.json`, they live on the server, one save per account. Asked for
+   * once on arrival; if the ask fails the strip is the roster and nothing else,
+   * which is what it was before they were on it.
+   */
+  const [players, setPlayers] = useState<StoryPlayer[]>([]);
   const setPicked = (id: string) => { setPickedId(id); setDeckInspect(null); };
   const chosen = DUELISTS.find((d) => d.id === pickedId) ?? null;
-  const deck = deckOpen ? DUELISTS.find((d) => d.id === deckOpen) ?? null : null;
+  /* Everybody whose deck the menu will open, in the order they are shown: the
+     roster first, then the players — and a player who has not built a deck yet
+     is not here at all, because the route only hands back the ones who have. */
+  const shelf: OnShow[] = [
+    ...DUELISTS.map((d) => ({
+      id: d.id,
+      name: d.name,
+      note: d.epithet,
+      accent: d.accent,
+      emblem: d.emblem,
+      deck: d.deck,
+      extra: d.extra,
+    })),
+    ...players.map(asShelf),
+  ];
+  const deck = deckOpen ? shelf.find((d) => d.id === deckOpen) ?? null : null;
   const nameRef = useRef<HTMLInputElement>(null);
   /** The tournament picker's choice panel, scrolled to when a duelist is tapped. */
   const pickRef = useRef<HTMLDivElement>(null);
@@ -74,6 +150,23 @@ export default function Home() {
   /* Started on arrival, not on hover or on press: the whole point is that it is
      already done by the time anybody reaches for it. */
   useEffect(() => preloadStory(setStory), []);
+
+  /* The players' decks live on the server, so they arrive after the first
+     paint and the strip grows by however many of them have built one. A
+     failure is silence on purpose: the menu's job is the roster, and a tile
+     that says "could not load" is worse than a tile that is not there. */
+  useEffect(() => {
+    let live = true;
+    fetch('/api/story/decks', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; players?: StoryPlayer[] }) => {
+        if (live && d?.ok && Array.isArray(d.players)) setPlayers(d.players);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const openRoom = async (body: Record<string, unknown>, kind: 'create' | 'solo' | 'tournament' | 'spectate') => {
     setError(null);
@@ -154,7 +247,12 @@ export default function Home() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>
         <div className="panel grain thin-scroll max-h-[85dvh] w-full max-w-3xl overflow-y-auto rounded p-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-lg text-parchment">{deck.name} — 25 cards</h3>
+            {/* Counted, not written: the roster runs 25 and a player's deck is
+                25 by `DECK_SIZE`, and a number that agrees with the cards under
+                it by accident is a number that will stop agreeing. */}
+            <h3 className="font-display text-lg text-parchment">
+              {deck.name} — {deck.deck.reduce((n, [, c]) => n + c, 0)} cards
+            </h3>
             <button className="btn rounded px-2 py-1 text-[10px]" onClick={() => { setDeckOpen(null); setDeckInspect(null); }}>✕</button>
           </div>
           <div className="brass-rule my-3" />
@@ -170,7 +268,7 @@ export default function Home() {
               ...menuDeckOrder(deck.deck),
               ...menuExtraOrder(deck.extra).map((x) => [x, 1] as [string, number]),
             ]).map((c) => (
-              <button key={c.uid} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
+              <button key={c.uid} data-deck-card={c.slug} className="w-[84px] text-left selectable rounded" onClick={() => { sfx.click(); setDeckInspect(c); }}>
                 <GameCard card={c} />
                 <p className="mt-0.5 truncate text-center text-[9px] text-ptextdim">{CARDS[c.slug]?.name}</p>
               </button>
@@ -457,12 +555,15 @@ export default function Home() {
           {/* Tapping a duelist opens their deck. The strip looked like a menu
               and behaved like a picture, which is the worst of both — the same
               viewer the picker already uses is one line away. */}
-          {DUELISTS.map((d) => (
+          {/* The roster, and then whoever walks the world with a deck of their
+              own — last, after the duelists, and only once they have one. */}
+          {shelf.map((d) => (
             <button
               key={d.id}
               type="button"
+              data-deck={d.id}
               className="group w-[92px] shrink-0 text-center"
-              title={`${d.name} — ${d.epithet}. See the deck.`}
+              title={`${d.name} — ${d.note}. See the deck.`}
               onClick={() => {
                 sfx.click();
                 setDeckOpen(d.id);

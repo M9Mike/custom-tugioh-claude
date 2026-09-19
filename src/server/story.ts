@@ -83,6 +83,19 @@ export function canonicalUsername(username: string): string | null {
   return AUTHORISED[fold(username)] ?? null;
 }
 
+/**
+ * Everybody who may walk the world, in the order they are printed.
+ *
+ * The Home page lists the players' decks after the duelists', and it has to
+ * know who the players *are* before it can ask what they hold. Derived from
+ * `AUTHORISED` rather than written out again, so a third name added above
+ * appears on the menu the same day — the same reasoning as the map drawing
+ * itself from `areas.ts`.
+ */
+export function admittedUsernames(): string[] {
+  return Object.values(AUTHORISED);
+}
+
 /* ------------------------------------------------------------------ */
 /* A local file, only when there is no database                        */
 /*                                                                     */

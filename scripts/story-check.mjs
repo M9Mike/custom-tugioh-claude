@@ -18,7 +18,9 @@
  * whole journey too.
  *
  * It also checks the trick, from the outside, the way a player would find it:
- * after the first deck is sleeved, Edit Deck offers 25 cards and not 34.
+ * after the first deck is sleeved, Edit Deck offers 25 cards and not 34. And on
+ * the way out it looks at the main menu's deck strip, where the player's own
+ * twenty-five now stand after the eleven duelists'.
  *
  * The 3D screens are checked by photographing them. A canvas that never drew
  * anything is a flat colour and a flat colour is a tiny PNG, so "did the world
@@ -708,8 +710,43 @@ async function run(phoneName) {
   await page.locator('button[aria-label="Menu"]').first().dispatchEvent('click');
   await page.waitForTimeout(250);
   await page.locator('button:has-text("Return to the Main Menu")').first().dispatchEvent('click');
-  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 20000 });
+  /* Waited out rather than hurried, for the reason Save was: leaving disposes
+     every model and texture the area was holding, and where the canvas is
+     drawn in software that teardown is half a minute — measured at 28.8 s on
+     this machine, against a budget of twenty. The assertion is that the button
+     goes back to the menu, not that it does so inside a fixed number of
+     seconds, and a button that does nothing still fails this. */
+  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 90000 });
   ok('Return to the Main Menu goes back to the main menu');
+
+  /* ---- and his deck is on the menu, last ---- */
+  /*
+   * The strip is the eleven duelists and then whoever walks the world with a
+   * deck of their own. Three things can go wrong and each is asserted: the
+   * player can be missing (the decks arrive over HTTP after the first paint),
+   * the player can be in the *middle* of the roster, and an admitted account
+   * with no deck yet — Teddy, until she builds one — can be given a tile that
+   * opens on nothing.
+   */
+  const mine = page.locator('[data-deck="player:Mike"]');
+  const listed = await mine.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
+  const shelf = await page.locator('[data-deck]').evaluateAll((els) => els.map((e) => e.dataset.deck));
+  check(listed, "the player's own deck is on the main menu", shelf.join(', '));
+  const firstPlayer = shelf.findIndex((id) => id.startsWith('player:'));
+  const lastDuelist = shelf.map((id) => !id.startsWith('player:')).lastIndexOf(true);
+  check(firstPlayer > lastDuelist, 'after every duelist, not among them', shelf.join(', '));
+  check(!shelf.includes('player:Teddy'), 'and an account with no deck yet is not on it', shelf.join(', '));
+  if (listed) {
+    await mine.dispatchEvent('click');
+    await page.waitForTimeout(400);
+    const held = await page.locator('[data-deck-card]').count();
+    check(held === 25, 'tapping it shows his twenty-five', `saw ${held}`);
+    check(
+      await page.locator('h3:has-text("Mike — 25 cards")').first().isVisible().catch(() => false),
+      'under his own name'
+    );
+    await fs.writeFile(`${OUT}/${phoneName}-9-my-deck.png`, await page.screenshot());
+  }
 
   await browser.close();
 
