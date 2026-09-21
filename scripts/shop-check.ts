@@ -379,6 +379,46 @@ console.log('\nthe three sisters, who charge for losing\n');
     check(before - seated === 1, 'and so does walking out of the duel, which is the same thing to the table');
   }
 
+  /*
+   * Step Lane, where the money is the other way round.
+   *
+   * Ten and fifteen to beat, twenty to lose — so unlike the sisters these two
+   * are a net *loss* at an even win rate, which is the point of them and worth
+   * pinning: the break-even is stated here in the same arithmetic the routes
+   * do, and a bounty quietly raised above the forfeit would turn the last two
+   * duelists before the tournament back into a wage.
+   */
+  const LANE: [string, number, number][] = [['kaela', 10, 20], ['seraphina', 15, 20]];
+  for (const [id, pays, costs] of LANE) {
+    check(bountyFor(id) === pays, `${id} pays $${pays} for beating her`, `$${bountyFor(id)}`);
+    check(forfeitFor(id) === costs, `and takes $${costs} for losing to her`, `$${forfeitFor(id)}`);
+    check(givesAPack(id), 'and hands over a pack when she is beaten');
+    check(wagerFor(id) === null, 'and does not play for a stake as well');
+    const before = 50;
+    const seated = before - costs;
+    const afterWin = seated + pays + costs;
+    check(afterWin - before === pays, `beating her leaves them up $${pays}`, `$${before} → $${afterWin}`);
+    check(before - seated === costs, `losing to her leaves them down $${costs}`, `$${before} → $${seated}`);
+    check(costs > pays, 'and the table is against the player, which is the point', `$${costs} against $${pays}`);
+    /*
+     * What record it takes to come out level, stated rather than assumed.
+     *
+     * Kaela pays ten and takes twenty, so two wins to a loss is exactly
+     * nothing — she is a sink until the player wins better than two in three,
+     * which is a real difficulty gate and the reason to write the number down
+     * instead of asserting a profit that is not there. Seraphina's fifteen
+     * leaves ten over on the same record.
+     */
+    const evenAt = costs / pays;
+    check(pays * 2 >= costs, 'two wins to a loss at least covers it', `$${pays * 2 - costs} over`);
+    console.log(`     · ${id} needs better than ${evenAt.toFixed(1)} wins a loss to make money`);
+  }
+  check(
+    bountyFor('kaela') < bountyFor('seraphina'),
+    'and the harder of the two pays more',
+    `$${bountyFor('kaela')} < $${bountyFor('seraphina')}`
+  );
+
   /* Nobody else charges for losing, and nobody who charges for one charges
      twice: a stake and a forfeit on the same table is two tolls. */
   check(forfeitFor('tony') === 0 && forfeitFor('sarah') === 0, 'the street pair take nothing for a loss');

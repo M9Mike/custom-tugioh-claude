@@ -80,6 +80,16 @@ export const BOUNTY: Record<string, number> = {
   antiope: 5,
   panthesilea: 10,
   hippolyta: 15,
+  /*
+   * Step Lane, and the first table in the city where the money is against you.
+   *
+   * Ten and fifteen for beating them, twenty for losing — Mike's numbers, and
+   * the arithmetic is deliberate: you have to win two out of three off Kaela
+   * to come out level, and better than one in two off Seraphina. They are the
+   * last two duelists before the tournament and they are priced like it.
+   */
+  kaela: 10,
+  seraphina: 15,
 };
 
 /**
@@ -114,6 +124,12 @@ export const FORFEIT: Record<string, number> = {
   antiope: 1,
   panthesilea: 1,
   hippolyta: 1,
+  /* Twenty, against a bounty of ten and fifteen. The sisters charge a dollar
+     to keep a free table from being a wage; these two charge enough that
+     sitting down is a decision. Twenty is also the floor on who may sit: the
+     route will not seat a duel somebody cannot cover. */
+  kaela: 20,
+  seraphina: 20,
 };
 
 /** What losing to this duelist costs. Zero for anyone not on the list. */
