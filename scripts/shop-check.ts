@@ -388,7 +388,7 @@ console.log('\nthe three sisters, who charge for losing\n');
    * do, and a bounty quietly raised above the forfeit would turn the last two
    * duelists before the tournament back into a wage.
    */
-  const LANE: [string, number, number][] = [['kaela', 10, 20], ['seraphina', 15, 20]];
+  const LANE: [string, number, number][] = [['kaela', 15, 20], ['seraphina', 10, 20]];
   for (const [id, pays, costs] of LANE) {
     check(bountyFor(id) === pays, `${id} pays $${pays} for beating her`, `$${bountyFor(id)}`);
     check(forfeitFor(id) === costs, `and takes $${costs} for losing to her`, `$${forfeitFor(id)}`);
@@ -413,10 +413,14 @@ console.log('\nthe three sisters, who charge for losing\n');
     check(pays * 2 >= costs, 'two wins to a loss at least covers it', `$${pays * 2 - costs} over`);
     console.log(`     · ${id} needs better than ${evenAt.toFixed(1)} wins a loss to make money`);
   }
+  /* Kaela's machines are the harder deck of the two — 2600 against 2400, and a
+     King that pays the rest of her board four hundred each — so she is the one
+     worth more. A bounty out of step with the difficulty is a player sent to
+     grind the easier table, which is the opposite of what a ladder is for. */
   check(
-    bountyFor('kaela') < bountyFor('seraphina'),
+    bountyFor('kaela') > bountyFor('seraphina'),
     'and the harder of the two pays more',
-    `$${bountyFor('kaela')} < $${bountyFor('seraphina')}`
+    `kaela $${bountyFor('kaela')} against seraphina $${bountyFor('seraphina')}`
   );
 
   /* Nobody else charges for losing, and nobody who charges for one charges

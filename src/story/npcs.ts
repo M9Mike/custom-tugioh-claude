@@ -1703,7 +1703,7 @@ const KAELA_SCRIPT: Record<string, DialogueNode> = {
   offer: {
     lines: [
       'Here, then — there is a landing four steps down that is nearly level and I have been using it as a bench all morning.',
-      'Twenty on the step before we start. Beat me and you take it back with ten of mine; do not, and I keep the twenty. I did not set that price to be liked, I set it so that people who are not ready go and get ready.',
+      'Twenty on the step before we start. Beat me and you take it back with fifteen of mine; do not, and I keep the twenty. I did not set that price to be liked, I set it so that people who are not ready go and get ready.',
     ],
     choices: [
       { label: 'Ready.', to: 'beaten', duel: true },
@@ -1785,7 +1785,7 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
   offer: {
     lines: [
       'Then stand where you are and do not back down the steps — I have watched three people do it and it is undignified for everybody.',
-      'Twenty down, and fifteen of mine on top of it if you take me. Yes, the arithmetic is against you. That is what the last fortnight before a tournament is for.',
+      'Twenty down, and ten of mine on top of it if you take me. Yes, the arithmetic is against you. That is what the last fortnight before a tournament is for.',
     ],
     choices: [
       { label: 'Ready.', to: 'beaten', duel: true },

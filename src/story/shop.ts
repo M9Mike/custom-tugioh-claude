@@ -83,13 +83,15 @@ export const BOUNTY: Record<string, number> = {
   /*
    * Step Lane, and the first table in the city where the money is against you.
    *
-   * Ten and fifteen for beating them, twenty for losing — Mike's numbers, and
-   * the arithmetic is deliberate: you have to win two out of three off Kaela
-   * to come out level, and better than one in two off Seraphina. They are the
-   * last two duelists before the tournament and they are priced like it.
+   * Fifteen and ten for beating them, twenty for losing either way. Kaela's
+   * machines are the harder deck — a 2600 ace behind a King that pays every
+   * machine on her side four hundred — so she is the one worth fifteen, and
+   * the break-evens follow the difficulty: 1.3 wins a loss against her, 2.0
+   * against Seraphina. They are the last two before the tournament and they
+   * are priced like it.
    */
-  kaela: 10,
-  seraphina: 15,
+  kaela: 15,
+  seraphina: 10,
 };
 
 /**
