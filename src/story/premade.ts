@@ -588,10 +588,53 @@ export const DUELIST_MODELS: DuelistModel[] = [
     label: 'Ash Ketchum',
     note: 'Pallet Town, red cap',
     file: '/models/cast/ash.glb',
-    bytes: 6143376,
-    height: 1.45,
-    walkSpeed: 1.41,
-    runSpeed: 3.04,
+    /* Mike's second sculpt of him, 2026-09-21: a lighter file and a taller
+       body — 1.70 m against the 1.45 of the first, so he is no longer the one
+       short character in the city. The catalogue is the only place that knew
+       the old number; his schedule, his haunts and his range are unchanged. */
+    bytes: 3831640,
+    height: 1.7,
+    walkSpeed: 1.86,
+    runSpeed: 4.16,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    /*
+     * Kaela Veyron and Seraphina Drayke, the last two to arrive before the
+     * tournament, standing at either end of Step Lane.
+     *
+     * Same pipeline as everybody since Tina — a UniRig export with no clips,
+     * Sarah's Idle, Walk and Run moved onto their own skeletons, their own
+     * three gestures on top — and Kaela taught it something on the way in.
+     * Her skeleton is eighty-two bones and her pelvis carries five children:
+     * two legs, a spine and two chains of skirt. `rigshape.read_rig` insisted
+     * on exactly three and refused her, which was the reader being literal
+     * rather than careful — a leg reaches the floor, a spine reaches the head,
+     * and cloth stops in between, which is the test it already used. It reads
+     * her now and leaves the skirt at rest, where nothing animates it and
+     * nothing should.
+     */
+    id: 'kaela',
+    label: 'Kaela Veyron',
+    note: 'The Ironworks, Step Lane',
+    file: '/models/cast/kaela.glb',
+    bytes: 9268888,
+    height: 1.7,
+    walkSpeed: 2.07,
+    runSpeed: 4.73,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'seraphina',
+    label: 'Seraphina Drayke',
+    note: 'The Drake, Step Lane',
+    file: '/models/cast/seraphina.glb',
+    bytes: 9231456,
+    height: 1.7,
+    walkSpeed: 1.96,
+    runSpeed: 4.69,
     tintSlots: [],
     npcOnly: true,
   },

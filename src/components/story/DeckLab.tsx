@@ -33,7 +33,7 @@
  */
 
 import { memo, useMemo, useState } from 'react';
-import { CARDS } from '@/game/cards';
+import { CARDS, isSecretCard } from '@/game/cards';
 import GameCard from '@/components/GameCard';
 import CardDetail from '@/components/CardDetail';
 import { previewInstances } from '@/components/deckPreview';
@@ -71,6 +71,12 @@ const MAX = 3;
  * first thing Mike said on opening this screen was "what is the Face Down
  * Card?", which is the correct question to ask about it.
  *
+ * **Ash's own.** The forty-six cards drawn for him (`isSecretCard`) are his
+ * deck and his surprise — he is met by luck and keeps his cards — so they are
+ * not on a bench whose job is to show what there is to build with. They stay
+ * everywhere else: the engine plays them, the roster lists his deck, and
+ * beating him still does not hand one over.
+ *
  * **The Extra Deck.** Twenty-four cards live in a duelist's `extra` list
  * rather than in `deck`, and putting one in a main deck is not a deck. The
  * test is the engine's own `isExtraDeckCard` and deliberately not
@@ -78,8 +84,9 @@ const MAX = 3;
  * in main decks, and Valkyrion is an Extra Deck card the database does not
  * flag as a Fusion at all.
  */
-const POOL: string[] = Object.keys(CARDS).filter((s) => s !== 'facedown' && !isExtraDeckCard(s));
-const EXTRA_POOL: string[] = Object.keys(CARDS).filter((s) => s !== 'facedown' && isExtraDeckCard(s));
+const shown = (slug: string): boolean => slug !== 'facedown' && !isSecretCard(slug);
+const POOL: string[] = Object.keys(CARDS).filter((s) => shown(s) && !isExtraDeckCard(s));
+const EXTRA_POOL: string[] = Object.keys(CARDS).filter((s) => shown(s) && isExtraDeckCard(s));
 
 export interface DeckLabProps {
   onClose: () => void;

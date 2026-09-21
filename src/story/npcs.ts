@@ -1621,6 +1621,199 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* Step Lane: the last two before the tournament                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kaela Veyron and Seraphina Drayke, at either end of the steps.
+ *
+ * ## Why they stand rather than walk
+ *
+ * Step Lane is not a yard. It is a lane 3.8 m wide between two walls, climbing
+ * 5.8 m from the street door at the east end to the terrace at the west, and
+ * most of what lies between is flights and half-metre landings — the widest
+ * flat piece anywhere in it is about two metres long. A route wants ground to
+ * cover; this has none, so they are placed, like Grandpa and the street pair,
+ * and the walking is left to the people who have somewhere to walk.
+ *
+ * ## Off the crown of the lane, both of them
+ *
+ * An NPC is a 1.1 m cylinder the player is pushed out of, and a lane this
+ * narrow is one an NPC can cork. Both stand at |z| 1.1 — a metre off the
+ * middle — which leaves better than two metres of clear floor on the other
+ * side, against the 0.76 m a duelist needs. Checked rather than eyeballed:
+ * `npm run roam` settles a body at each of their spots and at the passing
+ * line beside them.
+ *
+ * They are 27 m apart with the whole climb between them, so there is never a
+ * question of which of them the prompt means.
+ */
+const KAELA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Mind the third step, it is proud of the others by about four millimetres. I have counted it twice and I am going to say something to somebody about it.',
+      'Kaela Veyron. I build things that work, and lately I have been building a deck, which turns out to be the same job with worse tolerances.',
+    ],
+    choices: [
+      { label: 'Building for what?', to: 'tournament' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Mind how you go.', to: null },
+    ],
+  },
+
+  /* The tournament as a *date* rather than a rumour: Tina heard it was coming,
+     the Amazons were summoned to it, and these two are the ones who know it
+     starts. Nobody repeats anybody else's scene. */
+  tournament: {
+    lines: [
+      'It opens this month. Not "there is talk of" — it opens, they have the hall, and the second round is seeded off what people do between now and then.',
+      'Which is why I am stood on a staircase in a strange city tuning a machine deck instead of sleeping. Everybody worth beating is doing the same thing within a mile of here.',
+    ],
+    choices: [
+      { label: 'Who told you that?', to: 'source' },
+      { label: 'Let’s duel, then.', to: 'offer' },
+      { label: 'Good luck with it.', to: null },
+    ],
+  },
+
+  source: {
+    lines: [
+      'A schedule came with my name spelled right and my last four results printed under it. Whoever is running this has been watching longer than I have been entering.',
+      'I did not find that comforting and I am not going to pretend the walk here settled it. Ask the one at the top of the steps — she got the same envelope and she thinks it is a compliment.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'I will go and ask her.', to: null },
+    ],
+  },
+
+  style: {
+    lines: [
+      'Machines, and they are built to make each other bigger — every one I put down adds to the rest, so the board is worth more at the end of a turn than it was at the start.',
+      'And a dragon made of gun barrels, when the arithmetic runs out. Three coins, and whatever they say happens to whatever you have got.',
+    ],
+    choices: [
+      { label: 'Show me.', to: 'offer' },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Here, then — there is a landing four steps down that is nearly level and I have been using it as a bench all morning.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Hm. You went at the King rather than the board, which is the right answer and not the obvious one.',
+      'Take a pack of it. And if you are in that hall next month, come and find me early — I would rather lose to you twice than find out in the bracket.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'I will look for you.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'You let the board build. Four machines is four hundred each, and by the time it mattered the arithmetic was already against you.',
+      'Kill the King, {name}. Everything else on my side is ordinary, and it goes back to being ordinary the moment he is gone.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'Later.', to: null },
+    ],
+  },
+};
+
+const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Up here, if you are coming up. The view is the only thing this street has to recommend it and I have paid for it in calves.',
+      'Seraphina Drayke. I keep dragons — properly kept, which means they come back, which is more than most people manage with anything.',
+    ],
+    choices: [
+      { label: 'Why Domino?', to: 'tournament' },
+      { label: 'Kept how?', to: 'style' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Enjoy the view.', to: null },
+    ],
+  },
+
+  tournament: {
+    lines: [
+      'The same reason as everybody on this hill. It opens this month, and an invitation came to a house that has not been listed anywhere for two generations.',
+      'The engineer at the bottom of the steps finds that sinister. I find it flattering, and I am aware those are the same fact.',
+    ],
+    choices: [
+      { label: 'It does not worry you?', to: 'worry' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Good luck.', to: null },
+    ],
+  },
+
+  worry: {
+    lines: [
+      'A thing that wants me in a hall has to put me in a hall. Until then it is somebody spending a great deal of money to watch, and I have been watched before.',
+      'What would worry me is arriving out of practice. Hence a fortnight on a staircase, duelling anybody who comes up it.',
+    ],
+    choices: [
+      { label: 'I came up it.', to: 'offer' },
+      { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  style: {
+    lines: [
+      'Fetched, mostly. Every dragon I own knows where another one is — one dies and hands me the next, and a flute puts two down at once when I am in a hurry.',
+      'And while the Lord is on the field you may not touch any of them with a card effect. You will have to do it the honest way.',
+    ],
+    choices: [
+      { label: 'The honest way, then.', to: 'offer' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  offer: {
+    lines: [
+      'Then stand where you are and do not back down the steps — I have watched three people do it and it is undignified for everybody.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'A moment.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Well. You took the Lord first and then everything else at your leisure, which is exactly how it is done and almost nobody does it.',
+      'A pack of them, then — they are better company than most people I have met on this street. I shall see you in the hall.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'In the hall, then.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'They came back, {name}. They always come back — that is the entire trick and I told you it up front.',
+      'Next time, take the one holding them together before you start counting the big ones. Off you go; the steps are easier down.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'offer' },
+      { label: 'I will be back.', to: null },
+    ],
+  },
+};
+
 export const WORLD_NPCS: WorldNpc[] = [
   {
     id: 'grandpa',
@@ -1945,6 +2138,38 @@ export const WORLD_NPCS: WorldNpc[] = [
     start: 'greet',
     duel: { opponentId: 'hippolyta', won: 'beaten', lost: 'won' },
     script: HIPPOLYTA_SCRIPT,
+  },
+  {
+    /*
+     * The bottom of the steps, a metre off the crown of the lane so the way up
+     * stays open — see the block above `KAELA_SCRIPT`. Facing west, up the
+     * climb, which is where anybody she is talking to has come from or is
+     * going.
+     */
+    id: 'kaela',
+    area: 'step-lane',
+    character: { name: 'Kaela Veyron', model: 'kaela', tints: [], stature: 0.5 },
+    x: 14.5,
+    z: 1.1,
+    facing: -Math.PI / 2,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'kaela', won: 'beaten', lost: 'won' },
+    script: KAELA_SCRIPT,
+  },
+  {
+    /* The terrace at the top, 5.76 m up and 27 m from Kaela, facing back down
+       the steps. */
+    id: 'seraphina',
+    area: 'step-lane',
+    character: { name: 'Seraphina Drayke', model: 'seraphina', tints: [], stature: 0.5 },
+    x: -12.5,
+    z: -1.1,
+    facing: Math.PI / 2,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'seraphina', won: 'beaten', lost: 'won' },
+    script: SERAPHINA_SCRIPT,
   },
 ];
 

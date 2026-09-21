@@ -12734,7 +12734,7 @@ console.log('\nThe light does not go out: Ultimate, Shining, and the two Lusters
      showed you when a fifth arrived was a row that looked correct. */
   {
     const order = DUELISTS.map((x) => x.id);
-    const NPCS = ['tony', 'sarah', 'isha', 'solomon', 'tina', 'ash', 'antiope', 'panthesilea', 'hippolyta'];
+    const NPCS = ['tony', 'sarah', 'isha', 'solomon', 'tina', 'ash', 'antiope', 'panthesilea', 'hippolyta', 'kaela', 'seraphina'];
     const npcAt = NPCS.map((id) => order.indexOf(id));
     ok(npcAt.every((i) => i >= 0), 'ROSTER: the city duelists are on it', npcAt.join(','));
     const firstNpc = Math.min(...npcAt);

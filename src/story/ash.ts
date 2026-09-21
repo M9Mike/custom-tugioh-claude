@@ -98,9 +98,11 @@ const GRANDPA_SHOP: Haunt = {
       { x: -4.0, z: 1.4 },
       { x: -1.2, z: 3.2 },
     ],
-    /* Slow: he is reading the shelves. 0.89× of his Walk clip's own rating, so
-       the feet still cover the ground they show. */
-    speed: 1.25,
+    /* Slow: he is reading the shelves. 0.83× of his Walk clip's own rating, so
+       the feet still cover the ground they show — 1.25 against the first
+       sculpt's 1.41, and the second one walks at 1.86, which `npm run roam`
+       spotted the moment the model was swapped. */
+    speed: 1.55,
     dwell: 2.6,
     restEvery: 11,
     gestures: GESTURES,
@@ -151,7 +153,7 @@ const CROWN_SHOP: Haunt = {
       { x: 13, z: 9.6 },
       { x: -7, z: 9.6 },
     ],
-    speed: 1.35,
+    speed: 1.65,
     dwell: 2.5,
     restEvery: 20,
     gestures: GESTURES,

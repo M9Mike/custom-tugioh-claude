@@ -202,6 +202,26 @@ async function signIn(page, name) {
   await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.locator('input[placeholder="Enter your name"]').fill(name);
   await tapWhenAwake(page, 'button:has-text("Enter Story Mode")');
+  /*
+   * And once more if the card is still up ten seconds later.
+   *
+   * The last assertion in this file — signing back in after a delete lands on
+   * the booth — has failed intermittently for weeks, and the screen it fails on
+   * is the *sign-in card*, not the booth: the tap lands, the card stays. The
+   * booth itself is up 2.2 seconds after a cold sign-in, measured three times
+   * out of three, so the wait was never the problem.
+   *
+   * A second tap is safe because signing in is idempotent — `signingIn` in
+   * `StoryMode` refuses a second call while the first is in flight, and a
+   * finished one has already left this screen. A page that genuinely cannot
+   * sign in still fails, a minute later, on the same assertion.
+   */
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(500);
+    const card = page.locator('button:has-text("Enter Story Mode")').first();
+    if (!(await card.isVisible().catch(() => false))) return;
+  }
+  await tapWhenAwake(page, 'button:has-text("Enter Story Mode")').catch(() => {});
 }
 
 /**
@@ -814,6 +834,13 @@ async function run(phoneName) {
     /* And the account really is new again — the booth, not the world. */
     await signIn(fresh, 'Mike');
     const reborn = await stage(fresh, 'character');
+    if (reborn !== 'character') {
+      /* A screen that failed is a screen to look at: what the card says, and
+         what the console said, beat any amount of reasoning from here. */
+      await fs.writeFile(`${OUT}/${phoneName}-11-stuck.png`, await fresh.screenshot());
+      const said = await fresh.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ').slice(0, 400)).catch(() => '');
+      console.log(`     the page says: ${said}`);
+    }
     check(reborn === 'character', 'signing back in starts the story over', `landed on "${reborn}"`);
   } else if (back === 'world' && (NO_CREATE || !LOCAL)) {
     log('leaving Delete Character untouched — it would erase a real save');

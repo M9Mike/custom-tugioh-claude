@@ -134,11 +134,32 @@ def read_rig(arm, label):
             raise SystemExit('rig: %s has no three-way branch — not a humanoid' % label)
         pelvis = pelvis.children[0]
 
+    """
+    Two legs and a spine, and whatever else is tied to the hips.
+
+    Three children was the rule until Kaela Veyron arrived with five: the two
+    legs, the spine, and two short chains of skirt hanging off the pelvis — 82
+    bones against the 24 of the donor. Refusing her was the check being literal
+    rather than careful, because the test that sorts a leg from a spine already
+    tells cloth from both: a leg reaches the floor (hers stop at z 0.02), a
+    spine reaches the head (0.96 up to 1.61), and a skirt panel stops somewhere
+    in between (0.38 and 0.72). So the spine is the child that reaches highest,
+    the legs are the two of the rest that reach lowest, and anything else
+    hanging off the hips is cloth.
+
+    Cloth is then simply never driven. Nothing here animates it and nothing
+    should: a skirt bone left at its rest pose follows the hips it is parented
+    to, which is what a skirt does, and a retarget that tried to guess at it
+    would be inventing motion nobody authored.
+    """
     kids = list(pelvis.children)
-    if len(kids) != 3:
-        raise SystemExit('rig: %s pelvis has %d children, expected 3' % (label, len(kids)))
-    kids.sort(key=lowest)
-    legs, spine_root = kids[:2], kids[2]
+    if len(kids) < 3:
+        raise SystemExit('rig: %s pelvis has %d children, expected at least 3' % (label, len(kids)))
+    spine_root = max(kids, key=highest)
+    legs = sorted([b for b in kids if b is not spine_root], key=lowest)[:2]
+    spare = len(kids) - 3
+    if spare:
+        print('rig: %s has %d chain(s) of cloth on the hips, left at rest' % (label, spare))
 
     # The chest: where the spine branches three ways in its turn.
     chest = spine_root

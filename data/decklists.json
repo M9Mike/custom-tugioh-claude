@@ -2275,6 +2275,160 @@
       ]
     },
     {
+      "id": "kaela",
+      "name": "Kaela Veyron",
+      "epithet": "The Ironworks",
+      "quote": "Everything I build works twice.",
+      "accent": "#3f4a55",
+      "accent2": "#c98f3a",
+      "emblem": "Barrel Dragon",
+      "strategy": "Machines that make each other bigger, a chaser that swings twice, and three coins for whatever is left standing.",
+      "extra": [],
+      "deck": [
+        [
+          "Barrel Dragon",
+          1
+        ],
+        [
+          "Machine King",
+          2
+        ],
+        [
+          "Mechanicalchaser",
+          2
+        ],
+        [
+          "Robotic Knight",
+          3
+        ],
+        [
+          "Ground Attacker Bugroth",
+          2
+        ],
+        [
+          "Zoa",
+          1
+        ],
+        [
+          "Steel Ogre Grotto #1",
+          2
+        ],
+        [
+          "Cannon Soldier",
+          2
+        ],
+        [
+          "Blast Sphere",
+          1
+        ],
+        [
+          "Machine Conversion Factory",
+          2
+        ],
+        [
+          "7 Completed",
+          1
+        ],
+        [
+          "Metalmorph",
+          1
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Pot of Greed",
+          2
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ]
+      ]
+    },
+    {
+      "id": "seraphina",
+      "name": "Seraphina Drayke",
+      "epithet": "The Drake",
+      "quote": "Mine come back. Yours do not.",
+      "accent": "#5a2d3c",
+      "accent2": "#cdb06a",
+      "emblem": "Luster Dragon #2",
+      "strategy": "Dragons that fetch each other out of the graveyard, a flute to put two down at once, and a lord who makes them untouchable.",
+      "extra": [],
+      "deck": [
+        [
+          "Luster Dragon #2",
+          2
+        ],
+        [
+          "Luster Dragon",
+          2
+        ],
+        [
+          "Serpent Night Dragon",
+          1
+        ],
+        [
+          "Curse of Dragon",
+          2
+        ],
+        [
+          "Lord of D.",
+          2
+        ],
+        [
+          "Parrot Dragon",
+          2
+        ],
+        [
+          "Winged Dragon, Guardian of the Fortress #1",
+          2
+        ],
+        [
+          "Baby Dragon",
+          2
+        ],
+        [
+          "Crawling Dragon",
+          1
+        ],
+        [
+          "The Flute of Summoning Dragon",
+          2
+        ],
+        [
+          "Dark Hole",
+          1
+        ],
+        [
+          "Pot of Greed",
+          2
+        ],
+        [
+          "Monster Reborn",
+          1
+        ],
+        [
+          "Negate Attack",
+          1
+        ],
+        [
+          "Trap Hole",
+          1
+        ],
+        [
+          "Spellbinding Circle",
+          1
+        ]
+      ]
+    },
+    {
       "id": "ash",
       "name": "Ash Ketchum",
       "epithet": "Pallet Town",

@@ -316,6 +316,30 @@ export function artUrl(slug: string): string {
 }
 
 /**
+ * The first art id Mike drew himself.
+ *
+ * Every card out of the card database carries its own eight-digit id; the ones
+ * in `data/art/` start at 900000001 and climb, which makes the number the one
+ * honest test for "this card is not from the anime". Today that is Ash's forty
+ * six, and tomorrow it is whatever else gets drawn.
+ */
+const OWN_ART = 900000000;
+
+/**
+ * A card that belongs to somebody's own deck rather than to the game's pool.
+ *
+ * Ash is met by luck, keeps his cards, and is the one duelist whose list is a
+ * surprise — so his forty-six do not belong on a screen whose job is to show
+ * the player what there is to build with. The deck bench filters on this; the
+ * duel engine, the decklists and the roster do not, because there he is a
+ * duelist like any other.
+ */
+export function isSecretCard(slug: string): boolean {
+  const c = CARDS[slug];
+  return !!c && c.artId >= OWN_ART;
+}
+
+/**
  * Pegasus's cartoon monsters that the card name does not give away.
  *
  * Toon World's whole job is to make these summonable and to buff them, and it
