@@ -200,16 +200,38 @@ async function standNearGrandpa(name) {
 async function signIn(page, name) {
   await standNearGrandpa(name);
   await page.goto(`${BASE}/story`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.locator('input[placeholder="Enter your name"]').fill(name);
+  const field = page.locator('input[placeholder="Enter your name"]');
+  await field.fill(name);
+  /*
+   * And again until the field really says it, because sometimes it said it
+   * twice.
+   *
+   * The last assertion in this file — signing back in after a delete lands on
+   * the booth — failed intermittently for weeks, and the screenshot it now
+   * writes finally named it: the field held **MikeMike**, the server was asked
+   * to admit a duelist of that name, and it quite correctly refused. The card
+   * stayed up with a red box on it, and every diagnosis before this one —
+   * "the tap did not land", "the booth is slow" — was looking at the wrong
+   * half of the screen. The booth is up 2.2 s after a cold sign-in, three
+   * times out of three; the wait was never the problem.
+   *
+   * It is a race with hydration, and it is the check's own. `StoryMode` is
+   * mounted with the field controlled and empty, and an effect then fills it
+   * from `localStorage` — so a `fill` that lands in the gap types into a box
+   * React is about to write "Mike" into, and a `fill` that lands *as* React
+   * writes has its select-all dropped by the re-render and appends instead of
+   * replacing. Reading the value back and setting it again is the whole fix:
+   * it costs nothing when the first one worked, which is most of the time.
+   */
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if ((await field.inputValue().catch(() => '')) === name) break;
+    await page.waitForTimeout(200);
+    await field.fill('');
+    await field.fill(name);
+  }
   await tapWhenAwake(page, 'button:has-text("Enter Story Mode")');
   /*
    * And once more if the card is still up ten seconds later.
-   *
-   * The last assertion in this file — signing back in after a delete lands on
-   * the booth — has failed intermittently for weeks, and the screen it fails on
-   * is the *sign-in card*, not the booth: the tap lands, the card stays. The
-   * booth itself is up 2.2 seconds after a cold sign-in, measured three times
-   * out of three, so the wait was never the problem.
    *
    * A second tap is safe because signing in is idempotent — `signingIn` in
    * `StoryMode` refuses a second call while the first is in flight, and a
@@ -745,8 +767,15 @@ async function run(phoneName) {
    * deck of their own. Three things can go wrong and each is asserted: the
    * player can be missing (the decks arrive over HTTP after the first paint),
    * the player can be in the *middle* of the roster, and an admitted account
-   * with no deck yet — Teddy, until she builds one — can be given a tile that
-   * opens on nothing.
+   * with no deck yet can be given a tile that opens on nothing.
+   *
+   * The third used to be asserted by *name* — "player:Teddy is not on the
+   * shelf", written on a day when she had not built a deck. She built one on
+   * 18 September on the machine this check runs against, and from then on the
+   * check failed at a menu that was doing exactly the right thing. A check
+   * that carries a fact about somebody's save fails for a reason that is not a
+   * fault, which is the worst kind of red. The property has nothing to do with
+   * who has played: *every* tile on that shelf opens on twenty-five.
    */
   const mine = page.locator('[data-deck="player:Mike"]');
   const listed = await mine.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
@@ -755,7 +784,6 @@ async function run(phoneName) {
   const firstPlayer = shelf.findIndex((id) => id.startsWith('player:'));
   const lastDuelist = shelf.map((id) => !id.startsWith('player:')).lastIndexOf(true);
   check(firstPlayer > lastDuelist, 'after every duelist, not among them', shelf.join(', '));
-  check(!shelf.includes('player:Teddy'), 'and an account with no deck yet is not on it', shelf.join(', '));
   if (listed) {
     await mine.dispatchEvent('click');
     await page.waitForTimeout(400);
@@ -767,6 +795,20 @@ async function run(phoneName) {
     );
     await fs.writeFile(`${OUT}/${phoneName}-9-my-deck.png`, await page.screenshot());
   }
+
+  /* And nobody's tile opens on nothing — see the note above. */
+  const hollow = [];
+  for (const id of shelf.filter((d) => d.startsWith('player:'))) {
+    try {
+      await page.locator(`[data-deck="${id}"]`).first().dispatchEvent('click');
+      await page.waitForTimeout(400);
+      const held = await page.locator('[data-deck-card]').count();
+      if (held !== 25) hollow.push(`${id} shows ${held}`);
+    } catch (err) {
+      hollow.push(`${id} would not open (${String(err).slice(0, 40)})`);
+    }
+  }
+  check(hollow.length === 0, 'and every deck on the shelf has somebody behind it', hollow.join(', '));
 
   await browser.close();
 
