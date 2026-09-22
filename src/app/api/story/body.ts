@@ -29,6 +29,8 @@ export interface StoryBody {
   duelDone?: boolean;
   /** `save`: Trunk cards the player has now looked at; take them off `fresh`. */
   seen?: unknown;
+  /** `save`: NPCs the player has now been introduced to; add them to `met`. */
+  met?: unknown;
 }
 
 export async function readBody(req: Request): Promise<StoryBody> {
@@ -44,6 +46,7 @@ export async function readBody(req: Request): Promise<StoryBody> {
     deck: obj.deck,
     world: obj.world,
     seen: obj.seen,
+    met: obj.met,
     duelDone: obj.duelDone === true,
   };
 }

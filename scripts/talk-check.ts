@@ -39,7 +39,7 @@ const check = (ok: boolean, what: string, detail = '') => {
  * the player as `{Name}`.
  */
 const TOKENS = /\{([a-zA-Z]+)\}/g;
-const KNOWN = new Set(['name', 'card']);
+const KNOWN = new Set(['name', 'card', 'cards', 'left']);
 
 function walk(npc: WorldNpc) {
   const nodes = Object.keys(npc.script);
@@ -71,7 +71,12 @@ function walk(npc: WorldNpc) {
 
   /* Reachable from the start, or from wherever a duel drops you afterwards. */
   const seen = new Set<string>();
-  const queue = [npc.start, ...(npc.duel ? [npc.duel.won, npc.duel.lost] : [])].filter((id) => npc.script[id]);
+  /* Three ways in, not one: `again` and `ready` are opened by `openingNode`
+     rather than by a reply, so a reachability walk that starts only at `start`
+     calls both of them orphans. See `WorldNpc.start`. */
+  const queue = [npc.start, 'again', 'ready', ...(npc.duel ? [npc.duel.won, npc.duel.lost] : [])].filter(
+    (id) => npc.script[id]
+  );
   while (queue.length) {
     const id = queue.shift()!;
     if (seen.has(id)) continue;
@@ -138,10 +143,44 @@ function walk(npc: WorldNpc) {
   if (npc.duel) {
     check(!!DUELIST_BY_ID[npc.duel.opponentId], `duels as "${npc.duel.opponentId}", who has a deck`);
   }
+
+  /*
+   * The tournament, and the one token that can lie.
+   *
+   * `{left}` is how many cards short of the hall the player is, so it reads
+   * "0 to go" anywhere it can be shown to somebody who is already in — which
+   * is every node but `again`, because `openingNode` sends a player at the
+   * threshold to `ready` instead. `{cards}` is safe everywhere: it is a count
+   * of what they are holding and it is true at any number.
+   */
+  const leftOutside = Object.entries(npc.script)
+    .filter(([id, node]) => id !== 'again' && node.lines.some((l) => l.includes('{left}')))
+    .map(([id]) => id);
+  check(leftOutside.length === 0, 'and {left} is only counted where it can still be counting', leftOutside.join(', '));
 }
 
 console.log('\nEvery conversation in the city');
 for (const npc of WORLD_NPCS) walk(npc);
+
+/*
+ * Everybody has a second conversation, and something to say about the hall.
+ *
+ * The whole cast talks about the tournament, so the whole cast has the two
+ * nodes that carry it: the short version once you have been introduced, and
+ * the line for the day the player can walk in. Ash is the exception and it is
+ * the same exception as everywhere else — he is not from here, the tournament
+ * is not his, and he pays in his own currency (`KEEPS_THEIR_CARDS`).
+ */
+const OUTSIDER = new Set(['ash']);
+console.log('\nSecond meetings');
+for (const npc of [...WORLD_NPCS, ...WAITING_CAST]) {
+  if (OUTSIDER.has(npc.id)) continue;
+  check(
+    !!npc.script.again && !!npc.script.ready,
+    `${npc.character.name} has a short greeting and a word for the hall`,
+    [!npc.script.again && 'no again', !npc.script.ready && 'no ready'].filter(Boolean).join(', ')
+  );
+}
 
 /* The bench is cast too: `WAITING_CAST` stands in the duel lobby and its
    records carry the same shape. A dangling reply there is the same fault. */

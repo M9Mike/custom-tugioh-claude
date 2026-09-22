@@ -29,6 +29,7 @@ import type { AreaId } from './areas';
 import type { PremadeCharacter, RepaintRule } from './premade';
 import type { AccessorySpec } from '@/components/story/accessories';
 import { ASH_HAUNTS, ashWhereabouts, type Haunt } from './ash';
+import { tournamentOpen } from './tournament';
 
 export interface DialogueChoice {
   /** What the player says. */
@@ -234,7 +235,22 @@ export interface WorldNpc {
   facing: number;
   /** How close you must be before they can be spoken to, in metres. */
   range: number;
-  /** Which node their script opens on. */
+  /**
+   * Which node their script opens on the first time you meet them.
+   *
+   * Two more are read by name rather than by field, because they are the same
+   * decision three times over and sixteen records do not need three lines each
+   * to say it — `openingNode` is the whole rule:
+   *
+   * - **`again`** is the short version, once you have been introduced. A scene
+   *   replayed every time you walk past is a scene the player taps through.
+   * - **`ready`** is what they say once the player is carrying
+   *   `TOURNAMENT_CARDS`, which is the only thing in the world that changes
+   *   what anybody says without a duel happening first.
+   *
+   * Either may be missing and the conversation simply falls back — Ash has
+   * neither, deliberately: he is not from here and the tournament is not his.
+   */
   start: string;
   /**
    * What happens if a choice in their script sets `duel`.
@@ -325,21 +341,20 @@ const GRANDPA_LOOK: PremadeCharacter = {
  * asked.
  */
 /**
- * Everything he says, which is one thing.
+ * Everything he says, which is nearly one thing.
  *
- * Deliberately one node with no choices. The world he is standing in has two
- * areas and nothing to do in either of them yet, so a tutorial would be
- * explaining a game the player cannot go and play — and the long version he used
- * to give (four thousand life points, three monster zones, the five pieces of
- * Exodia) described rules against a world that did not exist to use them in.
- *
- * So he says the true thing instead: go away and play, it is not complicated.
- * It is also in character. He is not a quest marker, he is somebody's
+ * The long version he used to give — four thousand life points, three monster
+ * zones, the five pieces of Exodia — described rules against a world that did
+ * not exist to use them in, so he says the true thing instead: go away and
+ * play, it is not complicated. He is not a quest marker, he is somebody's
  * grandfather who has explained this several thousand times and has stopped
  * dressing it up.
  *
- * `choices: []` is what makes it repeat: the panel offers a single way out, and
- * walking back into range starts it again from the top, unchanged.
+ * What he has now that nobody else has is the *terms*. He keeps a till and a
+ * card counter, so everybody who buys a pack in this city tells him why they
+ * are buying it, and he is the one who will say the number out loud and then
+ * tell you not to buy your way to it. Tina has the rumour, the sisters have
+ * the letter, he has the arithmetic.
  */
 const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
   greet: {
@@ -347,11 +362,73 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
       'Well, well. A new face.',
       'I can see you are new here, {name} — you have the look. Do not think about it too hard.',
       'It is a card game. Go and play some duels, you will pick it up faster than I could ever explain it. I have been trying to explain it since 1987.',
+      'And do it soon, while you can be bad at it in private. There is a tournament coming, and they are not counting wins to let you in — they are counting cards. Ninety-nine on your name. You are carrying {cards}.',
     ],
     choices: [
+      { label: 'Ninety-nine?', to: 'hall' },
       { label: 'What have you got for sale?', to: 'greet', shop: true },
       { label: 'Will you play me?', to: 'offer' },
       { label: 'I will go and duel, then.', to: null },
+    ],
+  },
+
+  /*
+   * The terms, said once, by the one character who would actually know them.
+   *
+   * Two halves and he gives both: what the hall costs to get into, and what
+   * happens inside it. The second half is the city's own economy at scale —
+   * every duelist out there already pays a bounty when they lose and charges
+   * you for losing to them, so the tournament is not a new rule to learn, it
+   * is the rule the player has been living under with the volume up.
+   *
+   * And the honest sentence about his own shop. He sells cards; a shopkeeper
+   * who let you think the counter was the short way to ninety-nine would be
+   * the one dishonest line in the game.
+   */
+  hall: {
+    lines: [
+      'Ninety-nine. Then they will seat you, and not before — and it is a bounty tournament, so bring the rest of your nerve as well.',
+      'Everybody in that hall has a price on them. Put one down and you take it: cards off their deck and money out of their pocket. Lose and it goes the other way, and it goes just as fast.',
+      'You can buy some of them off me and I will be glad of the custom. But ninety-nine is a long way at my prices, and the cheap way is out there — beat somebody and they hand you a pack of the deck that just lost. That is the whole design of it, and whoever thought of it was not thinking about my till.',
+    ],
+    choices: [
+      { label: 'Show me the shelf, then.', to: 'hall', shop: true },
+      { label: 'Will you play me?', to: 'offer' },
+      { label: 'Then I had better go and duel.', to: null },
+    ],
+  },
+
+  /*
+   * The second time in, and every time after.
+   *
+   * Short because he is: an old man in his own shop who has already told you
+   * the thing. It still carries both doors — the counter and the duel — so the
+   * brevity costs the player nothing, and it carries the count, because the
+   * count is the one fact about them that changes between visits.
+   */
+  again: {
+    lines: [
+      'Back again, {name}. {left} cards to go, unless you have been hiding some from me.',
+      'They are not in here, mind. They are out there, in other people’s decks, and the only way to ask for one is to win it.',
+    ],
+    choices: [
+      { label: 'What is on the shelf?', to: 'again', shop: true },
+      { label: 'Play me.', to: 'offer' },
+      { label: 'I am going.', to: null },
+    ],
+  },
+
+  /* Ninety-nine. He has been counting since the first conversation, so he is
+     the one who gets to say it first if the player has been listening. */
+  ready: {
+    lines: [
+      'Ninety-nine. Well now.',
+      'Then you are in it, and there is nothing further I can teach you that losing to me will not teach you faster. Go when you are ready — the hall is not going anywhere and neither am I.',
+    ],
+    choices: [
+      { label: 'One more against you first.', to: 'offer' },
+      { label: 'Anything I should buy?', to: 'ready', shop: true },
+      { label: 'Then I am going.', to: null },
     ],
   },
 
@@ -459,9 +536,20 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
  * rather than as still.
  */
 
-/** A whole character in the one thing each of them says for now. */
-const greeting = (lines: string[]): Record<string, DialogueNode> => ({
-  greet: { lines, choices: [] },
+/**
+ * A whole character in the little each of them says for now.
+ *
+ * Three openings and no replies: what they say the first time, the shorter
+ * thing after that, and the one line they have been saving for the day the
+ * player can walk into the hall — see `openingNode`. `choices: []` is what
+ * makes each of them repeat, and a character with nothing to answer is better
+ * with three states than with one, because the three are how you can tell the
+ * world has moved since you last came past.
+ */
+const greeting = (first: string[], again: string[], ready: string[]): Record<string, DialogueNode> => ({
+  greet: { lines: first, choices: [] },
+  again: { lines: again, choices: [] },
+  ready: { lines: ready, choices: [] },
 });
 
 /**
@@ -480,12 +568,29 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
   greet: {
     lines: [
       'Well, hello. Mai Valentine.',
-      'Do try to be interesting, sweetheart. Most of them are not.',
+      'Do try to be interesting, sweetheart. Most of them are not, and there are a great many more of them this month.',
     ],
     choices: [
       { label: 'Who are you?', to: 'who' },
+      { label: 'Why more of them?', to: 'hall' },
       { label: 'I could be interesting.', to: 'offer' },
       { label: 'Just passing through.', to: null },
+    ],
+  },
+
+  /* Her reading of a bounty tournament, which is the oldest thing about her:
+     she has been the card everybody in the room wanted to take since she was
+     nineteen, and the tournament has simply written it down. */
+  hall: {
+    lines: [
+      'There is a tournament. Ninety-nine cards at the door and a bounty on every head inside it — beat somebody and you take their cards and their money off them, and they take yours when it is the other way up.',
+      'So they have built a room where the prize for being good is that everybody comes for you.',
+      'I have been that prize since I was nineteen, sweetheart. Welcome to it.',
+    ],
+    choices: [
+      { label: 'I could be interesting.', to: 'offer' },
+      { label: 'Who are you?', to: 'who' },
+      { label: 'Charming.', to: null },
     ],
   },
 
@@ -532,6 +637,28 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
     choices: [
       { label: 'Again, then?', to: 'beaten', duel: true },
       { label: 'I will take the win.', to: null },
+    ],
+  },
+
+  again: {
+    lines: [
+      'Back for more. {left} off the door, and still counting them one at a time like everybody else.',
+      'Go on then. Show me what the last few taught you.',
+    ],
+    choices: [
+      { label: "You're on.", to: 'beaten', duel: true },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. Well, look at you, sweetheart.',
+      'Then you are in it, and I will be across the hall from you with a number over my head — and so will you, which is the part nobody enjoys finding out on the day. One more out here, while it is only pride on the table?',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Save it for the hall.', to: null },
     ],
   },
 
@@ -582,6 +709,13 @@ const WAITING: WorldNpc[] = [
     script: greeting([
       'Oh — hello! I am Yugi.',
       'Grandpa said someone new had turned up. Come and find me when there is duelling to be done.',
+      'He is counting cards for everybody who comes in, you know. Ninety-nine and the tournament seats you — he has counted mine twice, which I think is his way of telling me to buy more.',
+    ], [
+      'Hello again, {name}! {left} to go.',
+      'You are going to get there. Everyone says that to be nice and I am saying it because I have been watching.',
+    ], [
+      'Ninety-nine! Then I will see you in the hall.',
+      'Be careful in there, though. Not everybody is going for the cards.',
     ]),
   },
   {
@@ -597,6 +731,13 @@ const WAITING: WorldNpc[] = [
     script: greeting([
       'So. Another duelist.',
       'We will play, in time. I look forward to seeing what you are made of.',
+      'A hall, a price on every name that walks into it, and a count at the door instead of a fee. Whoever arranged that understands duelists better than I am comfortable with.',
+    ], [
+      '{left} from the door. You are being measured, you know. Everyone in this city is.',
+      'Keep going.',
+    ], [
+      'Ninety-nine. The hall will have us both, then.',
+      'Do not go in expecting a game, {name}. Go in expecting whoever wanted you there.',
     ]),
   },
   {
@@ -611,7 +752,14 @@ const WAITING: WorldNpc[] = [
     start: 'greet',
     script: greeting([
       'Kaiba. Seto Kaiba — and no, I have not heard of you.',
+      'Ninety-nine cards buys a seat at this tournament. It does not buy you a round, and it certainly does not buy you me.',
       'Come back when you have a deck worth my time.',
+    ], [
+      'Still {left} short. That is not a conversation, it is an errand.',
+      'Finish it.',
+    ], [
+      'Ninety-nine. Congratulations, you can afford the door.',
+      'Now find out what the room costs.',
     ]),
   },
   {
@@ -626,7 +774,14 @@ const WAITING: WorldNpc[] = [
     start: 'greet',
     script: greeting([
       'Hey! Joey Wheeler — good to meet ya.',
+      'You heard about the tournament? Ninety-nine cards an’ they let ya in, an’ then everybody in there is worth somethin’ to everybody else. Cards, money, the lot.',
       'Stick around. This place is gonna get a lot more interesting.',
+    ], [
+      'Hey, it’s you again! {left} to go — that’s nothin’.',
+      'Go beat somebody. That’s the whole secret, don’t tell anyone I told ya.',
+    ], [
+      'Ninety-nine! Ya did it!',
+      'Right — see ya in there, {name}. An’ if we get drawn against each other, no hard feelin’s after, yeah?',
     ]),
   },
   {
@@ -725,11 +880,53 @@ const STREET: WorldNpc[] = [
         lines: [
           'You came out of the old man\u2019s shop, so you are new. That is not an insult, it is a schedule.',
           'Sarah. I duel, and I am good at it. If you have twenty-five sleeved, we can find out where you are on it.',
+          'And you had better want to. They are seating a tournament on a card count \u2014 ninety-nine on your name and you are in it \u2014 so half this city has started collecting and the other half has started panicking.',
         ],
         choices: [
           { label: 'Let\u2019s duel.', to: 'beaten', duel: true },
+          { label: 'A card count?', to: 'count' },
           { label: 'What do you play?', to: 'style' },
           { label: 'Maybe later.', to: null },
+        ],
+      },
+
+      /* Her reading of the rule, which is a criticism, which is the point: she
+         is the character who says what a thing is *for* in one flat sentence,
+         and she is not wrong. The bounty half comes out of her own mouth as a
+         complaint about who will be in the hall with her. */
+      count: {
+        lines: [
+          'Cards. Not wins \u2014 cards. Which means the door is open to anybody with a patient afternoon, and the hall is going to be full of people who own ninety-nine cards and cannot play one of them.',
+          'It sorts itself out inside, mind. Everyone in there carries a bounty: put somebody down and you take cards off them and money with it, and they take it off you when you are the one on the floor. Two rounds and the patient afternoon people will have nothing left to be patient with.',
+          'Beat me and you are three cards closer, by the way. I do not enjoy saying that.',
+        ],
+        choices: [
+          { label: 'Let\u2019s duel, then.', to: 'beaten', duel: true },
+          { label: 'What do you play?', to: 'style' },
+          { label: 'Noted.', to: null },
+        ],
+      },
+
+      /* Short, and in her register: she does not do small talk twice. */
+      again: {
+        lines: [
+          '{left} to go. I can count, {name}, it is not a party trick.',
+          'Twenty-five sleeved? Then stop reading the street and put something on the table.',
+        ],
+        choices: [
+          { label: 'Let\u2019s duel.', to: 'beaten', duel: true },
+          { label: 'Not now.', to: null },
+        ],
+      },
+
+      ready: {
+        lines: [
+          'Ninety-nine. So you are in it.',
+          'Then I will see you in that hall, and I will not be pleased about it \u2014 I would rather have met you in the bracket knowing nothing. One more out here first, so I know what I am walking into?',
+        ],
+        choices: [
+          { label: 'One more.', to: 'beaten', duel: true },
+          { label: 'Let you wonder.', to: null },
         ],
       },
 
@@ -786,12 +983,63 @@ const STREET: WorldNpc[] = [
       greet: {
         lines: [
           'Tony. Do not let the vest fool you \u2014 I am out here for the cards, same as everybody.',
-          'You want a duel or you want directions? Either is fine. One of them is quicker.',
+          'Ninety-nine of them and the tournament lets you in. That is the whole reason there is a queue of strangers on this street, and you are one of them, no offence.',
+          'So: a duel or directions? Either is fine. One of them is quicker.',
         ],
         choices: [
           { label: 'A duel.', to: 'beaten', duel: true },
+          { label: 'Ninety-nine is a lot.', to: 'maths' },
           { label: 'What am I walking into?', to: 'style' },
           { label: 'Directions, then.', to: 'where' },
+        ],
+      },
+
+      /* Tony does the arithmetic out loud, because he is the character who
+         counts things — and the number he arrives at is the true one: a pack
+         is three cards, so the door is about thirty wins away. Said as
+         encouragement, which is how he means everything. */
+      maths: {
+        lines: [
+          'It is thirty-odd duels, is what it is. You beat somebody, they hand you a pack of what they were just playing \u2014 three cards \u2014 and there are new ones turning up every week to beat.',
+          'Start with whoever is standing about looking confident. That is free money in this city.',
+        ],
+        choices: [
+          { label: 'You are standing about looking confident.', to: 'beaten', duel: true },
+          { label: 'And inside the hall?', to: 'bounty' },
+          { label: 'Right. Thanks.', to: null },
+        ],
+      },
+
+      bounty: {
+        lines: [
+          'Bounties. Everybody in the bracket is worth cards and money to whoever puts them down, and the ones who last are worth more.',
+          'Which sounds great until you work out the other half of it, which is that you are also worth cards and money, and you are worth them to a much better duelist than you.',
+        ],
+        choices: [
+          { label: 'Let us start with you, then.', to: 'beaten', duel: true },
+          { label: 'Cheerful.', to: null },
+        ],
+      },
+
+      again: {
+        lines: [
+          'Still {left} off it. I am keeping count for you, it is free.',
+          'Duel? Three cards nearer if it goes your way.',
+        ],
+        choices: [
+          { label: 'Go on then.', to: 'beaten', duel: true },
+          { label: 'Later.', to: null },
+        ],
+      },
+
+      ready: {
+        lines: [
+          'Ninety-nine. Look at you.',
+          'Right \u2014 do not spend the week out here beating me, then. Go and be somebody else\u2019s problem in that hall, and put a good word in for the fella in the vest.',
+        ],
+        choices: [
+          { label: 'One for the road.', to: 'beaten', duel: true },
+          { label: 'I will do that.', to: null },
         ],
       },
 
@@ -888,14 +1136,64 @@ const ISHA_SCRIPT: Record<string, DialogueNode> = {
       'Oh. You can see me.',
       'That is the part that always takes a moment. Most of them walk straight through and shiver and put it down to the weather.',
       'I am Isha. I have been here a while, {name}.',
+      'And they have started coming up the walk in twos to whisper about a tournament, which is new. The dead are very good at overhearing.',
     ],
     /* One hop to the duel, like Mai's. Everything else she has to say is on
        the other branch and is optional — a duelist you have to interview
        before you can play them is a duelist most players never play. */
     choices: [
       { label: 'How long is a while?', to: 'long' },
+      { label: 'What do they say?', to: 'hall' },
       { label: 'Do you play?', to: 'offer' },
       { label: 'Nothing. I saw nothing.', to: null },
+    ],
+  },
+
+  /*
+   * The one person in the city who is told the terms and cannot use them.
+   *
+   * Everybody else meets the tournament as an opportunity or a threat. She
+   * meets it as a thing that is happening to the living, and says the quiet
+   * half nobody else can: it is for people who have an afterwards. That is her
+   * whole character stated in one line about somebody else's news, which is
+   * the only way she ever states it — she has never once said she is dead.
+   */
+  hall: {
+    lines: [
+      'Ninety-nine cards, and then a hall with your name in it. Always in the same hushed voice people keep for money, and always twice, because nobody believes it the first time.',
+      'Go, when you have them. I mean that kindly. A tournament is a thing for people with an afterwards — I would only be the draught in the corner of it.',
+      'Somebody will come up here and tell me how it went. Somebody always does, eventually.',
+    ],
+    choices: [
+      { label: 'Do you play?', to: 'offer' },
+      { label: 'What are you waiting for?', to: 'waiting' },
+      { label: 'I will come and tell you myself.', to: null },
+    ],
+  },
+
+  /* Short, and she is the one character for whom a short greeting is warmer
+     than a long one: she has stopped introducing herself to you. */
+  again: {
+    lines: [
+      'You came back. Nobody comes back.',
+      '{left} to go, if the twos on the walk have their numbers right. Stay a while, or play me. Both of those count as staying.',
+    ],
+    choices: [
+      { label: 'Play, then.', to: 'offer' },
+      { label: 'Just staying.', to: 'feet' },
+      { label: 'I should go.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. I counted along with you, which is the most interesting thing to happen on this ground since the elms were small.',
+      'Go on then, {name}. Win the thing. And when you are back, say the name on the nearest stone out loud like I told you — that is all I have ever asked of anybody, and you are the only one still listening.',
+    ],
+    choices: [
+      { label: 'One more against you first.', to: 'offer' },
+      { label: 'I will say it now.', to: 'feet' },
+      { label: 'I will be back, Isha.', to: null },
     ],
   },
 
@@ -1036,9 +1334,12 @@ const ISHA_SCRIPT: Record<string, DialogueNode> = {
  * to each other. That is also the only reason a rumour is ever worth believing,
  * and she says so.
  *
- * Nothing here sets a flag or opens anything. When the tournament is built, this
- * script is where it is announced from, and the day that happens these nodes
- * change and nothing else does.
+ * That day has come, and this is where it was announced from: the rumour has
+ * terms now. Ninety-nine cards on your name and the hall will seat you — she
+ * has the number before anybody else in the city has it, because she is the
+ * one who carries the post. Everything else about her is unchanged, including
+ * the part where she half believes it, and the evidence is still an expense
+ * rather than a secret.
  */
 const TINA_SCRIPT: Record<string, DialogueNode> = {
   greet: {
@@ -1060,10 +1361,12 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
   rumour: {
     lines: [
       'There is a tournament coming. Not a shop ladder and not a city bracket — every duelist there is, wherever they are, and one table left at the end of it.',
-      'I have had that from four people this week and not one of them got it from the other three. That is the part I cannot explain away, and I have tried.',
+      'And it has stopped being a rumour this week, because a rumour does not come with terms. Ninety-nine cards on your name and you are in it. Not a fee, not a record of wins — a count. You are on {cards}.',
+      'I have had that from four people and not one of them got it from the other three. That is the part I cannot explain away, and I have tried.',
     ],
     choices: [
       { label: 'Who is running it?', to: 'who' },
+      { label: 'Why ninety-nine?', to: 'why' },
       { label: 'Sounds like talk.', to: 'doubt' },
       { label: 'Let’s duel.', to: 'wager' },
     ],
@@ -1086,11 +1389,13 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
 
   why: {
     lines: [
-      'Because you will be in it. Everyone will be — that is the whole shape of the thing, and it is the part that ought to worry you rather than the part that flatters you.',
-      'So find out what your deck actually does now, while being wrong about it costs you an afternoon.',
+      'Because ninety-nine is what somebody looks like after a month of actually playing. You cannot borrow it and you will not be bothered to buy it, so whoever set that number was not filtering for money — they were filtering for people who turn up.',
+      'And you will be in it. Everyone will be — that is the whole shape of the thing, and it is the part that ought to worry you rather than the part that flatters you.',
+      'Know what it pays, though, before you are stood in it. Everyone in that hall has a bounty on them: cards off their deck, money out of their pocket, to whoever puts them down. And you are carrying one as well, in front of much better duelists than me. It is this table with the takings multiplied.',
     ],
     choices: [
       { label: 'Go on, then.', to: 'wager' },
+      { label: 'Who is running it?', to: 'who' },
       { label: 'I will think about it.', to: null },
     ],
   },
@@ -1157,6 +1462,36 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
     choices: [
       { label: 'Again?', to: 'wager' },
       { label: 'I will leave it there.', to: null },
+    ],
+  },
+
+  /*
+   * The short version, and it is the shortest in the game on purpose: she is a
+   * courier, she is holding a bag, and she has already told you everything.
+   * What she has that nobody else has is the count, so the count is the whole
+   * greeting.
+   */
+  again: {
+    lines: [
+      '{cards} on your name, {left} to go. Do not ask me how I know, {name}, it is what I am for.',
+      'Money on the table if you want it. Same as ever.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'wager' },
+      { label: 'Any news?', to: 'who' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. I had that off a porter at the station before you got up the road — first time anybody in this city has been ahead of me on my own news.',
+      'So you are in it. Which means this is the last time you and I play for pocket money instead of in front of a hall. Two to five, {name}, for old times.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'wager' },
+      { label: 'Who is running it?', to: 'who' },
+      { label: 'Save it for the hall.', to: null },
     ],
   },
 
@@ -1370,6 +1705,7 @@ const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
     lines: [
       'A letter came. No name at the foot of it, no crest, and paid carriage all the way to a camp that is not on anybody’s road.',
       'It said there would be a tournament, that every duelist alive would be in it, and that we would want to be. My sister says a thing that knows where we sleep is worth walking to. So we walked.',
+      'There is a price on the door and it is not money: ninety-nine cards, in your own hand, before they will seat you. We counted ours on the road and counted them again at the gate, which will tell you how three grown women are taking it.',
     ],
     choices: [
       { label: 'Who sent it?', to: 'nameless' },
@@ -1447,6 +1783,31 @@ const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
       { label: 'I need a think.', to: null },
     ],
   },
+
+  /* The shield's short version: she is the one of the three who is content to
+     be practised on, so a second meeting is an offer and nothing else. */
+  again: {
+    lines: [
+      'Close enough again. {left} cards off the door by my reckoning, and three of them are in my deck if you can take them.',
+      'A dollar on the step. You know where it goes.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Where are your sisters?', to: 'sisters' },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. Then the letter meant you as well, and I am glad — I did not like it when it only meant us.',
+      'Stand there and go again anyway. Whoever draws you in that hall is going to find out what I found out, and I would sooner it were not me.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'I will see you inside.', to: null },
+    ],
+  },
 };
 
 const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
@@ -1473,8 +1834,29 @@ const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
     ],
     choices: [
       { label: 'Early for what?', to: 'hunt' },
+      { label: 'What does it pay?', to: 'purse' },
       { label: 'Let’s duel.', to: 'offer' },
       { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  /*
+   * The bounty half of the tournament, from the only one of the three who
+   * would think of it that way. She is a hunter and a sceptic, so she reads a
+   * price on every head as a technique rather than as a prize: it is how you
+   * get strangers to fight each other without having to ask them to. She is
+   * not wrong, and she is going anyway, which is the whole of her.
+   */
+  purse: {
+    lines: [
+      'A bounty on every head in the hall. Beat somebody and you take cards out of their deck and money out of their purse, and the further they have got the more they are worth carrying.',
+      'Which is a clever way of never having to ask anybody to fight. You do not order hounds to run, you drag something bleeding across the field and stand back.',
+      'And I shall run, of course. I have looked at it from every side and I still want the thing at the end of it. Write that down somewhere and laugh at me later.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Why the shrine?', to: 'why' },
+      { label: 'Noted.', to: null },
     ],
   },
 
@@ -1532,6 +1914,29 @@ const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
       { label: 'Later.', to: null },
     ],
   },
+
+  again: {
+    lines: [
+      'You. Good — the fourth person up these steps today is a priest and he will not play me.',
+      '{left} off the door, then. A dollar down and I will take ten of your afternoon off you.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'What does it pay, again?', to: 'purse' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine, and you did it in a city that was a stranger to you a month ago. I have been telling my sisters the hall would be full of collectors who cannot play, and now I shall have to make an exception out loud, which I hate.',
+      'Set your board. I want one more look at you before somebody pays me to want it.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Save it for the hall.', to: null },
+    ],
+  },
 };
 
 const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
@@ -1569,6 +1974,7 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
     lines: [
       'It found a camp that has moved twice since spring, and it had my name on it spelled the way my mother spelled it. Nobody alive spells it that way.',
       'So it is not an invitation. Somebody has been keeping a list, and my sisters and I are on it. I intend to arrive at that hall in condition to be disappointing.',
+      'And consider what the door asks for. Not a fee — a count. Ninety-nine cards in your hand, which means they are not checking your purse at all, they are checking how many people you have beaten. Somebody is counting that for every duelist alive, and you are carrying {cards} of it.',
     ],
     choices: [
       { label: 'Then duel me.', to: 'offer' },
@@ -1617,6 +2023,31 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
     choices: [
       { label: 'Again.', to: 'offer' },
       { label: 'I will be back.', to: null },
+    ],
+  },
+
+  /* A queen does not greet you twice. Two lines, both of them about the
+     count, because the count is the only thing about you she is tracking. */
+  again: {
+    lines: [
+      '{left} from the door, {name}. I keep a list of my own now, and you are the only name on it.',
+      'A dollar to sit down. Say when.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'About the letter.', to: 'letter' },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. So whoever is counting has your name as well, and spelled correctly, I should think.',
+      'Good. I would rather walk into that hall knowing one of the strangers in it. Sit down — and this time do not stop when the guard holds.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'I will see you there.', to: null },
     ],
   },
 };
@@ -1669,6 +2100,7 @@ const KAELA_SCRIPT: Record<string, DialogueNode> = {
   tournament: {
     lines: [
       'It opens this month. Not "there is talk of" — it opens, they have the hall, and the second round is seeded off what people do between now and then.',
+      'The door is ninety-nine cards in your own hand, which is the most honest specification I have read in years. It does not ask what you own or what you can pay. It asks how many people have handed you a pack of their deck, which is a measurement of exactly one thing and cannot be faked. You are at {cards}.',
       'Which is why I am stood on a staircase in a strange city tuning a machine deck instead of sleeping. Everybody worth beating is doing the same thing within a mile of here.',
     ],
     choices: [
@@ -1732,6 +2164,31 @@ const KAELA_SCRIPT: Record<string, DialogueNode> = {
       { label: 'Later.', to: null },
     ],
   },
+
+  /* She measured you once and has kept the figure. Two lines, one of them a
+     number, which is the whole character. */
+  again: {
+    lines: [
+      'Back. {left} short of the door, and the step is still four millimetres proud — I have written to somebody about one of those.',
+      'The landing is free if you want it.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Tell me about the hall again.', to: 'tournament' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. Then you are in it, and I would like to state for the record that I watched it happen from a staircase.',
+      'Come and be measured once more before the hall does it in front of an audience. And in there — find me early, like I said. I meant it more than I usually mean things.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'I will find you.', to: null },
+    ],
+  },
 };
 
 const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
@@ -1752,11 +2209,28 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
     lines: [
       'The same reason as everybody on this hill. It opens this month, and an invitation came to a house that has not been listed anywhere for two generations.',
       'The engineer at the bottom of the steps finds that sinister. I find it flattering, and I am aware those are the same fact.',
+      'They will not seat you under ninety-nine cards, which meant counting mine — nobody in my family has counted anything since the war, and I found it obscurely thrilling. Yours stands at {cards}, if you have not been keeping up.',
     ],
     choices: [
       { label: 'It does not worry you?', to: 'worry' },
+      { label: 'What is at stake in it?', to: 'stakes' },
       { label: 'Let’s duel.', to: 'offer' },
       { label: 'Good luck.', to: null },
+    ],
+  },
+
+  /* The bounty, taken as a compliment — she is the only character in the city
+     delighted to have a price on her head, and the delight is the character. */
+  stakes: {
+    lines: [
+      'Cards and money, and not politely. There is to be a bounty on every duelist in the hall: beat one and you take a pack of what they play and the coin in their pocket with it.',
+      'Which means there is a price on my head, and there has never been a price on my head. Two generations of us kept out of every list there is, and a stranger with no name has put a number on me.',
+      'I intend to be extremely expensive.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'It does not worry you?', to: 'worry' },
+      { label: 'Enjoy the view.', to: null },
     ],
   },
 
@@ -1812,6 +2286,29 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
     choices: [
       { label: 'Again.', to: 'offer' },
       { label: 'I will be back.', to: null },
+    ],
+  },
+
+  again: {
+    lines: [
+      'Up again. You are {left} from the door and I am still here, which says something about both of us.',
+      'Dragons are rested. Say the word.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'What is at stake, again?', to: 'stakes' },
+      { label: 'A moment.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ninety-nine. Then you have a price on your head as well, and I hope it is a rude one.',
+      'Come up and take the view while you have the legs for it — and stand where you are, once more, for practice. I shall want to say I knew you, and it will be true.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'In the hall, then.', to: null },
     ],
   },
 };
@@ -2189,6 +2686,25 @@ export const WAITING_CAST: WorldNpc[] = WAITING;
  * the file is not full of dollar signs standing next to braces — which in a
  * TypeScript file is a template literal waiting to happen.
  */
+/**
+ * Which node a conversation opens on, given who the player is by now.
+ *
+ * Three states and they are in priority order rather than in a table: somebody
+ * you have never met introduces themselves whatever else is true, because an
+ * introduction you skipped is a character you never met; after that the short
+ * version; and once the hall will seat you, the line they have been waiting to
+ * say. A script missing either node falls through to the one before it, so a
+ * character with nothing but a `greet` is still a working character.
+ *
+ * `openAt` in the panel beats all of it — a conversation coming back from a
+ * duel picks up where the result put it.
+ */
+export function openingNode(npc: WorldNpc, met: boolean, cards: number): string {
+  if (!met) return npc.start;
+  if (tournamentOpen(cards) && npc.script.ready) return 'ready';
+  return npc.script.again ? 'again' : npc.start;
+}
+
 export function sayLine(line: string, playerName: string, fill?: Record<string, number | string>): string {
   let out = line.replace(/\{name\}/g, playerName);
   for (const [token, value] of Object.entries(fill ?? {})) {

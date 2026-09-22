@@ -98,6 +98,23 @@ export interface StoryProfile {
    */
   purse?: Record<string, number>;
   /**
+   * Everybody this player has already talked to, by NPC id.
+   *
+   * What it buys is the *second* conversation. Meeting somebody is a scene —
+   * their name, what they play, what they know about the tournament — and a
+   * scene replayed every time you walk past is a scene the player learns to
+   * skip, which in this game means holding the tap button through the only
+   * writing in it. So a script may carry an `again` node, and this is the
+   * record that says which one you get (`openingNode` in `story/npcs.ts`).
+   *
+   * On the profile rather than in the page, because the promise the save makes
+   * is that the same name on a different phone is the same duelist: somebody
+   * who has met Tina has met her tomorrow as well. Absent on saves written
+   * before it existed, which every reader treats as having met nobody — one
+   * more introduction each, which is the harmless way round.
+   */
+  met?: string[];
+  /**
    * Which cards have already been pulled from each duelist, keyed by duelist id.
    *
    * The values are `slug#copy` entries — see `packs.ts` for why they are keyed
@@ -172,6 +189,7 @@ export function newProfile(username: string, now: number): StoryProfile {
     money: 0,
     fresh: [],
     pulled: {},
+    met: [],
     level: 1,
     xp: 0,
     world: { ...STARTING_POSITION },

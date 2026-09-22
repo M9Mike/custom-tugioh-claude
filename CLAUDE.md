@@ -245,6 +245,21 @@ read as a sentry beat then bought a three-second stop in the middle of a
 straight walk. Mike's words were "few steps stop few steps stop". A point in
 the middle of a path is a corner; only the ends are somewhere to arrive at.
 
+**Everybody talks about the tournament, and nobody says the same half of it.**
+The door is a card count — ninety-nine on your name (`story/tournament.ts`) —
+and what is behind it is this city's own economy with the volume up: a bounty on
+every head in the hall, cards and money, both ways. So a script has *three*
+openings and `openingNode` chooses: `greet` the first time (the scene — who they
+are, and their own quarter of the news), `again` once you have been introduced,
+and `ready` from the day you are carrying ninety-nine. The introduction always
+plays once, even to somebody who arrives already over the line, because an
+introduction you skipped is a character you never met. What remembers is `met`
+on the profile, posted with the position under the same revision guard as a
+looked-at card. `{cards}` and `{left}` are filled for every line; `{left}` may
+only appear in `again`, because anywhere else it can be shown to somebody who is
+already in and reads "0 to go". `npm run talk` holds all of it. Ash has none of
+it, deliberately: he is not from here and the hall is not his.
+
 **The secret is where he is, not what he plays.** Ash Ketchum's deck sits on
 the Home page beside every other deck — playable as, playable against, drawn
 into the bracket, dealt to a random computer opponent — by Mike's own ruling,

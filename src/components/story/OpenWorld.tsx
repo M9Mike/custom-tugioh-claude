@@ -21,7 +21,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
-import { WORLD_NPCS, whereabouts, type WorldNpc } from '@/story/npcs';
+import { WORLD_NPCS, openingNode, whereabouts, type WorldNpc } from '@/story/npcs';
+import { cardsLeft } from '@/story/tournament';
 import { dayFrom, type Haunt } from '@/story/ash';
 import { CARDS } from '@/game/cards';
 import {
@@ -109,10 +110,20 @@ interface Props {
    * to you again. Which she was, for as long as the note sat there.
    */
   onResumed?: () => void;
+  /**
+   * Somebody has now been talked to for the first time, and should get the
+   * short version from here on — see `StoryProfile.met`.
+   *
+   * Told to the caller rather than written here because this screen owns no
+   * save; it is the same shape as `onSeen` in the deck builder, and it is
+   * fire-and-forget for the same reason. A note that never lands costs the
+   * player one repeated introduction.
+   */
+  onMet?: (npcId: string) => void;
 }
 
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed, onMet }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   /** The name of the place on the pause menu's plaque, read as it opens. */
   const [menuPlace, setMenuPlace] = useState('');
@@ -179,6 +190,18 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * the node, and cleared with it.
    */
   const [wageredCard, setWageredCard] = useState<string | null>(resume?.wagered ?? null);
+  /**
+   * Everybody this player has been introduced to, which decides whether a
+   * conversation opens on the scene or on the short version.
+   *
+   * Seeded from the save and added to *here*, on the spot, rather than waiting
+   * for the write to come back: the note is posted fire-and-forget through
+   * `onMet`, and a player who says goodbye to Tina and immediately walks back
+   * into range must not get the introduction a second time because a round
+   * trip is still in flight. The save is what carries it to tomorrow; this is
+   * what carries it to the next step.
+   */
+  const [met, setMet] = useState<Set<string>>(() => new Set(profile.met ?? []));
   /* What the loop last reported, so it only calls setState when it changes. */
   const nearRef = useRef<WorldNpc | null>(null);
   /* Read by the render loop, which must not re-run when a conversation opens:
@@ -2297,7 +2320,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       {talkingTo && (
         <Conversation
           npc={talkingTo}
-          openAt={resumeAt ?? undefined}
+          /* Where the conversation starts, in priority order: the node a duel
+             sent it back to, then whichever of theirs fits who the player is
+             by now — see `openingNode`. */
+          openAt={resumeAt ?? openingNode(talkingTo, met.has(talkingTo.id), profile.collection.length)}
           /* So a wager can be answered in her own voice instead of by a dead
              button — see the panel's `money`. The save is the figure; the
              server is still the decision. */
@@ -2307,9 +2333,23 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
              picker marks a deck card, because losing one costs a rebuild. */
           collection={profile.collection}
           deck={profile.deck ?? []}
-          /* The card the duel was played for, named in the aftermath. Off the
-             note the duel came back with; nothing else knows it. */
-          fill={wageredCard ? { card: CARDS[wageredCard]?.name ?? wageredCard } : undefined}
+          /*
+           * What the lines may name besides the player.
+           *
+           * `cards` and `left` are the tournament: how many the player is
+           * carrying and how many more the hall wants. Filled for every
+           * conversation rather than for the ones that ask, because the only
+           * alternative is each script knowing whether it is allowed to
+           * mention the thing everybody in the city is talking about.
+           *
+           * `card` is the one a duel was played for, off the note the duel
+           * came back with; nothing else knows it.
+           */
+          fill={{
+            cards: profile.collection.length,
+            left: cardsLeft(profile.collection.length),
+            ...(wageredCard ? { card: CARDS[wageredCard]?.name ?? wageredCard } : {}),
+          }}
           onShop={() => onShop?.(talkingTo)}
           onDuel={(stake, wager) => {
             /*
@@ -2342,6 +2382,12 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           }}
           playerName={character.name}
           onClose={() => {
+            /* Introduced. From here on they open on their short node, and the
+               save is told so it survives the page — see `onMet`. */
+            if (!met.has(talkingTo.id)) {
+              setMet((was) => new Set(was).add(talkingTo.id));
+              onMet?.(talkingTo.id);
+            }
             setTalkingTo(null);
             setResumeAt(null);
             setWageredCard(null);

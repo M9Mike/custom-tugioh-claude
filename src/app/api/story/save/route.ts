@@ -43,6 +43,21 @@ export async function POST(req: Request) {
     ? (body.seen as unknown[]).filter((s): s is string => typeof s === 'string')
     : [];
 
+  /*
+   * Somebody the player has now talked to, who gets the short version from
+   * here on — see `StoryProfile.met`.
+   *
+   * Posted with the position for exactly the reason `seen` is: it is a small
+   * note about where the player has been, it must not lose a race with
+   * anything else writing the profile, and `updateProfile` already re-reads
+   * and re-applies under the revision guard. A name that is not an NPC costs
+   * nothing — it is a string in a list that nothing looks up — so there is
+   * nothing here to validate it against.
+   */
+  const met: string[] = Array.isArray(body.met)
+    ? (body.met as unknown[]).filter((s): s is string => typeof s === 'string')
+    : [];
+
   try {
     const result = await updateProfile(canonical, (profile) => {
       /*
@@ -82,7 +97,12 @@ export async function POST(req: Request) {
          lost to Ash is out of the collection already, and a deck that still
          names it is squared in the same write, so the builder that opens
          next reads the deck as it really is. */
-      const next = { ...profile, world, pendingDuel, fresh };
+      /* Unioned, never replaced: two tabs and two conversations must not
+         erase each other, and a name already there is simply already there. */
+      const introduced = met.length
+        ? [...new Set([...(profile.met ?? []), ...met])]
+        : profile.met;
+      const next = { ...profile, world, pendingDuel, fresh, met: introduced };
       return { ok: true, profile: pendingDuel ? next : mendDeck(next) };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });

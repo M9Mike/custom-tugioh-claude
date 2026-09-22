@@ -700,6 +700,17 @@ export default function StoryMode() {
          you had ended came back every time you closed the deck builder: the
          world is unmounted by every other screen and rebuilt from this note. */
       onResumed={() => setResume(null)}
+      /* Somebody has been met. Posted with the same route and the same
+         revision guard as a position or a looked-at card, and not waited on:
+         the world has already moved that character to their short greeting,
+         and a note that never lands costs one repeated introduction. */
+      onMet={(npcId) => {
+        void post<{ profile: StoryProfile }>('/api/story/save', { username: profile.username, met: [npcId] }).then(
+          (res) => {
+            if (res.ok && res.data.profile) setProfile(res.data.profile);
+          }
+        );
+      }}
     />
     </>
   );
