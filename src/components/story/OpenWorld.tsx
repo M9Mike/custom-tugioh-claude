@@ -120,10 +120,26 @@ interface Props {
    * player one repeated introduction.
    */
   onMet?: (npcId: string) => void;
+  /**
+   * Something else has the screen and must finish first — keep the
+   * conversation closed until it clears.
+   *
+   * One caller and one reason: a pack. Winning used to bring the world back
+   * with the duelist's aftermath open *and* the pack opening over the top of
+   * it, which is two scenes at once and the wrong order — see `packFirst` in
+   * `StoryMode`.
+   *
+   * It holds the panel, not the conversation. Whoever the duel came back to is
+   * already chosen, already stood in front of the player and already still,
+   * because that is `resume`'s work and it happens on mount: a roamer put back
+   * at the top of her route would have walked off by the time three cards had
+   * been turned over. What waits is only the drawing of it.
+   */
+  hold?: boolean;
 }
 
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed, onMet }: Props) {
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed, onMet, hold }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   /** The name of the place on the pause menu's plaque, read as it opens. */
   const [menuPlace, setMenuPlace] = useState('');
@@ -2317,7 +2333,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         </p>
       )}
 
-      {talkingTo && (
+      {talkingTo && !hold && (
         <Conversation
           npc={talkingTo}
           /* Where the conversation starts, in priority order: the node a duel

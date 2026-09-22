@@ -129,6 +129,17 @@ export default function StoryMode() {
   const [shopping, setShopping] = useState(false);
   /** The pack being opened, and who it came off. */
   const [pack, setPack] = useState<{ result: PackResult; from: string } | null>(null);
+  /**
+   * The pack could not be fetched, so stop waiting for it.
+   *
+   * Only ever set by a failed open. It exists because the conversation now
+   * waits on the pack (see `packFirst`), and a wait with no way out is a
+   * conversation that never opens: offline on the way back would otherwise
+   * leave the player standing in front of somebody who has nothing to say. The
+   * pack itself is not lost — it stays banked on the profile and opens on the
+   * next visit, which is what it did before any of this.
+   */
+  const [packLost, setPackLost] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   /* Same trick as the home page: both fields are controlled, so React's first
@@ -392,7 +403,9 @@ export default function StoryMode() {
           from: DUELIST_BY_ID[out.pack.duelistId]?.name ?? 'That duelist',
         });
       } catch {
-        /* It stays on the profile and opens next time. */
+        /* It stays on the profile and opens next time — and the conversation
+           stops waiting for it, because it is not coming this visit. */
+        setPackLost(true);
       } finally {
         opening.current = false;
       }
@@ -673,6 +686,33 @@ export default function StoryMode() {
     );
   }
 
+  /*
+   * The pack happens first, and the conversation waits behind it.
+   *
+   * Mike's note: the opening was a modal with the duelist's aftermath lit
+   * underneath it, so the win and the reaction to it were on screen together
+   * and neither had the player's attention. The pack is its own screen now —
+   * and being its own screen is only half of it, because a conversation that
+   * is merely *covered* is still a conversation that opened first.
+   *
+   * So this is the whole window a pack occupies, from before it exists to
+   * after it has been read:
+   *
+   * - `owed` — a win landed and the claim is in flight. Held from the first
+   *   frame, which is the point: the resume note is handed to the world on
+   *   mount, and anything decided a round trip later shows the conversation
+   *   for a moment and then buries it.
+   * - `packs` on the profile — claimed and banked, waiting for the open. Also
+   *   covers a pack left over from a visit that was interrupted.
+   * - `pack` — it is on screen, being turned over.
+   *
+   * A loss owes nothing, so `owed` is null and none of this applies: the
+   * duelist tells you what you did wrong immediately, as before. A win against
+   * somebody who keeps their cards (Solomon, Ash) holds only for the length of
+   * the claim, which is shorter than the area takes to build.
+   */
+  const packFirst = !!pack || !!owed || (profile.packs.length > 0 && !packLost);
+
   return (
     <>
       {pack && (
@@ -695,6 +735,8 @@ export default function StoryMode() {
       onDuel={startDuel}
       onShop={() => setShopping(true)}
       resume={resume}
+      /* Hold the aftermath until the pack has been opened — see `packFirst`. */
+      hold={packFirst}
       /* Read exactly once. The comment above this state says "cleared once
          used" and for months nothing cleared it, which is why a conversation
          you had ended came back every time you closed the deck builder: the

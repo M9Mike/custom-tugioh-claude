@@ -32,6 +32,16 @@
  * duelist's deck is running out. That is the truth of the pool rather than a
  * failure, so the screen says which duelist is finished instead of padding the
  * pack out with cards that do not exist.
+ *
+ * ## Why it is opaque, and why it comes first
+ *
+ * It used to be a modal: nine tenths of black over the world, with the
+ * conversation you had just come back to sitting lit underneath it. Two things
+ * were happening at once and neither of them had the screen. It is its own
+ * screen now — `bg-ink`, the same background every other screen in the game
+ * stands on — and `StoryMode` holds the conversation closed until it is done,
+ * so the order is: win, open the pack, *then* the duelist says what they think
+ * of you. See `hold` in `OpenWorld`.
  */
 
 import { useMemo, useState } from 'react';
@@ -71,7 +81,7 @@ export default function PackOpening({ pack, from, onDone }: Props) {
   };
 
   return (
-    <main className="safe-page fixed inset-0 z-50 grid place-items-center bg-black/90 p-4" data-pack>
+    <main className="safe-page fixed inset-0 z-50 grid place-items-center bg-ink p-4" data-pack>
       <div className="panel grain w-full max-w-lg rounded p-5 text-center">
         {/* The heading says whose deck this came out of and nothing else. The
             mechanic had its name printed over it — which is a thing to call a
