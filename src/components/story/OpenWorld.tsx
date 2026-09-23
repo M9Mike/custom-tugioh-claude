@@ -1146,26 +1146,25 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     /* Now that both halves exist, open the area the save left us in. */
     enter(areaRef.current);
 
-    /* ---- camera control: drag anywhere on the world to look ---- */
+    /*
+     * ---- the camera follows you ----
+     *
+     * There is nothing to drag. The camera swings in behind the way you are
+     * walking, on its own, and you only ever walk — Mike's call, and the right
+     * one on a phone, where a second thumb on the glass was a second thing to
+     * do while the first one steered.
+     *
+     * Which means nobody can look up or down, so the resting shot has to hold
+     * what matters without being asked: a shallower pitch than the old 0.28
+     * and a higher point to look at, so the frame is the street ahead and the
+     * fronts of the buildings on it rather than a third of pavement.
+     */
+    const CAM_PITCH = 0.2;
     let camYaw = here.current.facing + Math.PI;
-    let camPitch = 0.28;
-    const pointers = new Map<number, { x: number; y: number }>();
-    const onDown = (e: PointerEvent) => {
-      canvas.setPointerCapture(e.pointerId);
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    };
-    const onMove = (e: PointerEvent) => {
-      const prev = pointers.get(e.pointerId);
-      if (!prev) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      camYaw -= (e.clientX - prev.x) * 0.006;
-      camPitch = Math.min(0.85, Math.max(-0.12, camPitch + (e.clientY - prev.y) * 0.004));
-    };
-    const onUp = (e: PointerEvent) => pointers.delete(e.pointerId);
-    canvas.addEventListener('pointerdown', onDown);
-    canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerup', onUp);
-    canvas.addEventListener('pointercancel', onUp);
+    let camPitch = CAM_PITCH;
+    /* Dev only (see the probe): a pitch held for a tool that needs the
+       roofline, like `npm run corners`. A player has no way to set it. */
+    let pitchHeld: number | null = null;
 
     /* ---- keyboard ---- */
     const held = new Set<string>();
@@ -1193,6 +1192,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       const h = el.clientHeight || 1;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
+      /*
+       * Taller on a phone held upright.
+       *
+       * 52° vertical is right on a landscape screen and a letterbox on a
+       * portrait one: at a phone's aspect it is 25° across, so a follow camera
+       * that nobody can turn by hand showed a corridor of street the width of
+       * the duelist. Opening it towards 68° as the screen narrows gives back
+       * the sides — and the sky and the pavement, which a camera that cannot
+       * be tilted needs just as much.
+       */
+      camera.fov = w >= h ? 52 : 52 + (1 - w / h) * 30;
       camera.updateProjectionMatrix();
     };
     resize();
@@ -1298,6 +1308,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * she is in, and the collision, the floor and the camera all catch up on
      * the next frame exactly as they would after a door.
      */
+    /* And a pitch to hold, for `npm run corners`, which needs the roofline and
+       used to get it the way a player did — by dragging, which is gone. Dev
+       only: a player's camera is the follow camera and nothing else. */
+    if (process.env.NODE_ENV !== 'production') {
+      (window as unknown as { __look?: (pitch: number | null) => void }).__look = (pitch) => {
+        pitchHeld = pitch;
+      };
+    }
     (window as unknown as { __teleport?: (x: number, z: number, facing: number) => void }).__teleport =
       (x, z, facing) => {
         here.current.x = x;
@@ -1343,7 +1361,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          of your own head is what an unturned camera gives you. */
       heading = here.current.facing;
       camYaw = here.current.facing + Math.PI;
-      camPitch = 0.28;
+      camPitch = CAM_PITCH;
       crossing = null;
     };
 
@@ -2110,7 +2128,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           /* Put the camera behind the arrival heading, so you step out of a door
              looking where you are going rather than at the door you just used. */
           camYaw = to.facing + Math.PI;
-          camPitch = 0.24;
+          camPitch = CAM_PITCH;
           /*
            * And the floor she arrives on, which is not the floor she left.
            *
@@ -2169,7 +2187,9 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       talkBlend += ((near ? 1 : 0) - talkBlend) * Math.min(1, dt * 4);
       let lookX = p.x;
       let lookZ = p.z;
-      let lookY = groundY + 1.15;
+      /* Head height rather than chest: with nobody able to tilt the camera up,
+         aiming a little higher is what keeps the buildings in the shot. */
+      let lookY = groundY + 1.35;
       let dist = 4.6;
       if (talkBlend > 0.001 && near) {
         /* Behind the duelist (`+ π`) and a third of a radian to the side —
@@ -2215,7 +2235,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         lookZ = p.z + (themZ - p.z) * 0.5 * talkBlend;
         /* Their heads, and above the panel that covers the bottom third. Off the
            ground they are standing on, not off zero — see the camera below. */
-        lookY = groundY + 1.15 + 0.1 * talkBlend;
+        lookY = groundY + 1.35 - 0.1 * talkBlend;
         /* Enough room for two people and the metre and a half between them.
            Held off the *player*, so the gap the pair needs comes out of the
            distance rather than out of the framing. */
@@ -2236,13 +2256,109 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * Interiors start closer as well. The same distance that frames a street
        * puts a ceiling across the top third of a shop.
        */
+      /**
+       * Behind the way you are walking — eased, and only while you walk.
+       *
+       * The camera turns towards `heading + π` at a rate that scales with how
+       * fast the legs are going, so a stroll swings it gently and a stop leaves
+       * it exactly where it is: standing still is when you look at something,
+       * and a camera that drifted then would take it away.
+       *
+       * Except when you walk *at* it. Pushing the stick towards yourself means
+       * "come back this way", and a camera that answered by racing round
+       * through a hundred and eighty degrees would spin the world every time
+       * somebody backed up a step. So the follow fades out between 110° and
+       * 160° off straight-ahead: walk towards the lens and it holds and backs
+       * off in front of you; turn aside and it comes round behind again.
+       *
+       * The stick is read in the camera's frame (above), so a held direction
+       * off the straight becomes a turn that the camera follows — hold left and
+       * you walk a circle, which is steering, which is what a stick is for.
+       *
+       * And the turn has a ceiling. An ease on its own is proportional to the
+       * gap, and holding the stick sideways keeps the gap at ninety degrees for
+       * ever — which spun the camera at nearly four radians a second and walked
+       * her round a circle a metre across. Capped at 1.3 rad/s it is a steady
+       * swing: a quarter turn in a little over a second, and at full speed a
+       * circle five metres wide.
+       */
+      if (!near && stride > 0.05) {
+        let off = heading - (camYaw + Math.PI);
+        off = Math.abs(Math.atan2(Math.sin(off), Math.cos(off)));
+        const follow = off <= 1.92 ? 1 : off >= 2.8 ? 0 : (2.8 - off) / 0.88;
+        let d = heading + Math.PI - camYaw;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        camYaw += Math.max(-1.3, Math.min(1.3, d * 1.8)) * stride * follow * dt;
+        camYaw = Math.atan2(Math.sin(camYaw), Math.cos(camYaw));
+      }
+      /* Back to the resting pitch once a conversation is over — it is the only
+         thing that ever moves it. */
+      if (!near) camPitch += ((pitchHeld ?? CAM_PITCH) - camPitch) * Math.min(1, dt * 2);
+
       const want = area.kind === 'interior' ? dist * 0.72 : dist;
-      const reach = cameraReach(
+      let reach = cameraReach(
         area, p.x, p.z,
         Math.sin(camYaw) * Math.cos(camPitch),
         Math.cos(camYaw) * Math.cos(camPitch),
         want
       );
+      /**
+       * And off the walls, while you walk.
+       *
+       * Pulled in and lifted (below) is the answer when a wall is in the way;
+       * leaning off it is the better one when it can be had. When the camera is
+       * squeezed it looks half a radian either side, and drifts towards the side
+       * with more room — so walking along a wall, or turning with your back to a
+       * shopfront, the shot slides round to the open side instead of pressing
+       * its lens into the brick. Only while walking, for the same reason the
+       * follow is: a camera that moves by itself when you are standing still is
+       * a camera you are fighting.
+       */
+      if (!near && stride > 0.05 && reach < want * 0.9) {
+        const side = 0.5;
+        const around = (yaw: number) =>
+          cameraReach(area, p.x, p.z, Math.sin(yaw) * Math.cos(camPitch), Math.cos(yaw) * Math.cos(camPitch), want);
+        const lean = (around(camYaw + side) - around(camYaw - side)) / want;
+        if (Math.abs(lean) > 0.12) {
+          camYaw += lean * side * Math.min(1, dt * 1.8);
+          reach = cameraReach(area, p.x, p.z, Math.sin(camYaw) * Math.cos(camPitch), Math.cos(camYaw) * Math.cos(camPitch), want);
+        }
+      }
+      /**
+       * And round the posts.
+       *
+       * A lamp post is too thin to pull the camera in for — the lens would lurch
+       * forward every time you walked past one, which is the bench problem the
+       * `tall` flag exists to avoid — and it is exactly thin enough to stand on
+       * the line between the lens and you and hide you completely. With a hand
+       * on the camera that was one flick; with nobody's hand on it, it is a
+       * post you are standing behind until you walk off. So a thin solid on the
+       * line of sight turns the camera the other way, a little at a time, until
+       * the line is clear — standing still too, since it only ever moves as far
+       * as it takes to see you.
+       */
+      if (!near) {
+        const ax = Math.sin(camYaw) * camDist;
+        const az = Math.cos(camYaw) * camDist;
+        const len2 = ax * ax + az * az;
+        for (const post of area.solids) {
+          if (post.tall || post.hw > 0.6 || post.hd > 0.6) continue;
+          const rx = post.x - p.x;
+          const rz = post.z - p.z;
+          const t = (rx * ax + rz * az) / len2;
+          if (t < 0.12 || t > 1) continue;
+          const side = ax * rz - az * rx;
+          const gap = Math.abs(side) / Math.sqrt(len2) - Math.max(post.hw, post.hd);
+          if (gap > 0.3) continue;
+          /* The post is to one side of the line; swing the lens the same way
+             round the player as the cross product says the post is not. Worked
+             through once with a post at (0.2, 2) and the camera up +Z: `side`
+             is negative, the lens must go to −X, and yaw falling is that. */
+          camYaw += Math.sign(side || 1) * Math.min(1, dt * 2.2) * 0.35 * (1 - Math.max(0, gap) / 0.3);
+          break;
+        }
+      }
+
       /* Eased towards the allowed distance rather than snapped to it: a camera
          that steps in and out on a threshold reads as a bug. */
       camDist += (Math.min(want, reach) - camDist) * Math.min(1, dt * 6);
@@ -2419,10 +2535,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       window.removeEventListener('keyup', onKey);
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onHidden);
-      canvas.removeEventListener('pointerdown', onDown);
-      canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerup', onUp);
-      canvas.removeEventListener('pointercancel', onUp);
       gone = true;
       /* The area owns its geometry, its textures and its lights; one call takes
          all of it. */

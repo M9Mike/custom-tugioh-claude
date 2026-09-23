@@ -107,7 +107,7 @@ paragraph from the other side.)
 import bpy
 import os
 import sys
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rigshape import down, floor_of, height_of, load, read_rig, soles   # noqa: E402
@@ -124,6 +124,18 @@ DST = arg('to')
 OUT = arg('out')
 CLIPS = [c for c in arg('clips', 'Idle,Walk,Run').split(',') if c]
 GROUND = '--no-ground' not in argv
+ALIGN_ARMS = '--align-arms' in argv
+"""
+`--hold arm-` (or `arm+`, or both, comma-separated): a limb left as it was
+modelled, carried by the body instead of driven.
+
+For a character whose pose *is* the character. Yami Marik is modelled holding
+the Millennium Rod across his chest, and the auto-rig let his hair and the
+collar of his cape weigh on that hand; straightened into a walk, the arm drags
+both down to his hip. Held, it rides the chest the way it was sculpted — the
+Rod across him, the other arm swinging — which is how he would walk anyway.
+"""
+HOLD = [r for r in arg('hold', '').split(',') if r]
 
 if not SRC or not DST or not OUT:
     raise SystemExit('retarget: --from <donor.glb> --to <target.glb> --out <out.glb>')
@@ -261,7 +273,7 @@ for b in dst.data.bones:
 
 written = {}
 for role, chain in dst_rig.items():
-    if role == 'pelvis':
+    if role == 'pelvis' or role in HOLD:
         continue
     src_chain = src_rig[role]
     for i, bone in enumerate(chain):
@@ -279,6 +291,45 @@ for role, chain in dst_rig.items():
 
 pelvis_src = src_rig['pelvis'][0]
 pelvis_dst = dst_rig['pelvis'][0]
+
+"""
+`--align-arms`: the donor's arms, not just the donor's arm *movement*.
+
+What crosses over is each bone's change from its own rest pose, laid onto the
+target's rest pose — which is right whenever the two stand alike and quietly
+wrong when they do not. The Amazons were modelled with their arms most of the
+way down, like Tony and Sarah, so nobody could tell. Jaden Yuki and the rest of
+the main-menu cast were modelled in a wide A-pose, arms forty-odd degrees out,
+and without this they walk the whole city holding them there: a donor idle whose
+hands hang at the thighs arrives as a man about to be measured for a suit.
+
+So each arm bone is first turned from the way it points at rest to the way the
+donor's points at rest, and the donor's change is laid on top of that. "The
+way it points" is joint to joint — this bone's head to the next one's — never
+the bone's own tail, which on these exports is synthesised and points wherever
+the exporter felt like. The hand has no next joint in the chain and follows the
+forearm, so a wrist cannot come out of it bent. Only the arms: a leg or a spine
+stands close enough to the donor's already, and a correction nobody needed is a
+correction that can only make something worse.
+"""
+align = {}
+if ALIGN_ARMS:
+    # Heads out of the rest matrices kept above: the donor's object is gone by
+    # now — loading the target cleared it — and a rest matrix's translation is
+    # the bone's head in armature space anyway.
+    def joint_dirs(rest, chain):
+        heads = [rest[b].to_translation() for b in chain]
+        return [(heads[i + 1] - heads[i]).normalized() for i in range(len(heads) - 1)]
+
+    for role in ('arm-', 'arm+'):
+        s_dirs, d_dirs = joint_dirs(src_rest, src_rig[role]), joint_dirs(dst_rest, dst_rig[role])
+        turn = Quaternion()
+        for i, bone in enumerate(dst_rig[role]):
+            if i < len(s_dirs) and i < len(d_dirs):
+                turn = d_dirs[i].rotation_difference(s_dirs[i])
+            align[bone] = turn
+        print('retarget: %s aligned to the donor at rest (upper arm turned %.0f deg)'
+              % (role, align[dst_rig[role][1]].angle * 57.2958 if len(dst_rig[role]) > 1 else 0))
 
 print('retarget: %d of %d bones driven' % (len(written) + 1, len(dst.data.bones)))
 
@@ -324,7 +375,7 @@ for name, take in takes.items():
                 pb.matrix_basis = Matrix.Identity(4)
                 bpy.context.view_layer.update()
                 continue
-            rot = (q @ dst_rest[bone].to_quaternion()).to_matrix().to_4x4()
+            rot = (q @ align.get(bone, Quaternion()) @ dst_rest[bone].to_quaternion()).to_matrix().to_4x4()
             pb.matrix = Matrix.Translation(here) @ rot
             bpy.context.view_layer.update()
             if bone == pelvis_dst:

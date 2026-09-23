@@ -1081,6 +1081,1141 @@ const KAIBA_SCRIPT: Record<string, DialogueNode> = {
   },
 };
 
+/* ---- The rest of the main menu, who arrive with the tournament ---- */
+
+/**
+ * Maximillion Pegasus, who invented the game and would like everybody to know
+ * it, charmingly. Calls Kaiba what he has always called him.
+ */
+const PEGASUS_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Well, well! A fresh face at Kaiba-boy’s little carnival — how perfectly delightful.',
+      'Maximillion Pegasus. I invented the game every one of you is running about the city for, so you will forgive me if I find all this chip-counting rather sweet.',
+      'I carry a chip too, of course. He insisted. Shall we see whether you can take it from the man who drew the cards?',
+    ],
+    choices: [
+      { label: 'Let’s duel, Pegasus.', to: 'beaten', duel: true },
+      { label: 'You invented the game?', to: 'author' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  author: {
+    lines: [
+      'Every card, every rule, every little monster — out of my head and on to paper before Kaiba-boy could spell “hologram”.',
+      'He owns the towers, the screens and the broadcast. I own the reason anybody watches. We get along splendidly, as long as nobody mentions it.',
+    ],
+    choices: [
+      { label: 'Then duel me.', to: 'beaten', duel: true },
+      { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}! {chips} chips — you have been busy. I do love watching a story pick up pace.',
+      'Mine is still here, and still quite shiny. Care to try your luck against the author?',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Tell me about the game.', to: 'author' },
+      { label: 'Not now.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Oh, bravo! Truly. It has been an age since anybody turned a page on me like that.',
+      'Here — my chip, with my compliments. Do tell Kaiba-boy where you got it. His face will be a gift.',
+    ],
+    choices: [
+      { label: 'Again, for fun?', to: 'beaten', duel: true },
+      { label: 'I will.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'The one who took my chip! I tell everyone. It makes me sound generous.',
+      'Another game? Nothing on it but my pride, and I have plenty of that to spare.',
+    ],
+    choices: [
+      { label: 'Go on, then.', to: 'beaten', duel: true },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again! My, my. You read a board the way I read people.',
+      'That is a compliment, {name}. I rarely hand those out twice in one afternoon.',
+    ],
+    choices: [
+      { label: 'One more?', to: 'beaten', duel: true },
+      { label: 'I’ll take it.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Oh dear — did the toons get you? They do that. They never did learn when to stop.',
+      'A word from the author: a card nobody can reach is only frightening until you stop reaching for it. Change the question instead.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! And they say an old designer cannot keep up.',
+      'I shall see you at the towers, {name}. Do save Kaiba-boy a seat in the audience — somebody has to watch.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Not a finalist? How deliciously humbling. I shall write it into the next set.',
+      'Go on, {name}. Win it — and play something I designed while you do.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Ishizu Ishtar, who has seen the tournament before it happened and is still
+ * glad to be surprised by it. Marik's sister, which she does not hide.
+ */
+const ISHIZU_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'You have come to me. I saw that you would — though not which road you would take here.',
+      'I am Ishizu Ishtar. The Necklace I wear shows me what is to come, and it has shown me this tournament many times: many duelists, one city, and one who does not stop walking.',
+      'I carry a star chip, as Kaiba asked. If you wish to test the future, I will not refuse you.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'What does the Necklace show?', to: 'future' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  future: {
+    lines: [
+      'Fragments. A tower, a crowd, four people at the foot of a flight of steps.',
+      'And my brother, walking the city with something in his shadow that is not him. If you meet Marik, be careful what you promise him. Odion watches over him, as he always has.',
+    ],
+    choices: [
+      { label: 'Then duel me.', to: 'beaten', duel: true },
+      { label: 'I will be careful.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}. {chips} chips — I saw it would be about so many by now.',
+      'Mine remains. The future is a guide, not a cage. Shall we see?',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'The Necklace?', to: 'future' },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'So. That was not the future I was shown.',
+      'Take the chip. It is good, sometimes, to be surprised — it means the road is still being written.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Thank you, Ishizu.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You hold my chip, {name}. I have made my peace with it.',
+      'If you wish to duel again, I will. There is nothing on it now but what we learn.',
+    ],
+    choices: [
+      { label: 'Let’s.', to: 'beaten', duel: true },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Twice. Perhaps the Necklace should be asking you what comes next.',
+      'Go gently, {name}.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Goodbye, Ishizu.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'I knew where that turn was going before you played it. That is not a trick — you showed me.',
+      'Hold something back. A duelist who spends everything at once has told the other where the end is.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'I will remember.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. The steps I saw, and I am standing on them.',
+      'We will meet there, {name}. I do not know how it ends. For once, I am glad.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I will not be at the finals. I saw that too, though I hoped to be wrong.',
+      'Go, {name}. Whatever the Necklace says, the ending is yours to find.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Priest Seto, out of his own time and not about to admit it bothers him. He
+ * has noticed who else in the city wears his face.
+ */
+const PRIEST_SETO_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Stand where I can see you. You carry a disk upon your arm, as they all do in this city of glass.',
+      'I am Seto, high priest of the Pharaoh’s court. I woke among these towers with a Rod in my hand and a stone chip in my belt, and a man with my face on every wall calling it a tournament.',
+      'I do not understand this place. I understand a duel. Will you face me?',
+    ],
+    choices: [
+      { label: 'I will face you.', to: 'beaten', duel: true },
+      { label: 'A man with your face?', to: 'face' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  face: {
+    lines: [
+      'On every screen, speaking with my voice and none of my manners. Kaiba, they call him.',
+      'He summons monsters as I did, and he commands as I did, and he has never once knelt to a pharaoh. I find I do not dislike him as much as I should.',
+    ],
+    choices: [
+      { label: 'Duel me, priest.', to: 'beaten', duel: true },
+      { label: 'Strange days.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{chips} chips. In my court that is a tally worth a name.',
+      'Mine is yours for the taking — if you can take it. Come.',
+    ],
+    choices: [
+      { label: 'I will.', to: 'beaten', duel: true },
+      { label: 'About Kaiba…', to: 'face' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Enough. You have won it, and a priest does not argue with an ending.',
+      'Take the chip. When you stand before the one with my face, tell him Seto of the court sends his regards.',
+    ],
+    choices: [
+      { label: 'Once more?', to: 'beaten', duel: true },
+      { label: 'I will tell him.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip already. The Pharaoh himself took nothing twice from me.',
+      'But I will duel you for the practice of it. A priest keeps his hand sharp.',
+    ],
+    choices: [
+      { label: 'Then duel.', to: 'beaten', duel: true },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again I fall. The gods favour you, or your deck is better built than it looks.',
+      'Either way, I will remember your name, {name}.',
+    ],
+    choices: [
+      { label: 'Once more.', to: 'beaten', duel: true },
+      { label: 'Farewell.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Kneel — no. They tell me that is not done here.',
+      'Learn this: a monster summoned without purpose is a servant left standing in the rain. Every card you call must be called to do something.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'Understood.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. I will stand before the one with my face and see which of us the monsters answer to.',
+      'Do not be late, {name}.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I will not stand in the finals. In my time, a priest who lost this often was sent to count grain.',
+      'Go. Win it. And if the one with my face wins instead — do not tell me.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Yami Marik, having a wonderful time. Menace at arm's length — he enjoys
+ * frightening people rather more than he enjoys hurting them, which is the
+ * register a card game can carry.
+ */
+const YAMI_MARIK_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Ahh. A duelist, walking right up to me. How brave. How very, very foolish.',
+      'You may call me Marik. The real one, not the pale little thing who usually wears this face. Kaiba has given me a chip and a city to hunt in, and I have been having a wonderful time.',
+      'Duel me. I promise you will remember it.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'The real one?', to: 'shadow' },
+      { label: 'I’d rather not.', to: null },
+    ],
+  },
+
+  shadow: {
+    lines: [
+      'There are two of us in here. He is the one who worries. I am the one who enjoys himself.',
+      'His sister walks the towers, and his faithful Odion follows me about as if he could put me back in a box. Let them try. Now — are we duelling, or are you going to keep asking questions?',
+    ],
+    choices: [
+      { label: 'Duelling.', to: 'beaten', duel: true },
+      { label: 'Neither.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{chips} chips. You have been collecting little trophies. So have I.',
+      'Come and try for mine. The Rod and I are waiting.',
+    ],
+    choices: [
+      { label: 'Let’s go.', to: 'beaten', duel: true },
+      { label: 'Two of you?', to: 'shadow' },
+      { label: 'Not now.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'No. No, no — fine. Take it.',
+      'Enjoy your little star, {name}. The finals are a long way down, and it is very dark at the bottom of the steps.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'I’ll manage.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'The thief returns. I remember you. I remember everyone.',
+      'Another duel? Nothing to win. Something to lose, though. Your nerve, perhaps.',
+    ],
+    choices: [
+      { label: 'Try me.', to: 'beaten', duel: true },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again. How irritating. How absolutely fascinating.',
+      'Go, before I start to like you.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Gladly.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Hahaha! Did you feel that? That is what it is like to lose to me.',
+      'Something for free: you showed me your whole plan by your second turn. Fear is honest, {name}. Hide yours.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'I will.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. At the bottom of Kaiba’s precious steps, with everybody watching. Perfect.',
+      'I will see you there, {name}. Bring your nerve.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Out? Me? This tournament is poorly designed.',
+      'Go on, then. Win it — while I am feeling generous.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Odion, who came to the city because Marik did and walks a step behind him.
+ * Says little, means all of it.
+ */
+const ODION_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Forgive me. I have been watching the crowd; I did not see you come.',
+      'I am Odion. I serve the Ishtar family, and I have come to this city because Master Marik has, and because what walks with him is not my master.',
+      'I carry a chip. I will not refuse an honest duel — it is a relief, these days, to have one.',
+    ],
+    choices: [
+      { label: 'An honest duel, then.', to: 'beaten', duel: true },
+      { label: 'What walks with Marik?', to: 'marik' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  marik: {
+    lines: [
+      'A shadow he made when he was young, and it has grown teeth. It speaks with his voice now.',
+      'Lady Ishizu believes he can still be reached. So do I. Until then, I walk behind him and see that nobody is hurt. If you duel him, duel him as a duelist, not as an enemy.',
+    ],
+    choices: [
+      { label: 'I will. Duel me first.', to: 'beaten', duel: true },
+      { label: 'I understand.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}. {chips} chips. You carry them well.',
+      'Mine is still here. Shall we?',
+    ],
+    choices: [
+      { label: 'Let’s.', to: 'beaten', duel: true },
+      { label: 'How is Marik?', to: 'marik' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Well fought. There is no shame in losing to someone who plays with honour.',
+      'The chip is yours. Keep it safe — and if you see Master Marik, keep yourself safe too.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Thank you, Odion.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip. I am glad it went to you.',
+      'I will duel you again if you wish. It is a better use of an afternoon than watching.',
+    ],
+    choices: [
+      { label: 'Then duel.', to: 'beaten', duel: true },
+      { label: 'Rest, Odion.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again you win. I am learning, at least.',
+      'Go well, {name}.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Go well.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'A good duel. You came close.',
+      'Patience. A wall stands until the one hitting it grows tired — so do not be the one who tires. Build around it.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'Thank you.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. I did not come here for this, but I will stand there and be glad of it.',
+      'And if Master Marik stands there too, I will be close by. Until then, {name}.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I will not be a finalist. It does not matter. My place was always behind someone.',
+      'Win it, {name}. Honestly.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Ryou Bakura — the kind one — who came for the gaming tables at Black Crown
+ * and paints his own figures. The Ring on his chest is mentioned exactly once.
+ */
+const BAKURA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Oh — hello! Sorry, I was miles away. You’re a duelist too, aren’t you? Everybody seems to be this week.',
+      'I’m Bakura. Ryou Bakura. I came down for the games — Black Crown has the best tables in the city — and then Kaiba went on every screen, and now I have a star chip in my pocket and no idea how that happened.',
+      'Would you like to duel? I promise I’m nicer to play against than I look. Well — mostly.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'The games here?', to: 'games' },
+      { label: 'Maybe later.', to: null },
+    ],
+  },
+
+  games: {
+    lines: [
+      'Tabletop, mostly. I run a campaign with little painted figures — dungeons, dragons, that sort of thing. I paint them all myself.',
+      'Sometimes I lose track of the time while I’m painting. Sometimes rather a lot of time. The Ring is a family thing. Don’t mind it.',
+    ],
+    choices: [
+      { label: 'Duel me, then.', to: 'beaten', duel: true },
+      { label: 'Sounds fun.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Oh, {name}! {chips} chips — that’s brilliant.',
+      'I’ve still got mine. Shall we play for it?',
+    ],
+    choices: [
+      { label: 'Let’s.', to: 'beaten', duel: true },
+      { label: 'How’s the campaign?', to: 'games' },
+      { label: 'Not now.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Well played! Honestly, that was lovely to watch, even from the losing side.',
+      'Here — the chip’s yours. I’ll paint a little figure of you for the campaign. With a crown, I think.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'I’d like that.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'The champion of my campaign! Hello again.',
+      'Another duel? Just for fun — nothing on it.',
+    ],
+    choices: [
+      { label: 'Just for fun.', to: 'beaten', duel: true },
+      { label: 'Later, Bakura.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'You’re very good, you know. I keep saying it because it keeps being true.',
+      'See you around, {name}.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'See you.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Oh! I won? Sorry — I mean, good game!',
+      'If it helps: you kept attacking into cards you couldn’t see. Sometimes the kindest thing to do to a face-down card is leave it alone for a turn.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'Thanks, Bakura.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! Me? Goodness. I’ll need a bigger figure.',
+      'See you at the towers, {name}. I’ll bring snacks.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Not a finalist. That’s all right — I have a campaign to finish anyway.',
+      'Go and win it, {name}. I’ll paint you with the trophy.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Jaden Yuki, who was on his way back to Duel Academy and took a wrong turn
+ * into somebody else's tournament. Having the time of his life.
+ */
+const JADEN_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Whoa, hey! Another duelist! This city is awesome — everybody’s got a deck.',
+      'Jaden Yuki. I’m from Duel Academy — well, I was on the ferry back to Duel Academy, then I took a wrong turn somewhere, and now there’s a guy on every TV telling me I’m in a tournament. Best wrong turn ever.',
+      'So how about it? You, me, a duel? I’ve got a chip if you want it!',
+    ],
+    choices: [
+      { label: 'Let’s have some fun.', to: 'beaten', duel: true },
+      { label: 'Duel Academy?', to: 'academy' },
+      { label: 'Later, Jaden.', to: null },
+    ],
+  },
+
+  academy: {
+    lines: [
+      'It’s a school for duelling! Dorms by colour — I’m in Slifer Red, which is the one with the worst food and the best people.',
+      'I’m supposed to be studying. I mostly duel. My teachers have opinions about that.',
+    ],
+    choices: [
+      { label: 'Then duel me.', to: 'beaten', duel: true },
+      { label: 'Sounds great.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}! {chips} chips? You’re on fire!',
+      'Mine’s still up for grabs. Come on — let’s make it a good one!',
+    ],
+    choices: [
+      { label: 'Let’s go!', to: 'beaten', duel: true },
+      { label: 'Tell me about the Academy.', to: 'academy' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Aw, man — that was so good! You totally got me!',
+      'Here, the chip’s yours. Now you have to win the whole thing, deal? Otherwise I lost to someone who didn’t, and that’s embarrassing.',
+    ],
+    choices: [
+      { label: 'Again!', to: 'beaten', duel: true },
+      { label: 'Deal.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'Hey, it’s my rival! I decided you’re my rival now.',
+      'Duel again? No chip, just fun. Fun’s the whole point anyway!',
+    ],
+    choices: [
+      { label: 'Let’s go!', to: 'beaten', duel: true },
+      { label: 'Later, Jaden.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again?! Okay, that’s it, I’m studying your deck tonight. Well — tomorrow. Maybe.',
+      'That was awesome, {name}!',
+    ],
+    choices: [
+      { label: 'One more!', to: 'beaten', duel: true },
+      { label: 'See ya.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Yeah! That’s game! Good one though — seriously!',
+      'My heroes only win because they fight together. Whatever your monsters are, play them so they help each other, not one at a time.',
+    ],
+    choices: [
+      { label: 'Run it back!', to: 'won', duel: true },
+      { label: 'Thanks, Jaden.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'I’m in the finals?! No way! Best field trip ever!',
+      'See you at the towers, {name}. Let’s both bring our best!',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Didn’t make the finals. Oh well — I had a blast!',
+      'You go win it, {name}. I’ll be cheering. Loudly.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Bandit Keith, who lives over the tables at Black Crown and plays for money
+ * like the Step Lane pair — twenty down, thirty of his on a win (`FORFEIT` and
+ * `BOUNTY` in `shop.ts`) — so every road to a duel goes through `terms`,
+ * where the figure is said out loud.
+ */
+const KEITH_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Well, look what crawled in off the street. You lost, kid, or you lookin’ to lose?',
+      'Name’s Keith. Bandit Keith, champion of the whole U-S-of-A, and Kaiba’s little tournament is the easiest money I ever saw. Star chips, cash — I take ’em both.',
+      'You want mine, you pay to play. Scared yet?',
+    ],
+    choices: [
+      { label: 'Deal me in.', to: 'terms' },
+      { label: 'You cheat, don’t you?', to: 'cheat' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  terms: {
+    lines: [
+      'Twenty down, right here. You beat me — which you won’t — and you walk with your twenty and thirty of mine. You lose, the twenty’s mine. Fair’s fair.',
+    ],
+    choices: [
+      { label: 'Deal.', to: 'beaten', duel: true },
+      { label: 'Changed my mind.', to: null },
+    ],
+  },
+
+  cheat: {
+    lines: [
+      'Cheat? Me? I just know where every card in this city is. Card sharps call it skill.',
+      'Anyway, the machine shuffles now. Kaiba’s tech. Takes all the fun out of it. So — you playing or what?',
+    ],
+    choices: [
+      { label: 'I’m playing.', to: 'terms' },
+      { label: 'What.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{chips} chips, huh? Somebody’s been busy picking pockets.',
+      'Mine’s still on me, and so’s my price.',
+    ],
+    choices: [
+      { label: 'Deal me in.', to: 'terms' },
+      { label: 'Not now.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Aw, come on! That was luck. Pure dumb luck.',
+      'Fine. Here’s the chip. And the money. Don’t spend it all in one place, kid.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'terms' },
+      { label: 'Thanks, Keith.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You again. You got my chip already — what else you want, my bandana?',
+      'Same price as ever. I want my money back.',
+    ],
+    choices: [
+      { label: 'Deal me in.', to: 'terms' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'How do you keep doing that?',
+      'Get outta here before I start keeping score.',
+    ],
+    choices: [
+      { label: 'One more?', to: 'terms' },
+      { label: 'See ya, Keith.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Ha! Pay up! That twenty’s mine!',
+      'Free lesson: you play scared, you play small. Put your big stuff down and make the other guy deal with it.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'terms' },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! Knew it. America’s champ goes to the big show.',
+      'See ya down there, kid. Bring your wallet.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'No finals. The whole thing’s rigged. Rigged, I tell ya.',
+      'Go on, win it. Just remember who taught you to bet.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Mako Tsunami, son of the sea, a long way from any. Treats a tournament the
+ * way he treats weather.
+ */
+const MAKO_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Ahoy! You have the look of a duelist who has been walking against the tide all day.',
+      'Mako Tsunami, son of the sea. There is no ocean in this city — only towers and trains — but a tournament is a storm, and I have never turned my boat from a storm.',
+      'I carry a star chip. Will you sail against me for it?',
+    ],
+    choices: [
+      { label: 'Set sail.', to: 'beaten', duel: true },
+      { label: 'Son of the sea?', to: 'sea' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  sea: {
+    lines: [
+      'My father was a fisherman. He went out one morning and the sea kept him, and I have been duelling to be worthy of the both of them ever since.',
+      'The sea never lies, friend. Neither does a good duel. That is why I love them both.',
+    ],
+    choices: [
+      { label: 'Then let’s duel.', to: 'beaten', duel: true },
+      { label: 'I’m sorry.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Ahoy, {name}! {chips} chips — a fine catch.',
+      'Mine still swims. Cast your line?',
+    ],
+    choices: [
+      { label: 'Cast away.', to: 'beaten', duel: true },
+      { label: 'Tell me about the sea.', to: 'sea' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Well sailed! You rode that storm like a true captain.',
+      'Take the chip, friend. The tide turns — today it turned for you.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Thank you, Mako.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'My old rival from the harbour — or the station, as it is here.',
+      'Another duel, just for the joy of the waves?',
+    ],
+    choices: [
+      { label: 'Just for joy.', to: 'beaten', duel: true },
+      { label: 'Later, Mako.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again the sea is calm and I am the one overboard!',
+      'Fair winds, {name}.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Fair winds.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Ha! The deep has claimed another!',
+      'Hear an old salt: what is under the surface is always bigger than what is on it. Respect a face-down card.',
+    ],
+    choices: [
+      { label: 'Again!', to: 'won', duel: true },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! Like a wave that rises and does not break!',
+      'I will see you at the towers, {name}. Bring the storm.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'The tide went out on me. It happens to every sailor.',
+      'Go, {name}. Win it. The sea would want you to.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Rex Raptor, loud, sure of himself, and looking for Weevil.
+ */
+const REX_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Hey, you! Yeah, you. You’re looking at the next champion of Domino City, so get a good look.',
+      'Rex Raptor. Dinosaurs — the strongest monsters there ever were. Kaiba handed out chips and I’m keeping mine, unless you think you can take it off a tyrannosaur.',
+      'Well? You duelling or gawking?',
+    ],
+    choices: [
+      { label: 'Duelling.', to: 'beaten', duel: true },
+      { label: 'Seen a guy with bugs?', to: 'weevil' },
+      { label: 'Gawking.', to: null },
+    ],
+  },
+
+  weevil: {
+    lines: [
+      'Weevil?! That little creep is here too? Figures. Where there’s a tournament, there’s a bug crawling around it.',
+      'He cheated me once. Well — he says he didn’t. He did. When I find him, my dinosaurs are gonna step on every one of his beetles.',
+    ],
+    choices: [
+      { label: 'Practise on me first.', to: 'beaten', duel: true },
+      { label: 'Good luck with that.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{chips} chips? Pfft. I’ll have that many by dinner.',
+      'Still want mine? Come and get stomped.',
+    ],
+    choices: [
+      { label: 'Bring it.', to: 'beaten', duel: true },
+      { label: 'Seen Weevil?', to: 'weevil' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'No way! That’s — you — ugh! Fine!',
+      'Take the stupid chip. But I’m telling everybody it was a fluke. A lucky, lucky fluke.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Sure it was.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You. The fluke.',
+      'Rematch. No chips. Just me proving it was a fluke.',
+    ],
+    choices: [
+      { label: 'Rematch.', to: 'beaten', duel: true },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Two flukes?! That’s not even possible!',
+      'Get out of here before I think of something to say.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Bye, Rex.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Ha! Extinct! Totally extinct!',
+      'Here’s a tip, since I’m feeling generous: big monsters win games. Get ’em out early and hit hard. Works for me.',
+    ],
+    choices: [
+      { label: 'Rematch!', to: 'won', duel: true },
+      { label: 'Thanks, Rex.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'Finals! Told you! Told everybody!',
+      'See you at the towers, {name}. And if Weevil’s there, I get first stomp.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I didn’t make it?! This tournament’s got it in for dinosaurs.',
+      'Whatever. You win it. Just make sure Weevil doesn’t.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Weevil Underwood, patient, sneaky, very pleased with himself, and hiding
+ * from Rex in the shrine's trees.
+ */
+const WEEVIL_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Hee hee hee… oh, don’t mind me. I was just admiring the trees. Such lovely places for little things to hide.',
+      'Weevil Underwood, regional champion and future owner of a great many star chips. Insects, you see — small, patient, everywhere. Exactly like me.',
+      'A duel? Oh, I’d love to. Step a little closer.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Rex is looking for you.', to: 'rex' },
+      { label: 'No thanks.', to: null },
+    ],
+  },
+
+  rex: {
+    lines: [
+      'Rex? Rex Raptor? Hee hee — let him look. Dinosaurs are big and loud and very, very extinct.',
+      'He still thinks I cheated him. I merely… planned ahead. Now, are we playing, or would you rather go and fetch him for me?',
+    ],
+    choices: [
+      { label: 'Playing.', to: 'beaten', duel: true },
+      { label: 'I’ll leave you to it.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Hee hee, {name}. {chips} chips — you’ve been busy. So have my bugs.',
+      'Mine is right here. Come and take it — if you can find it.',
+    ],
+    choices: [
+      { label: 'Found it.', to: 'beaten', duel: true },
+      { label: 'About Rex…', to: 'rex' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'What?! That wasn’t — you couldn’t have — hmph!',
+      'Take it, then. Enjoy it while it lasts. Bugs have long memories. Well — some bugs.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'I will.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You. You took my chip. I’ve been thinking about that a great deal.',
+      'Another duel? Nothing to win. Only… lessons. Hee hee.',
+    ],
+    choices: [
+      { label: 'Teach me.', to: 'beaten', duel: true },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again? This is unacceptable. I shall have to plan further ahead.',
+      'Much further.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'beaten', duel: true },
+      { label: 'Good luck with that.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Hee hee hee! Squashed! Like a— well, not like a bug. Bugs win.',
+      'A little wisdom, free of charge: never trust the card your opponent leaves face-down on purpose. It’s always a trap. Always.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'won', duel: true },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! Hee hee — and not a dinosaur in sight, I hope.',
+      'See you at the towers, {name}. Watch where you step.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I didn’t make the finals? Impossible. Someone must have cheated. Someone other than me.',
+      'Go on, win it. I’ll be… watching. From the trees.',
+    ],
+    choices: [],
+  },
+};
+
 /**
  * The cast, built and waiting to be placed — nobody, now.
  *
@@ -3492,6 +4627,149 @@ export const WORLD_NPCS: WorldNpc[] = [
     start: 'greet',
     duel: { opponentId: 'mai', won: 'beaten', lost: 'won' },
     script: MAI_SCRIPT,
+  },
+  {
+    id: 'pegasus',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.pegasus.home.area,
+    character: { name: 'Maximillion Pegasus', model: 'pegasus', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.pegasus.home.x,
+    z: TRAVELLER_BY_ID.pegasus.home.z,
+    facing: TRAVELLER_BY_ID.pegasus.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'pegasus', won: 'beaten', lost: 'won' },
+    script: PEGASUS_SCRIPT,
+  },
+  {
+    id: 'ishizu',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.ishizu.home.area,
+    character: { name: 'Ishizu Ishtar', model: 'ishizu', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.ishizu.home.x,
+    z: TRAVELLER_BY_ID.ishizu.home.z,
+    facing: TRAVELLER_BY_ID.ishizu.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'ishizu', won: 'beaten', lost: 'won' },
+    script: ISHIZU_SCRIPT,
+  },
+  {
+    id: 'priestseto',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.priestseto.home.area,
+    character: { name: 'Priest Seto', model: 'priestseto', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.priestseto.home.x,
+    z: TRAVELLER_BY_ID.priestseto.home.z,
+    facing: TRAVELLER_BY_ID.priestseto.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'priestseto', won: 'beaten', lost: 'won' },
+    script: PRIEST_SETO_SCRIPT,
+  },
+  {
+    id: 'yamimarik',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.yamimarik.home.area,
+    character: { name: 'Yami Marik', model: 'yamimarik', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.yamimarik.home.x,
+    z: TRAVELLER_BY_ID.yamimarik.home.z,
+    facing: TRAVELLER_BY_ID.yamimarik.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'yamimarik', won: 'beaten', lost: 'won' },
+    script: YAMI_MARIK_SCRIPT,
+  },
+  {
+    id: 'odion',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.odion.home.area,
+    character: { name: 'Odion', model: 'odion', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.odion.home.x,
+    z: TRAVELLER_BY_ID.odion.home.z,
+    facing: TRAVELLER_BY_ID.odion.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'odion', won: 'beaten', lost: 'won' },
+    script: ODION_SCRIPT,
+  },
+  {
+    id: 'bakura',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.bakura.home.area,
+    character: { name: 'Bakura Ryou', model: 'bakura', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.bakura.home.x,
+    z: TRAVELLER_BY_ID.bakura.home.z,
+    facing: TRAVELLER_BY_ID.bakura.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'bakura', won: 'beaten', lost: 'won' },
+    script: BAKURA_SCRIPT,
+  },
+  {
+    id: 'jaden',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.jaden.home.area,
+    character: { name: 'Jaden Yuki', model: 'jaden', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.jaden.home.x,
+    z: TRAVELLER_BY_ID.jaden.home.z,
+    facing: TRAVELLER_BY_ID.jaden.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'jaden', won: 'beaten', lost: 'won' },
+    script: JADEN_SCRIPT,
+  },
+  {
+    id: 'keith',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.keith.home.area,
+    character: { name: 'Bandit Keith', model: 'keith', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.keith.home.x,
+    z: TRAVELLER_BY_ID.keith.home.z,
+    facing: TRAVELLER_BY_ID.keith.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'keith', won: 'beaten', lost: 'won' },
+    script: KEITH_SCRIPT,
+  },
+  {
+    id: 'mako',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.mako.home.area,
+    character: { name: 'Mako Tsunami', model: 'mako', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.mako.home.x,
+    z: TRAVELLER_BY_ID.mako.home.z,
+    facing: TRAVELLER_BY_ID.mako.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'mako', won: 'beaten', lost: 'won' },
+    script: MAKO_SCRIPT,
+  },
+  {
+    id: 'rex',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.rex.home.area,
+    character: { name: 'Rex Raptor', model: 'rex', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.rex.home.x,
+    z: TRAVELLER_BY_ID.rex.home.z,
+    facing: TRAVELLER_BY_ID.rex.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'rex', won: 'beaten', lost: 'won' },
+    script: REX_SCRIPT,
+  },
+  {
+    id: 'weevil',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.weevil.home.area,
+    character: { name: 'Weevil Underwood', model: 'weevil', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.weevil.home.x,
+    z: TRAVELLER_BY_ID.weevil.home.z,
+    facing: TRAVELLER_BY_ID.weevil.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'weevil', won: 'beaten', lost: 'won' },
+    script: WEEVIL_SCRIPT,
   },
   {
     /*

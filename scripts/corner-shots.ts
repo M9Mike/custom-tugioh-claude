@@ -296,21 +296,15 @@ const SHOTS: Shot[] = [
 /**
  * Look up.
  *
- * The camera rests at a pitch of 0.28, which is a third of the frame given to
- * the pavement — fine for walking and useless for this, because every joint
- * Mike photographed was above head height. Dragging is how a player raises it,
- * so the check drags: a hundred and thirty pixels puts `camPitch` on its upper
- * stop and the frame on the roofline, where the holes are.
+ * The camera rests at a pitch made for walking, which is useless for this,
+ * because every joint Mike photographed was above head height. A player used
+ * to raise it by dragging; the camera follows now and cannot be dragged, so
+ * the check holds the pitch through the dev hook instead — the old drag's
+ * upper stop, and the frame on the roofline, where the holes are.
  */
 async function lookUp(page: Page) {
-  const size = page.viewportSize();
-  const cx = (size?.width ?? 1400) / 2;
-  const cy = (size?.height ?? 900) / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  for (let i = 1; i <= 10; i++) await page.mouse.move(cx, cy - i * 13);
-  await page.mouse.up();
-  await page.waitForTimeout(500);
+  await page.evaluate(() => (window as unknown as { __look?: (p: number | null) => void }).__look?.(0.85));
+  await page.waitForTimeout(1500);
 }
 
 /** Everybody out of the shot: this is about the world, not about who is in it. */

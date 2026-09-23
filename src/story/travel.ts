@@ -281,18 +281,26 @@ export function stopsIn(id: AreaId): Stop[] {
  * How many travellers an area holds at once.
  *
  * One in the places a second would crowd — the arcade is nine metres across,
- * the lane four and a half — and up to three in the ones a hundred metres wide.
+ * the lane four and a half — and more in the ones a hundred metres wide.
+ *
+ * Those were two and three when eleven people travelled. At twenty-two the
+ * same numbers turned the city into a queue: a traveller who finds nowhere
+ * with room goes home, and 42% of days ended before six in the evening, which
+ * is a tournament nobody can find. With the plaza holding five, the school and
+ * the towers four and everywhere else of any size three, it is 15% — and the
+ * eight metres between people stopped, and the stops' own distance from every
+ * home, are kept exactly as they were (`npm run travel`).
  */
 export const CAPACITY: Record<string, number> = {
   'market-row': 1,
   'step-lane': 1,
-  'domino-shrine': 2,
-  'black-crown': 2,
-  'old-cemetery': 2,
-  'domino-station': 2,
-  'station-plaza': 3,
-  'domino-high': 3,
-  'central-towers': 3,
+  'domino-shrine': 3,
+  'black-crown': 3,
+  'old-cemetery': 3,
+  'domino-station': 3,
+  'station-plaza': 5,
+  'domino-high': 4,
+  'central-towers': 4,
 };
 
 /** Where somebody is at night, and where their day begins and ends. */
@@ -336,6 +344,26 @@ export const TRAVELLERS: Traveller[] = [
   { id: 'joey', home: { area: 'domino-station', x: -14, z: 25, facing: Math.PI }, speed: 1.46 },
   { id: 'mai', home: { area: 'station-plaza', x: 14, z: -14, facing: -Math.PI / 4 }, speed: 1.77 },
   { id: 'yami', home: { area: 'black-crown', x: -6, z: -6, facing: Math.PI / 2 }, speed: 1.41 },
+  /*
+   * The rest of the main menu. Homes found, not placed: `scripts/travel-homes.ts`
+   * searched each area for standable ground a traveller can walk to from a
+   * gate, ten metres clear of every stop and every other home and nine of
+   * every gate, nearest the middle of where that area's stops are. The areas
+   * are chosen: the gambler lives over the games, the priest at the shrine,
+   * Marik and his guard in the cemetery, the two with money in the towers.
+   * Step Lane had no room left, so Bakura keeps his dice at Black Crown too.
+   */
+  { id: 'pegasus', home: { area: 'central-towers', x: 16, z: 34, facing: 2.79 }, speed: 1.75 },
+  { id: 'ishizu', home: { area: 'central-towers', x: 6, z: 34, facing: 2.61 }, speed: 1.75 },
+  { id: 'priestseto', home: { area: 'domino-shrine', x: -2, z: 9, facing: -1.93 }, speed: 1.7 },
+  { id: 'yamimarik', home: { area: 'old-cemetery', x: -4, z: 13, facing: -2.18 }, speed: 1.65 },
+  { id: 'odion', home: { area: 'old-cemetery', x: -10, z: 21, facing: -2.61 }, speed: 2.0 },
+  { id: 'bakura', home: { area: 'black-crown', x: -10, z: 11, facing: 2.36 }, speed: 1.8 },
+  { id: 'jaden', home: { area: 'domino-high', x: -9, z: -18, facing: -2.0 }, speed: 1.75 },
+  { id: 'keith', home: { area: 'black-crown', x: -18, z: 5, facing: 2.88 }, speed: 1.85 },
+  { id: 'mako', home: { area: 'domino-station', x: 1, z: 11, facing: 0.89 }, speed: 1.95 },
+  { id: 'rex', home: { area: 'station-plaza', x: 1, z: 3, facing: -0.1 }, speed: 1.5 },
+  { id: 'weevil', home: { area: 'domino-shrine', x: 3, z: 0, facing: 2.71 }, speed: 1.3 },
 ];
 
 export const TRAVELLER_BY_ID: Record<string, Traveller> = Object.fromEntries(TRAVELLERS.map((t) => [t.id, t]));
@@ -799,8 +827,15 @@ export function planFor(day: number): Record<string, Segment[]> {
        * been promised the stop beside it for the next half minute, in which
        * case they cross to another stop in the same area, and if there is
        * none they go home early rather than crowd anybody.
+       *
+       * "Still theirs" is the area as well as the stop. Staying on is a longer
+       * claim on the area than the one they were let in with, and in the
+       * meantime somebody else may have been let in on the strength of their
+       * leaving — with eleven travellers that never happened, and with
+       * twenty-two it put Bandit Keith and Yugi in a Market Row that holds one.
        */
       const until = w.time + 30;
+      const stayOn = !w.held || roomIn(w.area, w.held.t1, until + 60, w.t.id);
       const segs = plan[w.t.id];
       const tail = segs[segs.length - 1];
       const here = STOPS.find((x) => `s:${x.id}` === w.node);
@@ -810,7 +845,7 @@ export function planFor(day: number): Record<string, Segment[]> {
         w.time = until;
         continue;
       }
-      if (here && tail && tail.kind === 'wait' && Math.abs(tail.t1 - w.time) < 1e-6 && stopFree(w.area, here, w.time, until, w.t.id)) {
+      if (here && tail && tail.kind === 'wait' && Math.abs(tail.t1 - w.time) < 1e-6 && stayOn && stopFree(w.area, here, w.time, until, w.t.id)) {
         tail.t1 = until;
         const h = (atStop.get(tail.stop) ?? []).find((x) => x.id === w.t.id && Math.abs(x.t1 - w.time) < 1e-6);
         if (h) h.t1 = until;
@@ -826,6 +861,7 @@ export function planFor(day: number): Record<string, Segment[]> {
         const arrive = w.time + move.len / speed;
         const leave = arrive + DWELL_MIN * 0.7;
         if (leave + homeCost(w.area, `s:${other.id}`, w.t) / speed > HOME_BY) continue;
+        if (w.held && !roomIn(w.area, w.held.t1, leave + 60, w.t.id)) break;
         if (!stopFree(w.area, other, arrive, leave, w.t.id)) continue;
         push(w.t.id, { kind: 'walk', t0: w.time, t1: arrive, area: w.area, from: w.node, to: `s:${other.id}`, speed });
         push(w.t.id, { kind: 'wait', t0: arrive, t1: leave, area: w.area, stop: other.id });

@@ -211,6 +211,18 @@ const AREA_NAMES: Box[] = LABELLED.map((p) => {
 const MARK = 10;
 
 /**
+ * What the map calls somebody whose first name will not do: Maximillion is not
+ * what anybody calls Pegasus, "Bandit" is a title, and the city has two Yamis.
+ * Everybody else goes by their first name, and Kaiba by his last.
+ */
+const SHORT: Record<string, string> = {
+  pegasus: 'Pegasus',
+  keith: 'Keith',
+  yamimarik: 'Marik',
+  priestseto: 'Priest Seto',
+};
+
+/**
  * Where each duelist's name goes: beside the dot, and if that is taken, on
  * the other side, above or below it, or off one of its corners.
  *
@@ -249,7 +261,11 @@ function placeNames(marks: { key: string; x: number; z: number; label: string; r
       box: { x0: m.x - w / 2, x1: m.x + w / 2, z0: m.z + dz - 9, z1: m.z + dz + 2 },
     });
     const tries = [beside(0, 1), beside(0, -1), stacked(-8), stacked(16), beside(-10, 1), beside(-10, -1), beside(10, 1), beside(10, -1)];
-    const cost = (b: Box) => [...taken, ...dots].reduce((sum, t) => sum + overlap(b, t), 0);
+    /* Off the edge of the plan counts too, and counts heavily: a name half
+       outside the frame reads as "OLYTA". */
+    const outside = (b: Box) =>
+      (b.x1 - b.x0) * (b.z1 - b.z0) - overlap(b, { x0: VIEW.x0, x1: VIEW.x1, z0: VIEW.z0, z1: VIEW.z1 });
+    const cost = (b: Box) => [...taken, ...dots].reduce((sum, t) => sum + overlap(b, t), 0) + outside(b) * 10;
     const clear = tries.find((t) => cost(t.box) === 0);
     if (!clear && m.rank >= 3) {
       out.set(m.key, null);
@@ -300,8 +316,7 @@ export default function WorldMap({ at, duelists = [], onGo, onClose }: WorldMapP
   const marks = useMemo(() => {
     const list = duelists.map((d) => {
       const w = toWorld(areaById(d.area), d.x, d.z);
-      /* Kaiba is Kaiba; everybody else goes by their first name. */
-      const label = d.host ? d.name.split(' ').slice(-1)[0] : d.name.split(' ')[0];
+      const label = SHORT[d.id] ?? (d.host ? d.name.split(' ').slice(-1)[0] : d.name.split(' ')[0]);
       return { ...d, key: d.id, x: w.x, z: w.z, label, rank: d.host ? 0 : d.finalist ? 1 : d.chip ? 3 : 2 };
     });
     const names = placeNames(list, you);

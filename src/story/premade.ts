@@ -428,15 +428,21 @@ export const DUELIST_MODELS: DuelistModel[] = [
     npcOnly: true,
   },
   {
+    /*
+     * Mai, resculpted — the same way Sandra was: a far better model of the same
+     * person, a UniRig export like the rest of the main-menu cast below, and her
+     * own outgoing clips as the donor, because nobody else's walk is hers.
+     */
     id: 'mai',
     label: 'Mai Valentine',
     note: 'Purple jacket, blonde',
     file: '/models/cast/mai.glb',
-    bytes: 5607352,
+    bytes: 5717540,
     height: 1.72,
-    /* Measured off her own clips, scaled to the height she is rendered at. */
-    walkSpeed: 1.88,
-    runSpeed: 4.16,
+    /* Measured off the shipped file by `gait.py` at the 1.70 m she is modelled
+       at, scaled to the height she is rendered at. */
+    walkSpeed: 1.97,
+    runSpeed: 4.48,
     tintSlots: [],
     npcOnly: true,
   },
@@ -697,6 +703,178 @@ export const DUELIST_MODELS: DuelistModel[] = [
     height: 1.7,
     walkSpeed: 1.92,
     runSpeed: 4.56,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    /*
+     * The rest of the main menu, who arrive with the tournament.
+     *
+     * Mike's twelve (Mai above is the twelfth): UniRig exports every one, 32 to
+     * 85 bones fitted to their own bodies, all modelled at exactly 1.70 m, and
+     * not one frame of animation between them — the same shape of file as the
+     * Amazons, and in through the same door. Idle, Walk and Run by
+     * `retarget.py`, Stretch, LookAround and Settle by `make-gesture.py`, out
+     * through `npm run rigged`.
+     *
+     * Three things were new.
+     *
+     * **They stand in a wide A-pose.** The Amazons were modelled with their
+     * arms most of the way down, like the donors, and a transfer of each
+     * bone's change from rest could not tell; these came in forty-odd degrees
+     * out and walked the city holding them there. `retarget.py --align-arms`
+     * turns each arm to the donor's at rest before the clip goes on.
+     *
+     * **Their skeletons have more in them.** Capes off the chest (Priest Seto,
+     * Yami Marik), hips that fork twice (Rex, Odion), a knee in two bones
+     * (Ishizu), a shoulder pad and a forearm twist (Priest Seto) — `rigshape`
+     * reads all of them now, and reads every rig before them exactly as it did.
+     *
+     * **Yami Marik holds the Rod.** He is modelled with it across his chest and
+     * his hair weighs on that hand, so that arm is `--hold`: it rides the body
+     * as sculpted and only the other one swings, and he has no Stretch.
+     *
+     * Tony is the donor for the men — Robert's stride carries Robert's arms,
+     * which stand off a body built like a door, and on anybody slighter it
+     * read as a man carrying invisible shopping — and Sarah is Ishizu's.
+     *
+     * Textures at 2048 rather than 4096, on purpose and against the comment in
+     * `import-rigged`: that argument was about file size, and this is about
+     * memory. A decoded 4096² is sixty-seven megabytes on the GPU; the
+     * tournament puts twenty-odd of these people in the city at once, and a
+     * busy area on a phone is five or six of them in one scene.
+     *
+     * Heights are the characters' own, and the speeds are `gait.py`'s on the
+     * shipped file at 1.70 m, scaled to them.
+     */
+    id: 'pegasus',
+    label: 'Maximillion Pegasus',
+    note: 'Red suit, the Millennium Eye',
+    file: '/models/cast/pegasus.glb',
+    bytes: 3729556,
+    height: 1.85,
+    walkSpeed: 2.14,
+    runSpeed: 4.69,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'ishizu',
+    label: 'Ishizu Ishtar',
+    note: 'White robes, the Millennium Necklace',
+    file: '/models/cast/ishizu.glb',
+    bytes: 4721900,
+    height: 1.72,
+    walkSpeed: 2.08,
+    runSpeed: 4.77,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'priestseto',
+    label: 'Priest Seto',
+    note: 'The high priest, a cape and a rod',
+    file: '/models/cast/priestseto.glb',
+    bytes: 3249736,
+    height: 1.86,
+    walkSpeed: 2.01,
+    runSpeed: 4.68,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'yamimarik',
+    label: 'Yami Marik',
+    note: 'Violet cape, the Millennium Rod',
+    file: '/models/cast/yamimarik.glb',
+    bytes: 3509608,
+    height: 1.8,
+    walkSpeed: 1.95,
+    runSpeed: 4.56,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'odion',
+    label: 'Odion',
+    note: 'Long coat, the Ishtars\u2019 guard',
+    file: '/models/cast/odion.glb',
+    bytes: 4495112,
+    height: 1.93,
+    walkSpeed: 2.57,
+    runSpeed: 5.89,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'bakura',
+    label: 'Bakura Ryou',
+    note: 'Striped shirt, white hair',
+    file: '/models/cast/bakura.glb',
+    bytes: 3095392,
+    height: 1.73,
+    walkSpeed: 2.16,
+    runSpeed: 4.29,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'jaden',
+    label: 'Jaden Yuki',
+    note: 'Slifer Red blazer',
+    file: '/models/cast/jaden.glb',
+    bytes: 4636624,
+    height: 1.7,
+    walkSpeed: 1.91,
+    runSpeed: 4.0,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'keith',
+    label: 'Bandit Keith',
+    note: 'Bandana and studded vest',
+    file: '/models/cast/keith.glb',
+    bytes: 4898704,
+    height: 1.85,
+    walkSpeed: 2.06,
+    runSpeed: 4.62,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'mako',
+    label: 'Mako Tsunami',
+    note: 'Headband, the sea',
+    file: '/models/cast/mako.glb',
+    bytes: 5213216,
+    height: 1.8,
+    walkSpeed: 2.21,
+    runSpeed: 4.78,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'rex',
+    label: 'Rex Raptor',
+    note: 'Red cap, dinosaurs',
+    file: '/models/cast/rex.glb',
+    bytes: 4375904,
+    height: 1.68,
+    walkSpeed: 1.66,
+    runSpeed: 3.84,
+    tintSlots: [],
+    npcOnly: true,
+  },
+  {
+    id: 'weevil',
+    label: 'Weevil Underwood',
+    note: 'Glasses, insects',
+    file: '/models/cast/weevil.glb',
+    bytes: 5732628,
+    height: 1.55,
+    walkSpeed: 1.44,
+    runSpeed: 3.32,
     tintSlots: [],
     npcOnly: true,
   },

@@ -93,18 +93,36 @@ export const BOUNTY: Record<string, number> = {
   kaela: 15,
   seraphina: 10,
   /*
-   * The four who came for the tournament, and the top of the market.
+   * Everybody who came for the tournament, and the top of the market.
    *
-   * Twenty for Joey and Mai, twenty-five for Yugi and thirty for Yami — the
-   * order the ratings put their decks in (`ENTRANTS` in `tournament.ts`), and
-   * the order the city would put them in anyway. They pay a pack like
-   * everybody else; the money is what makes going back for a second win worth
-   * it after their chip is already in your pocket.
+   * Priced by how their decks measured against the whole field (`ENTRANTS` in
+   * `tournament.ts`): thirty-five for Jaden, who beat everybody; thirty for
+   * Pegasus and Yami; twenty-five for the band around 1550; twenty for the
+   * decks a shade under the middle, and fifteen for the ones below it — which
+   * is now Yugi and Joey, whose decks came out under the field's average once
+   * the rest of the main menu arrived. They pay a pack like everybody else; the
+   * money is what makes going back for a second win worth it after the chip is
+   * already in your pocket.
+   *
+   * Keith is priced by Keith: thirty of his against twenty of yours
+   * (`FORFEIT`), because that is what he says across the table and a hustler's
+   * odds are the whole of his character.
    */
-  joey: 20,
-  mai: 20,
-  yugi: 25,
+  jaden: 35,
+  pegasus: 30,
   yami: 30,
+  priestseto: 25,
+  mai: 25,
+  yamimarik: 25,
+  rex: 25,
+  bakura: 25,
+  odion: 20,
+  ishizu: 20,
+  mako: 20,
+  keith: 30,
+  weevil: 15,
+  yugi: 15,
+  joey: 15,
 };
 
 /**
@@ -145,6 +163,9 @@ export const FORFEIT: Record<string, number> = {
      route will not seat a duel somebody cannot cover. */
   kaela: 20,
   seraphina: 20,
+  /* Twenty down at Bandit Keith's table, and he says so before every duel —
+     see his `terms`. */
+  keith: 20,
 };
 
 /** What losing to this duelist costs. Zero for anyone not on the list. */

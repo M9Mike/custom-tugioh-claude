@@ -59,10 +59,11 @@ export const YOU = '@you';
 /**
  * Everybody in the tournament, and how strong their deck plays.
  *
- * Thirteen: the nine who were already in the city, and the four who arrive
- * with it — Yugi, Yami, Joey and Mai, who were built and waiting for exactly
- * this. Grandpa keeps his shop and is not entered; Ash is not from here and the
- * tournament is not his. Kaiba runs it.
+ * Twenty-four: the nine who were already in the city, and the fifteen who
+ * arrive with it — the whole of the main menu but its host: Yugi, Yami, Joey
+ * and Mai, and after them Pegasus, Ishizu, Priest Seto, Yami Marik, Odion,
+ * Bakura, Jaden, Keith, Mako, Rex and Weevil. Grandpa keeps his shop and is not
+ * entered; Ash is not from here and the tournament is not his. Kaiba runs it.
  *
  * `rating` is on the Elo scale and decides the duels nobody watches: a
  * four-hundred-point gap is ten wins to one. Measured, not typed — played out
@@ -78,29 +79,46 @@ export interface Entrant {
 }
 
 export const ENTRANTS: Entrant[] = [
-  /* Measured 2026-09-22: eight games a pair, every pair, 624 duels, real AI on
-     both seats (`scripts/tournament-ratings.ts`). Won/played in brackets. */
-  { id: 'yami', rating: 1791 }, // 82/96
-  { id: 'seraphina', rating: 1677 }, // 72/96
-  { id: 'isha', rating: 1608 }, // 64/95
-  { id: 'kaela', rating: 1591 }, // 63/96
-  { id: 'mai', rating: 1582 }, // 62/96
-  { id: 'hippolyta', rating: 1564 }, // 60/96
-  { id: 'yugi', rating: 1510 }, // 54/96
-  { id: 'joey', rating: 1428 }, // 45/96
-  { id: 'panthesilea', rating: 1381 }, // 40/96
-  { id: 'antiope', rating: 1342 }, // 36/95
-  { id: 'tina', rating: 1340 }, // 36/96
+  /* Measured 2026-09-23: eight games a pair, every pair, 2,208 duels, real AI
+     on both seats (`scripts/tournament-ratings.ts`), the field's mean pinned at
+     1400. Won/played in brackets. Twenty-four decks is a stronger field than
+     thirteen, so everybody who was here before measures lower than they did
+     against each other alone — Yami was 1791 in a room without Jaden in it. */
+  { id: 'jaden', rating: 1785 }, // 160/184
+  { id: 'pegasus', rating: 1630 }, // 135/184
+  { id: 'yami', rating: 1600 }, // 129/184
+  { id: 'priestseto', rating: 1556 }, // 119/183
+  { id: 'seraphina', rating: 1552 }, // 119/184
+  { id: 'mai', rating: 1548 }, // 118/184
+  { id: 'yamimarik', rating: 1548 }, // 118/184
+  { id: 'rex', rating: 1511 }, // 110/184
+  { id: 'bakura', rating: 1507 }, // 109/184
+  { id: 'kaela', rating: 1498 }, // 107/184
+  { id: 'isha', rating: 1489 }, // 105/184
+  { id: 'odion', rating: 1480 }, // 103/184
+  { id: 'ishizu', rating: 1458 }, // 98/184
+  { id: 'keith', rating: 1457 }, // 97/183
+  { id: 'hippolyta', rating: 1441 }, // 94/184
+  { id: 'mako', rating: 1432 }, // 92/184
+  { id: 'weevil', rating: 1391 }, // 83/184
+  { id: 'yugi', rating: 1382 }, // 81/184
+  { id: 'joey', rating: 1309 }, // 66/184
+  { id: 'panthesilea', rating: 1305 }, // 65/183
+  { id: 'antiope', rating: 1187 }, // 45/184
+  { id: 'tina', rating: 1152 }, // 40/183
   /* The street's two, who are there to be beaten first and are. */
-  { id: 'sarah', rating: 748, stays: true }, // 6/96
-  { id: 'tony', rating: 640, stays: true }, // 3/96
+  { id: 'sarah', rating: 756, stays: true }, // 9/184
+  { id: 'tony', rating: 625, stays: true }, // 4/184
 ];
 
 export const ENTRANT_IDS = new Set(ENTRANTS.map((e) => e.id));
 const RATING = new Map(ENTRANTS.map((e) => [e.id, e.rating]));
 
-/** The four who only exist in the city once the tournament does. */
-export const ARRIVALS = new Set(['yugi', 'yami', 'joey', 'mai']);
+/** The fifteen who only exist in the city once the tournament does. */
+export const ARRIVALS = new Set([
+  'yugi', 'yami', 'joey', 'mai',
+  'pegasus', 'ishizu', 'priestseto', 'yamimarik', 'odion', 'bakura', 'jaden', 'keith', 'mako', 'rex', 'weevil',
+]);
 
 /** Whether a duelist is in the tournament at all. */
 export function isEntrant(id: string): boolean {
