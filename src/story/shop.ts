@@ -92,6 +92,19 @@ export const BOUNTY: Record<string, number> = {
    */
   kaela: 15,
   seraphina: 10,
+  /*
+   * The four who came for the tournament, and the top of the market.
+   *
+   * Twenty for Joey and Mai, twenty-five for Yugi and thirty for Yami — the
+   * order the ratings put their decks in (`ENTRANTS` in `tournament.ts`), and
+   * the order the city would put them in anyway. They pay a pack like
+   * everybody else; the money is what makes going back for a second win worth
+   * it after their chip is already in your pocket.
+   */
+  joey: 20,
+  mai: 20,
+  yugi: 25,
+  yami: 30,
 };
 
 /**

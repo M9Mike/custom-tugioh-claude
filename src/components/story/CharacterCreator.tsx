@@ -568,7 +568,6 @@ export default function CharacterCreator({ username, onConfirm, onBack }: Props)
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
           <div>
             <h1 className="font-display text-lg leading-none text-brassbright">Make your duelist</h1>
-            <p className="mt-1 text-[10px] uppercase tracking-widest text-ptextdim">Drag to turn · pinch to zoom · two fingers to slide</p>
           </div>
           {/* The Body / Face framing toggle used to live here and is gone.
               It existed to inspect a face the booth could edit; these models

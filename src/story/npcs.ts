@@ -29,7 +29,8 @@ import type { AreaId } from './areas';
 import type { PremadeCharacter, RepaintRule } from './premade';
 import type { AccessorySpec } from '@/components/story/accessories';
 import { ASH_HAUNTS, ashWhereabouts, type Haunt } from './ash';
-import { tournamentOpen } from './tournament';
+import { holdsChip, isEntrant, isFinalist, phaseOf, tournamentOpen, type TournamentState } from './tournament';
+import { HOST_SPOT, TRAVELLER_BY_ID } from './travel';
 
 export interface DialogueChoice {
   /** What the player says. */
@@ -226,6 +227,14 @@ export interface WorldNpc {
    * talk to is a worse idea than one who never moves.
    */
   roam?: RoamRoute;
+  /**
+   * Somebody who is only in the city once the tournament is.
+   *
+   * The four who came for it — and Kaiba, who is running it — are not placed
+   * before his broadcast has played for this player, and are from then on.
+   * Absent on everybody who was here first.
+   */
+  arrives?: 'tournament';
   /** Which area they stand in. */
   area: AreaId;
   /** Where they stand, in that area's metres — the first point of a `roam`. */
@@ -238,18 +247,27 @@ export interface WorldNpc {
   /**
    * Which node their script opens on the first time you meet them.
    *
-   * Two more are read by name rather than by field, because they are the same
-   * decision three times over and sixteen records do not need three lines each
-   * to say it — `openingNode` is the whole rule:
+   * The rest are read by name rather than by field, because they are the same
+   * decision over and over and twenty records do not need a line each to say
+   * it — `openingNode` is the whole rule:
    *
    * - **`again`** is the short version, once you have been introduced. A scene
    *   replayed every time you walk past is a scene the player taps through.
-   * - **`ready`** is what they say once the player is carrying
-   *   `TOURNAMENT_CARDS`, which is the only thing in the world that changes
-   *   what anybody says without a duel happening first.
+   * - **`meet`** is the first meeting once the tournament is running, for
+   *   anybody whose own `start` is tied to the place they used to stand —
+   *   they walk the city now, and "mind the third step" is a line for the
+   *   steps.
+   * - **`ready`** is what they say once the tournament is running and their
+   *   star chip is still on the table.
+   * - **`chipped`**, once it is not — the player holds it.
+   * - **`chip`** is where the conversation resumes after the win that took it,
+   *   instead of their ordinary `beaten`.
+   * - **`finalist`**, **`out`** and **`finals`** once the finals are set: the
+   *   three who went through, everybody who did not, and Kaiba.
    *
-   * Either may be missing and the conversation simply falls back — Ash has
-   * neither, deliberately: he is not from here and the tournament is not his.
+   * Any of them may be missing and the conversation simply falls back — Ash
+   * has none of the tournament's, deliberately: he is not from here and the
+   * tournament is not his.
    */
   start: string;
   /**
@@ -422,8 +440,8 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
      the one who gets to say it first if the player has been listening. */
   ready: {
     lines: [
-      'Ninety-nine. Well now.',
-      'Then you are in it, and there is nothing further I can teach you that losing to me will not teach you faster. Go when you are ready — the hall is not going anywhere and neither am I.',
+      'So it is young Kaiba’s tournament. I might have known — that boy has never done anything quietly in his life.',
+      'Go on, then. Ten chips, and he will have to shake your hand at the bottom of those steps. I would pay good money to see his face.',
     ],
     choices: [
       { label: 'One more against you first.', to: 'offer' },
@@ -536,29 +554,330 @@ const GRANDPA_SCRIPT: Record<string, DialogueNode> = {
  * rather than as still.
  */
 
-/**
- * A whole character in the little each of them says for now.
- *
- * Three openings and no replies: what they say the first time, the shorter
- * thing after that, and the one line they have been saving for the day the
- * player can walk into the hall — see `openingNode`. `choices: []` is what
- * makes each of them repeat, and a character with nothing to answer is better
- * with three states than with one, because the three are how you can tell the
- * world has moved since you last came past.
- */
-const greeting = (first: string[], again: string[], ready: string[]): Record<string, DialogueNode> => ({
-  greet: { lines: first, choices: [] },
-  again: { lines: again, choices: [] },
-  ready: { lines: ready, choices: [] },
-});
 
 /**
- * Mai, who is the first person out here you can actually play.
+ * Yugi, who arrives with the tournament and is the kindest person in it.
+ *
+ * He talks the way he is drawn: earnest, quick to be pleased for somebody else,
+ * and no good at all at pretending a duel does not matter to him. He is the one
+ * who tells you the map shows where everybody is, because he is the one who
+ * would think you might not know.
+ */
+const YUGI_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Oh — hi! I’m Yugi. You’re the one Grandpa keeps talking about, aren’t you?',
+      'So you made it into the tournament too. I thought you would. Kaiba’s put every one of us out in the city — you’ve probably seen people walking past with that look, like they’re counting chips in their heads.',
+      'I’ve got a star chip with my name on it, same as everybody. If you want it, I’d really like to see how you play for it.',
+    ],
+    choices: [
+      { label: 'Let’s duel, Yugi.', to: 'beaten', duel: true },
+      { label: 'How are you finding it?', to: 'city' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  city: {
+    lines: [
+      'Honestly? I keep getting lost. The station and the plaza I know, and the school, obviously. The towers are a maze.',
+      'Everyone’s out there somewhere. Check your map — the duel disk shows where they all are. Joey’s usually wherever the food is.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Thanks, Yugi.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      'Hi, {name}! {chips} chips now? That’s great.',
+      'Mine’s still here if you want to try for it. No pressure — but I’d like that.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'beaten', duel: true },
+      { label: 'Where is everyone?', to: 'city' },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'You did it! That was a really good duel.',
+      'Here — my star chip. It’s yours now. Don’t lose it before the finals, okay?',
+    ],
+    choices: [
+      { label: 'Again, just for fun?', to: 'beaten', duel: true },
+      { label: 'Thanks, Yugi.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'Hey, {name}. You’ve got my chip already — {chips} of ten, right? Keep going.',
+      'We can still duel if you want. Just for the fun of it.',
+    ],
+    choices: [
+      { label: 'Just for fun, then.', to: 'beaten', duel: true },
+      { label: 'Next time.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Wow. You’re getting really good at this.',
+      'I learned something from that one. Thanks, {name}.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Good game.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'That was close! You had me worried for a while there.',
+      'You’re really strong, you know — you just gave me a turn I didn’t deserve. Try holding a trap back for the turn I think I’m safe.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'won', duel: true },
+      { label: 'I’ll think about it.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals! I still can’t believe it.',
+      'Whatever happens down there, {name} — let’s give Kaiba a duel he won’t forget.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I didn’t make the cut this time. It’s okay — honestly.',
+      'Go and win it, {name}. I’ll be cheering. Loudly. Joey’s teaching me how.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Yami, who has been waiting a very long time for a game worth playing.
+ *
+ * Few words, all of them meant. He is the one who says out loud what Kaiba has
+ * built — a city made into an arena — and the only one who sounds as though he
+ * has seen something like it before.
+ */
+const YAMI_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'So. The one they call {name}.',
+      'Kaiba has made the whole city his arena — every district a table, every duelist a star chip walking the streets. I have seen worse ideas. Not many.',
+      'My chip is on the line like any other. If you want it, you will have to take it.',
+    ],
+    choices: [
+      { label: 'Then I will take it.', to: 'beaten', duel: true },
+      { label: 'Why are you here?', to: 'why' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  why: {
+    lines: [
+      'Because a game is being played in this city, and I have never been able to leave a game alone.',
+      'And because whoever arranged this wants to see who is left standing at the end. I intend to be there when he finds out.',
+    ],
+    choices: [
+      { label: 'Then duel me.', to: 'beaten', duel: true },
+      { label: 'Fair enough.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}. {chips} chips, and the city is watching you collect them.',
+      'Mine is still yours to take. Are you ready?',
+    ],
+    choices: [
+      { label: 'It’s time to duel.', to: 'beaten', duel: true },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Well played. You earned that.',
+      'Take my star chip — and remember what it cost. The finals will ask for more.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'I will remember.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You carry my chip. Carry it well.',
+      'If you want to test yourself again, I will not refuse.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Twice, now. You are no accident, {name}.',
+      'Whatever Kaiba built this city to find, I suspect it has found you.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'Good game.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'The cards answered me, this time.',
+      'You hesitated on the turn you should have committed. When the board opens, walk through it.',
+    ],
+    choices: [
+      { label: 'One more.', to: 'won', duel: true },
+      { label: 'I will remember that.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. As it should be.',
+      'Kaiba will be watching every move down there. So will I — from across the table.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'My part in this tournament is over. Yours is not.',
+      'Go down into that forecourt and finish it, {name}.',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Joey, who has never once been told a tournament exists without entering it.
+ *
+ * Loud, loyal and delighted, and the one who calls Kaiba "rich boy" to his
+ * back and to his face. He is also the one who knows Sarah and Tony are keeping
+ * the street, because he has already tried to duel both of them.
+ */
+const JOEY_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'Hey! Joey Wheeler — you’re the new face everybody’s talkin’ about!',
+      'Can ya believe this? Rich boy Kaiba’s got the whole city runnin’ around after star chips. Ten of ’em an’ you’re in the finals — an’ he gets to sit in his tower an’ watch.',
+      'Well, I ain’t sittin’. My chip’s right here, pal. Wanna try an’ take it?',
+    ],
+    choices: [
+      { label: 'You’re on, Joey.', to: 'beaten', duel: true },
+      { label: 'Where is everybody?', to: 'where' },
+      { label: 'Later, Joey.', to: null },
+    ],
+  },
+
+  where: {
+    lines: [
+      'All over! The market, the station, the shrine, that creepy cemetery — everywhere ’cept the street by the old man’s shop. Sarah an’ Tony are holdin’ that down.',
+      'Your duel disk’s got a map on it, ya know. Shows ya where everybody is. Took me a week to figure that out — don’t tell Yugi.',
+    ],
+    choices: [
+      { label: 'Duel me, then.', to: 'beaten', duel: true },
+      { label: 'Thanks, Joey.', to: null },
+    ],
+  },
+
+  ready: {
+    lines: [
+      '{name}! How many ya got? {chips}? Not bad, not bad.',
+      'Still room in your pocket for mine? C’mon, let’s go!',
+    ],
+    choices: [
+      { label: 'Let’s go.', to: 'beaten', duel: true },
+      { label: 'Where is everybody?', to: 'where' },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Aw, man! Ya got me fair an’ square.',
+      'Here. Take the chip — an’ you better make the finals with it, ’cause I’m tellin’ everybody I lost to a finalist.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'beaten', duel: true },
+      { label: 'Deal.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'Hey, it’s the chip thief! Just kiddin’.',
+      'Wanna go again? No chips on it — just pride. Mine, mostly.',
+    ],
+    choices: [
+      { label: 'Let’s go.', to: 'beaten', duel: true },
+      { label: 'Later.', to: null },
+    ],
+  },
+
+  beaten: {
+    lines: [
+      'Again?! Okay, okay — you’re good. I’m big enough to say it.',
+      '…Don’t tell Mai.',
+    ],
+    choices: [
+      { label: 'One more?', to: 'beaten', duel: true },
+      { label: 'Your secret’s safe.', to: null },
+    ],
+  },
+
+  won: {
+    lines: [
+      'Ha! Yeah! Did ya see that?',
+      'Look — ya gotta keep somethin’ in your hand for when things go sideways. Things always go sideways. That’s the whole game, pal.',
+    ],
+    choices: [
+      { label: 'Run it back.', to: 'won', duel: true },
+      { label: 'Noted.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals, baby! Me! Can ya believe it?',
+      'Me an’ you, {name}, down at the towers. Rich boy’s gonna have to watch us both.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Didn’t make it. Man.',
+      'Hey — no hard feelin’s. You go down there an’ knock Kaiba’s socks off for me, yeah?',
+    ],
+    choices: [],
+  },
+};
+
+/**
+ * Mai, who arrives with the tournament and has been the card everybody in the
+ * room wanted to take since she was nineteen.
  *
  * She talks the way she is written: bored until you are worth her time, and
  * unbothered either way. The invitation is hers rather than the player's — she
- * is the one who decides you are interesting enough — which is both truer to her
- * and the reason it can be refused without the refusal feeling like a menu.
+ * is the one who decides you are interesting enough — which is both truer to
+ * her and the reason it can be refused without the refusal feeling like a menu.
  *
  * `beaten` and `won` are named from *her* side, matching `DuelOffer`, which is
  * worth saying out loud because it reads backwards at a glance: `beaten` is the
@@ -568,23 +887,21 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
   greet: {
     lines: [
       'Well, hello. Mai Valentine.',
-      'Do try to be interesting, sweetheart. Most of them are not, and there are a great many more of them this month.',
+      'So you are one of Kaiba’s little chip-collectors. Ten of them for a seat at his finals, and half this city running from district to district like it is a scavenger hunt.',
+      'Mine is not going to be easy, sweetheart. Do try to be interesting.',
     ],
     choices: [
       { label: 'Who are you?', to: 'who' },
-      { label: 'Why more of them?', to: 'hall' },
+      { label: 'Why the hurry?', to: 'hall' },
       { label: 'I could be interesting.', to: 'offer' },
       { label: 'Just passing through.', to: null },
     ],
   },
 
-  /* Her reading of a bounty tournament, which is the oldest thing about her:
-     she has been the card everybody in the room wanted to take since she was
-     nineteen, and the tournament has simply written it down. */
   hall: {
     lines: [
-      'There is a tournament. Ninety-nine cards at the door and a bounty on every head inside it — beat somebody and you take their cards and their money off them, and they take yours when it is the other way up.',
-      'So they have built a room where the prize for being good is that everybody comes for you.',
+      'Because nobody waits. Every time you sit down with somebody, the rest of us are sitting down with each other, and the chips go round whether you are watching or not.',
+      'So he has built a game where the prize for being good is that everybody comes for you.',
       'I have been that prize since I was nineteen, sweetheart. Welcome to it.',
     ],
     choices: [
@@ -612,7 +929,7 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
       'So let us find out. You and me — bring whatever you have sleeved, and I will show you what it is missing.',
     ],
     choices: [
-      { label: "You're on. Let's duel.", to: 'beaten', duel: true },
+      { label: 'You’re on. Let’s duel.', to: 'beaten', duel: true },
       { label: 'Not yet — I want to fix my deck first.', to: 'later' },
       { label: 'Some other time.', to: null },
     ],
@@ -621,13 +938,44 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
   later: {
     lines: [
       'Sensible. Rare, but sensible.',
-      'Go and shuffle it until it stops embarrassing you. I will be here — I am not in a hurry, and neither is the field.',
+      'Go and shuffle it until it stops embarrassing you. I am not in a hurry, and neither is my chip.',
     ],
     choices: [],
   },
 
-  /* The player won. She is gracious in the way she is: by moving the
-     compliment somewhere it costs her less. */
+  ready: {
+    lines: [
+      'Back again. {chips} chips — I have been counting, and so has everyone else.',
+      'Mine is still here. Come and take it, if you think you can.',
+    ],
+    choices: [
+      { label: 'You’re on.', to: 'beaten', duel: true },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Hmph. Fine. You played well enough to deserve it.',
+      'Here — my star chip. Do not make me regret it by losing it to somebody boring.',
+    ],
+    choices: [
+      { label: 'Again, then?', to: 'beaten', duel: true },
+      { label: 'I will take the chip.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You already have my chip, sweetheart. What more could you possibly want from me?',
+      '…A rematch. Of course. Fine — for pride.',
+    ],
+    choices: [
+      { label: 'For pride.', to: 'beaten', duel: true },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
   beaten: {
     lines: [
       'Well. That is not how I saw that going.',
@@ -640,191 +988,109 @@ const MAI_SCRIPT: Record<string, DialogueNode> = {
     ],
   },
 
-  again: {
-    lines: [
-      'Back for more. {left} off the door, and still counting them one at a time like everybody else.',
-      'Go on then. Show me what the last few taught you.',
-    ],
-    choices: [
-      { label: "You're on.", to: 'beaten', duel: true },
-      { label: 'Not today.', to: null },
-    ],
-  },
-
-  ready: {
-    lines: [
-      'Ninety-nine. Well, look at you, sweetheart.',
-      'Then you are in it, and I will be across the hall from you with a number over my head — and so will you, which is the part nobody enjoys finding out on the day. One more out here, while it is only pride on the table?',
-    ],
-    choices: [
-      { label: 'One more.', to: 'beaten', duel: true },
-      { label: 'Save it for the hall.', to: null },
-    ],
-  },
-
-  /* The player lost. No gloating: she is not cruel, she is just right, and
-     the line that matters is the one that tells them what to fix. */
   won: {
     lines: [
       'And that is the part nobody tells you.',
       'You had the cards, sweetheart. You played them in the order you drew them, which is not the same as playing them.',
-      'Three monster zones and one back row. Decide what the board is going to look like *before* you swing, and come find me again.',
+      'Three monster zones and one back row. Decide what the board is going to look like before you swing, and come find me again.',
     ],
     choices: [
       { label: 'Run it back.', to: 'won', duel: true },
       { label: 'I need to think about that.', to: null },
     ],
   },
+
+  finalist: {
+    lines: [
+      'The finals. Of course I am in them.',
+      'Save your best for down there, {name}. I intend to.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I missed the finals. Do not look at me like that.',
+      'Go and win the thing. And if anybody asks, you learned everything from me.',
+    ],
+    choices: [],
+  },
 };
 
 /**
- * The cast, built and waiting to be placed.
+ * Seto Kaiba, who runs the tournament and does not duel in it.
  *
- * Every one of these is finished — rigged, animated, and carrying the dialogue
- * they will use. They are *not* in `WORLD_NPCS` because the world they belong in
- * does not exist yet: they are duelists you meet on a tournament circuit, and
- * there is one street and one shop so far. Standing five named characters in a
- * road because they happen to be ready is how a world stops feeling like a place
- * and starts feeling like a character select screen.
- *
- * Introducing one is moving it into `WORLD_NPCS` and giving it an `area`. That is
- * the whole operation, which is why they are kept here rather than deleted.
- *
- * **Mai's duel goes with her.** Everything that makes her offer a duel and react
- * to the result still exists — `duel`, the routes, the room seating — and it is
- * unreachable while she is not placed, because nobody can walk up to her.
+ * He stands at the bottom of the forecourt at Central Towers — his towers, as
+ * far as he is concerned — and he is where the rules live when the broadcast is
+ * a memory: the chips, the city, the round nobody watches, the four who go
+ * through. He will not duel you. Win his finals first; the story that comes
+ * after that is his, and it is not written yet.
  */
-const WAITING: WorldNpc[] = [
-  {
-    id: 'yugi',
-    /* Not placed yet — see WAITING_CAST. */
-    area: 'starting-area',
-    /* His own model, so nothing to dress and nothing to build. */
-    character: { name: 'Yugi Muto', model: 'yugi', tints: [], stature: 0.5 },
-    x: -7.5,
-    z: 10.5,
-    facing: Math.PI * 0.85,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Oh — hello! I am Yugi.',
-      'Grandpa said someone new had turned up. Come and find me when there is duelling to be done.',
-      'He is counting cards for everybody who comes in, you know. Ninety-nine and the tournament seats you — he has counted mine twice, which I think is his way of telling me to buy more.',
-    ], [
-      'Hello again, {name}! {left} to go.',
-      'You are going to get there. Everyone says that to be nice and I am saying it because I have been watching.',
-    ], [
-      'Ninety-nine! Then I will see you in the hall.',
-      'Be careful in there, though. Not everybody is going for the cards.',
-    ]),
+const KAIBA_SCRIPT: Record<string, DialogueNode> = {
+  greet: {
+    lines: [
+      'So. You’re the one who made it this far.',
+      'Seto Kaiba. This is my tournament — my city, my rules, my finals. You heard the broadcast.',
+      'You have {chips} star chips. Ten gets you down these steps as a finalist. Until then, you’re a spectator with a duel disk.',
+    ],
+    choices: [
+      { label: 'Remind me of the rules.', to: 'rules' },
+      { label: 'Duel me.', to: 'no' },
+      { label: 'I will be back.', to: null },
+    ],
   },
-  {
-    id: 'yami',
-    /* Not placed yet — see WAITING_CAST. */
-    area: 'starting-area',
-    character: { name: 'Yami Yugi', model: 'yami', tints: [], stature: 0.5 },
-    x: 7.5,
-    z: 10.5,
-    facing: -Math.PI * 0.85,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'So. Another duelist.',
-      'We will play, in time. I look forward to seeing what you are made of.',
-      'A hall, a price on every name that walks into it, and a count at the door instead of a fee. Whoever arranged that understands duelists better than I am comfortable with.',
-    ], [
-      '{left} from the door. You are being measured, you know. Everyone in this city is.',
-      'Keep going.',
-    ], [
-      'Ninety-nine. The hall will have us both, then.',
-      'Do not go in expecting a game, {name}. Go in expecting whoever wanted you there.',
-    ]),
+
+  rules: {
+    lines: [
+      'Every entrant carries a star chip. Beat them and it’s yours — one chip per duelist, no second helpings.',
+      'They’re out in the city and they move, gate to gate, the way you do. Your duel disk tracks every one of them. Use the map.',
+      'Every time you duel, the rest of the field duels too. When you reach ten, the three with the most chips join you here. Four finalists. One champion.',
+    ],
+    choices: [
+      { label: 'Understood.', to: null },
+      { label: 'Duel me.', to: 'no' },
+    ],
   },
-  {
-    id: 'kaiba',
-    /* Not placed yet — see WAITING_CAST. */
-    area: 'starting-area',
-    character: { name: 'Seto Kaiba', model: 'kaiba', tints: [], stature: 0.5 },
-    x: 13,
-    z: 4.5,
-    facing: -Math.PI * 0.62,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Kaiba. Seto Kaiba — and no, I have not heard of you.',
-      'Ninety-nine cards buys a seat at this tournament. It does not buy you a round, and it certainly does not buy you me.',
-      'Come back when you have a deck worth my time.',
-    ], [
-      'Still {left} short. That is not a conversation, it is an errand.',
-      'Finish it.',
-    ], [
-      'Ninety-nine. Congratulations, you can afford the door.',
-      'Now find out what the room costs.',
-    ]),
+
+  no: {
+    lines: [
+      'You? Duel me?',
+      'Win the finals first. Then we’ll talk about whether you’re worth my time.',
+    ],
+    choices: [],
   },
-  {
-    id: 'joey',
-    /* Not placed yet — see WAITING_CAST. */
-    area: 'starting-area',
-    character: { name: 'Joey Wheeler', model: 'joey', tints: [], stature: 0.5 },
-    x: -13,
-    z: 4.5,
-    facing: Math.PI * 0.62,
-    range: 3.2,
-    start: 'greet',
-    script: greeting([
-      'Hey! Joey Wheeler — good to meet ya.',
-      'You heard about the tournament? Ninety-nine cards an’ they let ya in, an’ then everybody in there is worth somethin’ to everybody else. Cards, money, the lot.',
-      'Stick around. This place is gonna get a lot more interesting.',
-    ], [
-      'Hey, it’s you again! {left} to go — that’s nothin’.',
-      'Go beat somebody. That’s the whole secret, don’t tell anyone I told ya.',
-    ], [
-      'Ninety-nine! Ya did it!',
-      'Right — see ya in there, {name}. An’ if we get drawn against each other, no hard feelin’s after, yeah?',
-    ]),
+
+  ready: {
+    lines: [
+      '{chips} chips. The clock is running, and so is the rest of the field.',
+      'Come back when you have ten.',
+    ],
+    choices: [
+      { label: 'The rules again.', to: 'rules' },
+      { label: 'Duel me.', to: 'no' },
+      { label: 'I will.', to: null },
+    ],
   },
-  {
-    id: 'mai',
-    /* Not placed yet — see WAITING_CAST. */
-    area: 'starting-area',
-    /*
-     * Mai, modelled.
-     *
-     * What stood here was a page of repaint rules and a ribcage `build`,
-     * because she was `woman2` in her colours: two windowed hue rules to get
-     * blonde hair out of a blue-grey bob without bleaching the top or the
-     * trousers painted within three degrees of it, one for the jacket, one for
-     * the skirt, one for the corset — and a closing admission that no amount of
-     * paint supplies the silhouette, because that body has a bob and she is
-     * drawn with a mane.
-     *
-     * All of it is deleted rather than adapted. Every rule named a colour in a
-     * 256×256 atlas that is not this model's, and the one problem it could
-     * never solve is the one being modelled fixed.
-     */
-    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.5 },
-    /* Off the centre line — see the note on `WORLD_NPCS` about keeping the
-       lane past Grandpa walkable. */
-    x: 4.8,
-    z: 16.5,
-    facing: -2.858,
-    range: 3.2,
-    start: 'greet',
-    /*
-     * The first character bound to a deck.
-     *
-     * `mai` is a duelist in `decklists.json` already — the same premade the
-     * menu's solo duel has always been able to seat — so binding her is naming
-     * it and the two nodes the result comes back to. Everything that makes the
-     * duel a *story* duel is elsewhere: the player brings the twenty-five cards
-     * their save says they own rather than a premade, and the way out of the
-     * win screen is back to this conversation rather than to a lobby.
-     */
-    duel: { opponentId: 'mai', won: 'beaten', lost: 'won' },
-    script: MAI_SCRIPT,
+
+  finals: {
+    lines: [
+      'All four finalists. Good.',
+      'The finals begin when I say they begin — and I haven’t said it yet. Stay sharp, {name}. You’ll want to be.',
+    ],
+    choices: [],
   },
-];
+};
+
+/**
+ * The cast, built and waiting to be placed — nobody, now.
+ *
+ * Yugi, Yami, Kaiba, Joey and Mai waited here, finished and rigged, for a
+ * tournament circuit to be placed on. The tournament is it: they are in
+ * `WORLD_NPCS` with `arrives: 'tournament'`, and the city has them the day
+ * Kaiba's broadcast plays. The bench stays, empty, because it is the right
+ * place to put the next one.
+ */
+const WAITING: WorldNpc[] = [];
 
 
 /* ------------------------------------------------------------------ */
@@ -876,6 +1142,20 @@ const STREET: WorldNpc[] = [
     start: 'greet',
     duel: { opponentId: 'sarah', won: 'beaten', lost: 'won' },
     script: {
+      /* The first meeting once Kaiba has started it: the street is the same
+         and she is on it, but the city she was warning you about has arrived. */
+      meet: {
+        lines: [
+          'You are not from this street. I would know \u2014 I was standing on it before Kaiba put his face on every screen in the city.',
+          'Sarah. I duel, I am good at it, and this week I am worth a star chip. Tony and I keep the street; everybody else is out walking the city after chips.',
+        ],
+        choices: [
+          { label: 'Let\u2019s duel.', to: 'beaten', duel: true },
+          { label: 'What do you play?', to: 'style' },
+          { label: 'Maybe later.', to: null },
+        ],
+      },
+
       greet: {
         lines: [
           'You came out of the old man\u2019s shop, so you are new. That is not an insult, it is a schedule.',
@@ -921,13 +1201,51 @@ const STREET: WorldNpc[] = [
 
       ready: {
         lines: [
-          'Ninety-nine. So you are in it.',
-          'Then I will see you in that hall, and I will not be pleased about it \u2014 I would rather have met you in the bracket knowing nothing. One more out here first, so I know what I am walking into?',
+          'So it has started. Kaiba on every screen in the city, and everybody suddenly very interested in me.',
+          'I keep the street and I keep my chip. You can have one of those if you beat me for it.',
+        ],
+        choices: [
+          { label: 'Let’s duel.', to: 'beaten', duel: true },
+          { label: 'Later.', to: null },
+        ],
+      },
+
+      chip: {
+        lines: [
+          'Fine. It is yours. You went through the wall properly, which is the only way I would have handed it over.',
+          'One chip. Do not spend it on a victory lap in front of me.',
+        ],
+        choices: [
+          { label: 'Again, for pride?', to: 'beaten', duel: true },
+          { label: 'I will leave it there.', to: null },
+        ],
+      },
+
+      chipped: {
+        lines: [
+          'You have my chip, {name}. I have not forgotten and I am not going to.',
+          '{chips} of ten. The street is still here if you want to lose some of that confidence.',
         ],
         choices: [
           { label: 'One more.', to: 'beaten', duel: true },
-          { label: 'Let you wonder.', to: null },
+          { label: 'Not now.', to: null },
         ],
+      },
+
+      finalist: {
+        lines: [
+          'The finals. Me. On the strength of a wall and a Royal Tribute — I shall be insufferable about it for years.',
+          'I will see you at the towers. Do not go easy on me down there; I will know.',
+        ],
+        choices: [],
+      },
+
+      out: {
+        lines: [
+          'I did not make it. Somebody walked through my wall more often than I walked through theirs. It happens.',
+          'Go on, then. Win it — and tell them where you started.',
+        ],
+        choices: [],
       },
 
       /* She tells you exactly what she does. It is not a bluff — the deck is
@@ -980,6 +1298,19 @@ const STREET: WorldNpc[] = [
     start: 'greet',
     duel: { opponentId: 'tony', won: 'beaten', lost: 'won' },
     script: {
+      meet: {
+        lines: [
+          'Tony. Do not let the vest fool you \u2014 I am out here for the chips now, same as everybody.',
+          'Ten of them buys a seat in Kaiba\u2019s finals, so there is a queue of strangers on this street, and you are one of them, no offence. Sarah and me keep it; the rest go wherever the day takes them.',
+          'So: a duel or directions? Either is fine. One of them is quicker.',
+        ],
+        choices: [
+          { label: 'A duel.', to: 'beaten', duel: true },
+          { label: 'What am I walking into?', to: 'style' },
+          { label: 'Directions, then.', to: 'where' },
+        ],
+      },
+
       greet: {
         lines: [
           'Tony. Do not let the vest fool you \u2014 I am out here for the cards, same as everybody.',
@@ -1034,13 +1365,52 @@ const STREET: WorldNpc[] = [
 
       ready: {
         lines: [
-          'Ninety-nine. Look at you.',
-          'Right \u2014 do not spend the week out here beating me, then. Go and be somebody else\u2019s problem in that hall, and put a good word in for the fella in the vest.',
+          'The big man went up on every screen in the city and now everybody wants a chip. Mine included, which is flattering.',
+          'Sarah and me are staying put — somebody has to keep the street. A duel for mine?',
         ],
         choices: [
-          { label: 'One for the road.', to: 'beaten', duel: true },
-          { label: 'I will do that.', to: null },
+          { label: 'Go on then.', to: 'beaten', duel: true },
+          { label: 'Directions, then.', to: 'where' },
+          { label: 'Later.', to: null },
         ],
+      },
+
+      chip: {
+        lines: [
+          'Well, that is that. One star chip, as advertised.',
+          'Put it somewhere safe and go and collect nine more. I will tell people I knew you back when.',
+        ],
+        choices: [
+          { label: 'Again.', to: 'beaten', duel: true },
+          { label: 'That will do.', to: null },
+        ],
+      },
+
+      chipped: {
+        lines: [
+          'You already took my chip, {name}. Do not rub it in — the vest is sensitive.',
+          'A duel for nothing? The best kind, I always say. Never said it before, but I am saying it now.',
+        ],
+        choices: [
+          { label: 'Go on then.', to: 'beaten', duel: true },
+          { label: 'Later.', to: null },
+        ],
+      },
+
+      finalist: {
+        lines: [
+          'Finals! Me! The fella in the vest!',
+          'Right — see you at the towers. Somebody has to explain to Kaiba who I am.',
+        ],
+        choices: [],
+      },
+
+      out: {
+        lines: [
+          'No finals for me. Turns out a lot of small things all at once is not a tournament plan.',
+          'Go and win it, {name}. Put a good word in for the street.',
+        ],
+        choices: [],
       },
 
       style: {
@@ -1131,6 +1501,19 @@ const STREET: WorldNpc[] = [
  * herself is a tour guide.
  */
 const ISHA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'Oh. You can see me.',
+      'That is the part that always takes a moment. I am Isha — and I have left my stones for the first time in longer than I can say, because the man on the screens says I carry a chip. It seems even the dead are entered.',
+      'Will you play me? It is what there is to do.',
+    ],
+    choices: [
+      { label: 'Play, then.', to: 'offer' },
+      { label: 'How long have you been waiting?', to: 'long' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'Oh. You can see me.',
@@ -1187,14 +1570,51 @@ const ISHA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. I counted along with you, which is the most interesting thing to happen on this ground since the elms were small.',
-      'Go on then, {name}. Win the thing. And when you are back, say the name on the nearest stone out loud like I told you — that is all I have ever asked of anybody, and you are the only one still listening.',
+      'The tournament came up the walk after all. A man shouting from every screen, and duelists everywhere — even among the stones.',
+      'I walk now too, further than I have in years. My chip is yours if you can take it, {name}.',
     ],
     choices: [
-      { label: 'One more against you first.', to: 'offer' },
-      { label: 'I will say it now.', to: 'feet' },
-      { label: 'I will be back, Isha.', to: null },
+      { label: 'Play me.', to: 'offer' },
+      { label: 'Goodbye, Isha.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'Well. There is my chip. I did not know I had one until the man on the screen said so.',
+      'Carry it gently. It is the first thing I have given anybody in a long time.',
+    ],
+    choices: [
+      { label: 'Again.', to: 'beaten', duel: true },
+      { label: 'I will. Goodbye, Isha.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip. You came back anyway. Nobody comes back.',
+      'Play, if you like. It is what there is to do.',
+    ],
+    choices: [
+      { label: 'Play, then.', to: 'offer' },
+      { label: 'Goodbye, Isha.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. They will have a ghost in the forecourt. I wonder if anybody will notice.',
+      'I will be there, {name}. I am not going to be anywhere else.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'The finals will be played without me. That is all right; I am used to being the draught in the corner.',
+      'Come and tell me how it ends. Somebody always does, eventually. I would like it to be you.',
+    ],
+    choices: [],
   },
 
   long: {
@@ -1342,6 +1762,19 @@ const ISHA_SCRIPT: Record<string, DialogueNode> = {
  * rather than a secret.
  */
 const TINA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      '{name}, is it? Tina. I run things between the market and the station, and this week that means running between everybody — Kaiba has half the city walking in circles after chips.',
+      'Mine is in my pocket and the money is on the table, same as ever. Want to play for both?',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'wager' },
+      { label: 'Any news?', to: 'news' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'You came up from the old man’s shop. {name}, is it — word gets about a metre a minute under this roof.',
@@ -1485,14 +1918,64 @@ const TINA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. I had that off a porter at the station before you got up the road — first time anybody in this city has been ahead of me on my own news.',
-      'So you are in it. Which means this is the last time you and I play for pocket money instead of in front of a hall. Two to five, {name}, for old times.',
+      'It has a name now, and the name is Kaiba. I had the broadcast off three screens before it finished — even I did not see that one coming.',
+      'Chips are the new money under every roof in the city. Mine is on the table, same as the cash. Want to play for both?',
     ],
     choices: [
       { label: 'Let’s duel.', to: 'wager' },
-      { label: 'Who is running it?', to: 'who' },
-      { label: 'Save it for the hall.', to: null },
+      { label: 'Any news?', to: 'news' },
+      { label: 'Not today.', to: null },
     ],
+  },
+
+  news: {
+    lines: [
+      'Everybody is moving. The sisters have left their shrine, the girl with the dragons came down off her steps, and there is a ghost at the station, if you believe a porter.',
+      'Check your map before you walk anywhere. Kaiba put a tracker in every duel disk in the city, which is the most expensive way to find a person I have ever heard of.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'wager' },
+      { label: 'Thanks, Tina.', to: null },
+    ],
+  },
+
+  chip: {
+    lines: [
+      'Hah. You win the money and the chip both. Do not get used to it.',
+      'There you are — my star chip. You will hear about the finals from somebody who is not me, and remember who had it first.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'wager' },
+      { label: 'I will leave it there.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip, {name}. The money is still in play, though. It always is.',
+      '{chips} of ten — I am keeping count for you. It is what I am for.',
+    ],
+    choices: [
+      { label: 'Let’s duel.', to: 'wager' },
+      { label: 'Any news?', to: 'news' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. The courier made the finals. Write that down somewhere.',
+      'See you at the towers, {name}. Bring money; old habits.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Missed the finals by a chip or two. I know exactly who took them, which is worse.',
+      'Go on — win it. I want to be the one who carries the news.',
+    ],
+    choices: [],
   },
 
   /* The player lost. One thing to fix, stated as a habit rather than a mistake. */
@@ -1684,6 +2167,29 @@ const ASH_SCRIPT: Record<string, DialogueNode> = {
  * `settle` does not move a body out of, checked in `npm run shrine`.
  */
 const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'Close enough. I can see your hands, and that is all I want from a stranger in a strange city.',
+      'Antiope. My sisters and I walked a long way on a letter with no name at the foot of it. Now it has a name, and the name has sent us out walking his streets with a chip each.',
+      'I am the shield — what you practise on — and I will not pretend otherwise.',
+    ],
+    choices: [
+      { label: 'Then let’s go.', to: 'terms' },
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  terms: {
+    lines: [
+      'A dollar down, then. That is what it costs to be wrong. Beat me and you take it back with five of mine on top.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'Close enough. I can see your hands from here, and that is all I want from a stranger on the steps.',
@@ -1747,7 +2253,7 @@ const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
       'I will not take you apart — I have nothing in there that could. I will make everything you try cost you something and see what you have left at the end of it.',
     ],
     choices: [
-      { label: 'Let’s find out.', to: 'offer' },
+      { label: 'Let’s find out.', to: 'terms' },
       { label: 'Noted.', to: null },
     ],
   },
@@ -1800,17 +2306,67 @@ const ANTIOPE_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. Then the letter meant you as well, and I am glad — I did not like it when it only meant us.',
-      'Stand there and go again anyway. Whoever draws you in that hall is going to find out what I found out, and I would sooner it were not me.',
+      'The letter had a name after all. Kaiba. My sisters are out in the city and so am I — a shield is no use standing still in a yard.',
+      'My chip is on the step with the dollar. Take them both, if you can.',
     ],
     choices: [
-      { label: 'Ready.', to: 'beaten', duel: true },
-      { label: 'I will see you inside.', to: null },
+      { label: 'Ready.', to: 'terms' },
+      { label: 'Not yet.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'Through the shield, and a star chip for your trouble. You earned it the slow way, which is the way that lasts.',
+      'Go and find my sisters. They will not be so kind about it.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'terms' },
+      { label: 'I will.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You carry my chip already. I am glad it was you.',
+      'A dollar on the step, if you want the practice. I am still the shield.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'terms' },
+      { label: 'Not now.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The shield, in the finals. My sisters will never let me hear the end of it.',
+      'I will make everything cost you something down there, {name}. Same as ever.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Not the finals, for me. The shield held until it did not.',
+      'Go and win it. Whoever you face, make them spend.',
+    ],
+    choices: [],
   },
 };
 
 const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'A duelist who stops to look at me instead of walking past. Good — I was beginning to think this city duels indoors only.',
+      'Panthesilea. I hunt, mostly. This week there is nothing to hunt but duelists, and Kaiba has sent every one of them out walking.',
+    ],
+    choices: [
+      { label: 'Hunt?', to: 'hunt' },
+      { label: 'Let’s duel.', to: 'offer' },
+      { label: 'Some other time.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'You are the fourth person to walk up these steps today and the first one carrying a deck. I was beginning to think this city duels indoors only.',
@@ -1875,7 +2431,7 @@ const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
   style: {
     lines: [
       'Nothing that survives. Everything I put down is worth more dead than alive, and the traps are for the moment you decide you have seen enough of it.',
-      'It is an even match, if you want the truth of it — my sister on the west side is easier and the one under the trees is not. Start where you like.',
+      'It is an even match, if you want the truth of it — Antiope is easier and Hippolyta is not. Start where you like.',
     ],
     choices: [
       { label: 'Here, then.', to: 'offer' },
@@ -1929,17 +2485,66 @@ const PANTHESILEA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine, and you did it in a city that was a stranger to you a month ago. I have been telling my sisters the hall would be full of collectors who cannot play, and now I shall have to make an exception out loud, which I hate.',
-      'Set your board. I want one more look at you before somebody pays me to want it.',
+      'So the rich man has a name, and the name is shouting from screens. I said we were the audience. I did not say we would be the hunt.',
+      'Every duelist in this city is carrying a chip and walking. I have never had so much to hunt. A dollar down, and my chip besides.',
     ],
     choices: [
-      { label: 'Ready.', to: 'beaten', duel: true },
-      { label: 'Save it for the hall.', to: null },
+      { label: 'Ready.', to: 'offer' },
+      { label: 'Save it.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'Hah — you took the fourth trade off me again. The chip is yours. I shall have to go and hunt somebody easier.',
+      'There are not many of those left.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'Good hunting.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip. I have not forgiven you, but I have noticed you, which is rarer.',
+      'Another hunt, for the sport of it?',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'offer' },
+      { label: 'Not today.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. I said I still wanted the thing at the end of it, and here it is.',
+      'Save something for me down there, {name}.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'No finals. I ran the hunt and something faster ran it better.',
+      'Go and finish it. I will want to hear how.',
+    ],
+    choices: [],
   },
 };
 
 const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'You have come to me before my sisters, or after them. Either way you came, and I respect that more than I will say.',
+      'Hippolyta. I hold what is left of a people you have not heard of, which is eleven women and a good deal of opinion — and one star chip, which is apparently the only thing about us this city cares for.',
+    ],
+    choices: [
+      { label: 'I want the duel.', to: 'offer' },
+      { label: 'Carry on.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'You have walked past both my sisters to get to me. Either somebody sent you or you cannot count.',
@@ -2042,13 +2647,51 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. So whoever is counting has your name as well, and spelled correctly, I should think.',
-      'Good. I would rather walk into that hall knowing one of the strangers in it. Sit down — and this time do not stop when the guard holds.',
+      'The list-keeper has a name. Kaiba. I have met three men who could afford the gesture; he is the fourth, and the first who wanted to be seen making it.',
+      'My chip is on the table. Sit down — and this time do not stop when the guard holds.',
     ],
     choices: [
-      { label: 'Ready.', to: 'beaten', duel: true },
-      { label: 'I will see you there.', to: null },
+      { label: 'Ready.', to: 'offer' },
+      { label: 'Not yet.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'The guard broke. Take the chip; you watched the end coming, and so did I.',
+      'Find me at the finals. I intend to be there.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'offer' },
+      { label: 'I will.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You carry my chip. I keep a list of my own and you are still the only name on it.',
+      'Again, if you want it difficult.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'offer' },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. Eleven women and a good deal of opinion, and one of us made it to the forecourt.',
+      'Sit down across from me in there and do not apologise for anything.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'I will not be in the finals. Somebody counted better than I did.',
+      'Go and be disappointing to Kaiba, {name}. It is the kindest thing anybody could do for him.',
+    ],
+    choices: [],
   },
 };
 
@@ -2081,6 +2724,28 @@ const HIPPOLYTA_SCRIPT: Record<string, DialogueNode> = {
  * question of which of them the prompt means.
  */
 const KAELA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'Kaela Veyron. If you have been up Step Lane you have walked past where I usually am; this week I am everywhere, like everybody, with a chip in my pocket and a deck I have tuned twice since breakfast.',
+      'I build things that work. A deck is the same job with worse tolerances.',
+    ],
+    choices: [
+      { label: 'What do you play?', to: 'style' },
+      { label: 'Let’s duel.', to: 'terms' },
+      { label: 'Mind how you go.', to: null },
+    ],
+  },
+
+  terms: {
+    lines: [
+      'Twenty down before we start. Beat me and you take it back with fifteen of mine; do not, and I keep the twenty. I did not set that price to be liked.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'Not yet.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'Mind the third step, it is proud of the others by about four millimetres. I have counted it twice and I am going to say something to somebody about it.',
@@ -2127,7 +2792,7 @@ const KAELA_SCRIPT: Record<string, DialogueNode> = {
       'And a dragon made of gun barrels, when the arithmetic runs out. Three coins, and whatever they say happens to whatever you have got.',
     ],
     choices: [
-      { label: 'Show me.', to: 'offer' },
+      { label: 'Show me.', to: 'terms' },
       { label: 'Noted.', to: null },
     ],
   },
@@ -2181,17 +2846,77 @@ const KAELA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. Then you are in it, and I would like to state for the record that I watched it happen from a staircase.',
-      'Come and be measured once more before the hall does it in front of an audience. And in there — find me early, like I said. I meant it more than I usually mean things.',
+      'It opened. Kaiba, on every screen, with a specification: ten chips, four finalists, one forecourt. I have read worse documents. Not many better.',
+      'My chip is on the table with the twenty. Measure yourself against it?',
     ],
     choices: [
-      { label: 'Ready.', to: 'beaten', duel: true },
-      { label: 'I will find you.', to: null },
+      { label: 'Ready.', to: 'terms' },
+      { label: 'Another time.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'Hm. You went for the King again. Correct again. The chip is yours.',
+      'Ten of those is a place in the finals, and I would like it on record that I supplied one of them.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'terms' },
+      { label: 'On record.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip already. I checked the tolerances on it before I handed it over.',
+      'The twenty is still there if you want the practice.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'terms' },
+      { label: 'Another time.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. I built something that works.',
+      'Find me early down there, {name}. I meant it before and I mean it more now.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'Missed the finals by a margin I have measured to the millimetre and will not be sharing.',
+      'Go on. Win it properly.',
+    ],
+    choices: [],
   },
 };
 
 const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
+  meet: {
+    lines: [
+      'Seraphina Drayke. I keep dragons — properly kept, which means they come back.',
+      'A man who owns the television has summoned me down off my steps, and I find I do not mind: the view is worse and the duelling is better.',
+    ],
+    choices: [
+      { label: 'Kept how?', to: 'style' },
+      { label: 'Let’s duel.', to: 'terms' },
+      { label: 'Enjoy the walk.', to: null },
+    ],
+  },
+
+  terms: {
+    lines: [
+      'Twenty down, and ten of mine on top of it if you take me. Yes, the arithmetic is against you. That is what a tournament is for.',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'beaten', duel: true },
+      { label: 'A moment.', to: null },
+    ],
+  },
+
   greet: {
     lines: [
       'Up here, if you are coming up. The view is the only thing this street has to recommend it and I have paid for it in calves.',
@@ -2251,7 +2976,7 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
       'And while the Lord is on the field you may not touch any of them with a card effect. You will have to do it the honest way.',
     ],
     choices: [
-      { label: 'The honest way, then.', to: 'offer' },
+      { label: 'The honest way, then.', to: 'terms' },
       { label: 'Another time.', to: null },
     ],
   },
@@ -2281,7 +3006,7 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
   won: {
     lines: [
       'They came back, {name}. They always come back — that is the entire trick and I told you it up front.',
-      'Next time, take the one holding them together before you start counting the big ones. Off you go; the steps are easier down.',
+      'Next time, take the one holding them together before you start counting the big ones. Off you go.',
     ],
     choices: [
       { label: 'Again.', to: 'offer' },
@@ -2303,13 +3028,51 @@ const SERAPHINA_SCRIPT: Record<string, DialogueNode> = {
 
   ready: {
     lines: [
-      'Ninety-nine. Then you have a price on your head as well, and I hope it is a rude one.',
-      'Come up and take the view while you have the legs for it — and stand where you are, once more, for practice. I shall want to say I knew you, and it will be true.',
+      'So the stranger with no name is Seto Kaiba, and he wants us walking his city like a tour group. I have been flattered and I have been summoned, and this is both.',
+      'My chip is on the table with the twenty. Mind: the dragons come back.',
     ],
     choices: [
-      { label: 'Ready.', to: 'beaten', duel: true },
-      { label: 'In the hall, then.', to: null },
+      { label: 'Ready.', to: 'terms' },
+      { label: 'A moment.', to: null },
     ],
+  },
+
+  chip: {
+    lines: [
+      'You took the Lord first. The chip is yours.',
+      'I shall want to say I knew you, and now it will be true in writing.',
+    ],
+    choices: [
+      { label: 'Again?', to: 'terms' },
+      { label: 'In writing, then.', to: null },
+    ],
+  },
+
+  chipped: {
+    lines: [
+      'You have my chip, {name}. Kept properly, I trust — it ought to come back to me eventually.',
+      'Twenty down, for practice?',
+    ],
+    choices: [
+      { label: 'Ready.', to: 'terms' },
+      { label: 'A moment.', to: null },
+    ],
+  },
+
+  finalist: {
+    lines: [
+      'The finals. A price on my head after all, and I seem to have paid it.',
+      'I shall be extremely expensive down there. Do try to afford me.',
+    ],
+    choices: [],
+  },
+
+  out: {
+    lines: [
+      'No finals. The dragons came back; my luck did not.',
+      'Win it, {name}. I shall tell everyone I taught you the honest way.',
+    ],
+    choices: [],
   },
 };
 
@@ -2670,6 +3433,83 @@ export const WORLD_NPCS: WorldNpc[] = [
     duel: { opponentId: 'seraphina', won: 'beaten', lost: 'won' },
     script: SERAPHINA_SCRIPT,
   },
+  {
+    /*
+     * The four who arrive with the tournament. Each record is where they
+     * live — where the travel plan starts and ends their day, and where they
+     * stand at night — and `travel.ts` is where they are the rest of the time.
+     * `npm run travel` holds the two to agreeing.
+     */
+    id: 'yugi',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.yugi.home.area,
+    character: { name: 'Yugi Muto', model: 'yugi', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.yugi.home.x,
+    z: TRAVELLER_BY_ID.yugi.home.z,
+    facing: TRAVELLER_BY_ID.yugi.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'yugi', won: 'beaten', lost: 'won' },
+    script: YUGI_SCRIPT,
+  },
+  {
+    id: 'yami',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.yami.home.area,
+    character: { name: 'Yami Yugi', model: 'yami', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.yami.home.x,
+    z: TRAVELLER_BY_ID.yami.home.z,
+    facing: TRAVELLER_BY_ID.yami.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'yami', won: 'beaten', lost: 'won' },
+    script: YAMI_SCRIPT,
+  },
+  {
+    id: 'joey',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.joey.home.area,
+    character: { name: 'Joey Wheeler', model: 'joey', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.joey.home.x,
+    z: TRAVELLER_BY_ID.joey.home.z,
+    facing: TRAVELLER_BY_ID.joey.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'joey', won: 'beaten', lost: 'won' },
+    script: JOEY_SCRIPT,
+  },
+  {
+    id: 'mai',
+    arrives: 'tournament',
+    area: TRAVELLER_BY_ID.mai.home.area,
+    /* Modelled — see `premade.ts`. Her old costume of repaint rules went with
+       the model swap, and nothing about her needs dressing now. */
+    character: { name: 'Mai Valentine', model: 'mai', tints: [], stature: 0.5 },
+    x: TRAVELLER_BY_ID.mai.home.x,
+    z: TRAVELLER_BY_ID.mai.home.z,
+    facing: TRAVELLER_BY_ID.mai.home.facing,
+    range: 3.2,
+    start: 'greet',
+    duel: { opponentId: 'mai', won: 'beaten', lost: 'won' },
+    script: MAI_SCRIPT,
+  },
+  {
+    /*
+     * Kaiba, at the foot of the south flight into the forecourt at Central
+     * Towers: the first thing anybody coming down from the plaza sees. He runs
+     * the tournament and does not duel in it — see `KAIBA_SCRIPT`.
+     */
+    id: 'kaiba',
+    arrives: 'tournament',
+    area: HOST_SPOT.area,
+    character: { name: 'Seto Kaiba', model: 'kaiba', tints: [], stature: 0.5 },
+    x: HOST_SPOT.x,
+    z: HOST_SPOT.z,
+    facing: HOST_SPOT.facing,
+    range: 3.4,
+    start: 'greet',
+    script: KAIBA_SCRIPT,
+  },
 ];
 
 /** Nobody is placed outside `WORLD_NPCS`; `WAITING` is the bench. */
@@ -2689,19 +3529,41 @@ export const WAITING_CAST: WorldNpc[] = WAITING;
 /**
  * Which node a conversation opens on, given who the player is by now.
  *
- * Three states and they are in priority order rather than in a table: somebody
- * you have never met introduces themselves whatever else is true, because an
- * introduction you skipped is a character you never met; after that the short
- * version; and once the hall will seat you, the line they have been waiting to
- * say. A script missing either node falls through to the one before it, so a
- * character with nothing but a `greet` is still a working character.
+ * In priority order rather than in a table: somebody you have never met
+ * introduces themselves, because an introduction you skipped is a character
+ * you never met; after that the short version, `again`.
+ *
+ * The tournament moves everybody on. Once Kaiba's broadcast has played, a
+ * first meeting is `meet` — the greeting a character had was for a city still
+ * waiting on the tournament, and for the ones who travel, for the spot they
+ * used to stand on — and after it `ready` is what an entrant says while their
+ * chip is still on the table and `chipped` once it is yours. Once the finals
+ * are set it is `finalist` for the three who went through with you, `out` for
+ * everybody who did not, and `finals` for the man running it — met or not,
+ * because by then nothing else is true: an introduction that offers a chip
+ * nobody can win any more is worse than no introduction. The state is the
+ * save's (`tournament`), not the card count's — a card lost to Ash does not
+ * take anybody back out of it. A script missing any of these falls through to
+ * the one before, so a character with nothing but a `greet` is still a
+ * working character.
  *
  * `openAt` in the panel beats all of it — a conversation coming back from a
  * duel picks up where the result put it.
  */
-export function openingNode(npc: WorldNpc, met: boolean, cards: number): string {
-  if (!met) return npc.start;
-  if (tournamentOpen(cards) && npc.script.ready) return 'ready';
+export function openingNode(npc: WorldNpc, met: boolean, cards: number, tournament?: TournamentState | null): string {
+  const phase = phaseOf(tournament);
+  if (phase === 'finals') {
+    if (isFinalist(tournament, npc.id) && npc.script.finalist) return 'finalist';
+    if (npc.script.finals) return 'finals';
+    if (isEntrant(npc.id) && npc.script.out) return 'out';
+  }
+  if (!met) return phase !== 'before' && npc.script.meet ? 'meet' : npc.start;
+  if (phase !== 'before') {
+    if (holdsChip(tournament, npc.id) && npc.script.chipped) return 'chipped';
+    if (npc.script.ready) return 'ready';
+  } else if (tournamentOpen(cards) && npc.script.ready) {
+    return 'ready';
+  }
   return npc.script.again ? 'again' : npc.start;
 }
 

@@ -26,12 +26,13 @@ export interface StoryMenuProps {
   clock?: string;
   saving: boolean;
   savedNote?: string | null;
-  hints: boolean;
-  onHints: (on: boolean) => void;
   /** The position readout in the corner, for naming a place to me. */
   where: boolean;
   onWhere: (on: boolean) => void;
   onEditDeck: () => void;
+  /** How the tournament stands, when there is one — the row's line. */
+  tournament?: string;
+  onTournament?: () => void;
   onMap: () => void;
   onSave: () => void;
   onExit: () => void;
@@ -53,8 +54,8 @@ const ICON = {
   exit: 'M10 4H5v16h5M14 8l4 4-4 4M8 12h10',
   back: 'M15 5l-7 7 7 7',
   sound: 'M4 10v4h3l5 4V6L7 10H4zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12',
-  hints: 'M12 3a6 6 0 0 0-3 11.2V17h6v-2.8A6 6 0 0 0 12 3zM10 21h4',
   where: 'M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10zM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  star: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7L12 3z',
 };
 
 export default function StoryMenu(p: StoryMenuProps) {
@@ -143,11 +144,14 @@ export default function StoryMenu(p: StoryMenuProps) {
                 </button>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Row icon={ICON.deck} title="Edit Deck" sub="Twenty-five cards, one copy of each, from your Trunk" onClick={p.onEditDeck} />
-                <Row icon={ICON.map} title="Map" sub="The plan of Domino City, and a way to any part of it" onClick={p.onMap} />
-                <Row icon={ICON.save} title={p.saving ? 'Saving…' : 'Save'} sub={p.savedNote ?? 'Where you stand, your deck and your Trunk'} onClick={p.onSave} disabled={p.saving} />
-                <Row icon={ICON.options} title="Options" sub="Sound and the on-screen hints" onClick={() => setPage('options')} />
-                <Row icon={ICON.exit} title="Return to the Main Menu" sub="Your place here is kept" onClick={p.onExit} />
+                {p.tournament && p.onTournament && (
+                  <Row icon={ICON.star} title="Tournament" sub={p.tournament} onClick={p.onTournament} />
+                )}
+                <Row icon={ICON.deck} title="Edit Deck" onClick={p.onEditDeck} />
+                <Row icon={ICON.map} title="Map" onClick={p.onMap} />
+                <Row icon={ICON.save} title={p.saving ? 'Saving…' : 'Save'} sub={p.savedNote ?? undefined} onClick={p.onSave} disabled={p.saving} />
+                <Row icon={ICON.options} title="Options" onClick={() => setPage('options')} />
+                <Row icon={ICON.exit} title="Return to the Main Menu" onClick={p.onExit} />
               </div>
               <div className="mt-auto pt-4 text-center sm:text-right">
                 <button
@@ -182,7 +186,6 @@ export default function StoryMenu(p: StoryMenuProps) {
                 <Toggle
                   icon={ICON.sound}
                   title="Sound"
-                  sub="Clicks, cards and the duel"
                   on={sound}
                   onChange={(on) => {
                     setSound(on);
@@ -190,13 +193,8 @@ export default function StoryMenu(p: StoryMenuProps) {
                     if (on) sfx.click();
                   }}
                 />
-                <Toggle icon={ICON.hints} title="Control hints" sub="The line under the stick that says how to walk" on={p.hints} onChange={p.onHints} />
-                <Toggle icon={ICON.where} title="Where I stand" sub="The area and the metres, in the corner, for naming a place" on={p.where} onChange={p.onWhere} />
+                <Toggle icon={ICON.where} title="Where I stand" on={p.where} onChange={p.onWhere} />
               </div>
-              <p className="mt-4 text-[10px] leading-relaxed text-ptextdim">
-                The picture sets its own quality: it gives up pixels before it gives up frames, and there is nothing to
-                choose. The clock is the city&apos;s and runs whether you are here or not.
-              </p>
             </>
           )}
         </div>
@@ -206,7 +204,7 @@ export default function StoryMenu(p: StoryMenuProps) {
   );
 }
 
-function Row({ icon, title, sub, onClick, disabled, primary }: { icon: string; title: string; sub: string; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+function Row({ icon, title, sub, onClick, disabled, primary }: { icon: string; title: string; sub?: string; onClick: () => void; disabled?: boolean; primary?: boolean }) {
   return (
     <button
       type="button"
@@ -222,14 +220,14 @@ function Row({ icon, title, sub, onClick, disabled, primary }: { icon: string; t
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-display text-[13px] uppercase tracking-[0.08em] text-parchment">{title}</span>
-        <span className="block truncate font-sans text-[10px] normal-case tracking-normal text-ptextdim">{sub}</span>
+        {sub && <span className="block truncate font-sans text-[10px] normal-case tracking-normal text-ptextdim">{sub}</span>}
       </span>
       <span className="text-ptextdim/60">›</span>
     </button>
   );
 }
 
-function Toggle({ icon, title, sub, on, onChange }: { icon: string; title: string; sub: string; on: boolean; onChange: (on: boolean) => void }) {
+function Toggle({ icon, title, on, onChange }: { icon: string; title: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
     <button
       type="button"
@@ -243,7 +241,6 @@ function Toggle({ icon, title, sub, on, onChange }: { icon: string; title: strin
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-display text-[13px] uppercase tracking-[0.08em] text-parchment">{title}</span>
-        <span className="block truncate font-sans text-[10px] normal-case tracking-normal text-ptextdim">{sub}</span>
       </span>
       <span
         className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${on ? 'border-brass bg-[#6d5320]' : 'border-stoneline bg-black/40'}`}

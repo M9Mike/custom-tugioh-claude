@@ -89,7 +89,12 @@
     "paths": "tsx scripts/path-coverage.ts",
     "world": "node scripts/world/build.mjs",
     "world:fetch": "node scripts/world/fetch-assets.mjs",
-    "drawn": "tsx scripts/world-check.ts"
+    "drawn": "tsx scripts/world-check.ts",
+    "travel": "tsx scripts/travel-check.ts",
+    "travel:paths": "tsx scripts/travel-paths.ts",
+    "travel:map": "tsx scripts/travel-map.ts",
+    "chips": "tsx scripts/tournament-check.ts",
+    "ratings": "tsx scripts/tournament-ratings.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

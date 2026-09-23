@@ -215,10 +215,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
         data-conversation={npc.id}
       >
         <div className="flex items-end justify-between">
-          <div>
-            <p className="text-[9px] uppercase tracking-[0.32em] text-brass">Talking to</p>
-            <p className="mt-0.5 font-display text-lg leading-none text-brassbright">{npc.character.name}</p>
-          </div>
+          <p className="font-display text-lg leading-none text-brassbright">{npc.character.name}</p>
           <button
             className="btn rounded px-2 py-1 text-[9px]"
             aria-label="End the conversation"
@@ -243,7 +240,7 @@ export default function Conversation({ npc, playerName, onClose, openAt, onDuel,
         </button>
 
         {!lastPage && (
-          <p className="mt-2 text-right text-[9px] uppercase tracking-widest text-ptextdim">Tap to go on</p>
+          <p aria-hidden className="mt-1 animate-pulse text-right text-[11px] leading-none text-brass">▾</p>
         )}
 
         {lastPage && node.choices.length > 0 && (

@@ -32,6 +32,7 @@ import type { StoryProfile, StoryStage, WorldPosition } from '@/story/profile';
 import { DECK_SIZE, STARTER_POOL } from '@/story/roster';
 import type { PremadeCharacter } from '@/story/premade';
 import type { WorldNpc } from '@/story/npcs';
+import { holdsChip, isEntrant, phaseOf } from '@/story/tournament';
 import { saveIdentity } from '@/lib/useDuelRoom';
 import { primeAudio, sfx } from '@/lib/sfx';
 
@@ -445,6 +446,18 @@ export default function StoryMode() {
     setBusy(true);
     sfx.click();
     try {
+      /*
+       * Where a win picks the conversation up. During the tournament, the
+       * first win over an entrant takes their star chip, and they have a line
+       * for handing it over (`chip`) that is not the line for being beaten
+       * again. The chip itself is the server's to give — see `settleDuel` —
+       * and this is only which of their two sentences they say.
+       */
+      const tour = profile?.tournament;
+      const won =
+        phaseOf(tour) === 'running' && isEntrant(npc.id) && !holdsChip(tour, npc.id) && npc.script.chip
+          ? 'chip'
+          : npc.duel.won;
       const res = await fetch('/api/room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -459,7 +472,7 @@ export default function StoryMode() {
              for one. A slug the save does not hold is refused by the route. */
           wager,
           npcId: npc.id,
-          won: npc.duel.won,
+          won,
           lost: npc.duel.lost,
         }),
         cache: 'no-store',
@@ -475,7 +488,7 @@ export default function StoryMode() {
         code: data.code,
         token: data.token,
         npcId: npc.id,
-        won: npc.duel.won,
+        won,
         lost: npc.duel.lost,
         wagered: wager,
       });
@@ -557,6 +570,33 @@ export default function StoryMode() {
     }
   };
 
+  /**
+   * Kaiba's broadcast has played: open the tournament on the save.
+   *
+   * The server checks the count again and hands back the same tournament on
+   * a second call, so a retry on a flaky connection is harmless — and if this
+   * never lands, the broadcast plays again next visit, which is the right way
+   * round to fail.
+   */
+  const startTournament = async () => {
+    if (!profile) return;
+    const res = await post<{ profile: StoryProfile }>('/api/story/tournament', { username: profile.username, step: 'start' });
+    if (res.ok && res.data.profile) setProfile(res.data.profile);
+  };
+
+  /** The finals have been announced; do not announce them again. */
+  const finalsSeen = () => {
+    if (!profile) return;
+    /* Marked here at once, so the card goes the moment it is dismissed
+       rather than a round trip later. */
+    if (profile.tournament?.finals) {
+      setProfile({ ...profile, tournament: { ...profile.tournament, finals: { ...profile.tournament.finals, seen: true } } });
+    }
+    void post<{ profile: StoryProfile }>('/api/story/tournament', { username: profile.username, step: 'seen' }).then((res) => {
+      if (res.ok && res.data.profile) setProfile(res.data.profile);
+    });
+  };
+
   const toMenu = () => router.push('/');
 
   /* ---------------- sign in ---------------- */
@@ -572,11 +612,7 @@ export default function StoryMode() {
       <main className="safe-page mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col items-center justify-center gap-6 p-5">
         <div className="text-center">
           <h1 className="font-display text-4xl leading-none tracking-wide text-brassbright sm:text-5xl">Story Mode</h1>
-          <div className="brass-rule mx-auto my-4 w-48" />
-          <p className="mx-auto max-w-sm text-xs leading-relaxed text-ptext/85">
-            Your duelist, your deck and your progress are kept against your name — sign in with it on any device and
-            you pick up where you stopped.
-          </p>
+          <div className="brass-rule mx-auto mt-4 w-48" />
         </div>
 
         <div className="panel grain w-full rounded p-5">
@@ -622,9 +658,6 @@ export default function StoryMode() {
             <p className="mt-3 rounded border border-oxblood bg-[#2a1216]/70 px-3 py-2 text-xs text-[#f0c9cc]">{error}</p>
           )}
 
-          <p className="mt-4 text-center text-[11px] leading-relaxed text-ptextdim">
-            No password yet, and no way to make a new name — that comes later.
-          </p>
         </div>
 
         <button className="btn rounded px-4 py-2 text-xs" onClick={toMenu} disabled={busy}>
@@ -737,6 +770,10 @@ export default function StoryMode() {
       resume={resume}
       /* Hold the aftermath until the pack has been opened — see `packFirst`. */
       hold={packFirst}
+      /* Nothing else on screen — no pack, no counter — so a broadcast may play. */
+      quiet={!packFirst && !shopping}
+      onTournamentStart={startTournament}
+      onFinalsSeen={finalsSeen}
       /* Read exactly once. The comment above this state says "cleared once
          used" and for months nothing cleared it, which is why a conversation
          you had ended came back every time you closed the deck builder: the

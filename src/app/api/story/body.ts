@@ -15,6 +15,8 @@
  */
 export interface StoryBody {
   username: string;
+  /** Tournament: `start` once the broadcast has played, `seen` once the finals have been announced. */
+  step?: unknown;
   character?: unknown;
   deck?: unknown;
   world?: unknown;
@@ -38,6 +40,7 @@ export async function readBody(req: Request): Promise<StoryBody> {
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   return {
     username: typeof obj.username === 'string' ? obj.username : '',
+    step: obj.step,
     character: obj.character,
     action: obj.action,
     code: obj.code,

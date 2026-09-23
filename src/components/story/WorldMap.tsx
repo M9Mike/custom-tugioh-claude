@@ -191,19 +191,122 @@ const H = VIEW.z1 - VIEW.z0;
 /** A hundred metres, for the scale bar — long enough to be worth reading. */
 const BAR = 100;
 
+/** A box in city metres, for keeping names off each other. */
+interface Box {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+const overlap = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.z1, b.z1) - Math.max(a.z0, b.z0));
+
+/** The area names, where `LABELLED` put them — letter-spacing and outline included. */
+const AREA_NAMES: Box[] = LABELLED.map((p) => {
+  const w = p.name.length * (CHAR * LABEL + 0.6) + 6;
+  return { x0: p.lx - w / 2, x1: p.lx + w / 2, z0: p.lz - LABEL / 2 - 2, z1: p.lz + LABEL / 2 + 2 };
+});
+
+/** A duelist's name on the map. */
+const MARK = 10;
+
+/**
+ * Where each duelist's name goes: beside the dot, and if that is taken, on
+ * the other side, above or below it, or off one of its corners.
+ *
+ * The same idea as the area names, for the same reason — the Old Ward is four
+ * areas in ninety metres and on a busy afternoon half the tournament is in
+ * it, so "right of the dot" alone printed Seraphina across Domino Shrine and
+ * Panthesilea into Kaiba. Kaiba and the finalists are placed first, then
+ * everybody whose chip is still out there, and the chips already won last —
+ * the names that matter least give way, and one with nowhere clear to go is
+ * left off: a grey dot is a duelist you have already beaten, and needs no
+ * caption printed over somebody else's.
+ */
+function placeNames(marks: { key: string; x: number; z: number; label: string; rank: number }[], you: { x: number; z: number }) {
+  const dots: Box[] = [
+    ...marks.map((m) => ({ x0: m.x - 5, x1: m.x + 5, z0: m.z - 5, z1: m.z + 5 })),
+    { x0: you.x - 12, x1: you.x + 12, z0: you.z - 12, z1: you.z + 12 },
+  ];
+  const taken: Box[] = [...AREA_NAMES];
+  const out = new Map<string, { x: number; y: number; anchor: 'start' | 'end' | 'middle' } | null>();
+  for (const m of [...marks].sort((a, b) => a.rank - b.rank)) {
+    const w = m.label.length * CHAR * MARK * 1.1 + 5;
+    /* Beside, then above and below, then the four diagonals. */
+    const beside = (dz: number, side: 1 | -1) => ({
+      x: m.x + side * 7,
+      y: m.z + 3.5 + dz,
+      anchor: side === 1 ? ('start' as const) : ('end' as const),
+      box:
+        side === 1
+          ? { x0: m.x + 6, x1: m.x + 6 + w, z0: m.z - 5 + dz, z1: m.z + 6 + dz }
+          : { x0: m.x - 6 - w, x1: m.x - 6, z0: m.z - 5 + dz, z1: m.z + 6 + dz },
+    });
+    const stacked = (dz: number) => ({
+      x: m.x,
+      y: m.z + dz,
+      anchor: 'middle' as const,
+      box: { x0: m.x - w / 2, x1: m.x + w / 2, z0: m.z + dz - 9, z1: m.z + dz + 2 },
+    });
+    const tries = [beside(0, 1), beside(0, -1), stacked(-8), stacked(16), beside(-10, 1), beside(-10, -1), beside(10, 1), beside(10, -1)];
+    const cost = (b: Box) => [...taken, ...dots].reduce((sum, t) => sum + overlap(b, t), 0);
+    const clear = tries.find((t) => cost(t.box) === 0);
+    if (!clear && m.rank >= 3) {
+      out.set(m.key, null);
+      continue;
+    }
+    const pick = clear ?? tries.reduce((a, b) => (cost(b.box) < cost(a.box) ? b : a));
+    taken.push(pick.box);
+    out.set(m.key, { x: pick.x, y: pick.y, anchor: pick.anchor });
+  }
+  return out;
+}
+
+/** One duelist on the map, and what the player has to do with them. */
+export interface DuelistMark {
+  id: string;
+  name: string;
+  area: AreaId;
+  x: number;
+  z: number;
+  /** The player already holds their star chip. */
+  chip: boolean;
+  finalist: boolean;
+  /** Kaiba, who is not on the board but is where the finals are. */
+  host?: boolean;
+}
+
 export interface WorldMapProps {
   /** Which area the duelist is in, and where in it. */
   at: { area: AreaId; x: number; z: number };
+  /**
+   * The tournament's duelists, where they are right now — the duel disk's
+   * tracker, which is what Kaiba's broadcast tells you to use. Empty before
+   * the tournament, when there is nobody to track.
+   */
+  duelists?: DuelistMark[];
   /** Go there. Area-local metres, already settled. */
   onGo: (area: AreaId, x: number, z: number) => void;
   onClose: () => void;
 }
 
-export default function WorldMap({ at, onGo, onClose }: WorldMapProps) {
+export default function WorldMap({ at, duelists = [], onGo, onClose }: WorldMapProps) {
   const svg = useRef<SVGSVGElement | null>(null);
 
   /* Where the duelist is, in city metres. */
   const you = useMemo(() => toWorld(areaById(at.area), at.x, at.z), [at]);
+
+  /* The tournament, in city metres, with its names placed. */
+  const marks = useMemo(() => {
+    const list = duelists.map((d) => {
+      const w = toWorld(areaById(d.area), d.x, d.z);
+      /* Kaiba is Kaiba; everybody else goes by their first name. */
+      const label = d.host ? d.name.split(' ').slice(-1)[0] : d.name.split(' ')[0];
+      return { ...d, key: d.id, x: w.x, z: w.z, label, rank: d.host ? 0 : d.finalist ? 1 : d.chip ? 3 : 2 };
+    });
+    const names = placeNames(list, you);
+    return list.map((m) => ({ ...m, tag: names.get(m.key) ?? null }));
+  }, [duelists, you]);
 
   /**
    * A click, in city metres.
@@ -352,6 +455,37 @@ export default function WorldMap({ at, onGo, onClose }: WorldMapProps) {
               <rect key={i} x={s.x - 3.2} y={s.z - 3.2} width={6.4} height={6.4} transform={`rotate(45 ${s.x} ${s.z})`} fill="#c2a15a" opacity={0.95} />
             ))}
 
+            {/* The tournament: everybody still carrying a chip in brass, the
+                ones whose chip is already yours in grey, Kaiba as a diamond
+                where the finals are. Each with their name, small, beside it. */}
+            {marks.map((d) => {
+              const colour = d.host ? '#e8dfc9' : d.chip ? '#6f7784' : '#e6c980';
+              return (
+                <g key={d.id} style={{ pointerEvents: 'none' }} data-duelist={d.id}>
+                  {d.host ? (
+                    <rect x={d.x - 4.6} y={d.z - 4.6} width={9.2} height={9.2} transform={`rotate(45 ${d.x} ${d.z})`} fill="#0a0c11" stroke={colour} strokeWidth={2} />
+                  ) : (
+                    <circle cx={d.x} cy={d.z} r={d.finalist ? 5.2 : 4.2} fill={d.chip ? '#2a313d' : '#8a2f2a'} stroke={colour} strokeWidth={d.finalist ? 2.6 : 1.8} />
+                  )}
+                  {d.tag && (
+                    <text
+                      x={d.tag.x}
+                      y={d.tag.y}
+                      textAnchor={d.tag.anchor}
+                      fontSize={MARK}
+                      fontFamily="var(--font-display), Georgia, serif"
+                      fill={colour}
+                      stroke="#0a0c11"
+                      strokeWidth={2.5}
+                      paintOrder="stroke"
+                    >
+                      {d.label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
             {/* You. Two rings rather than a dot, so it reads on top of a name. */}
             <circle cx={you.x} cy={you.z} r={11} fill="none" stroke="#e6c980" strokeWidth={2.5} opacity={0.75}>
               <animate attributeName="r" values="9;13;9" dur="2.4s" repeatCount="indefinite" />
@@ -385,7 +519,6 @@ export default function WorldMap({ at, onGo, onClose }: WorldMapProps) {
             <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rotate-45 bg-[#c2a15a]" />a door</span>
             <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-[#e6c980]" />you</span>
           </span>
-          <span>Tap anywhere on the plan to go there. North is up.</span>
         </div>
       </div>
     </div>

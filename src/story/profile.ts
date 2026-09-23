@@ -10,6 +10,7 @@
 
 import { AREAS, FIRST_AREA, type AreaId } from './areas';
 import type { PremadeCharacter } from './premade';
+import type { TournamentState } from './tournament';
 
 export interface WorldPosition {
   /**
@@ -122,6 +123,18 @@ export interface StoryProfile {
    * which every reader treats as "nothing pulled yet".
    */
   pulled?: Record<string, string[]>;
+  /**
+   * The tournament, once Kaiba has opened it for this player — see
+   * `story/tournament.ts`.
+   *
+   * Absent until the broadcast has played, which is the only test anything
+   * makes for whether it has begun: ninety-nine cards open the door and the
+   * broadcast is walking through it, so a player who reaches the count with
+   * the app closed still sees it the next time they are in the world. Written
+   * only by the server — the start by `/api/story/tournament`, every chip by
+   * `/api/story/save` settling a duel against the room's own verdict.
+   */
+  tournament?: TournamentState;
   level: number;
   xp: number;
   world: WorldPosition;

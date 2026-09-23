@@ -209,9 +209,11 @@ export async function walkUntil(
   }
 }
 
-export async function enterStory(page: Page, area?: string, hour: number | null = PINNED_HOUR): Promise<boolean> {
-  /* `null` leaves the clock running — for the one check that is about time passing. */
-  await page.goto(`${BASE}/story${hour === null ? '' : `?t=${hour}`}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+export async function enterStory(page: Page, area?: string, hour: number | null = PINNED_HOUR, also: string[] = []): Promise<boolean> {
+  /* `null` leaves the clock running — for the one check that is about time
+     passing. `also` is anything else the URL should carry, like `steady`. */
+  const query = [...(hour === null ? [] : [`t=${hour}`]), ...also].join('&');
+  await page.goto(`${BASE}/story${query ? `?${query}` : ''}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   /*
    * Sign in if asked, and do not mind if the card goes away mid-sentence.
    *

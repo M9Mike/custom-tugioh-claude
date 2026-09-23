@@ -218,9 +218,21 @@ async function frame(page: Page, v: Vantage, dx: number, file: string) {
   /* Twice before giving up. A cold area can take longer to compile than the
      wait allows, and "never finished building" is then a fact about the machine
      rather than about the world — see the note in `stairs-check.ts`. */
-  let there = await enterStory(page, v.area);
-  if (!there) there = await enterStory(page, v.area);
+  /* Steady: the quality governor held still, so both frames of a pair are
+     drawn at the same resolution — see `?steady` in the world. */
+  let there = await enterStory(page, v.area, undefined, ['steady']);
+  if (!there) there = await enterStory(page, v.area, undefined, ['steady']);
   const dist = await settled(page);
+
+  /* Everybody who is coming has arrived — a model still on the wire is a
+     person who lands between the two frames, in one and not the other. */
+  for (let i = 0; i < 120; i++) {
+    const loading = await page
+      .evaluate(() => (window as unknown as { __probe?: { loading?: number } }).__probe?.loading ?? 0)
+      .catch(() => 0);
+    if (loading === 0) break;
+    await page.waitForTimeout(250);
+  }
 
   /*
    * Everybody out of the shot: the world is what is being measured.
@@ -243,14 +255,31 @@ async function frame(page: Page, v: Vantage, dx: number, file: string) {
     }).catch(() => 0);
     if (hidden === 0) await page.waitForTimeout(250);
   }
-  /* And again after a beat, in case a second one arrived behind the first. */
-  await page.waitForTimeout(400);
+  /*
+   * And every frame from here to the shutter, not once more after a beat.
+   *
+   * A second sweep 400 ms later was the old answer to "a second one arrived
+   * behind the first", and it only moved the race: a rig that lands after it —
+   * a cold fetch on a slow machine, which software WebGL after an hour of
+   * checks is — stands in one of the two shots and not the other, and the diff
+   * reports the world shimmering in the exact shape of Tony. Waited for above,
+   * and hidden the frame it appears besides, so what is compared is the world
+   * alone.
+   */
   await page.evaluate(() => {
     const w = window as unknown as {
       __scene?: { traverse(fn: (o: { isSkinnedMesh?: boolean; visible: boolean }) => void): void };
+      __peopleOut?: boolean;
     };
-    w.__scene?.traverse((o) => { if (o.isSkinnedMesh) o.visible = false; });
+    if (w.__peopleOut) return;
+    w.__peopleOut = true;
+    const sweep = () => {
+      w.__scene?.traverse((o) => { if (o.isSkinnedMesh) o.visible = false; });
+      requestAnimationFrame(sweep);
+    };
+    sweep();
   }).catch(() => {});
+  await page.waitForTimeout(400);
 
   await page.screenshot({ path: file, timeout: 60000 });
   return there && hidden > 0 ? dist : Number.NaN;

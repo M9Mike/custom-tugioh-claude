@@ -22,8 +22,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { StoryProfile } from '@/story/profile';
 import { WORLD_NPCS, openingNode, whereabouts, type WorldNpc } from '@/story/npcs';
-import { cardsLeft } from '@/story/tournament';
+import { CHIPS_TO_FINALS, cardsLeft, isEntrant, isFinalist, phaseOf, tournamentOpen, type Phase } from '@/story/tournament';
 import { dayFrom, type Haunt } from '@/story/ash';
+import {
+  FINALIST_SPOTS,
+  TRAVELLER_BY_ID,
+  bandOf,
+  legBetween,
+  nodeAt,
+  planFor,
+  segmentAt,
+  travelClock,
+  travelState,
+  type TravelState,
+} from '@/story/travel';
+import { findPath, alongPath, pathLength, type NavPoint } from '@/story/nav';
 import { CARDS } from '@/game/cards';
 import {
   areaById,
@@ -39,10 +52,10 @@ import {
   standingOn,
   cameraReach,
 } from '@/story/areas';
-import WorldMap from './WorldMap';
+import WorldMap, { type DuelistMark } from './WorldMap';
 import StoryMenu from './StoryMenu';
 import type { BuiltArea } from './world/kit';
-import { skyAt, hourFrom } from '@/story/sky';
+import { DAY_MINUTES, skyAt, hourFrom } from '@/story/sky';
 import { TOP_SPEED, npcGait } from '@/story/gait';
 import { ceilingFor, deckIsShort } from '@/story/shop';
 import { setShadowQuality } from './world/sky';
@@ -57,6 +70,8 @@ import {
 } from './world/ported';
 import { buildPremadeRig, releaseTemplates, type PremadeRig } from './premadeRig';
 import Conversation from './Conversation';
+import Cutscene from './Cutscene';
+import TournamentBoard, { FinalsCard } from './TournamentBoard';
 import { canDraw3d } from './webgl';
 import { sfx } from '@/lib/sfx';
 
@@ -136,10 +151,31 @@ interface Props {
    * been turned over. What waits is only the drawing of it.
    */
   hold?: boolean;
+  /**
+   * Nothing else is over the world — no pack being turned, no counter open —
+   * so a broadcast may play. See the tournament's effects below.
+   */
+  quiet?: boolean;
+  /** Kaiba's broadcast has played: open the tournament on the save. */
+  onTournamentStart?: () => Promise<void> | void;
+  /** The finals have been announced: say so on the save, so it plays once. */
+  onFinalsSeen?: () => void;
 }
 
+/**
+ * How far a traveller walks while fading, coming in through a gate or going
+ * out of one. A metre and a quarter — a stride and a half — so somebody
+ * appearing in a doorway reads as walking out of it rather than as a switch
+ * being thrown.
+ */
+const FADE_METRES = 1.25;
 
-export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed, onMet, hold }: Props) {
+/** Everybody's name, by id, for the table and the map. */
+const NAMES: Record<string, string> = Object.fromEntries(WORLD_NPCS.map((n) => [n.id, n.character.name]));
+
+
+
+export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExit, onDuel, onShop, resume, onResumed, onMet, hold, quiet, onTournamentStart, onFinalsSeen }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   /** The name of the place on the pause menu's plaque, read as it opens. */
   const [menuPlace, setMenuPlace] = useState('');
@@ -157,18 +193,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   /* Redrawn only while the map is open: this is where the marker comes from,
      and a position that updates every frame would re-render the world. */
   const [mapAt, setMapAt] = useState<{ area: AreaId; x: number; z: number } | null>(null);
-  /*
-   * Whether there is a keyboard to mention.
-   *
-   * "WASD on a keyboard" under the thumb stick of a phone is a line about a
-   * thing the player does not have, and a real game does not tell you about
-   * controls you cannot use. A fine pointer that can hover is a mouse, and a
-   * mouse comes with a keyboard; a touch screen comes with neither. Read once,
-   * on mount: nobody plugs a keyboard into a phone mid-duel.
-   */
-  const [hasKeyboard] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  );
   const [saving, setSaving] = useState(false);
   /**
    * How far through deleting the player is: nothing, warned, or asked twice.
@@ -218,6 +242,37 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
    * what carries it to the next step.
    */
   const [met, setMet] = useState<Set<string>>(() => new Set(profile.met ?? []));
+
+  /**
+   * The tournament, as the render loop reads it.
+   *
+   * The loop is built once and must not re-run when the save changes, so it
+   * reads the tournament through a ref — and when the phase moves (the
+   * broadcast has played, the finals are set) it is told to put the area's
+   * people back together, because who is in the city has changed.
+   */
+  const tournamentRef = useRef(profile.tournament ?? null);
+  const phaseRef = useRef<Phase>(phaseOf(profile.tournament));
+  const repopulate = useRef(false);
+  useEffect(() => {
+    tournamentRef.current = profile.tournament ?? null;
+    const phase = phaseOf(profile.tournament);
+    if (phase !== phaseRef.current) {
+      phaseRef.current = phase;
+      repopulate.current = true;
+    }
+  }, [profile.tournament]);
+  const phase = phaseOf(profile.tournament);
+  /** Kaiba's broadcast, on screen. */
+  const [broadcast, setBroadcast] = useState(false);
+  /** The table, on screen. */
+  const [boardOpen, setBoardOpen] = useState(false);
+  /** A star chip just won, said once and then got out of the way. */
+  const [chipNote, setChipNote] = useState<string | null>(null);
+  /** Where the duelists are, redrawn while the map is open. */
+  const [marks, setMarks] = useState<DuelistMark[]>([]);
+  const marksRef = useRef<(() => DuelistMark[]) | null>(null);
+  const names = NAMES;
   /* What the loop last reported, so it only calls setState when it changes. */
   const nearRef = useRef<WorldNpc | null>(null);
   /* Read by the render loop, which must not re-run when a conversation opens:
@@ -270,6 +325,55 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     onEditDeck();
   }, [profile, talkingTo, onEditDeck]);
 
+  /**
+   * Kaiba's broadcast: the first time the player is standing in the world
+   * with ninety-nine cards and nothing else going on.
+   *
+   * Nothing else means it: not mid-conversation (the duel the ninety-ninth
+   * card came off still has something to say about it), not while a pack is
+   * being turned or the counter is open (`quiet`), not over the menu or the
+   * map. A moment's grace after all of that clears, so it does not land on
+   * the same frame as the panel closing.
+   */
+  const broadcastDue = phase === 'before' && tournamentOpen(profile.collection.length);
+  useEffect(() => {
+    if (!broadcastDue || broadcast || talkingTo || hold || !quiet || menuOpen || mapOpen) return;
+    const timer = window.setTimeout(() => setBroadcast(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [broadcastDue, broadcast, talkingTo, hold, quiet, menuOpen, mapOpen]);
+
+  /** The finals, announced once, the first quiet moment after they are set. */
+  const finalsDue = phase === 'finals' && !profile.tournament?.finals?.seen;
+
+  /**
+   * A star chip, said out loud the moment the save has it — which is the
+   * moment the conversation the duel came back to has picked up, because
+   * that is when the duel is settled (`/api/story/save`).
+   */
+  const chipsHeld = profile.tournament?.chips.length ?? 0;
+  const chipsSeen = useRef(chipsHeld);
+  useEffect(() => {
+    if (chipsHeld > chipsSeen.current) {
+      const newest = profile.tournament?.chips[chipsHeld - 1];
+      const who = WORLD_NPCS.find((n) => n.id === newest)?.character.name ?? 'a duelist';
+      setChipNote(`Star chip — ${who} · ${chipsHeld} of ${CHIPS_TO_FINALS}`);
+      sfx.heal();
+      const timer = window.setTimeout(() => setChipNote(null), 4200);
+      chipsSeen.current = chipsHeld;
+      return () => window.clearTimeout(timer);
+    }
+    chipsSeen.current = chipsHeld;
+  }, [chipsHeld, profile.tournament]);
+
+  /* The duelists on the map move while it is open: once a second. */
+  useEffect(() => {
+    if (!mapOpen) return;
+    const read = () => setMarks(marksRef.current?.() ?? []);
+    read();
+    const timer = window.setInterval(read, 1000);
+    return () => window.clearInterval(timer);
+  }, [mapOpen]);
+
 
   const holder = useRef<HTMLDivElement>(null);
   const stick = useRef<HTMLDivElement>(null);
@@ -297,10 +401,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
   const areaRef = useRef<AreaId>(start.area);
   /** The name of the place just entered, shown briefly and then faded out. */
   const [entered, setEntered] = useState<string | null>(null);
-  /** Whether the line under the stick that says how to walk is shown. */
-  const [hints, setHints] = useState(() => {
-    try { return window.localStorage.getItem('story-hints') !== '0'; } catch { return true; }
-  });
   /**
    * Whether where she stands is written in the corner — an Options switch,
    * off unless asked for. Mike asked for it so a place he sees something
@@ -423,15 +523,39 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        pinned hour already pins the day to nought (see `dayFrom`); `?day=` names
        a particular one, so a check can stand where Ash is known to be. */
     let pinnedDay: number | null = null;
+    /*
+     * `?from=` starts the clock at an hour and lets it run — for watching the
+     * tournament's travellers walk the city at a time of day of one's
+     * choosing, which a pinned hour cannot show: pinned, nobody moves.
+     */
+    let offset = 0;
+    /*
+     * `?steady` holds the governor at full quality. For the checks that
+     * compare two screenshots: under software rendering the governor steps
+     * down a moment into every page, and a frame drawn at a different
+     * resolution from its twin is the whole picture flipping — a fact about
+     * the governor, not the world being measured.
+     */
+    let steady = false;
     try {
       const search = new URLSearchParams(window.location.search);
+      steady = search.has('steady');
       const raw = search.get('t');
       if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) pinned = Number(raw);
       const rawDay = search.get('day');
       if (rawDay !== null && rawDay !== '' && Number.isFinite(Number(rawDay))) pinnedDay = Number(rawDay);
+      const rawFrom = search.get('from');
+      if (pinned === null && rawFrom !== null && rawFrom !== '' && Number.isFinite(Number(rawFrom))) {
+        const dayMs = DAY_MINUTES * 60_000;
+        const want = ((Number(rawFrom) % 24) + 24) % 24;
+        const have = hourFrom(Date.now());
+        offset = ((((want - have) % 24) + 24) % 24) / 24 * dayMs;
+      }
     } catch {
       /* no window.location worth reading — leave it running */
     }
+    /** The wall clock, as this world reads it. */
+    const worldNow = () => Date.now() + offset;
 
     /*
      * Near and far are tight on purpose: it is the whole of the flicker fix.
@@ -680,7 +804,77 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       hold: number;
       /** Seconds of walking left before the next unplanned stop. */
       rest: number;
+      /**
+       * How this person is moved: a `route` they pace, standing where they
+       * were put, or the tournament's `travel` plan (`story/travel.ts`).
+       */
+      moves: 'route' | 'fixed' | 'travel';
+      /**
+       * Travel only: how many seconds behind the plan they are running.
+       *
+       * The plan is the wall clock's, and a traveller who stops to talk to
+       * you has stopped and the clock has not — so they carry on from where
+       * they were, a little late, and make the time up standing still at their
+       * next stop rather than by teleporting to where the plan has got to.
+       * Out of sight nobody is late: the next time the area is built, they are
+       * wherever the clock says.
+       */
+      lag: number;
+      /** Travel only: how much of them there is — fading in a doorway. */
+      shown: number;
+      /** Travel only: has appeared here, rather than being loaded ahead of arriving. */
+      entered: boolean;
+      born: number;
+      /**
+       * A walk of their own, off the plan: after a duel they are stood in
+       * front of the player and have to find their way back into it. `wait`
+       * holds it until the conversation is over.
+       */
+      detour: {
+        points: NavPoint[];
+        d: number;
+        then: 'exit' | 'plan';
+        wait?: boolean;
+        /** For `plan`: the second of the plan they pick up at when the walk ends. */
+        resumeAt?: number;
+      } | null;
+      /** Seconds stood looking at a player who has not spoken; after five they walk on. */
+      waited: number;
+      /** Walked on past a player who did not speak — not stopping for them again until they have gone. */
+      passing: boolean;
+      /** Seconds held up by somebody standing in the way. */
+      blocked: number;
+      /** Which way they are going, and whether they are, for whoever walks behind them. */
+      heading: number;
+      moving: boolean;
+      /** The materials of the rig and what they were, for the fade. */
+      mats: { mat: THREE.Material & { opacity: number }; opacity: number; transparent: boolean }[];
+      meshes: THREE.Mesh[];
+      faded: boolean;
     }[] = [];
+    /**
+     * Travellers who walked out after a duel, kept out of this area until
+     * the plan agrees they have gone — otherwise the next presence check,
+     * reading a plan that still has them waiting at a stop here, would stand
+     * them back up at it a moment after they left.
+     */
+    const stayGone = new Set<string>();
+
+    /** Draws somebody at a fraction of themselves, or wholly. */
+    const fadeTo = (them: (typeof npcs)[number], shown: number) => {
+      them.shown = shown;
+      them.rig.root.visible = shown > 0.01;
+      const faded = shown < 0.999;
+      if (faded !== them.faded) {
+        them.faded = faded;
+        for (const m of them.mats) {
+          m.mat.transparent = faded || m.transparent;
+          m.mat.needsUpdate = true;
+        }
+      }
+      for (const m of them.mats) m.mat.opacity = m.opacity * (faded ? shown : 1);
+      for (const mesh of them.meshes) mesh.castShadow = !them.npc.spirit && shown > 0.5;
+    };
 
     /**
      * Builds the people who live in one area, and only them.
@@ -713,7 +907,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        two seconds and a cold fetch can take longer than that, so without this
        the same person was built twice and stood in two places. */
     const building = new Set<string>();
-    const arrive = (npc: WorldNpc, at: Haunt, id: AreaId) => {
+    const arrive = (npc: WorldNpc, at: Haunt, id: AreaId, moves: 'route' | 'fixed' | 'travel') => {
       if (npcs.some((n) => n.npc.id === npc.id) || building.has(npc.id)) return;
       building.add(npc.id);
       buildPremadeRig(npc.character, {
@@ -748,7 +942,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             if (rejoining) {
               rejoinRef.current = null;
               const ahead = settle(
-                areaById(npc.area),
+                areaById(id),
                 here.current.x + Math.sin(here.current.facing) * 1.8,
                 here.current.z + Math.cos(here.current.facing) * 1.8,
                 0.4
@@ -777,11 +971,22 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             fresh.root.position.set(start.x, floor, start.z);
             fresh.root.rotation.y = at.facing;
             scene.add(fresh.root);
-            npcs.push({
+            const mats: (typeof npcs)[number]['mats'] = [];
+            const meshes: THREE.Mesh[] = [];
+            fresh.root.traverse((o) => {
+              const mesh = o as THREE.Mesh;
+              if (!mesh.isMesh) return;
+              meshes.push(mesh);
+              for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+                const m = mat as THREE.Material & { opacity: number };
+                if (!mats.some((x) => x.mat === m)) mats.push({ mat: m, opacity: m.opacity, transparent: m.transparent });
+              }
+            });
+            const person: (typeof npcs)[number] = {
               npc,
               rig: fresh,
               at: { x: start.x, z: start.z, y: floor },
-              route: at.roam,
+              route: moves === 'route' ? at.roam : undefined,
               facing: at.facing,
               leg,
               dir: 1,
@@ -790,7 +995,28 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
                  so two people in one area do not stop together on the first
                  lap and then for ever after. */
               rest: at.roam?.restEvery ? at.roam.restEvery * (0.3 + Math.random()) : Infinity,
-            });
+              moves,
+              lag: 0,
+              shown: 1,
+              entered: moves !== 'travel' || rejoining,
+              born: performance.now(),
+              /* Back from a duel with a traveller: stood here for the rest of
+                 the conversation, and then off to the nearest gate — the plan
+                 has gone on without them. */
+              detour: moves === 'travel' && rejoining ? { points: [], d: 0, then: 'exit', wait: true } : null,
+              mats,
+              meshes,
+              faded: false,
+              waited: 0,
+              passing: false,
+              blocked: 0,
+              heading: at.facing,
+              moving: false,
+            };
+            npcs.push(person);
+            /* A traveller loaded ahead of walking in is drawn only once they
+               have — the frame loop places and shows them. */
+            if (moves === 'travel' && !rejoining) fadeTo(person, 0);
           })
           .catch((err) => {
             building.delete(npc.id);
@@ -802,24 +1028,59 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
      * Who is in an area is a question with a time in it.
      *
      * Everybody placed is here whenever the area is; the one with a schedule
-     * is here when the clock says so. Asked on every door, and again every
-     * couple of seconds by the frame loop below, which is what lets somebody
-     * walk in — or leave — while you are standing in the room.
+     * is here when the clock says so; and once the tournament is running the
+     * travellers are wherever `travel.ts` has them — including, for twelve
+     * seconds ahead, somebody about to walk in, so their model is down before
+     * they reach the doorway. Asked on every door, and again every couple of
+     * seconds by the frame loop below, which is what lets somebody walk in —
+     * or leave — while you are standing in the room.
      */
-    const presentNow = (id: AreaId): { npc: WorldNpc; at: Haunt }[] => {
-      const hour = hourFrom(Date.now(), pinned);
-      const day = dayFrom(Date.now(), pinned, pinnedDay);
-      const out: { npc: WorldNpc; at: Haunt }[] = [];
+    const presentNow = (id: AreaId): { npc: WorldNpc; at: Haunt; moves: 'route' | 'fixed' | 'travel' }[] => {
+      const now = worldNow();
+      const hour = hourFrom(now, pinned);
+      const day = dayFrom(now, pinned, pinnedDay);
+      const clock = travelClock(now, pinned, pinnedDay);
+      const tour = tournamentRef.current;
+      const phase = phaseOf(tour);
+      const out: { npc: WorldNpc; at: Haunt; moves: 'route' | 'fixed' | 'travel' }[] = [];
       for (const npc of WORLD_NPCS) {
-        let at = whereabouts(npc, hour, day);
         /* Somebody mid-conversation is here whatever the clock says. A duel is
            a different page and the clock ran through it; the fiction on the
            way back is that you never stopped talking, so the person you were
            talking to is standing in front of you — see `rejoinRef` — and only
            leaves, like anyone on a schedule, once you have walked away. */
         const withMe = rejoinRef.current === npc.id || talkingRef.current?.id === npc.id;
+        if (npc.arrives === 'tournament' && phase === 'before') continue;
+        /* The finals: the three who went through wait in the forecourt. */
+        if (phase === 'finals' && tour?.finals && isFinalist(tour, npc.id)) {
+          const spot = FINALIST_SPOTS[tour.finals.finalists.indexOf(npc.id) - 1] ?? FINALIST_SPOTS[0];
+          if (spot.area === id || withMe) out.push({ npc, at: { area: id, x: spot.x, z: spot.z, facing: spot.facing }, moves: 'fixed' });
+          continue;
+        }
+        const traveller = phase !== 'before' ? TRAVELLER_BY_ID[npc.id] : undefined;
+        if (traveller) {
+          const st = travelState(npc.id, clock.day, clock.t);
+          if (!st) continue;
+          if (st.kind === 'home') {
+            if (npc.area === id) out.push({ npc, at: { area: id, x: npc.x, z: npc.z, facing: npc.facing, roam: npc.roam }, moves: npc.roam ? 'route' : 'fixed' });
+            else if (withMe) out.push({ npc, at: { area: id, x: npc.x, z: npc.z, facing: npc.facing }, moves: 'travel' });
+            continue;
+          }
+          const inHere = (s: TravelState | null) => !!s && (s.kind === 'walking' || s.kind === 'waiting') && s.area === id;
+          const soon = travelState(npc.id, clock.day, clock.t + 12);
+          if (stayGone.has(npc.id)) {
+            if (inHere(st) || inHere(soon)) continue;
+            stayGone.delete(npc.id);
+          }
+          if (inHere(st) || inHere(soon) || withMe) {
+            const p = st.kind === 'walking' || st.kind === 'waiting' ? st : null;
+            out.push({ npc, at: { area: id, x: p?.x ?? npc.x, z: p?.z ?? npc.z, facing: st.kind === 'waiting' ? st.facing : 0 }, moves: 'travel' });
+          }
+          continue;
+        }
+        let at = whereabouts(npc, hour, day);
         if (withMe && npc.haunts && (!at || at.area !== id)) at = npc.haunts.find((h) => h.area === id) ?? at;
-        if (at && at.area === id) out.push({ npc, at });
+        if (at && at.area === id) out.push({ npc, at, moves: at.roam ? 'route' : 'fixed' });
       }
       return out;
     };
@@ -830,6 +1091,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         theirs.dispose();
       }
       npcs = [];
+      stayGone.clear();
       const here = presentNow(id);
       /*
        * And the models nobody in this area is wearing are thrown away.
@@ -846,7 +1108,39 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * a live rig is a body with no geometry left to draw.
        */
       releaseTemplates([character.model, ...here.map(({ npc }) => npc.character.model)]);
-      for (const { npc, at } of here) arrive(npc, at, id);
+      for (const { npc, at, moves } of here) arrive(npc, at, id, moves);
+    };
+
+    /**
+     * Where every duelist in the tournament is, for the map — off the same
+     * plan the frame loop walks them by, so the dot and the person agree.
+     */
+    marksRef.current = () => {
+      const tour = tournamentRef.current;
+      const phase = phaseOf(tour);
+      if (phase === 'before' || !tour) return [];
+      const clock = travelClock(worldNow(), pinned, pinnedDay);
+      const out: DuelistMark[] = [];
+      for (const npc of WORLD_NPCS) {
+        const host = npc.id === 'kaiba';
+        if (!host && !isEntrant(npc.id)) continue;
+        const finalist = isFinalist(tour, npc.id);
+        const chip = tour.chips.includes(npc.id);
+        let place: { area: AreaId; x: number; z: number } | null = { area: npc.area, x: npc.x, z: npc.z };
+        if (phase === 'finals' && finalist && tour.finals) {
+          const spot = FINALIST_SPOTS[tour.finals.finalists.indexOf(npc.id) - 1] ?? FINALIST_SPOTS[0];
+          place = { area: spot.area, x: spot.x, z: spot.z };
+        } else if (TRAVELLER_BY_ID[npc.id]) {
+          /* The live one, if they are in front of the player right now. */
+          const live = npcs.find((n) => n.npc.id === npc.id && n.entered && areaRef.current === area.id);
+          const st = travelState(npc.id, clock.day, clock.t);
+          if (live) place = { area: area.id, x: live.at.x, z: live.at.z };
+          else if (st?.kind === 'walking' || st?.kind === 'waiting') place = { area: st.area, x: st.x, z: st.z };
+          else if (st?.kind === 'crossing') place = null;
+        }
+        if (place) out.push({ id: npc.id, name: npc.character.name, ...place, chip, finalist, host });
+      }
+      return out;
     };
 
     /* Now that both halves exist, open the area the save left us in. */
@@ -927,7 +1221,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          Neither is a frame anybody watched. A hitch of up to a second and a
          half is — counted, but capped, so one long frame cannot by itself
          drag the average over the line. */
-      if (raw > 1.5 || document.hidden || crossing !== null) return;
+      if (steady || raw > 1.5 || document.hidden || crossing !== null) return;
       quality.ema += (Math.min(raw, 0.1) - quality.ema) * 0.05;
       quality.frames++;
       const now = performance.now();
@@ -1063,6 +1357,183 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
     let camLift = 0;
     const lookAt = new THREE.Vector3();
 
+    /**
+     * The nearest way out of the area on foot, for a traveller who has just
+     * finished talking to you after a duel and whose plan has gone on without
+     * them. A found path, not a straight line: the conversation may have
+     * happened with a counter between them and the door.
+     */
+    const nearestExit = (from: { x: number; z: number; y: number }): NavPoint[] | null => {
+      const exits = area.doors
+        .map((door) => ({ door, mouth: nodeAt(area.id, `g:${door.id}`) }))
+        .filter((e): e is { door: Door; mouth: NavPoint } => !!e.mouth)
+        .sort((a, b) => Math.hypot(a.mouth.x - from.x, a.mouth.z - from.z) - Math.hypot(b.mouth.x - from.x, b.mouth.z - from.z));
+      for (const { door, mouth } of exits) {
+        const avoid = area.doors.filter((d) => d.id !== door.id).map((d) => d.trigger);
+        const found = findPath(area, from, from.y, mouth, { band: bandOf(area), budget: 15000, avoid });
+        if (found) return found.points;
+      }
+      return null;
+    };
+
+    /** How late somebody is if they set off now on the plan's walk from `node`. */
+    const lagFrom = (id: string, clock: { day: number; t: number }, node: string): number => {
+      let from: number | null = null;
+      for (const seg of planFor(clock.day)[id] ?? []) {
+        if (seg.t0 > clock.t) break;
+        if (seg.kind === 'walk' && seg.from === node) from = seg.t0;
+      }
+      return from === null ? 0 : Math.max(0, clock.t - from);
+    };
+
+    /**
+     * One frame of a traveller.
+     *
+     * The plan says where they are at `clock - lag`. Noticed by the player —
+     * stopped to be talked to — they stand, and the lag grows by the time they
+     * stood; at their next stop they make it up, standing a little less. In a
+     * doorway they fade, in over the first metre and a quarter of a walk that
+     * starts at a gate and out over the last of one that ends at one, and a
+     * walk that ends at a gate ends them: out of sight, the clock is the truth.
+     * Home again at night, they go back to pacing the route they paced before
+     * the tournament, from its first point, which is where the day's last
+     * walk left them.
+     */
+    const stepTraveller = (
+      them: (typeof npcs)[number],
+      dt: number,
+      noticed: boolean,
+      clock: { day: number; t: number }
+    ): 'gone' | { speed: number; heading: number | null } => {
+      const { npc, at, rig: theirs } = them;
+      const speedOf = TRAVELLER_BY_ID[npc.id]?.speed ?? 1.5;
+      const place = (x: number, z: number) => {
+        at.x = x;
+        at.z = z;
+        /* The first place they appear is an arrival — the floor a landing
+           stands on — and every step after it a step, from the floor they
+           are on, so a flight is climbed rather than guessed at. */
+        at.y = them.entered ? groundAt(area, x, z, at.y) : standingOn(area, x, z);
+        theirs.root.position.set(x, at.y, z);
+      };
+      if (them.detour) {
+        const det = them.detour;
+        if (det.wait) {
+          if (talkingRef.current?.id === npc.id || rejoinRef.current === npc.id) return { speed: 0, heading: null };
+          const out = nearestExit(at);
+          if (!out) {
+            /* Nowhere to walk to from here: they stay put, and are gone
+               the next time the area is built. */
+            them.detour = null;
+            them.moves = 'fixed';
+            return { speed: 0, heading: null };
+          }
+          them.detour = { points: out, d: 0, then: 'exit' };
+          return { speed: 0, heading: null };
+        }
+        if (noticed) return { speed: 0, heading: null };
+        const len = pathLength(det.points);
+        det.d = Math.min(len, det.d + speedOf * dt);
+        const q = alongPath(det.points, det.d);
+        place(q.x, q.z);
+        if (det.then === 'exit') {
+          const left = len - det.d;
+          fadeTo(them, Math.max(0, Math.min(1, left / FADE_METRES)));
+          if (left <= 0.02) {
+            stayGone.add(npc.id);
+            return 'gone';
+          }
+        } else if (det.d >= len - 1e-6) {
+          them.detour = null;
+          them.lag = det.resumeAt !== undefined ? Math.max(0, clock.t - det.resumeAt) : lagFrom(npc.id, clock, `h:${npc.id}`);
+        }
+        return { speed: len > 0.05 ? speedOf : 0, heading: q.heading };
+      }
+      if (noticed) {
+        if (pinned === null) them.lag += dt;
+        them.moving = false;
+        return { speed: 0, heading: null };
+      }
+      const st = travelState(npc.id, clock.day, clock.t - them.lag);
+      if (!st) return 'gone';
+      if ((st.kind === 'waiting' || st.kind === 'walking') && st.area === area.id) {
+        place(st.x, st.z);
+        if (st.kind === 'waiting') {
+          them.moving = false;
+          them.facing = st.facing;
+          if (them.lag > 0) them.lag = Math.max(0, them.lag - dt * 2);
+          them.entered = true;
+          if (them.shown < 1) fadeTo(them, 1);
+          return { speed: 0, heading: null };
+        }
+        /*
+         * Somebody in the way. The player, stood on the line they are
+         * walking; or another traveller going the same way just ahead of
+         * them, whom they fall in behind rather than walk into. Held up by
+         * the player for more than a moment, they step round — a found path
+         * with the player walled off, back on to their own leg a few metres
+         * on.
+         */
+        if (them.entered) {
+          const ax = at.x + Math.sin(st.heading) * 0.9;
+          const az = at.z + Math.cos(st.heading) * 0.9;
+          const player = here.current;
+          const playerAhead = Math.hypot(player.x - ax, player.z - az) < 0.85;
+          const queued = npcs.some((o) => o !== them && o.shown > 0.5 && o.moving
+            && Math.cos(o.heading - st.heading) > 0.3 && Math.hypot(o.at.x - ax, o.at.z - az) < 0.95);
+          if (playerAhead || queued) {
+            if (pinned === null) them.lag += dt;
+            them.blocked += dt;
+            them.moving = false;
+            them.heading = st.heading;
+            if (playerAhead && them.blocked > 1.2) {
+              const leg = legBetween(area.id, st.from, st.to);
+              const seg = segmentAt(planFor(clock.day)[npc.id] ?? [], clock.t - them.lag);
+              if (leg && seg.kind === 'walk') {
+                const onward = Math.min(st.len, st.d + 3);
+                const to = alongPath(leg.points, onward);
+                const avoid = [
+                  { x: player.x, z: player.z, hw: 0.7, hd: 0.7 },
+                  ...area.doors.filter((dd) => `g:${dd.id}` !== st.to && `g:${dd.id}` !== st.from).map((dd) => dd.trigger),
+                ];
+                const round = findPath(area, at, at.y, to, { band: bandOf(area), budget: 3000, avoid });
+                if (round) {
+                  them.detour = { points: round.points, d: 0, then: 'plan', resumeAt: seg.t0 + onward / seg.speed };
+                  them.blocked = 0;
+                }
+              }
+            }
+            return { speed: 0, heading: st.heading };
+          }
+          them.blocked = 0;
+        }
+        let shown = 1;
+        if (st.from.startsWith('g:')) shown = Math.min(shown, st.d / FADE_METRES);
+        if (st.to.startsWith('g:')) shown = Math.min(shown, (st.len - st.d) / FADE_METRES);
+        shown = Math.max(0, Math.min(1, shown));
+        if (!them.entered && shown > 0) them.entered = true;
+        if (them.entered && Math.abs(shown - them.shown) > 1e-3) fadeTo(them, shown);
+        if (them.entered && st.to.startsWith('g:') && st.len - st.d <= 0.02) return 'gone';
+        them.heading = st.heading;
+        them.moving = pinned === null;
+        return { speed: pinned === null ? st.speed : 0, heading: st.heading };
+      }
+      if (st.kind === 'home' && npc.area === area.id) {
+        them.moves = npc.roam ? 'route' : 'fixed';
+        them.route = npc.roam;
+        them.leg = 1;
+        them.dir = 1;
+        them.hold = 0;
+        them.facing = npc.facing;
+        them.entered = true;
+        fadeTo(them, 1);
+        return { speed: 0, heading: null };
+      }
+      if (them.entered) return 'gone';
+      if (performance.now() - them.born > 25000) return 'gone';
+      return { speed: 0, heading: null };
+    };
+
     const frame = () => {
       raf = requestAnimationFrame(frame);
       /* Clamped: a backgrounded tab hands back a delta of many seconds, and an
@@ -1087,7 +1558,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       const dt = Math.min(raw, 0.05);
 
       /* The sky, before anything is drawn under it. */
-      const hour = hourFrom(Date.now(), pinned);
+      const hour = hourFrom(worldNow(), pinned);
       const sky = skyAt(hour);
       VOID.set(sky.voidColour);
       if (scene.fog instanceof THREE.Fog) {
@@ -1245,7 +1716,10 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * nobody may be inside of. It stops you at conversation distance by
          * itself, which is the distance you wanted anyway.
          */
-        for (const { npc, at } of npcs) {
+        for (const { npc, at, shown } of npcs) {
+          /* Somebody still walking in out of a doorway, or loaded ahead of
+             arriving, is not somebody you can bump into yet. */
+          if (shown < 0.5) continue;
           /* A spirit has no body to be pushed out of, which is the property
              that lets one walk down the middle of an avenue: a *moving*
              cylinder is one that can shove you off a terrace or corner you
@@ -1345,17 +1819,52 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * over. Ash is the only one this ever moves, and he leaves the way he
        * came — when nobody is watching.
        */
+      /* The tournament moved on — the broadcast played, or the finals were
+         set — and the people of this area are not the people who were here. */
+      if (repopulate.current) {
+        repopulate.current = false;
+        populate(area.id);
+      }
+      const clockNow = travelClock(worldNow(), pinned, pinnedDay);
       presenceClock += dt;
-      if (presenceClock > 2) {
+      if (presenceClock > 1) {
         presenceClock = 0;
         const due = presentNow(area.id);
-        for (const { npc, at } of due) arrive(npc, at, area.id);
+        for (const { npc, at, moves } of due) arrive(npc, at, area.id, moves);
         for (const them of [...npcs]) {
           if (!them.npc.schedule) continue;
           if (due.some((d) => d.npc.id === them.npc.id)) continue;
           if (talkingRef.current?.id === them.npc.id) continue;
           if (Math.hypot(p.x - them.at.x, p.z - them.at.z) < them.npc.range * 2.5) continue;
           depart(them.npc.id);
+        }
+        /*
+         * Morning, for somebody at home in front of you: the plan has them out
+         * of the door. They walk back to where their day begins — the first
+         * point of the route they pace, which is where the plan's first walk
+         * starts — and set off from there, a few seconds late.
+         */
+        if (phaseRef.current !== 'before') {
+          for (const them of npcs) {
+            if (them.moves === 'travel' || !TRAVELLER_BY_ID[them.npc.id]) continue;
+            if (isFinalist(tournamentRef.current, them.npc.id)) continue;
+            if (talkingRef.current?.id === them.npc.id) continue;
+            const st = travelState(them.npc.id, clockNow.day, clockNow.t);
+            if (!st || st.kind === 'home') continue;
+            const anchor = { x: them.npc.x, z: them.npc.z };
+            const back = Math.hypot(anchor.x - them.at.x, anchor.z - them.at.z) < 0.05
+              ? { points: [anchor, anchor] }
+              : findPath(area, them.at, them.at.y, anchor, { band: bandOf(area), budget: 8000 }) ?? { points: [{ x: them.at.x, z: them.at.z }, anchor] };
+            them.moves = 'travel';
+            them.route = undefined;
+            them.entered = true;
+            let from = clockNow.t;
+            for (const seg of planFor(clockNow.day)[them.npc.id] ?? []) {
+              if (seg.t0 > clockNow.t) break;
+              if (seg.kind === 'walk' && seg.from === `h:${them.npc.id}`) from = seg.t0;
+            }
+            them.detour = { points: back.points, d: 0, then: 'plan', resumeAt: from };
+          }
         }
       }
 
@@ -1370,7 +1879,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
        * twenty metres from the conversation it was framing.
        */
       let talkAt: { x: number; z: number } | null = null;
-      for (const them of npcs) {
+      for (const them of [...npcs]) {
         const { npc, rig: theirs, at } = them;
         const dx = p.x - at.x;
         const dz = p.z - at.z;
@@ -1392,7 +1901,34 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * spoken to holds somebody still as surely as being stood next to.
          */
         const toMe = talkingRef.current?.id === npc.id;
-        const noticed = toMe || d < npc.range * 1.6;
+        let noticed = toMe || (d < npc.range * 1.6 && them.shown > 0.9);
+        /*
+         * A traveller has somewhere to be.
+         *
+         * They stop and look at a player who comes near, the way anybody
+         * noticed on a street does — and if the player says nothing for five
+         * seconds they walk on, and do not stop for that player again until
+         * the two of them have been apart. Standing in the middle of the
+         * arcade used to stop every passer-by in the city where they were,
+         * two of them in one place, for as long as the player stood there.
+         * Being spoken to is different: that holds them for the whole
+         * conversation, however long.
+         */
+        if (them.moves === 'travel' && !toMe) {
+          if (them.passing) {
+            if (d > npc.range * 2.2) them.passing = false;
+            else noticed = false;
+          } else if (noticed) {
+            them.waited += dt;
+            if (them.waited > 5) {
+              them.passing = true;
+              them.waited = 0;
+              noticed = false;
+            }
+          } else {
+            them.waited = 0;
+          }
+        }
         if (toMe) talkAt = at;
         /*
          * Walking a route, when there is one and nobody is standing in front
@@ -1405,7 +1941,17 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
          * its owner walked out of range of it.
          */
         let speed = 0;
-        if (them.route && !noticed) {
+        /* A traveller's own heading, when the plan is walking them. */
+        let travelHeading: number | null = null;
+        if (them.moves === 'travel') {
+          const step = stepTraveller(them, dt, noticed, clockNow);
+          if (step === 'gone') {
+            depart(npc.id);
+            continue;
+          }
+          speed = step.speed;
+          travelHeading = step.heading;
+        } else if (them.route && !noticed) {
           const route = them.route;
           if (them.hold > 0) {
             them.hold -= dt;
@@ -1499,7 +2045,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         const heading = speed > 0 && to
           ? Math.atan2(to.x - at.x, to.z - at.z)
           : them.facing;
-        const want = noticed ? Math.atan2(dx, dz) : heading;
+        const want = noticed ? Math.atan2(dx, dz) : travelHeading ?? heading;
         let turn = want - theirs.root.rotation.y;
         turn = Math.atan2(Math.sin(turn), Math.cos(turn));
         theirs.root.rotation.y += turn * Math.min(1, dt * 3.2);
@@ -1507,7 +2053,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            `npcGait`. The real ground speed goes with it, because that is what
            the clip's playback rate comes off. */
         theirs.update(dt, npcGait(speed), speed);
-        if (d < npc.range && d < closestD) {
+        if (d < npc.range && d < closestD && them.shown > 0.9) {
           closest = npc;
           closestD = d;
         }
@@ -1841,6 +2387,14 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
            * centimetres inside a stone she was walking correctly down.
            */
           player: [+p.x.toFixed(4), +p.z.toFixed(4)],
+          /* The hour the sky and the travellers are reading. */
+          hour: +hour.toFixed(3),
+          /* The tournament's travellers standing here, and what they are doing. */
+          travellers: npcs.filter((n) => n.moves === 'travel').map((n) => ({ id: n.npc.id, x: +n.at.x.toFixed(2), z: +n.at.z.toFixed(2), y: +n.at.y.toFixed(2), shown: +n.shown.toFixed(2), lag: +n.lag.toFixed(1), passing: n.passing, visible: n.rig.root.visible, entered: n.entered })),
+          people: npcs.map((n) => n.npc.id),
+          /* People still on their way down the wire — a check that means to
+             photograph the world without them waits for this to reach nought. */
+          loading: building.size,
           /* The height the duelist is actually drawn at, which is the eased one
              and not `groundAt` — `npm run stairs` compares the two. */
           y: +groundY.toFixed(3),
@@ -2147,6 +2701,58 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         </button>
       </div>
 
+      {/* The chips, in the corner opposite the menu, for as long as the
+          tournament runs. A tap opens the table. */}
+      {phase !== 'before' && profile.tournament && (
+        <div
+          className="absolute left-0 top-0 z-30 p-3"
+          style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingLeft: 'calc(var(--safe-left) + 12px)' }}
+        >
+          <button
+            data-chips={chipsHeld}
+            className="btn flex items-center gap-1.5 rounded px-3 py-2 text-[11px]"
+            onClick={() => {
+              sfx.click();
+              setBoardOpen(true);
+            }}
+            aria-label={`Star chips: ${chipsHeld} of ${CHIPS_TO_FINALS}. Open the tournament table`}
+          >
+            <span className="text-brassbright">★</span>
+            {phase === 'finals' ? 'Finals' : `${chipsHeld} / ${CHIPS_TO_FINALS}`}
+          </button>
+        </div>
+      )}
+
+      {chipNote && (
+        <div className="pointer-events-none absolute left-1/2 top-16 z-40 animate-[chipnote_4.2s_ease-out_forwards]" style={{ marginTop: 'var(--safe-top)' }}>
+          <p data-chip-note className="whitespace-nowrap rounded border border-brassdim bg-black/80 px-4 py-2 font-display text-[13px] text-brassbright">
+            ★ {chipNote}
+          </p>
+        </div>
+      )}
+
+      {boardOpen && profile.tournament && (
+        <TournamentBoard tournament={profile.tournament} playerName={character.name} names={names} onClose={() => setBoardOpen(false)} />
+      )}
+
+      {finalsDue && profile.tournament && !talkingTo && !hold && quiet && !broadcast && (
+        <FinalsCard
+          tournament={profile.tournament}
+          playerName={character.name}
+          names={names}
+          onClose={() => onFinalsSeen?.()}
+        />
+      )}
+
+      {broadcast && (
+        <Cutscene
+          onDone={() => {
+            setBroadcast(false);
+            void onTournamentStart?.();
+          }}
+        />
+      )}
+
       {menuOpen && (
         <StoryMenu
           name={character.name}
@@ -2154,11 +2760,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           money={profile.money ?? 0}
           place={menuPlace}
           saving={saving}
-          hints={hints}
-          onHints={(on) => {
-            setHints(on);
-            try { window.localStorage.setItem('story-hints', on ? '1' : '0'); } catch { /* ignore */ }
-          }}
           where={showWhere}
           onWhere={(on) => {
             setShowWhere(on);
@@ -2166,6 +2767,11 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
             try { window.localStorage.setItem('story-where', on ? '1' : '0'); } catch { /* ignore */ }
           }}
           onEditDeck={onEditDeck}
+          tournament={phase !== 'before' ? (phase === 'finals' ? 'The finals are set' : `${chipsHeld} of ${CHIPS_TO_FINALS} star chips`) : undefined}
+          onTournament={() => {
+            setMenuOpen(false);
+            setBoardOpen(true);
+          }}
           onMap={() => {
             /* Read off the refs at the moment it opens, not subscribed to:
                the duelist's position changes sixty times a second and the map
@@ -2192,6 +2798,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
       {mapOpen && mapAt && (
         <WorldMap
           at={mapAt}
+          duelists={marks}
           onGo={(to, x, z) => {
             sfx.click();
             warpRef.current?.(to, x, z);
@@ -2318,20 +2925,6 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
         </p>
       )}
 
-      {!talkingTo && hints && (
-        <p
-          className="pointer-events-none absolute bottom-0 right-0 m-4 text-right text-[9px] leading-relaxed tracking-wide text-white/45 animate-[fadeaway_2.6s_ease-out_forwards]"
-          style={{ marginBottom: 'calc(var(--safe-bottom) + 16px)', marginRight: 'calc(var(--safe-right) + 16px)', animationDelay: '9s' }}
-        >
-          Drag to look · stick to walk
-          {hasKeyboard && (
-            <>
-              <br />
-              WASD on a keyboard
-            </>
-          )}
-        </p>
-      )}
 
       {talkingTo && !hold && (
         <Conversation
@@ -2339,7 +2932,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           /* Where the conversation starts, in priority order: the node a duel
              sent it back to, then whichever of theirs fits who the player is
              by now — see `openingNode`. */
-          openAt={resumeAt ?? openingNode(talkingTo, met.has(talkingTo.id), profile.collection.length)}
+          openAt={resumeAt ?? openingNode(talkingTo, met.has(talkingTo.id), profile.collection.length, profile.tournament)}
           /* So a wager can be answered in her own voice instead of by a dead
              button — see the panel's `money`. The save is the figure; the
              server is still the decision. */
@@ -2364,6 +2957,7 @@ export default function OpenWorld({ profile, onEditDeck, onSave, onDelete, onExi
           fill={{
             cards: profile.collection.length,
             left: cardsLeft(profile.collection.length),
+            chips: chipsHeld,
             ...(wageredCard ? { card: CARDS[wageredCard]?.name ?? wageredCard } : {}),
           }}
           onShop={() => onShop?.(talkingTo)}

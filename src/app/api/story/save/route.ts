@@ -1,5 +1,7 @@
-import { canonicalUsername, updateProfile } from '@/server/story';
+import { canonicalUsername, loadProfile, updateProfile } from '@/server/story';
 import { describeStoreError } from '@/server/store';
+import { loadRoom } from '@/server/rooms';
+import { settleDuel } from '@/story/tournament';
 import { readBody } from '../body';
 import { areaById, settle, PLAYER_RADIUS, standingOn } from '@/story/areas';
 import type { WorldPosition } from '@/story/profile';
@@ -59,6 +61,33 @@ export async function POST(req: Request) {
     : [];
 
   try {
+    /*
+     * A duel come back from, during the tournament, is settled here — once.
+     *
+     * `duelDone` is the conversation the duel came out of picking up again, and
+     * it is posted after every duel that finished, won or lost, which is exactly
+     * the moment the tournament wants: the player's chip, the rest of the
+     * field's round off screen, and the finals if that was the tenth. The
+     * verdict is the room's, read here again rather than believed — the client
+     * says only that it is back. The room is read before the write because a
+     * profile write is a synchronous decision (`updateProfile`), and matched
+     * inside it against the note still on the save, so a retry, a second tab or
+     * a duel started before the tournament begun settles nothing.
+     */
+    let verdict: { code: string; npcId: string; won: boolean } | null = null;
+    if (body.duelDone === true) {
+      const current = await loadProfile(canonical).catch(() => null);
+      const pending = current?.pendingDuel;
+      if (pending && current?.tournament && !current.tournament.finals && pending.startedAt >= current.tournament.startedAt) {
+        const room = await loadRoom(pending.code).catch(() => null);
+        const winner = room?.story ? room.state?.winner : null;
+        if (room && winner) {
+          const mine = (['p1', 'p2'] as const).find((seat) => room.seats[seat]?.token === pending.token);
+          verdict = { code: pending.code, npcId: pending.npcId, won: !!mine && winner === mine };
+        }
+      }
+    }
+
     const result = await updateProfile(canonical, (profile) => {
       /*
        * Settled against the area's own geometry rather than clamped to a radius.
@@ -102,7 +131,17 @@ export async function POST(req: Request) {
       const introduced = met.length
         ? [...new Set([...(profile.met ?? []), ...met])]
         : profile.met;
-      const next = { ...profile, world, pendingDuel, fresh, met: introduced };
+      const tournament =
+        verdict && profile.tournament && profile.pendingDuel?.code === verdict.code
+          ? settleDuel(profile.tournament, {
+              username: profile.username,
+              npcId: verdict.npcId,
+              won: verdict.won,
+              code: verdict.code,
+              now: Date.now(),
+            })
+          : profile.tournament;
+      const next = { ...profile, world, pendingDuel, fresh, met: introduced, tournament };
       return { ok: true, profile: pendingDuel ? next : mendDeck(next) };
     });
     if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: result.status });

@@ -20,6 +20,8 @@
  * meant to delete and did not. Both are worth being told about.
  */
 import { WORLD_NPCS, WAITING_CAST, type WorldNpc } from '../src/story/npcs';
+import { ARRIVALS, CHIPS_TO_FINALS, ENTRANTS, FINALISTS_BESIDES_YOU, TOURNAMENT_CARDS, isEntrant } from '../src/story/tournament';
+import { BROADCAST } from '../src/story/broadcast';
 import { wagerFor } from '../src/story/shop';
 import { DUELIST_BY_ID } from '../src/game/cards';
 
@@ -39,7 +41,13 @@ const check = (ok: boolean, what: string, detail = '') => {
  * the player as `{Name}`.
  */
 const TOKENS = /\{([a-zA-Z]+)\}/g;
-const KNOWN = new Set(['name', 'card', 'cards', 'left']);
+const KNOWN = new Set(['name', 'card', 'cards', 'left', 'chips']);
+
+/**
+ * The nodes the tournament opens, rather than a reply — see `openingNode`,
+ * and `chip`, which is where a first win over an entrant resumes.
+ */
+const TOURNAMENT_NODES = ['meet', 'ready', 'chip', 'chipped', 'finalist', 'out', 'finals'];
 
 function walk(npc: WorldNpc) {
   const nodes = Object.keys(npc.script);
@@ -74,7 +82,7 @@ function walk(npc: WorldNpc) {
   /* Three ways in, not one: `again` and `ready` are opened by `openingNode`
      rather than by a reply, so a reachability walk that starts only at `start`
      calls both of them orphans. See `WorldNpc.start`. */
-  const queue = [npc.start, 'again', 'ready', ...(npc.duel ? [npc.duel.won, npc.duel.lost] : [])].filter(
+  const queue = [npc.start, 'again', ...TOURNAMENT_NODES, ...(npc.duel ? [npc.duel.won, npc.duel.lost] : [])].filter(
     (id) => npc.script[id]
   );
   while (queue.length) {
@@ -157,6 +165,22 @@ function walk(npc: WorldNpc) {
     .filter(([id, node]) => id !== 'again' && node.lines.some((l) => l.includes('{left}')))
     .map(([id]) => id);
   check(leftOutside.length === 0, 'and {left} is only counted where it can still be counting', leftOutside.join(', '));
+
+  /*
+   * And `{chips}` only where there are chips.
+   *
+   * The player's star chips are a number once the tournament has begun and
+   * nothing before it, so for anybody who was in the city first it may only
+   * be said in the nodes the tournament opens. The four who arrive with it,
+   * and Kaiba, only ever meet a player who is already in — every line of
+   * theirs is tournament-time.
+   */
+  if (!npc.arrives) {
+    const early = Object.entries(npc.script)
+      .filter(([id, node]) => !TOURNAMENT_NODES.includes(id) && node.lines.some((l) => l.includes('{chips}')))
+      .map(([id]) => id);
+    check(early.length === 0, 'and {chips} is only counted once there are chips to count', early.join(', '));
+  }
 }
 
 console.log('\nEvery conversation in the city');
@@ -175,12 +199,53 @@ const OUTSIDER = new Set(['ash']);
 console.log('\nSecond meetings');
 for (const npc of [...WORLD_NPCS, ...WAITING_CAST]) {
   if (OUTSIDER.has(npc.id)) continue;
-  check(
-    !!npc.script.again && !!npc.script.ready,
-    `${npc.character.name} has a short greeting and a word for the hall`,
-    [!npc.script.again && 'no again', !npc.script.ready && 'no ready'].filter(Boolean).join(', ')
-  );
+  /* Anybody the player can have met before the tournament has a short
+     version for the second time. The four who arrive with it, and Kaiba,
+     cannot be met before it — their second meeting is already `ready`. */
+  if (!npc.arrives) {
+    check(!!npc.script.again, `${npc.character.name} has a short greeting`, 'no again');
+  }
+  check(!!npc.script.ready, `${npc.character.name} has a word for the tournament`, 'no ready');
 }
+
+/*
+ * And every entrant has the whole of the tournament to say: a line for their
+ * chip changing hands, a line for once it has, and one each for making the
+ * finals and for not. Kaiba has his for the finals. Anybody else — Grandpa,
+ * Ash — is not in it and needs none.
+ */
+console.log('\nThe tournament, in everybody\'s words');
+check(ENTRANTS.every((e) => WORLD_NPCS.some((n) => n.id === e.id)), 'every entrant is somebody in the city', ENTRANTS.filter((e) => !WORLD_NPCS.some((n) => n.id === e.id)).map((e) => e.id).join(', '));
+for (const npc of WORLD_NPCS) {
+  if (!isEntrant(npc.id)) continue;
+  const missing = ['chip', 'chipped', 'finalist', 'out'].filter((n) => !npc.script[n]);
+  /* Anybody who was in the city before the tournament greets a stranger as
+     somebody waiting on it — so a first meeting once it has begun needs its
+     own line, and for the ones who travel, a line that is not tied to the
+     spot they used to stand on. */
+  if (!npc.arrives && !npc.script.meet) missing.push('meet');
+  check(missing.length === 0, `${npc.character.name} can hand over a chip, keep count, and make the finals or miss them`, missing.join(', '));
+  check(!!npc.duel, `and ${npc.character.name} duels`);
+  check(ARRIVALS.has(npc.id) === (npc.arrives === 'tournament'), `and ${npc.character.name} is in the city when the tournament says so`);
+}
+const kaiba = WORLD_NPCS.find((n) => n.id === 'kaiba');
+check(!!kaiba && !!kaiba.script.finals && !kaiba.duel && kaiba.arrives === 'tournament', 'Kaiba runs it, says so at the finals, and does not duel');
+
+/*
+ * The broadcast says the rules the code runs.
+ *
+ * Not the wording — the numbers. Ninety-nine at the door, ten chips, three
+ * who go through with the player, four finalists. A rule changed in
+ * `tournament.ts` and not in Kaiba's mouth is a broadcast telling the player
+ * something the game will not do.
+ */
+console.log('\nThe broadcast');
+const said = BROADCAST.map((l) => l.text.toLowerCase()).join(' ');
+const WORDS: Record<number, string> = { 3: 'three', 4: 'four', 10: 'ten', 99: 'ninety-nine' };
+for (const [what, n] of [['the door', TOURNAMENT_CARDS], ['chips to the finals', CHIPS_TO_FINALS], ['who go through with you', FINALISTS_BESIDES_YOU], ['finalists', FINALISTS_BESIDES_YOU + 1]] as const) {
+  check(said.includes(WORDS[n] ?? String(n)), `it names ${what}: ${WORDS[n] ?? n}`);
+}
+check(BROADCAST.every((l, i) => i === 0 || l.at > BROADCAST[i - 1].at), 'and its lines are in the order they are spoken');
 
 /* The bench is cast too: `WAITING_CAST` stands in the duel lobby and its
    records carry the same shape. A dangling reply there is the same fault. */

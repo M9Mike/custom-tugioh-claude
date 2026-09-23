@@ -59,7 +59,6 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
               </p>
             </>
           )}
-          {hidden && <p className="mt-1 text-[10px] text-ptextdim">A face-down card. You cannot see it yet.</p>}
         </div>
       </div>
     );
@@ -68,10 +67,7 @@ export default function CardDetail({ card, atk, def, onClose, layout = 'column',
   if (!card) {
     return (
       <div className="panel grain relative flex h-full flex-col items-center justify-center rounded p-4 text-center">
-        <p className="font-display text-sm tracking-widest text-ptextdim">INSPECT A CARD</p>
-        <p className="mt-2 text-xs leading-relaxed text-ptextdim/70">
-          Hover or tap any card on the field or in your hand to read its effect.
-        </p>
+        <div aria-hidden className="aspect-[59/86] w-16 rounded border border-stoneline/60" />
       </div>
     );
   }

@@ -484,11 +484,6 @@ export default function DeckBuilder({ pool, initial, first, fresh, onConfirm, on
           <h1 className="mt-0.5 font-display text-xl leading-none text-brassbright sm:text-2xl">
             {first ? 'Cut your first deck' : 'Edit your deck'}
           </h1>
-          <p className="mt-1 max-w-md text-[11px] leading-relaxed text-ptext/80">
-            {first
-              ? `Choose exactly ${DECK_SIZE} of the ${pool.length}. One copy of each — this is everything you have.`
-              : `Exactly ${DECK_SIZE} cards, one copy of each. Tap to move a card between the Trunk and your Deck.`}
-          </p>
         </div>
         <div className="shrink-0 rounded border border-stoneline bg-black/25 px-3 py-2 text-right">
           <p className="text-[9px] uppercase tracking-widest text-ptextdim">Sleeved</p>
